@@ -1,13 +1,16 @@
 
-[ ] make scale and rotatevvv keys work on hovered shape, without selection
+[ ] We will need a more sophis. solution for mouse events over the onscreen kb 
+because in the future the user will click on the keys to configure them.
 
-[ ] aspect ratio snap: 3:4 or 4:3
+[ ] make scale and rotate keys work on the hovered shape, without selection needed.
+
+[ ] aspect ratio snap for drawing with rect keys. aspect ratio will flip for dimensions. 3:4 or 4:3
 
 [ ] circle keys:  [inradius | circumradius]
 
 
 SNAPPING
-[ ] arrange params in two cols, without "snapping" in label.
+[ ] arrange params in two cols, drop "snapping" in label.
 [ ] line snapping
 [ ] point snapping, including line intersections.
    midpoint snappingg

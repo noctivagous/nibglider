@@ -28,8 +28,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
 
   return (
     <>
-      <fieldset id="strokeControls" className="panel-card panel-card-row">
-        <legend>
+      <section id="strokeControls" className="panel-card" aria-label="Stroke">
+        <header className="pane-titlebar">
           <label className="toggle-switch square-knob">
             <input
               type="checkbox"
@@ -39,34 +39,38 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             />
             <span className="slider" />
           </label>
-          Stroke <kbd>R</kbd>
-        </legend>
-        <input
-          type="color"
-          id="strokeColorWell"
-          value={engine.globalStrokeColor}
-          title="Stroke Color"
-          onChange={(e) => engine.setStrokeColor(e.target.value)}
-        />
-        <div className="control-inline">
-          <label> Width:</label>
-          <input
-            type="range"
-            id="strokeWidthSlider"
-            min="1"
-            max="40"
-            step="0.5"
-            value={engine.globalStrokeWidth}
-            onChange={(e) => engine.setStrokeWidth(parseFloat(e.target.value))}
-          />
-          <span id="strokeWidthDisplay">
-            {engine.globalStrokeWidth.toFixed(1)} pt
+          <span className="pane-title">
+            Stroke <kbd>R</kbd>
           </span>
+        </header>
+        <div className="pane-body pane-body-row">
+          <input
+            type="color"
+            id="strokeColorWell"
+            value={engine.globalStrokeColor}
+            title="Stroke Color"
+            onChange={(e) => engine.setStrokeColor(e.target.value)}
+          />
+          <div className="control-inline">
+            <label> Width:</label>
+            <input
+              type="range"
+              id="strokeWidthSlider"
+              min="1"
+              max="40"
+              step="0.5"
+              value={engine.globalStrokeWidth}
+              onChange={(e) => engine.setStrokeWidth(parseFloat(e.target.value))}
+            />
+            <span id="strokeWidthDisplay">
+              {engine.globalStrokeWidth.toFixed(1)} pt
+            </span>
+          </div>
         </div>
-      </fieldset>
+      </section>
 
-      <fieldset id="fillControls" className="panel-card panel-card-row">
-        <legend>
+      <section id="fillControls" className="panel-card" aria-label="Fill">
+        <header className="pane-titlebar">
           <label className="toggle-switch square-knob">
             <input
               type="checkbox"
@@ -76,59 +80,72 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             />
             <span className="slider" />
           </label>
-          Fill <kbd>T</kbd>
-        </legend>
-        <input
-          type="color"
-          id="fillColorWell"
-          value={engine.globalFillColor}
-          title="Fill Color"
-          onChange={(e) => engine.setFillColor(e.target.value)}
-        />
-      </fieldset>
+          <span className="pane-title">
+            Fill <kbd>T</kbd>
+          </span>
+        </header>
+        <div className="pane-body pane-body-row">
+          <input
+            type="color"
+            id="fillColorWell"
+            value={engine.globalFillColor}
+            title="Fill Color"
+            onChange={(e) => engine.setFillColor(e.target.value)}
+          />
+        </div>
+      </section>
 
-      <fieldset id="snappingControls" className="panel-card panel-card-col">
-        <legend>Snapping</legend>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            id="gridSnappingCheckbox"
-            checked={engine.isGridSnappingEnabled}
-            onChange={(e) => engine.setGridSnappingEnabled(e.target.checked)}
-          />
-          <span>Grid snapping</span>
-        </label>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            id="pathSnappingCheckbox"
-            checked={engine.isPathSnappingEnabled}
-            onChange={(e) => engine.setPathSnappingEnabled(e.target.checked)}
-          />
-          <span>Path snapping</span>
-        </label>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            id="angleSnappingCheckbox"
-            checked={engine.isAngleSnappingEnabled}
-            onChange={(e) => engine.setAngleSnappingEnabled(e.target.checked)}
-          />
-          <span>Angle snapping</span>
-        </label>
-        <label className="check-row">
-          <input
-            type="checkbox"
-            id="lengthSnappingCheckbox"
-            checked={engine.isLengthSnappingEnabled}
-            onChange={(e) => engine.setLengthSnappingEnabled(e.target.checked)}
-          />
-          <span>Length snapping</span>
-        </label>
-      </fieldset>
+      <section id="snappingControls" className="panel-card" aria-label="Snapping">
+        <header className="pane-titlebar">
+          <span className="pane-title">Snapping</span>
+        </header>
+        <div className="pane-body pane-body-col">
+          <div className="snapping-grid">
+          <label className="check-row">
+            <input
+              type="checkbox"
+              id="gridSnappingCheckbox"
+              checked={engine.isGridSnappingEnabled}
+              onChange={(e) => engine.setGridSnappingEnabled(e.target.checked)}
+            />
+            <span>Grid</span>
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              id="pathSnappingCheckbox"
+              checked={engine.isPathSnappingEnabled}
+              onChange={(e) => engine.setPathSnappingEnabled(e.target.checked)}
+            />
+            <span>Path</span>
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              id="angleSnappingCheckbox"
+              checked={engine.isAngleSnappingEnabled}
+              onChange={(e) => engine.setAngleSnappingEnabled(e.target.checked)}
+            />
+            <span>Angle</span>
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              id="lengthSnappingCheckbox"
+              checked={engine.isLengthSnappingEnabled}
+              onChange={(e) => engine.setLengthSnappingEnabled(e.target.checked)}
+            />
+            <span>Length</span>
+          </label>
+          </div>
+        </div>
+      </section>
 
-      <fieldset id="circleFrameControls" className="panel-card panel-card-row">
-        <legend>Circle Keys:</legend>
+      <section id="circleFrameControls" className="panel-card" aria-label="Circle Keys">
+        <header className="pane-titlebar">
+          <span className="pane-title">Circle Keys</span>
+        </header>
+        <div className="pane-body pane-body-row">
         <select
           id="circleInnerShapeSelect"
           value={engine.circleInnerShapeType}
@@ -214,10 +231,14 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             </span>
           </span>
         )}
-      </fieldset>
+        </div>
+      </section>
 
-      <fieldset id="rectFrameControls" className="panel-card panel-card-row">
-        <legend>Rect Keys:</legend>
+      <section id="rectFrameControls" className="panel-card" aria-label="Rect Keys">
+        <header className="pane-titlebar">
+          <span className="pane-title">Rect Keys</span>
+        </header>
+        <div className="pane-body pane-body-row">
         <select
           id="rectInnerShapeSelect"
           value={engine.rectangleInnerShapeType}
@@ -304,7 +325,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             </span>
           </span>
         )}
-      </fieldset>
+        </div>
+      </section>
     </>
   );
 }

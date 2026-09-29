@@ -698,45 +698,106 @@ body {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
-/* Unified fieldset cards */
-#controlPanel fieldset.panel-card {
+/* Unified pane cards with real titlebars (dark pro) */
+#controlPanel .panel-card {
   background: var(--dp-bg-2);
   border: 1px solid var(--dp-border-soft);
   border-radius: 6px;
   box-shadow: none;
-  padding: 8px 10px;
+  padding: 0;
   margin: 0;
-  gap: 8px;
-  align-items: center;
   color: var(--dp-text-1);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  min-width: 0;
 }
 
-#controlPanel fieldset.panel-card.panel-card-row {
+/* Pane titlebar: flat dark strip, thin bottom border, dense type */
+#controlPanel .pane-titlebar {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--dp-bg-1);
+  border-bottom: 1px solid var(--dp-border-soft);
+  padding: 4px 10px;
+  min-height: 26px;
+  flex: none;
+}
+
+#controlPanel .pane-title {
+  font-weight: 700;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dp-text-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+#controlPanel .pane-title kbd {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Pane body carries the old row/col layouts */
+#controlPanel .pane-body {
+  padding: 8px 10px;
+  margin: 0;
+  color: var(--dp-text-1);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+#controlPanel .pane-body-row {
   flex-direction: row;
   flex-wrap: wrap;
 }
 
-#controlPanel fieldset.panel-card.panel-card-col {
-  display: flex;
+#controlPanel .pane-body-col {
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 4px;
   font-size: 0.8125rem;
 }
 
-#controlPanel fieldset.panel-card legend {
-  font-weight: 600;
-  font-size: 0.75rem;
-  letter-spacing: 0.02em;
-  color: var(--dp-text-2);
-  padding: 0 6px;
-}
-
-#controlPanel fieldset.panel-card label {
+#controlPanel .pane-body label {
   color: var(--dp-text-2);
   font-weight: 500;
   margin-right: 0.25rem;
+}
+
+/* Compact toggle inside the titlebar so the bar stays slim */
+#controlPanel .pane-titlebar .toggle-switch {
+  width: 34px;
+  height: 18px;
+  margin-right: 0;
+  flex: none;
+}
+
+#controlPanel .pane-titlebar .toggle-switch .slider::before {
+  height: 12px;
+  width: 12px;
+  left: 2px;
+  bottom: 2px;
+}
+
+#controlPanel .pane-titlebar .toggle-switch input:checked + .slider::before {
+  transform: translateX(16px);
+}
+
+#controlPanel .pane-titlebar .toggle-switch .slider::after {
+  font-size: 8px;
+  right: 5px;
+}
+
+#controlPanel .pane-titlebar .toggle-switch input:checked + .slider::after {
+  left: 5px;
 }
 
 /* Inline control groups that were inline-styled in HTML */
@@ -756,6 +817,13 @@ body {
   gap: 6px;
   cursor: pointer;
   color: var(--dp-text-1);
+}
+
+#controlPanel .snapping-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  align-items: center;
 }
 
 /* Inputs on dark */

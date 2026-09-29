@@ -593,6 +593,9 @@ color:rgb(210, 115, 115) !important;
    Wins over the legacy neon fills above. */
 #keyboardContainer {
     text-shadow: none;
+    /* Display-only overlay: let mouse events fall through to the canvas
+       so live drawing previews keep tracking under the keyboard. */
+    pointer-events: none;
 }
 
 #keyboardKeysContainer button {
