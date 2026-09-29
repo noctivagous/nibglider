@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
+import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import type {
   CircleInnerShape,
   GridType,
@@ -649,6 +650,160 @@ const RECT_SHAPE_LABELS: Record<RectangleInnerShape, string> = {
   kite: 'Kite',
 };
 
+// Mini silhouette per shape, drawn in the option list and the closed
+// trigger (16x14 viewBox, currentColor — same idiom as TitleIcon).
+const SHAPE_THUMB_PATHS: Record<string, ReactNode> = {
+  circle: <circle cx="8" cy="7" r="5" />,
+  semicircle: <path d="M3 9.5 A5 5 0 0 1 13 9.5 Z" />,
+  sector: <path d="M8 7 L11.8 3.2 A5.4 5.4 0 0 1 11.8 10.8 Z" />,
+  segment: (
+    <>
+      <circle cx="8" cy="7" r="5" />
+      <path d="M3.6 9.6 H12.4" />
+    </>
+  ),
+  polygon: <path d="M8 1.8 L12.4 4.4 V9.6 L8 12.2 L3.6 9.6 V4.4 Z" />,
+  supershape: (
+    <path d="M8 1.2 C8.8 4.8 10 6 13.8 7 C10 8 8.8 9.2 8 12.8 C7.2 9.2 6 8 2.2 7 C6 6 7.2 4.8 8 1.2 Z" />
+  ),
+  trapezoid: <path d="M4.2 11.5 L6 2.8 H10 L11.8 11.5 Z" />,
+  parallelogram: <path d="M6.8 2.8 H13 L9.2 11.2 H3 Z" />,
+  rightTriangle: <path d="M4.5 2.8 V11.2 H11.5 Z" />,
+  rhombus: <path d="M8 1.8 L12.8 7 L8 12.2 L3.2 7 Z" />,
+  kite: <path d="M8 1.5 L11 6.5 L8 12.5 L5 6.5 Z" />,
+  rectangle: <path d="M2.8 3.2 H13.2 V10.8 H2.8 Z" />,
+};
+
+function ShapeThumb({ kind }: { kind: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 14"
+      width="18"
+      height="16"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {SHAPE_THUMB_PATHS[kind]}
+    </svg>
+  );
+}
+
+function GridThumb({ kind }: { kind: 'square' | 'diamond' }) {
+  return (
+    <svg
+      viewBox="0 0 16 14"
+      width="18"
+      height="16"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {kind === 'square' ? (
+        <path d="M2 2.5 H14 V11.5 H2 Z M2 7 H14 M8 2.5 V11.5" />
+      ) : (
+        <>
+          <path d="M8 1.5 L13.5 7 L8 12.5 L2.5 7 Z" />
+          <circle cx="8" cy="7" r="0.9" fill="currentColor" stroke="none" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function AspectThumb({ a, b }: { a: number; b: number }) {
+  const w = a >= b ? 12 : (12 * a) / b;
+  const h = a >= b ? (12 * b) / a : 12;
+  return (
+    <svg
+      viewBox="0 0 16 14"
+      width="18"
+      height="16"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+    >
+      <rect x={8 - w / 2} y={7 - h / 2} width={w} height={h} />
+    </svg>
+  );
+}
+
+function shapeLeaf(
+  value: CircleInnerShape | RectangleInnerShape,
+  labels: Record<string, string>,
+): CustomSelectOption {
+  return {
+    value,
+    label: labels[value],
+    image: <ShapeThumb kind={value} />,
+  };
+}
+
+const CIRCLE_OPTION_TREE: CustomSelectOption[] = [
+  {
+    value: 'grp-round',
+    label: 'Round',
+    children: (['circle', 'semicircle', 'sector', 'segment'] as const).map(
+      (v) => shapeLeaf(v, CIRCLE_SHAPE_LABELS),
+    ),
+  },
+  {
+    value: 'grp-angled',
+    label: 'Angled',
+    children: (
+      ['polygon', 'trapezoid', 'parallelogram', 'rightTriangle', 'rhombus'] as const
+    ).map((v) => shapeLeaf(v, CIRCLE_SHAPE_LABELS)),
+  },
+  shapeLeaf('supershape', CIRCLE_SHAPE_LABELS),
+];
+
+const GRID_TYPE_OPTIONS: CustomSelectOption[] = [
+  { value: 'square', label: 'Square', image: <GridThumb kind="square" /> },
+  { value: 'diamond', label: 'Diamond', image: <GridThumb kind="diamond" /> },
+];
+
+const ASPECT_RATIO_OPTIONS: CustomSelectOption[] =
+  ASPECT_RATIO_PRESETS.map((key) => {
+    const [a, b] = key.split(':').map(Number);
+    return {
+      value: key,
+      label: key,
+      image: <AspectThumb a={a} b={b} />,
+    };
+  });
+
+const RECT_OPTION_TREE: CustomSelectOption[] = [
+  {
+    value: 'grp-frames',
+    label: 'Frames',
+    children: (['rectangle', 'circle'] as const).map((v) =>
+      shapeLeaf(v, RECT_SHAPE_LABELS),
+    ),
+  },
+  {
+    value: 'grp-poly',
+    label: 'Polygons',
+    children: (
+      [
+        'polygon',
+        'trapezoid',
+        'parallelogram',
+        'rightTriangle',
+        'rhombus',
+        'kite',
+      ] as const
+    ).map((v) => shapeLeaf(v, RECT_SHAPE_LABELS)),
+  },
+  shapeLeaf('supershape', RECT_SHAPE_LABELS),
+];
+
 export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
@@ -815,24 +970,15 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             </TitleIcon>
             <span className="pane-title-text">Circle Keys</span></span>
           </span>
-        <select
+        <CustomSelect
           id="circleInnerShapeSelect"
+          ariaLabel="Circle Keys shape"
           value={engine.circleInnerShapeType}
-          onChange={(e) =>
-            engine.setCircleInnerShapeType(e.target.value as CircleInnerShape)
+          options={CIRCLE_OPTION_TREE}
+          onChange={(v) =>
+            engine.setCircleInnerShapeType(v as CircleInnerShape)
           }
-        >
-          <option value="circle">Circle</option>
-          <option value="semicircle">Semicircle</option>
-          <option value="sector">Sector</option>
-          <option value="segment">Segment</option>
-          <option value="polygon">Regular Polygon</option>
-          <option value="supershape">Supershape</option>
-          <option value="trapezoid">Trapezoid</option>
-          <option value="parallelogram">Parallelogram</option>
-          <option value="rightTriangle">Right Triangle</option>
-          <option value="rhombus">Rhombus</option>
-        </select>
+        />
         <button
           type="button"
           ref={circlePreviewRef}
@@ -890,23 +1036,15 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             </TitleIcon>
             <span className="pane-title-text">Rect Keys</span></span>
           </span>
-        <select
+        <CustomSelect
           id="rectInnerShapeSelect"
+          ariaLabel="Rect Keys shape"
           value={engine.rectangleInnerShapeType}
-          onChange={(e) =>
-            engine.setRectangleInnerShapeType(e.target.value as RectangleInnerShape)
+          options={RECT_OPTION_TREE}
+          onChange={(v) =>
+            engine.setRectangleInnerShapeType(v as RectangleInnerShape)
           }
-        >
-          <option value="rectangle">Rectangle</option>
-          <option value="circle">Circle</option>
-          <option value="polygon">Regular Polygon</option>
-          <option value="supershape">Supershape</option>
-          <option value="trapezoid">Trapezoid</option>
-          <option value="parallelogram">Parallelogram</option>
-          <option value="rightTriangle">Right Triangle</option>
-          <option value="rhombus">Rhombus</option>
-          <option value="kite">Kite</option>
-        </select>
+        />
         <button
           type="button"
           ref={rectPreviewRef}
@@ -978,15 +1116,13 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             />
             <span className="slider" />
           </label>
-          <select
+          <CustomSelect
             id="gridTypeSelect"
-            aria-label="Grid type"
+            ariaLabel="Grid type"
             value={engine.gridType}
-            onChange={(e) => engine.setGridType(e.target.value as GridType)}
-          >
-            <option value="square">Square</option>
-            <option value="diamond">Diamond</option>
-          </select>
+            options={GRID_TYPE_OPTIONS}
+            onChange={(v) => engine.setGridType(v as GridType)}
+          />
         </header>
       </section>
       <section id="snappingControls" className="panel-card" aria-label="Snapping">
@@ -1064,18 +1200,13 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               </CheckIcon>
               <span>Aspect</span>
             </label>
-            <select
+            <CustomSelect
               id="aspectRatioSelect"
-              aria-label="Aspect ratio"
+              ariaLabel="Aspect ratio"
               value={engine.aspectRatioKey()}
-              onChange={(e) => engine.setAspectRatioKey(e.target.value)}
-            >
-              {ASPECT_RATIO_PRESETS.map((key) => (
-                <option key={key} value={key}>
-                  {key}
-                </option>
-              ))}
-            </select>
+              options={ASPECT_RATIO_OPTIONS}
+              onChange={(v) => engine.setAspectRatioKey(v)}
+            />
           </div>
           </div>
         </header>

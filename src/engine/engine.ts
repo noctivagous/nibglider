@@ -2095,24 +2095,44 @@ export class NibGliderEngine {
       this.applyStrokeDash(this.path);
     } else {
       const newSegment = this.path.add(this.mousePt);
-      if (newSegment && this.path.segments.length >= 3) {
-        const curr = this.path.segments[this.path.segments.length - 2];
-        const next = newSegment;
-        const p0 = this.path.segments[this.path.segments.length - 3].point;
-        const p1 = curr.point;
-        const p2 = next.point;
-        const d01 = p1.subtract(p0);
-        const d12 = p2.subtract(p1);
-        next.handleIn = d12.multiply(this.splineTension * 0.5);
-        curr.handleOut = d01.multiply(this.splineTension * 0.5);
-        if (curr.handleIn) {
-          curr.handleIn = curr.handleOut.multiply(-1);
-        }
-      }
+      this.smoothLastSplineJoint(newSegment);
     }
     if (this.isDrawingPath === false) this.isDrawingPath = true;
     this.updateTextContent();
     this.notify();
+  }
+
+  // Mirror of the spline smoothing in splinePointKC: shape the joint
+  // before the path's last segment from the neighboring points, scaled
+  // by the current spline tension.
+  private smoothLastSplineJoint(newSegment: AnyItem): void {
+    if (!newSegment || !this.path || this.path.segments.length < 3) return;
+    const curr = this.path.segments[this.path.segments.length - 2];
+    const next = newSegment;
+    const p0 = this.path.segments[this.path.segments.length - 3].point;
+    const p1 = curr.point;
+    const p2 = next.point;
+    const d01 = p1.subtract(p0);
+    const d12 = p2.subtract(p1);
+    next.handleIn = d12.multiply(this.splineTension * 0.5);
+    curr.handleOut = d01.multiply(this.splineTension * 0.5);
+    if (curr.handleIn) {
+      curr.handleIn = curr.handleOut.multiply(-1);
+    }
+  }
+
+  // Complete Shape (R key): finish a path being drawn by committing the
+  // last segment from where the mouse is as a spline point, then ending
+  // the path. The trailing live-preview segment is replaced in place so
+  // no zero-length stub is left behind.
+  completeShapeWithSpline(): void {
+    if (!this.isDrawingPath || !this.path || !this.mousePt) return;
+    if (this.path.segments.length > 1) {
+      this.path.removeSegment(this.path.segments.length - 1);
+    }
+    const newSegment = this.path.add(this.mousePt);
+    this.smoothLastSplineJoint(newSegment);
+    this.endPathOrShape();
   }
 
   circleKC(mode: string): void {
@@ -2402,7 +2422,7 @@ export class NibGliderEngine {
     if (k === 'o') return 'quad';
     if (k === 'w' || k === '[' || k === ']' || k === ';' || k === "'")
       return 'op';
-    if (k === 'q' || k === 'a' || k === 'escape') return 'end';
+    if (k === 'q' || k === 'a' || k === 'r' || k === 'escape') return 'end';
     return 'neutral';
   }
 
@@ -3006,7 +3026,11 @@ export class NibGliderEngine {
     }
     if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad) {
       if (keyLower === 'r' || keyLower === 'e' || keyLower === 's' || keyLower === 'a') {
-        this.endPathOrShape();
+        if (keyLower === 'r' && this.isDrawingPath) {
+          this.completeShapeWithSpline();
+        } else {
+          this.endPathOrShape();
+        }
       }
     }
     if (!this.isDrawingPath && !this.isDrawingShape && !this.isDrawingQuad) {
@@ -3122,7 +3146,9 @@ export class NibGliderEngine {
           K('F'),
           T(' = sharp point, '),
           K('G'),
-          T(' = spline (tension:' + this.splineTension.toFixed(1) + ')'),
+          T(' = spline (tension:' + this.splineTension.toFixed(1) + '), '),
+          K('R'),
+          T(' = complete shape'),
         ]),
       );
       steps.push(

@@ -904,6 +904,8 @@ html, body {
   --font-tech-label: 'Chakra Petch', 'Arial Narrow', 'Franklin Gothic Medium', Arial, sans-serif;
   --font-tech-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --font-tech-title: 'Orbitron', 'Chakra Petch', 'Arial Narrow', Arial, sans-serif;
+  --font-keys-title: 'Exo 2', 'Chakra Petch', 'Arial Narrow', Arial, sans-serif;
+  --font-snap-title: 'Barlow Condensed', 'Arial Narrow', 'Franklin Gothic Medium', Arial, sans-serif;
 }
 
 body {
@@ -1280,6 +1282,188 @@ body {
 
 #controlPanel select option {
   color: #111;
+}
+
+/* ============ Custom select (owner-drawn dropdown) ============
+   The closed trigger keeps the native select metrics above; only the
+   opened menu is our own: a protruding dark-pro panel with beveled
+   top highlight and hard drop shadow. The menu portals to
+   document.body, so its rules stay unscoped (theme vars live on
+   :root). */
+#controlPanel .custom-select {
+  display: inline-flex;
+  min-width: 0;
+}
+
+#controlPanel .custom-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  box-shadow: none;
+  color: var(--dp-text-1);
+  padding: 4px 8px;
+  font-size: 0.8125rem;
+  font-family: var(--font-tech-mono);
+  cursor: pointer;
+  white-space: nowrap;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+}
+
+#controlPanel .custom-select-trigger:hover {
+  border-color: #3d4a59;
+}
+
+#controlPanel .custom-select-trigger:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 1px;
+}
+
+#controlPanel .custom-select-trigger .cs-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#controlPanel .custom-select-trigger .cs-image {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  color: inherit;
+}
+
+#controlPanel .custom-select-trigger .cs-caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  margin-left: auto;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: 0.7;
+  transition: transform 0.12s ease;
+}
+
+#controlPanel .custom-select-trigger .cs-caret.open {
+  transform: rotate(180deg);
+}
+
+/* Section color casts, mirroring the native select rules below. */
+#controlPanel #circleFrameControls .custom-select-trigger {
+  box-shadow: inset 0 0 0 999px rgba(79, 143, 247, 0.18);
+  color: #c3d5f2;
+}
+
+#controlPanel #rectFrameControls .custom-select-trigger {
+  box-shadow: inset 0 0 0 999px rgba(45, 212, 191, 0.16);
+  color: #b8e0d8;
+}
+
+#controlPanel #snappingControls .custom-select-trigger {
+  box-shadow: inset 0 0 0 999px rgba(245, 166, 35, 0.2);
+  color: #e6d3a8;
+}
+
+#controlPanel #gridControls .custom-select-trigger {
+  box-shadow: inset 0 0 0 999px rgba(148, 163, 184, 0.18);
+  color: #c3cfdd;
+}
+
+#controlPanel .snapping-aspect .custom-select {
+  margin-left: auto;
+  min-width: 4.5rem;
+}
+
+.custom-select-menu {
+  position: fixed;
+  z-index: 1200;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 22%),
+    linear-gradient(to bottom, #242e3a, #161c24);
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.6),
+    0 2px 6px rgba(0, 0, 0, 0.5);
+  font-family: var(--font-tech-mono);
+  font-size: 0.8125rem;
+  color: var(--dp-text-2);
+}
+
+.custom-select-menu:focus {
+  outline: none;
+}
+
+.custom-select-menu .cs-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.custom-select-menu .cs-item.focused {
+  background: var(--dp-accent-soft);
+  color: var(--dp-text-1);
+}
+
+.custom-select-menu .cs-item.selected {
+  background: rgba(79, 143, 247, 0.22);
+  border-left-color: var(--dp-accent);
+  color: #fff;
+}
+
+.custom-select-menu .cs-item.cs-parent {
+  font-family: var(--font-tech-label);
+  color: var(--dp-text-1);
+}
+
+.custom-select-menu .cs-item .cs-image {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  color: var(--dp-text-3);
+}
+
+.custom-select-menu .cs-item.focused .cs-image,
+.custom-select-menu .cs-item.selected .cs-image {
+  color: inherit;
+}
+
+.custom-select-menu .cs-caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid currentColor;
+  opacity: 0.7;
+  transition: transform 0.12s ease;
+}
+
+.custom-select-menu .cs-caret.open {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #controlPanel .custom-select-trigger .cs-caret,
+  .custom-select-menu .cs-caret {
+    transition: none;
+  }
 }
 
 #controlPanel input[type="range"] {
@@ -2102,13 +2286,29 @@ kbd {
   font-family: var(--font-tech-label);
 }
 
-/* Section titles: Orbitron display face, metallic gradient glyphs,
-   hard offset shadow (no blur) for an engraved-protruding read. */
+/* Section titles grouped by typeface: Stroke/Fill (+ Caps & Joins) stay
+   on Orbitron; Circle/Rect Keys share Exo 2; Grid/Snapping share
+   Barlow Condensed. Hard offset shadow (no blur) for an
+   engraved-protruding read. */
 #controlPanel .pane-title {
   font-family: var(--font-tech-title);
   font-weight: 700;
   font-size: 0.72rem;
   letter-spacing: 0.14em;
+}
+
+#controlPanel #circleFrameControls .pane-title,
+#controlPanel #rectFrameControls .pane-title {
+  font-family: var(--font-keys-title);
+  letter-spacing: 0.08em;
+}
+
+#controlPanel #gridControls .pane-title,
+#controlPanel #snappingControls .pane-title {
+  font-family: var(--font-snap-title);
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
 }
 
 #controlPanel .pane-title-text {
@@ -2190,6 +2390,10 @@ kbd,
   #controlPanel .snapping-aspect select {
     min-width: 3.5rem;
   }
+
+  #controlPanel .snapping-aspect .custom-select {
+    min-width: 3.5rem;
+  }
 }
 
 @container cpanel (max-width: 760px) {
@@ -2254,6 +2458,11 @@ kbd,
     padding: 3px 4px;
   }
 
+  #controlPanel #circleInnerShapeSelect .custom-select-trigger,
+  #controlPanel #rectInnerShapeSelect .custom-select-trigger {
+    padding: 3px 4px;
+  }
+
   #controlPanel .pane-titlebar .toggle-switch {
     width: 28px;
     height: 16px;
@@ -2282,6 +2491,15 @@ kbd,
   #controlPanel .snapping-aspect select {
     min-width: 2.2rem;
     width: 2.4rem;
+    padding: 2px 2px;
+  }
+
+  #controlPanel .snapping-aspect .custom-select {
+    min-width: 2.2rem;
+    width: 2.4rem;
+  }
+
+  #controlPanel .snapping-aspect .custom-select-trigger {
     padding: 2px 2px;
   }
 

@@ -156,7 +156,11 @@ export default function CustomSelect({
     else choose(row.option.value);
   };
 
+  // While the menu has focus, canvas/global shortcuts must not fire
+  // (e.g. Space toggling drag-lock, Escape cancelling a drawing, or a
+  // letter starting a new shape). Tab keeps its default focus move.
   const onMenuKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
     if (e.key === 'Escape') {
       e.preventDefault();
       closeMenu(true);
@@ -196,6 +200,7 @@ export default function CustomSelect({
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
+            e.stopPropagation();
             openMenu();
           }
         }}

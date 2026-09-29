@@ -104,6 +104,11 @@ const GLYPH = {
       dot(8.2, 6.2, 1.15) +
       dot(15.8, 6.2, 1.15)
   ),
+  complete: bg(
+    `<path d="M3.5 16.5 C6.5 16.5 7 8.5 10.5 8.5 S13 14.5 15 14.5"/>` +
+      `<path d="M14.2 8.2 L16.3 10.4 L20.5 5.6" stroke-width="2"/>` +
+      dot(10.5, 8.5, 1.5)
+  ),
   grid: bg(
     `<rect x="4.4" y="4.4" width="15.2" height="15.2" rx="1"/>` +
       `<path d="M4.4 9.47 H19.6 M4.4 14.53 H19.6 M9.47 4.4 V19.6 M14.53 4.4 V19.6" stroke-width="1.2"/>` +
@@ -161,7 +166,7 @@ const ROW2: KeyDef[] = [
   { id: 'KeyQ', dataKey: 'q', className: 'keyboardkey KeyQ operationButton enabledButton cancelButton', transform: 'translate(-45%, 0%)', html: 'CANCEL', bg: GLYPH.cancel },
   { id: 'KeyW', dataKey: 'w', className: 'keyboardkey wKey operationButton enabledButton', html: 'STAMP', bg: GLYPH.stamp },
   { id: 'KeyE', dataKey: 'e', className: 'keyboardkey eKey ', html: '' },
-  { id: 'KeyR', dataKey: 'r', className: 'keyboardkey rKey ', transform: 'translate(-45%, 0%)', html: '' },
+  { id: 'KeyR', dataKey: 'r', className: 'keyboardkey rKey endButton enabledButton', transform: 'translate(-45%, 0%)', html: 'COMPLETE<br/>SHAPE', bg: GLYPH.complete },
   { id: 'KeyT', dataKey: 't', className: 'keyboardkey tKey ', transform: 'translate(-45%, 0%)', html: '' },
   { id: 'KeyY', dataKey: 'y', className: 'keyboardkey yKey drawingButton enabledButton rectangleButton', transform: 'translate(-45%, 0%)', html: 'RECT.<br/>BY CENTERLINE', bg: GLYPH.rectCenterline, badge: 'rect' },
   { id: 'KeyU', dataKey: 'u', className: 'keyboardkey uKey drawingButton enabledButton rectangleButton', transform: 'translate(-45%, 0%)', html: 'RECT.<br/>BY 2 EDGES', bg: GLYPH.rectTwoEdges, badge: 'rect' },
