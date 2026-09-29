@@ -75,8 +75,8 @@ export class NibGliderEngine {
   splineTension = 0.4;
   globalStrokeColor = '#107cff';
   globalFillColor = '#000000';
-  globalStrokeCap: StrokeCap = 'round';
-  globalStrokeJoin: StrokeJoin = 'round';
+  globalStrokeCap: StrokeCap = 'butt';
+  globalStrokeJoin: StrokeJoin = 'miter';
   globalMiterLimit = 10;
   strokeEnabled = true;
   fillEnabled = false;
@@ -306,8 +306,9 @@ export class NibGliderEngine {
   }
 
   // --- Control-panel setters (replace registerEventListeners wiring) ---
-  // Every paint setter writes the globals (used by subsequently drawn
-  // shapes) and, when items are selected, applies to the selection too.
+  // With a selection, paint setters apply to the selection only and leave
+  // the globals alone (deselecting restores the global readout).
+  // Otherwise they write the globals for subsequently drawn shapes.
   private applyToSelection(fn: (item: AnyItem) => void): void {
     for (let i = 0; i < this.selectedItems.length; i++) {
       fn(this.selectedItems[i]);
@@ -318,10 +319,13 @@ export class NibGliderEngine {
     let v = strokeVal;
     if (v < 1) v = 1;
     if (v > this.maxStrokeWidth) v = this.maxStrokeWidth;
-    this.globalStrokeWidth = v;
-    this.applyToSelection((item) => {
-      item.strokeWidth = v;
-    });
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        item.strokeWidth = v;
+      });
+    } else {
+      this.globalStrokeWidth = v;
+    }
     this.updateCurrentDrawingStyles();
     this.updateTextContent();
     this.notify();
@@ -336,31 +340,39 @@ export class NibGliderEngine {
   }
 
   setStrokeColor(colorVal: string): void {
-    this.globalStrokeColor = colorVal;
-    this.applyToSelection((item) => {
-      item.strokeColor = colorVal;
-      if (!(item.strokeWidth > 0)) item.strokeWidth = this.globalStrokeWidth;
-      this.applyStrokeGeometry(item);
-    });
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        item.strokeColor = colorVal;
+        if (!(item.strokeWidth > 0)) item.strokeWidth = this.globalStrokeWidth;
+      });
+    } else {
+      this.globalStrokeColor = colorVal;
+    }
     this.updateCurrentDrawingStyles();
     this.updateTextContent();
     this.notify();
   }
 
   setStrokeCap(cap: StrokeCap): void {
-    this.globalStrokeCap = cap;
-    this.applyToSelection((item) => {
-      item.strokeCap = cap;
-    });
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        item.strokeCap = cap;
+      });
+    } else {
+      this.globalStrokeCap = cap;
+    }
     this.updateCurrentDrawingStyles();
     this.notify();
   }
 
   setStrokeJoin(join: StrokeJoin): void {
-    this.globalStrokeJoin = join;
-    this.applyToSelection((item) => {
-      item.strokeJoin = join;
-    });
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        item.strokeJoin = join;
+      });
+    } else {
+      this.globalStrokeJoin = join;
+    }
     this.updateCurrentDrawingStyles();
     this.notify();
   }
@@ -369,50 +381,61 @@ export class NibGliderEngine {
     let v = limit;
     if (!(v >= 1)) v = 1;
     if (v > 40) v = 40;
-    this.globalMiterLimit = v;
-    this.applyToSelection((item) => {
-      item.miterLimit = v;
-    });
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        item.miterLimit = v;
+      });
+    } else {
+      this.globalMiterLimit = v;
+    }
     this.updateCurrentDrawingStyles();
     this.notify();
   }
 
   setFillColor(colorVal: string): void {
-    this.globalFillColor = colorVal;
-    this.applyToSelection((item) => {
-      item.fillColor = colorVal;
-    });
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        item.fillColor = colorVal;
+      });
+    } else {
+      this.globalFillColor = colorVal;
+    }
     this.updateCurrentDrawingStyles();
     this.updateTextContent();
     this.notify();
   }
 
   setStrokeEnabled(enabled: boolean): void {
-    this.strokeEnabled = enabled;
-    if (!this.strokeEnabled && !this.fillEnabled) this.fillEnabled = true;
-    this.applyToSelection((item) => {
-      if (enabled) {
-        if (!item.strokeColor) item.strokeColor = this.globalStrokeColor;
-        if (!(item.strokeWidth > 0)) item.strokeWidth = this.globalStrokeWidth;
-      } else {
-        item.strokeColor = null;
-      }
-      this.applyStrokeGeometry(item);
-    });
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        if (enabled) {
+          if (!item.strokeColor) item.strokeColor = this.globalStrokeColor;
+          if (!(item.strokeWidth > 0)) item.strokeWidth = this.globalStrokeWidth;
+        } else {
+          item.strokeColor = null;
+        }
+      });
+    } else {
+      this.strokeEnabled = enabled;
+      if (!this.strokeEnabled && !this.fillEnabled) this.fillEnabled = true;
+    }
     this.updateCurrentDrawingStyles();
     this.notify();
   }
 
   setFillEnabled(enabled: boolean): void {
-    this.fillEnabled = enabled;
-    if (!this.fillEnabled && !this.strokeEnabled) this.strokeEnabled = true;
-    this.applyToSelection((item) => {
-      if (enabled) {
-        if (!item.fillColor) item.fillColor = this.globalFillColor;
-      } else {
-        item.fillColor = null;
-      }
-    });
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        if (enabled) {
+          if (!item.fillColor) item.fillColor = this.globalFillColor;
+        } else {
+          item.fillColor = null;
+        }
+      });
+    } else {
+      this.fillEnabled = enabled;
+      if (!this.fillEnabled && !this.strokeEnabled) this.strokeEnabled = true;
+    }
     this.updateCurrentDrawingStyles();
     this.notify();
   }
@@ -2864,12 +2887,14 @@ export class NibGliderEngine {
     }
     if (!this.isDrawingPath && !this.isDrawingShape && !this.isDrawingQuad) {
       if (keyLower === 's') {
-        this.setStrokeEnabled(!this.strokeEnabled);
+        const sel = this.selectionPaint();
+        this.setStrokeEnabled(sel ? !sel.strokeOn : !this.strokeEnabled);
         this.updateTextContent();
         return;
       }
       if (keyLower === 'd') {
-        this.setFillEnabled(!this.fillEnabled);
+        const sel = this.selectionPaint();
+        this.setFillEnabled(sel ? !sel.fillOn : !this.fillEnabled);
         this.updateTextContent();
         return;
       }

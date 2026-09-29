@@ -604,7 +604,7 @@ color:rgb(210, 115, 115) !important;
 }
 
 /* ============ Dark Pro keys ============
-   Flat dark keys, light text, single blue accent.
+   Beveled dark keycaps with per-group color coding.
    Wins over the legacy neon fills above. */
 #keyboardContainer {
     text-shadow: none;
@@ -614,11 +614,14 @@ color:rgb(210, 115, 115) !important;
 }
 
 #keyboardKeysContainer button {
-    background-color: #1c232c !important;
-    border: 1px solid #2c3642 !important;
+    --key-accent: #8fa3bd;
+    --key-text: #c6cfd9;
+    --key-active: #33404f;
+    background: linear-gradient(to bottom, #2b3542, #1d242e) !important;
+    border: 1px solid #0b0e12 !important;
     border-radius: 5px !important;
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.5) !important;
-    color: #c6cfd9 !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 2px 0 var(--key-accent), 0 2px 0 rgba(0, 0, 0, 0.45) !important;
+    color: var(--key-text) !important;
     opacity: 0.55 !important;
     text-shadow: none;
     font-size: 11px;
@@ -627,52 +630,75 @@ color:rgb(210, 115, 115) !important;
 
 #keyboardKeysContainer button.enabledButton {
     opacity: 1.0 !important;
+}
+
+/* Group color coding: circle = blue, rect = teal, quad = amber,
+   operations = purple, destructive = red. Matches the fieldset accents. */
+#keyboardKeysContainer button.circleButton {
+    --key-accent: #4f8ff7;
+    --key-text: #bcd6fd;
+    --key-active: #2f6fe0;
+    background: linear-gradient(to bottom, #2c3d5c, #1c2635) !important;
+}
+
+#keyboardKeysContainer button.rectangleButton {
+    --key-accent: #2dd4bf;
+    --key-text: #b8f0e8;
+    --key-active: #0f9484;
+    background: linear-gradient(to bottom, #23443e, #182726) !important;
+}
+
+#keyboardKeysContainer button.quadButton {
+    --key-accent: #f5a623;
+    --key-text: #f7ddae;
+    --key-active: #b97a1a;
+    background: linear-gradient(to bottom, #4a3d24, #26221a) !important;
+}
+
+#keyboardKeysContainer button.operationButton {
+    --key-accent: #a86ef0;
+    --key-text: #d9c2f7;
+    --key-active: #7c3fc4;
+    background: linear-gradient(to bottom, #37294d, #221b30) !important;
+}
+
+#keyboardKeysContainer button.drawingButton,
+#keyboardKeysContainer button.rectangleButton,
+#keyboardKeysContainer button.circleButton,
+#keyboardKeysContainer button.quadButton {
+    opacity: 1.0 !important;
+}
+
+#keyboardKeysContainer button.operationButton {
+    opacity: 1.0 !important;
+}
+
+#keyboardKeysContainer button.selectionButton,
+#keyboardKeysContainer button.toggleButton,
+#keyboardKeysContainer button.stepper1Decrement,
+#keyboardKeysContainer button.stepper1Increment {
+    opacity: 1.0 !important;
     color: #e8edf3 !important;
-    background-color: #232c37 !important;
+}
+
+#keyboardKeysContainer button.endButton,
+#keyboardKeysContainer button.cancelButton {
+    --key-accent: #e06565;
+    --key-text: #e0a3a3;
+    --key-active: #8e2f2f;
+    background: linear-gradient(to bottom, #4a2426, #26191a) !important;
+    opacity: 1.0 !important;
 }
 
 #keyboardKeysContainer button:hover {
-    background-color: #2a3441 !important;
     color: #ffffff !important;
 }
 
 #keyboardKeysContainer button:active,
 #keyboardKeysContainer button.active {
-    background-color: #2f6fe0 !important;
-    border-color: #2f6fe0 !important;
+    background: linear-gradient(to bottom, var(--key-active), var(--key-active)) !important;
+    border-color: #0b0e12 !important;
     color: #ffffff !important;
-}
-
-/* Former neon categories become subtle dark variants.
-   Drawing keys get the accent tint; others stay neutral. */
-#keyboardKeysContainer button.drawingButton,
-#keyboardKeysContainer button.rectangleButton,
-#keyboardKeysContainer button.circleButton,
-#keyboardKeysContainer button.quadButton {
-    background-color: rgba(79, 143, 247, 0.16) !important;
-    border-color: rgba(79, 143, 247, 0.55) !important;
-    color: #d6e4fd !important;
-    box-shadow: none !important;
-    opacity: 1.0 !important;
-}
-
-#keyboardKeysContainer button.operationButton,
-#keyboardKeysContainer button.selectionButton,
-#keyboardKeysContainer button.toggleButton,
-#keyboardKeysContainer button.stepper1Decrement,
-#keyboardKeysContainer button.stepper1Increment {
-    background-color: #232c37 !important;
-    color: #e8edf3 !important;
-    box-shadow: none !important;
-}
-
-#keyboardKeysContainer button.endButton,
-#keyboardKeysContainer button.cancelButton {
-    background-color: #2a1e20 !important;
-    border-color: #4a2c30 !important;
-    color: #e0a3a3 !important;
-    box-shadow: none !important;
-    opacity: 1.0 !important;
 }
 
 #keyboardKeysContainer button:focus-visible {
@@ -683,4 +709,26 @@ color:rgb(210, 115, 115) !important;
 .keyboardkey::before {
     color: #7d8894;
     text-shadow: none;
+}
+
+/* Subtle ghost glyph behind the legend. Decorative only: the label
+   stays on top and pointer events fall through to the canvas. */
+#keyboardKeysContainer .key-bg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.13;
+    pointer-events: none;
+}
+
+#keyboardKeysContainer .key-bg svg {
+    width: 72%;
+    height: 72%;
+}
+
+#keyboardKeysContainer .key-label {
+    position: relative;
+    z-index: 1;
 }

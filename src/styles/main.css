@@ -109,7 +109,7 @@ article {
 
 #nibgliderCanvas:focus {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.5);
+  box-shadow: none;
 }
 
 /* Control panel */
@@ -897,9 +897,9 @@ body {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: linear-gradient(to bottom, #5b9bff, #2f6fe0);
-  border: 1px solid #1c4da8;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 2px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(to bottom, #7b8794, #4c5663);
+  border: 1px solid #0b0e12;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 2px rgba(0, 0, 0, 0.5);
   cursor: pointer;
 }
 
@@ -907,18 +907,18 @@ body {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: linear-gradient(to bottom, #5b9bff, #2f6fe0);
-  border: 1px solid #1c4da8;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 2px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(to bottom, #7b8794, #4c5663);
+  border: 1px solid #0b0e12;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 2px rgba(0, 0, 0, 0.5);
   cursor: pointer;
 }
 
 #controlPanel input[type="range"]::-moz-range-thumb:hover {
-  background: linear-gradient(to bottom, #7aafff, #3f8bf5);
+  background: linear-gradient(to bottom, #98a3b1, #5f6b7a);
 }
 
 #controlPanel input[type="range"]::-webkit-slider-thumb:hover {
-  background: linear-gradient(to bottom, #7aafff, #3f8bf5);
+  background: linear-gradient(to bottom, #98a3b1, #5f6b7a);
 }
 
 #controlPanel input[type="range"]:disabled {
@@ -940,7 +940,7 @@ body {
 #controlPanel input[type="range"]::-moz-range-progress {
   height: 4px;
   border-radius: 999px;
-  background: linear-gradient(to bottom, #3f8bf5, #2f6fe0);
+  background: linear-gradient(to bottom, #7b8794, #4c5663);
 }
 
 /* Checkboxes: small bevel box, blue bevel check */
@@ -963,12 +963,12 @@ body {
 }
 
 #controlPanel .check-row input[type="checkbox"]:checked {
-  border-color: #1c4da8;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5.2 8.8 9.5 3.4' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(to bottom, #3f8bf5, #2f6fe0);
+  border-color: #0b0e12;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5.2 8.8 9.5 3.4' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(to bottom, #5a6675, #454f5c);
   background-size: 10px 10px, cover;
   background-position: center;
   background-repeat: no-repeat;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 1px 1px rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 1px rgba(0, 0, 0, 0.4);
 }
 
 #controlPanel .check-row input[type="checkbox"]:focus-visible {
@@ -1049,7 +1049,7 @@ body {
 }
 
 #controlPanel .seg-ctrl button.active {
-  background: linear-gradient(to bottom, #2f6fe0, #3a86f2);
+  background: linear-gradient(to bottom, #5a6675, #454f5c);
   color: #fff;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
 }
@@ -1059,6 +1059,32 @@ body {
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
+}
+
+/* Fieldset color coding, matching the key groups: Circle Keys blue,
+   Rect Keys teal. */
+#controlPanel #circleFrameControls {
+  border-color: rgba(79, 143, 247, 0.55);
+}
+
+#controlPanel #circleFrameControls .pane-titlebar {
+  background: linear-gradient(to bottom, rgba(79, 143, 247, 0.16), rgba(47, 111, 224, 0.16));
+}
+
+#controlPanel #circleFrameControls .pane-icon {
+  color: #4f8ff7;
+}
+
+#controlPanel #rectFrameControls {
+  border-color: rgba(45, 212, 191, 0.45);
+}
+
+#controlPanel #rectFrameControls .pane-titlebar {
+  background: linear-gradient(to bottom, rgba(45, 212, 191, 0.13), rgba(15, 148, 132, 0.13));
+}
+
+#controlPanel #rectFrameControls .pane-icon {
+  color: #2dd4bf;
 }
 
 #controlPanel .stroke-preview {
@@ -1139,28 +1165,28 @@ body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
-/* Toggle switches: recessed well, raised bevel knob, blue ON */
+/* Toggle switches: dark red well when OFF, dark green well when ON */
 #controlPanel .toggle-switch .slider {
-  background: linear-gradient(to bottom, #10151b, #161d25);
+  background: linear-gradient(to bottom, #7a2b2b, #932f2f);
   border: 1px solid #0b0e12;
   border-radius: 5px;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 #controlPanel .toggle-switch .slider::before {
-  background: linear-gradient(to bottom, #3a4451, #232c37);
+  background: linear-gradient(to bottom, #556274 0%, #333d49 48%, #1d242e 52%, #28313d 100%);
   border: 1px solid #0b0e12;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 #controlPanel .toggle-switch input:checked + .slider {
-  background: linear-gradient(to bottom, #2f6fe0, #3f8bf5);
-  border-color: #1c4da8;
+  background: linear-gradient(to bottom, #2c6e37, #35803f);
+  border-color: #0b0e12;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 #controlPanel .toggle-switch input:checked + .slider::before {
-  background: linear-gradient(to bottom, #ffffff, #d7dee7);
+  background: linear-gradient(to bottom, #ffffff 0%, #d9e0e9 48%, #aeb8c4 52%, #c9d1db 100%);
 }
 
 #controlPanel .toggle-switch .slider::after {
@@ -1188,7 +1214,7 @@ body {
 }
 
 #controlPanel .check-row input[type="checkbox"]:checked + svg {
-  color: var(--dp-accent);
+  color: #c6cfd9;
 }
 
 /* Canvas frame */
@@ -1202,17 +1228,18 @@ body {
   border: 1px solid var(--dp-border-soft);
 }
 
-/* kbd chips: light text on dark */
+/* kbd chips: miniature keycaps */
 kbd {
-  background: var(--dp-bg-3);
-  border: 1px solid var(--dp-border);
-  box-shadow: none;
+  background: linear-gradient(to bottom, #2b3542, #1d242e);
+  border: 1px solid #0b0e12;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 0 rgba(0, 0, 0, 0.5);
   color: var(--dp-text-1);
   text-shadow: none;
   font-style: normal;
   font-weight: 600;
   border-radius: 4px;
   aspect-ratio: auto;
+  padding: 0 4px;
 }
 
 @media (prefers-reduced-motion: reduce) {
