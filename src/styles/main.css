@@ -182,12 +182,16 @@ article {
   background: linear-gradient(135deg, #5a5a5a 0%, #4a4a4a 100%), linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%) inset;
 }
 
-#rectangleFrameControls {
-  background: rgb(22, 138, 126);
+#rectFrameControls {
+  background: linear-gradient(135deg, #166e62 0%, #0f4a42 100%);
   padding: 5px;
   margin: 5px;
   border-radius: 5px;
-  display: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 #circleFrameControls {
@@ -483,12 +487,16 @@ iframe {
   box-sizing: border-box;
 }
 
-#rectangleFrameControls {
-  background: rgb(22, 138, 126);
+#rectFrameControls {
+  background: linear-gradient(135deg, #166e62 0%, #0f4a42 100%);
   padding: 5px;
   margin: 5px;
   border-radius: 5px;
-  display: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 #circleFrameControls {
@@ -829,7 +837,8 @@ body {
 }
 
 /* Shape preview well */
-#shapePreviewContainer {
+#shapePreviewContainer,
+#rectShapePreviewContainer {
   width: 120px;
   height: 64px;
   border-radius: 5px;
@@ -838,7 +847,8 @@ body {
   box-shadow: none;
 }
 
-#shapePreview {
+#shapePreview,
+#rectShapePreview {
   background: var(--dp-bg-1);
   border-radius: 0;
 }

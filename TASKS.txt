@@ -1,3 +1,13 @@
+
+[ ] make scale and rotatevvv keys work on hovered shape, without selection
+
+[ ] aspect ratio snap: 3:4 or 4:3
+
+[ ] circle keys:  [inradius | circumradius]
+
+
+SNAPPING
+[ ] arrange params in two cols, without "snapping" in label.
 [ ] line snapping
 [ ] point snapping, including line intersections.
    midpoint snappingg
@@ -5,6 +15,11 @@
 [ ] stroke type: uniform, oval, chisel
 [ ] stroke path
 
+[ ] for shapes that can be drawn inside the Rect keys, we want three that are parametric component shapes, that they 
+  retain their params on the page like Supershape:  frame (determines thickness of the rect frame), and grid.  in the 
+  future these will be able to have their params opened up in UI on the drawing board itself, so it is a base class we 
+  want to be using in the app for shapes and drawing page objects that will have the option to be configured.  example: 
+  a repeat circle repeats one or more shapes around the circumference.
 ----
 
 gui-ref/

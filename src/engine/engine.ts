@@ -12,7 +12,24 @@ export type ShapeType =
   | 'rectangle_two_edges'
   | 'rectangle_centerline';
 
-export type CircleInnerShape = 'circle' | 'polygon' | 'supershape';
+export type CircleInnerShape =
+  | 'circle'
+  | 'polygon'
+  | 'supershape'
+  | 'trapezoid'
+  | 'parallelogram'
+  | 'rightTriangle'
+  | 'rhombus';
+
+export type RectangleInnerShape =
+  | 'rectangle'
+  | 'circle'
+  | 'polygon'
+  | 'supershape'
+  | 'trapezoid'
+  | 'parallelogram'
+  | 'rightTriangle'
+  | 'rhombus';
 
 export interface InnerShapeParams {
   sides: number;
@@ -78,8 +95,16 @@ export class NibGliderEngine {
     a1: 1.0,
     a2: 1.0,
   };
-  rectangleInnerShapeType = 'rectangle';
-  rectangleInnerShapeParams: Record<string, number> = {};
+  rectangleInnerShapeType: RectangleInnerShape = 'rectangle';
+  rectangleInnerShapeParams: InnerShapeParams = {
+    sides: 6,
+    m: 3,
+    n1: 0.2,
+    n2: 1.7,
+    n3: 1.7,
+    a1: 1.0,
+    a2: 1.0,
+  };
   polygonRadiusMode = 'inradius';
 
   // --- Drawing mode / shape state (drawingToolsAndFunctions.js) ---
@@ -331,6 +356,27 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  setRectangleInnerShapeType(t: RectangleInnerShape): void {
+    this.rectangleInnerShapeType = t;
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRectangleSides(sides: number): void {
+    this.rectangleInnerShapeParams.sides = sides;
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRectangleSupershapeParam(key: keyof InnerShapeParams, val: number): void {
+    this.rectangleInnerShapeParams[key] = val;
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
   toggleGrid(): void {
     this.isGridEnabled = !this.isGridEnabled;
     if (this.isGridEnabled) {
@@ -398,42 +444,104 @@ export class NibGliderEngine {
     );
   }
 
-  updatePreviewBox(): void {
-    const svgPath = document.getElementById('shapePreviewPath');
-    if (!svgPath) return;
+  private innerShapePreviewPath(
+    type: string,
+    params: InnerShapeParams,
+  ): string {
     const radius = 0.9;
     const steps = 72;
-    let pathData = 'M 0,0';
-    if (this.circleInnerShapeType === 'circle') {
-      pathData =
+    const f = (x: number, y: number): string =>
+      `${x.toFixed(3)},${y.toFixed(3)} `;
+    if (type === 'circle') {
+      return (
         `M ${radius},0 A ${radius},${radius} 0 1,1 ${-radius},0 ` +
-        `A ${radius},${radius} 0 1,1 ${radius},0 Z`;
-    } else if (this.circleInnerShapeType === 'polygon') {
-      const sides = this.circleInnerShapeParams.sides || 6;
+        `A ${radius},${radius} 0 1,1 ${radius},0 Z`
+      );
+    }
+    if (type === 'rectangle') {
+      const h = radius * 0.7;
+      return `M ${f(-h, -h)}L ${f(h, -h)}L ${f(h, h)}L ${f(-h, h)}Z`;
+    }
+    if (type === 'trapezoid') {
+      return (
+        'M ' +
+        f(-0.45 * radius, -0.9 * radius) +
+        `L ${f(0.45 * radius, -0.9 * radius)}` +
+        `L ${f(0.9 * radius, 0.9 * radius)}` +
+        `L ${f(-0.9 * radius, 0.9 * radius)}Z`
+      );
+    }
+    if (type === 'parallelogram') {
+      return (
+        'M ' +
+        f(-0.8 * radius, 0.8 * radius) +
+        `L ${f(0.8 * radius, 0.8 * radius)}` +
+        `L ${f(1.2 * radius, -0.8 * radius)}` +
+        `L ${f(-0.4 * radius, -0.8 * radius)}Z`
+      );
+    }
+    if (type === 'rightTriangle') {
+      return (
+        'M ' +
+        f(-radius, 0) +
+        `L ${f(radius, 0)}` +
+        `L ${f(0, -radius)}Z`
+      );
+    }
+    if (type === 'rhombus') {
+      return (
+        'M ' +
+        f(0, -0.9 * radius) +
+        `L ${f(0.7 * radius, 0)}` +
+        `L ${f(0, 0.9 * radius)}` +
+        `L ${f(-0.7 * radius, 0)}Z`
+      );
+    }
+    if (type === 'polygon') {
+      const sides = params.sides || 6;
       const angleStep = (Math.PI * 2) / sides;
-      pathData = 'M ';
+      let d = 'M ';
       for (let i = 0; i < sides; i++) {
         const angle = angleStep * i;
-        pathData +=
-          `${(radius * Math.cos(angle)).toFixed(3)},` +
-          `${(radius * Math.sin(angle)).toFixed(3)} `;
+        d += f(radius * Math.cos(angle), radius * Math.sin(angle));
       }
-      pathData += 'Z';
-    } else if (this.circleInnerShapeType === 'supershape') {
-      const { m = 5, n1 = 0.2, n2 = 1.7, n3 = 1.7, a1 = 1, a2 = 1 } =
-        this.circleInnerShapeParams;
-      pathData = 'M ';
+      return d + 'Z';
+    }
+    if (type === 'supershape') {
+      const { m = 5, n1 = 0.2, n2 = 1.7, n3 = 1.7, a1 = 1, a2 = 1 } = params;
+      let d = 'M ';
       for (let i = 0; i <= steps; i++) {
         const phi = (i / steps) * Math.PI * 2;
         const r = this.supershapeRadius(phi, m, n1, n2, n3, a1, a2);
         const scaledR = radius * (r || 0);
-        pathData +=
-          `${(scaledR * Math.cos(phi)).toFixed(3)},` +
-          `${(scaledR * Math.sin(phi)).toFixed(3)} `;
+        d += f(scaledR * Math.cos(phi), scaledR * Math.sin(phi));
       }
-      pathData += 'Z';
+      return d + 'Z';
     }
-    svgPath.setAttribute('d', pathData);
+    return 'M 0,0';
+  }
+
+  updatePreviewBox(): void {
+    const circleSvg = document.getElementById('shapePreviewPath');
+    if (circleSvg) {
+      circleSvg.setAttribute(
+        'd',
+        this.innerShapePreviewPath(
+          this.circleInnerShapeType,
+          this.circleInnerShapeParams,
+        ),
+      );
+    }
+    const rectSvg = document.getElementById('rectShapePreviewPath');
+    if (rectSvg) {
+      rectSvg.setAttribute(
+        'd',
+        this.innerShapePreviewPath(
+          this.rectangleInnerShapeType,
+          this.rectangleInnerShapeParams,
+        ),
+      );
+    }
   }
 
   // --- Grid (drawingProperties.js) ---
@@ -732,7 +840,7 @@ export class NibGliderEngine {
     const currentInnerParams: Record<string, number> = useCircleInner
       ? (this.circleInnerShapeParams as unknown as Record<string, number>)
       : isRect
-        ? this.rectangleInnerShapeParams
+        ? (this.rectangleInnerShapeParams as unknown as Record<string, number>)
         : (this.innerShapeParams as Record<string, number>);
     switch (currentInnerType) {
       case 'circle':
@@ -745,11 +853,13 @@ export class NibGliderEngine {
         });
         break;
       case 'rightTriangle':
+        // True right triangle: hypotenuse is the full diameter across the
+        // top, right angle at the bottom of the circle (Thales' theorem).
         path = new scope.Path({
           segments: [
-            center.add(new scope.Point(-radius * 0.7, radius * 0.7)),
-            center.add(new scope.Point(radius * 0.7, radius * 0.7)),
-            center.add(new scope.Point(0, -radius * 0.7)),
+            center.add(new scope.Point(-radius, 0)),
+            center.add(new scope.Point(radius, 0)),
+            center.add(new scope.Point(0, -radius)),
           ],
           closed: true,
         });
@@ -760,6 +870,39 @@ export class NibGliderEngine {
             center.add(new scope.Point(-radius * 0.9, radius * 0.5)),
             center.add(new scope.Point(radius * 0.9, radius * 0.5)),
             center.add(new scope.Point(0, -radius * 0.9)),
+          ],
+          closed: true,
+        });
+        break;
+      case 'trapezoid':
+        path = new scope.Path({
+          segments: [
+            center.add(new scope.Point(-radius * 0.5, -radius * 0.6)),
+            center.add(new scope.Point(radius * 0.5, -radius * 0.6)),
+            center.add(new scope.Point(radius * 0.9, radius * 0.6)),
+            center.add(new scope.Point(-radius * 0.9, radius * 0.6)),
+          ],
+          closed: true,
+        });
+        break;
+      case 'parallelogram':
+        path = new scope.Path({
+          segments: [
+            center.add(new scope.Point(-radius * 0.9, radius * 0.6)),
+            center.add(new scope.Point(radius * 0.3, radius * 0.6)),
+            center.add(new scope.Point(radius * 0.9, -radius * 0.6)),
+            center.add(new scope.Point(-radius * 0.3, -radius * 0.6)),
+          ],
+          closed: true,
+        });
+        break;
+      case 'rhombus':
+        path = new scope.Path({
+          segments: [
+            center.add(new scope.Point(0, -radius * 0.9)),
+            center.add(new scope.Point(radius * 0.7, 0)),
+            center.add(new scope.Point(0, radius * 0.9)),
+            center.add(new scope.Point(-radius * 0.7, 0)),
           ],
           closed: true,
         });
@@ -811,9 +954,7 @@ export class NibGliderEngine {
         this.shapeType.startsWith('rectangle_') &&
         this.rectangleInnerShapeType === 'rectangle') ||
       (!this.shapeType && this.innerShapeType === 'none') ||
-      this.quadPath ||
-      (this.shapeType != null && this.shapeType.startsWith('rectangle_diagonal')) ||
-      this.shapeType === 'rectangle_diagonal'
+      this.quadPath
     ) {
       return;
     }
@@ -847,6 +988,159 @@ export class NibGliderEngine {
       innerPath.selected = false;
       scope.project.activeLayer.addChild(innerPath);
     }
+  }
+
+  // --- Rect-frame shapes: the selected Rect Keys shape fitted to the rect
+  // frame itself (not a centered inscribed circle). The frame is described
+  // by an origin corner plus full-edge vectors: P(s, t) = o + u*s + v*t.
+
+  private rectFrameBasis(): { o: AnyItem; u: AnyItem; v: AnyItem } | null {
+    const scope = this.scope;
+    const shapeType = this.shapeType;
+    if (shapeType === 'rectangle_diagonal') {
+      if (!this.previewShape || !this.previewShape.size) return null;
+      const size = this.previewShape.size;
+      if (size.width <= 0 || size.height <= 0) return null;
+      const pos = this.previewShape.position;
+      return {
+        o: new scope.Point(pos.x - size.width / 2, pos.y - size.height / 2),
+        u: new scope.Point(size.width, 0),
+        v: new scope.Point(0, size.height),
+      };
+    }
+    if (shapeType === 'rectangle_two_edges') {
+      if (!this.shapeStartPoint || !this.shapePt2 || !this.mousePt) return null;
+      const edge = this.shapePt2.subtract(this.shapeStartPoint);
+      if (edge.length === 0) return null;
+      const dir1 = edge.normalize();
+      const v2 = this.mousePt.subtract(this.shapePt2);
+      const perpVec = v2.subtract(dir1.multiply(v2.dot(dir1)));
+      if (perpVec.length === 0) return null;
+      return { o: this.shapeStartPoint, u: edge, v: perpVec };
+    }
+    if (shapeType === 'rectangle_centerline') {
+      if (!this.shapeStartPoint || !this.mousePt) return null;
+      const dir = this.mousePt.subtract(this.shapeStartPoint);
+      const halfLen = dir.length / 2;
+      if (halfLen === 0) return null;
+      const center = this.shapeStartPoint.add(this.mousePt).divide(2);
+      const unitDir = dir.normalize();
+      const perp = new scope.Point(-unitDir.y, unitDir.x);
+      const halfW = this.shapeWidth / 2;
+      return {
+        o: center.subtract(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW)),
+        u: unitDir.multiply(2 * halfLen),
+        v: perp.multiply(2 * halfW),
+      };
+    }
+    return null;
+  }
+
+  // Map unit-space points onto the rect frame, stretching each axis so
+  // the result touches all four frame edges. P maps unit [0,1] to the frame.
+  private fitUnitPoints(
+    unit: Array<[number, number]>,
+    P: (s: number, t: number) => AnyItem,
+  ): AnyItem {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const [ux, uy] of unit) {
+      if (ux < minX) minX = ux;
+      if (ux > maxX) maxX = ux;
+      if (uy < minY) minY = uy;
+      if (uy > maxY) maxY = uy;
+    }
+    if (!(maxX > minX) || !(maxY > minY)) return null;
+    const path = new this.scope.Path();
+    for (const [ux, uy] of unit) {
+      path.add(P((ux - minX) / (maxX - minX), (uy - minY) / (maxY - minY)));
+    }
+    path.closed = true;
+    return path;
+  }
+
+  createRectFrameShape(styleOrPreview = 'stroke'): AnyItem {
+    const scope = this.scope;
+    const type = this.rectangleInnerShapeType;
+    if (type === 'rectangle') return null;
+    const basis = this.rectFrameBasis();
+    if (!basis) return null;
+    const { o, u, v } = basis;
+    const P = (s: number, t: number): AnyItem =>
+      o.add(u.multiply(s)).add(v.multiply(t));
+    const params = this.rectangleInnerShapeParams;
+    let path: AnyItem = null;
+    switch (type) {
+      case 'rightTriangle':
+        // Legs along the full left and bottom edges, right angle at bottom-left.
+        path = new scope.Path({
+          segments: [P(0, 1), P(1, 1), P(0, 0)],
+          closed: true,
+        });
+        break;
+      case 'trapezoid':
+        // Bottom base is the full bottom edge; top base centered at half width.
+        path = new scope.Path({
+          segments: [P(0.25, 0), P(0.75, 0), P(1, 1), P(0, 1)],
+          closed: true,
+        });
+        break;
+      case 'parallelogram': {
+        // Bottom side is the full bottom edge; top side shifted by the slant.
+        const k = 0.25;
+        path = new scope.Path({
+          segments: [P(0, 1), P(1, 1), P(1 + k, 0), P(k, 0)],
+          closed: true,
+        });
+        break;
+      }
+      case 'rhombus':
+        // Vertices at the four edge midpoints.
+        path = new scope.Path({
+          segments: [P(0.5, 0), P(1, 0.5), P(0.5, 1), P(0, 0.5)],
+          closed: true,
+        });
+        break;
+      case 'circle':
+      case 'polygon': {
+        // Fit unit points to the frame so the shape touches all four edges.
+        const sides = type === 'circle' ? 72 : params.sides || 6;
+        const start = (this.shapeGuideAngle * Math.PI) / 180;
+        const unit: Array<[number, number]> = [];
+        for (let i = 0; i < sides; i++) {
+          const a = start + (i / sides) * Math.PI * 2;
+          unit.push([Math.cos(a), Math.sin(a)]);
+        }
+        path = this.fitUnitPoints(unit, P);
+        break;
+      }
+      case 'supershape': {
+        // Fit unit points to the frame so the shape touches all four edges.
+        const { m = 3, n1 = 0.2, n2 = 1.7, n3 = 1.7, a1 = 1, a2 = 1 } = params;
+        const steps = 360;
+        const unit: Array<[number, number]> = [];
+        for (let i = 0; i <= steps; i++) {
+          const phi = (i / steps) * Math.PI * 2;
+          const r = this.supershapeRadius(phi, m, n1, n2, n3, a1, a2) || 0;
+          unit.push([r * Math.cos(phi), r * Math.sin(phi)]);
+        }
+        path = this.fitUnitPoints(unit, P);
+        break;
+      }
+      default:
+        break;
+    }
+    if (!path) return null;
+    if (styleOrPreview === 'preview') {
+      path.strokeColor = this.globalStrokeColor;
+      path.strokeWidth = this.globalStrokeWidth;
+      path.strokeDasharray = [3, 3];
+      path.opacity = 0.7;
+      path.fillColor = null;
+    }
+    return path;
   }
 
   rectCenterlineKC(): void {
@@ -883,6 +1177,7 @@ export class NibGliderEngine {
       strokeWidth: this.globalStrokeWidth,
     });
     scope.project.activeLayer.addChild(this.previewRect);
+    this.stylePreviewFrame(this.previewRect, 1);
     this.previewRect.strokeCap = 'round';
     this.previewRect.strokeJoin = 'round';
     this.updateTextContent();
@@ -912,6 +1207,7 @@ export class NibGliderEngine {
           strokeWidth: this.globalStrokeWidth,
         });
         scope.project.activeLayer.addChild(this.previewRect);
+        this.stylePreviewFrame(this.previewRect, 1);
         this.updateTextContent();
       } else {
         this.endShapeAsStroke();
@@ -1001,11 +1297,23 @@ export class NibGliderEngine {
             scope.project.activeLayer.addChild(stampedInner);
           }
         }
+      } else if (
+        this.shapeType != null &&
+        this.shapeType.startsWith('rectangle_') &&
+        this.rectangleInnerShapeType !== 'rectangle'
+      ) {
+        const stampedShape = this.createRectFrameShape('stroke');
+        if (stampedShape) {
+          this.applyCurrentStyles(stampedShape);
+          stampedShape.selected = false;
+          scope.project.activeLayer.addChild(stampedShape);
+        }
       } else {
         const framePreview = this.previewShape || this.previewRect || this.previewPath;
         if (framePreview) {
           const stampedFrame = framePreview.clone();
           this.applyCurrentStyles(stampedFrame);
+          this.clearShadow(stampedFrame);
           stampedFrame.strokeDasharray = null;
           stampedFrame.opacity = 1;
           stampedFrame.selected = false;
@@ -1013,6 +1321,7 @@ export class NibGliderEngine {
         }
         if (this.previewInner) {
           const stampedInner = this.previewInner.clone();
+          this.clearShadow(stampedInner);
           stampedInner.strokeDasharray = null;
           stampedInner.opacity = 1;
           stampedInner.strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
@@ -1130,9 +1439,7 @@ export class NibGliderEngine {
     this.shapeType = ('circle_' + mode) as ShapeType;
     this.isDrawingShape = true;
     this.previewShape = new scope.Shape.Circle(this.shapeStartPoint, 0);
-    this.previewShape.strokeColor = new scope.Color(0.5);
-    this.previewShape.strokeWidth = 1;
-    this.previewShape.strokeDasharray = [4, 4];
+    this.stylePreviewFrame(this.previewShape);
     scope.project.activeLayer.addChild(this.previewShape);
     this.previewLine = new scope.Path({
       segments: [this.shapeStartPoint, this.shapeStartPoint],
@@ -1160,9 +1467,7 @@ export class NibGliderEngine {
       this.shapeStartPoint,
       new scope.Size(0, 0),
     );
-    this.previewShape.strokeColor = this.globalStrokeColor;
-    this.previewShape.strokeWidth = this.globalStrokeWidth;
-    this.previewShape.strokeDasharray = [4, 4];
+    this.stylePreviewFrame(this.previewShape, 1);
     scope.project.activeLayer.addChild(this.previewShape);
     this.previewLine = new scope.Path({
       segments: [this.shapeStartPoint, this.shapeStartPoint],
@@ -1180,6 +1485,11 @@ export class NibGliderEngine {
     if (!this.isDrawingShape || this.shapeType === null) return;
     let finalPath: AnyItem = null;
     const shapeType = this.shapeType;
+    // Non-rectangle Rect Keys choice: the rect frame is the bounds and only
+    // the fitted shape is drawn (no frame + inner double draw).
+    const rectShapeOnly =
+      shapeType.startsWith('rectangle_') &&
+      this.rectangleInnerShapeType !== 'rectangle';
     if (shapeType.startsWith('circle_')) {
       if (!this.previewShape || this.previewShape.radius === 0) return;
       const center = this.previewShape.position;
@@ -1195,43 +1505,55 @@ export class NibGliderEngine {
         }
       }
     } else if (shapeType === 'rectangle_diagonal') {
-      finalPath = new scope.Path.Rectangle({
-        center: this.previewShape.position,
-        size: this.previewShape.size,
-      });
-      this.applyCurrentStyles(finalPath);
+      if (rectShapeOnly) {
+        finalPath = this.createRectFrameShape('stroke');
+      } else {
+        finalPath = new scope.Path.Rectangle({
+          center: this.previewShape.position,
+          size: this.previewShape.size,
+        });
+      }
+      if (finalPath) this.applyCurrentStyles(finalPath);
     } else if (shapeType === 'rectangle_two_edges') {
-      const pt1 = this.shapeStartPoint;
-      const pt2 = this.shapePt2;
-      const pt3 = this.mousePt;
-      const dir1 = pt2.subtract(pt1).normalize();
-      const v2 = pt3.subtract(pt2);
-      const perpVec = v2.subtract(dir1.multiply(v2.dot(dir1)));
-      const ptC = pt2.add(perpVec);
-      const ptD = pt1.add(perpVec);
-      finalPath = new scope.Path({
-        segments: [pt1, pt2, ptC, ptD],
-        closed: true,
-      });
-      this.applyCurrentStyles(finalPath);
+      if (rectShapeOnly) {
+        finalPath = this.createRectFrameShape('stroke');
+      } else {
+        const pt1 = this.shapeStartPoint;
+        const pt2 = this.shapePt2;
+        const pt3 = this.mousePt;
+        const dir1 = pt2.subtract(pt1).normalize();
+        const v2 = pt3.subtract(pt2);
+        const perpVec = v2.subtract(dir1.multiply(v2.dot(dir1)));
+        const ptC = pt2.add(perpVec);
+        const ptD = pt1.add(perpVec);
+        finalPath = new scope.Path({
+          segments: [pt1, pt2, ptC, ptD],
+          closed: true,
+        });
+      }
+      if (finalPath) this.applyCurrentStyles(finalPath);
     } else if (shapeType === 'rectangle_centerline') {
-      const pt1 = this.shapeStartPoint;
-      const pt2 = this.mousePt;
-      const center = pt1.add(pt2).divide(2);
-      const dir = pt2.subtract(pt1);
-      const halfLen = dir.length / 2;
-      const unitDir = dir.normalize();
-      const perp = new scope.Point(-unitDir.y, unitDir.x);
-      const halfW = this.shapeWidth / 2;
-      const ptA = center.add(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
-      const ptB = center.add(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
-      const ptC = center.subtract(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
-      const ptD = center.subtract(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
-      finalPath = new scope.Path({
-        segments: [ptA, ptB, ptD, ptC],
-        closed: true,
-      });
-      this.applyCurrentStyles(finalPath);
+      if (rectShapeOnly) {
+        finalPath = this.createRectFrameShape('stroke');
+      } else {
+        const pt1 = this.shapeStartPoint;
+        const pt2 = this.mousePt;
+        const center = pt1.add(pt2).divide(2);
+        const dir = pt2.subtract(pt1);
+        const halfLen = dir.length / 2;
+        const unitDir = dir.normalize();
+        const perp = new scope.Point(-unitDir.y, unitDir.x);
+        const halfW = this.shapeWidth / 2;
+        const ptA = center.add(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
+        const ptB = center.add(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
+        const ptC = center.subtract(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
+        const ptD = center.subtract(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
+        finalPath = new scope.Path({
+          segments: [ptA, ptB, ptD, ptC],
+          closed: true,
+        });
+      }
+      if (finalPath) this.applyCurrentStyles(finalPath);
     }
     if (shapeType === 'rectangle_centerline') {
       this.lastCenterlineWidth = this.shapeWidth;
@@ -1239,7 +1561,7 @@ export class NibGliderEngine {
     if (finalPath) {
       finalPath.selected = false;
       scope.project.activeLayer.addChild(finalPath);
-      this.drawInnerShape(finalPath, 'stroke');
+      if (!rectShapeOnly) this.drawInnerShape(finalPath, 'stroke');
     }
     if (this.previewInner) {
       this.previewInner.remove();
@@ -1456,6 +1778,57 @@ export class NibGliderEngine {
     }
   }
 
+  // Preview style convention for the drawing keys (circle keys, rect
+  // keys, later quad): thin mid-gray dashed overlay with a 1px black drop
+  // shadow so it reads on any canvas background, light or dark.
+  private addPreviewShadow(item: AnyItem): void {
+    const scope = this.scope;
+    item.shadowColor = new scope.Color(0, 0, 0, 0.9);
+    item.shadowBlur = 1;
+    item.shadowOffset = new scope.Point(1, 1);
+  }
+
+  // Rect keys use a thin white frame; circle keys keep the mid-gray one.
+  private stylePreviewFrame(item: AnyItem, brightness = 0.5): void {
+    const scope = this.scope;
+    item.strokeColor = new scope.Color(brightness);
+    item.strokeWidth = 1;
+    item.strokeDasharray = [4, 4];
+    this.addPreviewShadow(item);
+  }
+
+  private clearShadow(item: AnyItem): void {
+    item.shadowColor = null;
+    item.shadowBlur = 0;
+  }
+
+  // Live rect preview: the dashed preview frame always tracks the mouse;
+  // with any non-Rectangle Rect Keys choice the fitted shape is drawn live
+  // inside it, on top of it.
+  private refreshRectPreview(
+    corners: [AnyItem, AnyItem, AnyItem, AnyItem] | null,
+    frameItem: AnyItem,
+  ): void {
+    const scope = this.scope;
+    if (frameItem) {
+      frameItem.visible = true;
+      if (corners && frameItem.segments) {
+        for (let i = 0; i < 4; i++) frameItem.segments[i].point = corners[i];
+      }
+    }
+    if (this.previewInner) {
+      this.previewInner.remove();
+      this.previewInner = null;
+    }
+    if (this.rectangleInnerShapeType === 'rectangle') return;
+    const shape = this.createRectFrameShape('preview');
+    if (shape) {
+      this.addPreviewShadow(shape);
+      this.previewInner = shape;
+      scope.project.activeLayer.addChild(shape);
+    }
+  }
+
   updateShapePreview(): void {
     const scope = this.scope;
     if (!this.isDrawingShape || !this.shapeStartPoint) return;
@@ -1470,6 +1843,10 @@ export class NibGliderEngine {
           this.previewPath.removeSegment(1);
         }
         this.previewPath.add(this.mousePt);
+        if (this.previewInner) {
+          this.previewInner.remove();
+          this.previewInner = null;
+        }
       } else {
         this.previewLine.firstSegment.point = this.shapePt2;
         this.previewLine.lastSegment.point = this.mousePt;
@@ -1481,10 +1858,7 @@ export class NibGliderEngine {
         const perpVec = v2.subtract(dir1.multiply(v2.dot(dir1)));
         const ptC = pt2.add(perpVec);
         const ptD = pt1.add(perpVec);
-        this.previewRect.segments[0].point = pt1;
-        this.previewRect.segments[1].point = pt2;
-        this.previewRect.segments[2].point = ptC;
-        this.previewRect.segments[3].point = ptD;
+        this.refreshRectPreview([pt1, pt2, ptC, ptD], this.previewRect);
       }
       return;
     } else if (this.shapeType === 'rectangle_centerline') {
@@ -1502,10 +1876,7 @@ export class NibGliderEngine {
       const ptB = center.add(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
       const ptC = center.subtract(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
       const ptD = center.subtract(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
-      this.previewRect.segments[0].point = ptA;
-      this.previewRect.segments[1].point = ptB;
-      this.previewRect.segments[2].point = ptD;
-      this.previewRect.segments[3].point = ptC;
+      this.refreshRectPreview([ptA, ptB, ptD, ptC], this.previewRect);
       return;
     }
     const endPt = this.mousePt;
@@ -1527,7 +1898,10 @@ export class NibGliderEngine {
       this.previewLine.firstSegment.point = this.shapeStartPoint;
       this.previewLine.lastSegment.point = endPt;
     }
-    if (this.shapeType === 'rectangle_diagonal') return;
+    if (this.shapeType === 'rectangle_diagonal') {
+      this.refreshRectPreview(null, this.previewShape);
+      return;
+    }
     if (this.previewInner) {
       this.previewInner.remove();
       this.previewInner = null;
@@ -1548,7 +1922,10 @@ export class NibGliderEngine {
             'preview',
             this.shapeGuideAngle,
           );
-          if (this.previewInner) scope.project.activeLayer.addChild(this.previewInner);
+          if (this.previewInner) {
+            this.addPreviewShadow(this.previewInner);
+            scope.project.activeLayer.addChild(this.previewInner);
+          }
         }
       } else if (
         shapeType === 'rectangle_centerline' ||
@@ -1577,7 +1954,10 @@ export class NibGliderEngine {
             (Math.min(pBounds.width, pBounds.height) / 2) * 0.9,
             'preview',
           );
-          if (this.previewInner) scope.project.activeLayer.addChild(this.previewInner);
+          if (this.previewInner) {
+            this.addPreviewShadow(this.previewInner);
+            scope.project.activeLayer.addChild(this.previewInner);
+          }
         }
       }
     }

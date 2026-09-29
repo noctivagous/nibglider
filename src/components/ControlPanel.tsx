@@ -1,5 +1,10 @@
 import { useSyncExternalStore } from 'react';
-import type { CircleInnerShape, InnerShapeParams, NibGliderEngine } from '../engine/engine';
+import type {
+  CircleInnerShape,
+  InnerShapeParams,
+  NibGliderEngine,
+  RectangleInnerShape,
+} from '../engine/engine';
 
 const SUPERSHAPE_SLIDERS: Array<{
   key: keyof InnerShapeParams;
@@ -19,6 +24,7 @@ const SUPERSHAPE_SLIDERS: Array<{
 export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const params = engine.circleInnerShapeParams;
+  const rectParams = engine.rectangleInnerShapeParams;
 
   return (
     <>
@@ -133,6 +139,10 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           <option value="circle">Circle</option>
           <option value="polygon">Regular Polygon</option>
           <option value="supershape">Supershape</option>
+          <option value="trapezoid">Trapezoid</option>
+          <option value="parallelogram">Parallelogram</option>
+          <option value="rightTriangle">Right Triangle</option>
+          <option value="rhombus">Rhombus</option>
         </select>
         <div id="shapePreviewContainer">
           <svg id="shapePreview" viewBox="-1.2 -1.2 2.4 2.4" width="120" height="64">
@@ -197,6 +207,96 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
                     value={params[s.key]}
                     onChange={(e) =>
                       engine.setSupershapeParam(s.key, parseFloat(e.target.value))
+                    }
+                  />
+                </span>
+              ))}
+            </span>
+          </span>
+        )}
+      </fieldset>
+
+      <fieldset id="rectFrameControls" className="panel-card panel-card-row">
+        <legend>Rect Keys:</legend>
+        <select
+          id="rectInnerShapeSelect"
+          value={engine.rectangleInnerShapeType}
+          onChange={(e) =>
+            engine.setRectangleInnerShapeType(e.target.value as RectangleInnerShape)
+          }
+        >
+          <option value="rectangle">Rectangle</option>
+          <option value="circle">Circle</option>
+          <option value="polygon">Regular Polygon</option>
+          <option value="supershape">Supershape</option>
+          <option value="trapezoid">Trapezoid</option>
+          <option value="parallelogram">Parallelogram</option>
+          <option value="rightTriangle">Right Triangle</option>
+          <option value="rhombus">Rhombus</option>
+        </select>
+        <div id="rectShapePreviewContainer">
+          <svg id="rectShapePreview" viewBox="-1.2 -1.2 2.4 2.4" width="120" height="64">
+            <path
+              id="rectShapePreviewPath"
+              fill="#ddd"
+              stroke="#444"
+              strokeWidth="0.015"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              d="M 1,0 L 1,0"
+            />
+          </svg>
+        </div>
+        {engine.rectangleInnerShapeType === 'polygon' && (
+          <span id="rectRegularPolygonParametersForPanel" className="panelParameters">
+            <span className="param-item">
+              <label id="rectPolySidesLabel">Sides: {rectParams.sides}</label>
+              <input
+                type="range"
+                id="rectPolySides"
+                min="3"
+                max="12"
+                value={rectParams.sides}
+                onChange={(e) => engine.setRectangleSides(parseInt(e.target.value, 10))}
+              />
+            </span>
+          </span>
+        )}
+        {engine.rectangleInnerShapeType === 'supershape' && (
+          <span id="rectSupershapeParametersForPanel" className="panelParameters">
+            <span className="param-block">
+              {SUPERSHAPE_SLIDERS.slice(0, 3).map((s) => (
+                <span className="param-item" key={s.key}>
+                  <label>
+                    {s.label}: {rectParams[s.key].toFixed(1)}
+                  </label>
+                  <input
+                    type="range"
+                    min={s.min}
+                    max={s.max}
+                    step={s.step}
+                    value={rectParams[s.key]}
+                    onChange={(e) =>
+                      engine.setRectangleSupershapeParam(s.key, parseFloat(e.target.value))
+                    }
+                  />
+                </span>
+              ))}
+            </span>
+            <span className="param-block">
+              {SUPERSHAPE_SLIDERS.slice(3).map((s) => (
+                <span className="param-item" key={s.key}>
+                  <label>
+                    {s.label}: {rectParams[s.key].toFixed(1)}
+                  </label>
+                  <input
+                    type="range"
+                    min={s.min}
+                    max={s.max}
+                    step={s.step}
+                    value={rectParams[s.key]}
+                    onChange={(e) =>
+                      engine.setRectangleSupershapeParam(s.key, parseFloat(e.target.value))
                     }
                   />
                 </span>
