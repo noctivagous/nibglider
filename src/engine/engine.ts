@@ -27,6 +27,20 @@ export type CircleInnerShape =
 export type StrokeCap = 'butt' | 'round' | 'square';
 export type StrokeJoin = 'miter' | 'round' | 'bevel';
 
+export type FillType = 'solid' | 'linear' | 'radial';
+
+export interface FillSpec {
+  type: FillType;
+  /** Solid color, and the gradient start stop. */
+  color: string;
+  /** Gradient end stop. */
+  endColor: string;
+  /** Linear gradient direction, degrees. */
+  angle: number;
+  /** Radial inner-stop offset, 0..0.95. */
+  inner: number;
+}
+
 export type GridType = 'square' | 'diamond';
 
 export type RectangleInnerShape =
@@ -102,6 +116,10 @@ export class NibGliderEngine {
   endpointSnapTolerance = 12;
   globalStrokeColor = '#107cff';
   globalFillColor = '#000000';
+  globalFillType: FillType = 'solid';
+  globalFillEndColor = '#ffffff';
+  globalFillAngle = 0;
+  globalFillInner = 0;
   globalStrokeCap: StrokeCap = 'butt';
   globalStrokeJoin: StrokeJoin = 'miter';
   globalMiterLimit = 10;
@@ -465,7 +483,10 @@ export class NibGliderEngine {
   setFillColor(colorVal: string): void {
     if (this.hasSelection()) {
       this.applyToSelection((item) => {
-        item.fillColor = colorVal;
+        // Preserve a gradient fill, retinting its start stop.
+        const spec = this.fillSpecOf(item) ?? this.fillSpec();
+        spec.color = colorVal;
+        this.applyFillSpec(item, spec);
       });
     } else {
       this.globalFillColor = colorVal;
@@ -473,6 +494,162 @@ export class NibGliderEngine {
     this.updateCurrentDrawingStyles();
     this.updateTextContent();
     this.notify();
+  }
+
+  /** Snapshot of the global fill settings for subsequently drawn shapes. */
+  fillSpec(): FillSpec {
+    return {
+      type: this.globalFillType,
+      color: this.globalFillColor,
+      endColor: this.globalFillEndColor,
+      angle: this.globalFillAngle,
+      inner: this.globalFillInner,
+    };
+  }
+
+  private clampFillInner(f: number): number {
+    if (!Number.isFinite(f)) return 0;
+    return Math.max(0, Math.min(0.95, f));
+  }
+
+  setFillType(t: FillType): void {
+    if (t !== 'solid' && t !== 'linear' && t !== 'radial') return;
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        if (!item.fillColor) return;
+        const spec = this.fillSpecOf(item) ?? this.fillSpec();
+        spec.type = t;
+        this.applyFillSpec(item, spec);
+      });
+    } else {
+      this.globalFillType = t;
+    }
+    this.updateCurrentDrawingStyles();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setFillEndColor(colorVal: string): void {
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        if (!item.fillColor) return;
+        const spec = this.fillSpecOf(item) ?? this.fillSpec();
+        spec.endColor = colorVal;
+        if (spec.type === 'solid') spec.type = 'linear';
+        this.applyFillSpec(item, spec);
+      });
+    } else {
+      this.globalFillEndColor = colorVal;
+      if (this.globalFillType === 'solid') this.globalFillType = 'linear';
+    }
+    this.updateCurrentDrawingStyles();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setFillAngle(deg: number): void {
+    const a = Number.isFinite(deg) ? deg : 0;
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        if (!item.fillColor) return;
+        const spec = this.fillSpecOf(item) ?? this.fillSpec();
+        spec.angle = a;
+        if (spec.type === 'solid') spec.type = 'linear';
+        this.applyFillSpec(item, spec);
+      });
+    } else {
+      this.globalFillAngle = a;
+    }
+    this.updateCurrentDrawingStyles();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setFillInner(f: number): void {
+    const v = this.clampFillInner(f);
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        if (!item.fillColor) return;
+        const spec = this.fillSpecOf(item) ?? this.fillSpec();
+        spec.inner = v;
+        if (spec.type === 'solid') spec.type = 'radial';
+        this.applyFillSpec(item, spec);
+      });
+    } else {
+      this.globalFillInner = v;
+    }
+    this.updateCurrentDrawingStyles();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  // Read an item's fill back into a spec. Gradient geometry derives from
+  // the stops (and origin/destination for linear angle); anything
+  // unreadable falls back to a solid of the item's flat color.
+  fillSpecOf(item: AnyItem): FillSpec | null {
+    const fc = item?.fillColor;
+    if (!fc) return null;
+    const g = fc.gradient;
+    const fallback: FillSpec = {
+      type: 'solid',
+      color: this.itemHexColor(fc) ?? this.globalFillColor,
+      endColor: this.globalFillEndColor,
+      angle: this.globalFillAngle,
+      inner: this.globalFillInner,
+    };
+    if (!g) return fallback;
+    const stops = g.stops ?? [];
+    const c0 = stops.length > 0 ? this.itemHexColor(stops[0].color) : null;
+    const c1 =
+      stops.length > 1
+        ? this.itemHexColor(stops[stops.length - 1].color)
+        : null;
+    const spec: FillSpec = {
+      type: g.radial ? 'radial' : 'linear',
+      color: c0 ?? fallback.color,
+      endColor: c1 ?? fallback.endColor,
+      angle: fallback.angle,
+      inner: stops.length > 0 ? this.clampFillInner(Number(stops[0].offset) || 0) : 0,
+    };
+    const o = fc.origin;
+    const d = fc.destination;
+    if (o && d && typeof o.subtract === 'function') {
+      const v = d.subtract(o);
+      if (v.length > 0) {
+        spec.angle = (Math.atan2(v.y, v.x) * 180) / Math.PI;
+      }
+    }
+    return spec;
+  }
+
+  // Paint an item from a spec. Gradients derive from the item's bounds at
+  // apply time, so each shape carries its own geometry.
+  applyFillSpec(item: AnyItem, spec: FillSpec = this.fillSpec()): void {
+    const scope = this.scope;
+    if (!item) return;
+    if (spec.type === 'solid' || !item.bounds) {
+      item.fillColor = spec.color;
+      return;
+    }
+    const b = item.bounds;
+    const c = b.center;
+    const r = Math.max(1, Math.hypot(b.width, b.height) / 2);
+    const gradient = new scope.Gradient();
+    gradient.radial = spec.type === 'radial';
+    const inner = spec.type === 'radial' ? this.clampFillInner(spec.inner) : 0;
+    gradient.stops = [
+      new scope.GradientStop(new scope.Color(spec.color), inner),
+      new scope.GradientStop(new scope.Color(spec.endColor), 1),
+    ];
+    let origin: AnyItem = c;
+    let destination: AnyItem = c.add(new scope.Point(r, 0));
+    if (spec.type === 'linear') {
+      const a = ((spec.angle || 0) * Math.PI) / 180;
+      const dir = new scope.Point(Math.cos(a), Math.sin(a));
+      origin = c.subtract(dir.multiply(r));
+      destination = c.add(dir.multiply(r));
+    }
+    item.fillColor = { gradient, origin, destination };
   }
 
   setStrokeEnabled(enabled: boolean): void {
@@ -497,7 +674,7 @@ export class NibGliderEngine {
     if (this.hasSelection()) {
       this.applyToSelection((item) => {
         if (enabled) {
-          if (!item.fillColor) item.fillColor = this.globalFillColor;
+          if (!item.fillColor) this.applyFillSpec(item, this.fillSpec());
         } else {
           item.fillColor = null;
         }
@@ -765,7 +942,11 @@ export class NibGliderEngine {
     if (!item) return;
     item.strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
     item.strokeWidth = this.strokeEnabled ? this.globalStrokeWidth : 0;
-    item.fillColor = this.fillEnabled ? this.globalFillColor : null;
+    if (this.fillEnabled) {
+      this.applyFillSpec(item, this.fillSpec());
+    } else {
+      item.fillColor = null;
+    }
     this.applyStrokeGeometry(item);
     this.applyStrokeDash(item);
   }
@@ -1354,6 +1535,7 @@ export class NibGliderEngine {
     gapLength: number;
     fillOn: boolean;
     fillColor: string;
+    fillSpec: FillSpec;
   } | null {
     if (this.selectedItems.length === 0) return null;
     const it = this.selectedItems[0];
@@ -1387,6 +1569,7 @@ export class NibGliderEngine {
       gapLength,
       fillOn: fc !== null,
       fillColor: fc ?? this.globalFillColor,
+      fillSpec: this.fillSpecOf(it) ?? this.fillSpec(),
     };
   }
 
@@ -1728,7 +1911,11 @@ export class NibGliderEngine {
       } else {
         path.strokeColor = hasStroke ? this.globalStrokeColor : null;
         path.strokeWidth = hasStroke ? this.globalStrokeWidth * 0.7 : 0;
-        path.fillColor = hasFill ? this.globalFillColor : null;
+        if (hasFill) {
+          this.applyFillSpec(path, this.fillSpec());
+        } else {
+          path.fillColor = null;
+        }
         this.applyStrokeDash(path);
       }
       this.applyStrokeGeometry(path);
@@ -2141,7 +2328,11 @@ export class NibGliderEngine {
           stampedInner.opacity = 1;
           stampedInner.strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
           stampedInner.strokeWidth = this.strokeEnabled ? this.globalStrokeWidth * 0.7 : 0;
-          stampedInner.fillColor = this.fillEnabled ? this.globalFillColor : null;
+          if (this.fillEnabled) {
+            this.applyFillSpec(stampedInner, this.fillSpec());
+          } else {
+            stampedInner.fillColor = null;
+          }
           this.applyStrokeGeometry(stampedInner);
           this.applyStrokeDash(stampedInner);
           stampedInner.selected = false;

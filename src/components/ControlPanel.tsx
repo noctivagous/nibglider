@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -12,6 +13,8 @@ import { createPortal } from 'react-dom';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import type {
   CircleInnerShape,
+  FillSpec,
+  FillType,
   GridType,
   InnerShapeParams,
   NibGliderEngine,
@@ -332,7 +335,7 @@ function ShapeParamsFlyout({
 }: {
   open: boolean;
   triggerRef: RefObject<HTMLElement | null>;
-  tone: 'circle' | 'rect' | 'stroke';
+  tone: 'circle' | 'rect' | 'stroke' | 'fill';
   title: string;
   preview: ReactNode;
   onClose: () => void;
@@ -784,6 +787,194 @@ function StrokeParams({
   );
 }
 
+// Live swatch of the fill spec: solid color or two-stop gradient.
+// Gradient def ids are per-instance (titlebar + flyout both mount).
+function FillPreviewSvg({
+  spec,
+  on,
+  wide,
+}: {
+  spec: FillSpec;
+  on: boolean;
+  wide?: boolean;
+}) {
+  const gid = `fillprev${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+  const vb = wide ? '0 0 120 36' : '0 0 48 24';
+  const r = { x: wide ? 6 : 3, y: wide ? 5 : 3, w: wide ? 108 : 42, h: wide ? 26 : 18 };
+  const fill =
+    spec.type === 'linear'
+      ? `url(#${gid}-lin)`
+      : spec.type === 'radial'
+        ? `url(#${gid}-rad)`
+        : spec.color;
+  return (
+    <svg
+      className="fill-preview"
+      viewBox={vb}
+      width={wide ? 240 : 56}
+      height={wide ? 48 : 28}
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient
+          id={`${gid}-lin`}
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="0"
+          gradientTransform={`rotate(${spec.angle} 0.5 0.5)`}
+        >
+          <stop offset="0" stopColor={spec.color} />
+          <stop offset="1" stopColor={spec.endColor} />
+        </linearGradient>
+        <radialGradient id={`${gid}-rad`}>
+          <stop offset={spec.inner} stopColor={spec.color} />
+          <stop offset="1" stopColor={spec.endColor} />
+        </radialGradient>
+      </defs>
+      <rect
+        x={r.x}
+        y={r.y}
+        width={r.w}
+        height={r.h}
+        rx="3"
+        fill={on ? fill : 'none'}
+        fillOpacity={on ? 1 : 0}
+        stroke={on ? '#888' : '#666'}
+        strokeWidth="1"
+        strokeDasharray={on ? undefined : '3 2'}
+        opacity={on ? 1 : 0.6}
+      />
+    </svg>
+  );
+}
+
+const FILL_TYPE_OPTIONS: Array<{ value: FillType; label: string }> = [
+  { value: 'solid', label: 'Solid' },
+  { value: 'linear', label: 'Linear' },
+  { value: 'radial', label: 'Radial' },
+];
+
+function FillTypeThumb({ kind }: { kind: FillType }) {
+  return (
+    <svg viewBox="0 0 22 14" width="22" height="14" aria-hidden="true">
+      {kind === 'solid' ? (
+        <rect x="5" y="2" width="12" height="10" rx="1.5" fill="currentColor" />
+      ) : kind === 'linear' ? (
+        <>
+          <rect x="3" y="2" width="4" height="10" fill="currentColor" opacity="0.35" />
+          <rect x="9" y="2" width="4" height="10" fill="currentColor" opacity="0.65" />
+          <rect x="15" y="2" width="4" height="10" fill="currentColor" />
+        </>
+      ) : (
+        <>
+          <circle cx="11" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          <circle cx="11" cy="7" r="2" fill="currentColor" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function FillParams({
+  engine,
+  spec,
+}: {
+  engine: NibGliderEngine;
+  spec: FillSpec;
+}) {
+  return (
+    <div className="panelParameters">
+      <div className="flyout-seg">
+        <span className="param-item">
+          <label>Type</label>
+          <div className="seg-ctrl" role="group" aria-label="Fill type">
+            {FILL_TYPE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                title={opt.label}
+                aria-label={opt.label}
+                className={spec.type === opt.value ? 'active' : undefined}
+                onClick={() => engine.setFillType(opt.value)}
+              >
+                <FillTypeThumb kind={opt.value} />
+              </button>
+            ))}
+          </div>
+        </span>
+      </div>
+      <div className="flyout-seg">
+        <div className="flyout-trio-row">
+          <span className="param-item">
+            <label htmlFor={spec.type === 'solid' ? 'fillStartInput' : undefined}>
+              {spec.type === 'solid' ? 'Color' : 'Start'}
+            </label>
+            <input
+              type="color"
+              id={spec.type === 'solid' ? 'fillStartInput' : undefined}
+              className="titlebar-well"
+              value={spec.color}
+              title="Fill start color"
+              aria-label="Fill start color"
+              onChange={(e) => engine.setFillColor(e.target.value)}
+            />
+          </span>
+          {spec.type !== 'solid' && (
+            <span className="param-item">
+              <label>End</label>
+              <input
+                type="color"
+                className="titlebar-well"
+                value={spec.endColor}
+                title="Fill end color"
+                aria-label="Fill end color"
+                onChange={(e) => engine.setFillEndColor(e.target.value)}
+              />
+            </span>
+          )}
+          {spec.type === 'linear' && (
+            <span className="param-item">
+              <label>Angle</label>
+              <span className="flyout-angle-row">
+                <input
+                  type="range"
+                  aria-label="Gradient angle"
+                  min={0}
+                  max={360}
+                  step={5}
+                  value={spec.angle}
+                  onChange={(e) => engine.setFillAngle(parseFloat(e.target.value))}
+                />
+                <span className="flyout-angle-readout">{Math.round(spec.angle)}°</span>
+              </span>
+            </span>
+          )}
+          {spec.type === 'radial' && (
+            <span className="param-item">
+              <label>Inner</label>
+              <span className="flyout-angle-row">
+                <input
+                  type="range"
+                  aria-label="Radial inner radius"
+                  min={0}
+                  max={0.95}
+                  step={0.05}
+                  value={spec.inner}
+                  onChange={(e) => engine.setFillInner(parseFloat(e.target.value))}
+                />
+                <span className="flyout-angle-readout">
+                  {Math.round(spec.inner * 100)}%
+                </span>
+              </span>
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const CIRCLE_SHAPE_LABELS: Record<CircleInnerShape, string> = {
   circle: 'Circle',
   semicircle: 'Semicircle',
@@ -966,9 +1157,10 @@ const RECT_OPTION_TREE: CustomSelectOption[] = [
 export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
-    'circle' | 'rect' | 'stroke' | null
+    'circle' | 'rect' | 'stroke' | 'fill' | null
   >(null);
   const [editingWidth, setEditingWidth] = useState(false);
+  const fillPreviewRef = useRef<HTMLButtonElement>(null);
   const circlePreviewRef = useRef<HTMLButtonElement>(null);
   const rectPreviewRef = useRef<HTMLButtonElement>(null);
   const strokePreviewRef = useRef<HTMLButtonElement>(null);
@@ -993,7 +1185,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     }, 180);
   }, [cancelHoverClose]);
   const hoverOpenFlyout = useCallback(
-    (name: 'circle' | 'rect' | 'stroke') => {
+    (name: 'circle' | 'rect' | 'stroke' | 'fill') => {
       if (window.matchMedia?.('(hover: none)').matches) return;
       cancelHoverClose();
       setParamsFlyout(name);
@@ -1013,6 +1205,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   const gapLength = sel ? sel.gapLength : engine.globalGapLength;
   const fillOn = sel ? sel.fillOn : engine.fillEnabled;
   const fillColor = sel ? sel.fillColor : engine.globalFillColor;
+  const fillSpec = sel ? sel.fillSpec : engine.fillSpec();
 
   return (
     <>
@@ -1170,6 +1363,40 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             title="Fill Color"
             onChange={(e) => engine.setFillColor(e.target.value)}
           />
+          <button
+            type="button"
+            ref={fillPreviewRef}
+            id="fillPreviewContainer"
+            className={
+              'fill-preview-trigger' +
+              (paramsFlyout === 'fill' ? ' open' : '')
+            }
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'fill'}
+            aria-label="Fill parameters"
+            title="Fill parameters"
+            onMouseEnter={() => hoverOpenFlyout('fill')}
+            onMouseLeave={scheduleHoverClose}
+            onClick={() =>
+              setParamsFlyout((v) => (v === 'fill' ? null : 'fill'))
+            }
+          >
+            <FillPreviewSvg spec={fillSpec} on={fillOn} />
+          </button>
+          <ShapeParamsFlyout
+            open={paramsFlyout === 'fill'}
+            triggerRef={fillPreviewRef}
+            tone="fill"
+            title="Fill"
+            preview={
+              <FillPreviewSvg spec={fillSpec} on={fillOn} wide />
+            }
+            onClose={closeFlyout}
+            onMenuMouseEnter={cancelHoverClose}
+            onMenuMouseLeave={scheduleHoverClose}
+          >
+            <FillParams engine={engine} spec={fillSpec} />
+          </ShapeParamsFlyout>
         </header>
       </section>
       </div>
