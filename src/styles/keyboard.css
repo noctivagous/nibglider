@@ -33,6 +33,19 @@ UNUSED:
     align-content: end;
 }
 
+#keyboardContainer.no-spacebar {
+    /* 3 visible rows, same key size as the 4-row 23/9 board. */
+    aspect-ratio: 23 / 4.6;
+}
+
+#keyboardContainer.no-spacebar #keyboardKeysContainer {
+    grid-template-rows: repeat(3, 1fr);
+    grid-template-areas:
+        "tabKey tabKey KeyQ wKey eKey rKey tKey yKey uKey iKey oKey pKey bracketLeftKey bracketRightKey backslashKey"
+        "capsLockKey capsLockKey KeyA sKey dKey fKey gKey hKey jKey kKey lKey semicolonKey singleQuoteKey returnKey returnKey"
+        "shiftKeyLeft shiftKeyLeft zKey xKey cKey vKey bKey nKey mKey commaKey periodKey forwardSlashKey shiftKeyRight shiftKeyRight .";
+}
+
 
 #keyboardKeysContainer button.hidden{
     visibility: hidden;
@@ -82,7 +95,8 @@ UNUSED:
 
     position: absolute;
     bottom: 10px;
-    left: 350pt;
+    left: 10px;
+    transform: none;
     z-index: 9999;
     background-color: black;
 
@@ -104,6 +118,7 @@ UNUSED:
 
 
     padding-left: 10px;
+    padding-bottom: 10px;
 
 }
 

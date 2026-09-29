@@ -14,12 +14,18 @@ export type ShapeType =
 
 export type CircleInnerShape =
   | 'circle'
+  | 'semicircle'
+  | 'sector'
+  | 'segment'
   | 'polygon'
   | 'supershape'
   | 'trapezoid'
   | 'parallelogram'
   | 'rightTriangle'
   | 'rhombus';
+
+export type StrokeCap = 'butt' | 'round' | 'square';
+export type StrokeJoin = 'miter' | 'round' | 'bevel';
 
 export type RectangleInnerShape =
   | 'rectangle'
@@ -29,7 +35,8 @@ export type RectangleInnerShape =
   | 'trapezoid'
   | 'parallelogram'
   | 'rightTriangle'
-  | 'rhombus';
+  | 'rhombus'
+  | 'kite';
 
 export interface InnerShapeParams {
   sides: number;
@@ -39,6 +46,8 @@ export interface InnerShapeParams {
   n3: number;
   a1: number;
   a2: number;
+  angle: number;
+  sector: number;
 }
 
 export interface KeyActivity {
@@ -66,6 +75,9 @@ export class NibGliderEngine {
   splineTension = 0.4;
   globalStrokeColor = '#107cff';
   globalFillColor = '#000000';
+  globalStrokeCap: StrokeCap = 'round';
+  globalStrokeJoin: StrokeJoin = 'round';
+  globalMiterLimit = 10;
   strokeEnabled = true;
   fillEnabled = false;
 
@@ -81,10 +93,21 @@ export class NibGliderEngine {
   isPathSnappingEnabled = false;
   isAngleSnappingEnabled = false;
   isLengthSnappingEnabled = false;
+  isAspectSnappingEnabled = false;
+  aspectRatioA = 3;
+  aspectRatioB = 4;
 
   // --- Inner shape config ---
   innerShapeType = 'polygon';
-  innerShapeParams = { sides: 6, m: 3, n1: 0.2, n2: 1.7, n3: 1.7 };
+  innerShapeParams = {
+    sides: 6,
+    m: 3,
+    n1: 0.2,
+    n2: 1.7,
+    n3: 1.7,
+    angle: 60,
+    sector: 90,
+  };
   circleInnerShapeType: CircleInnerShape = 'polygon';
   circleInnerShapeParams: InnerShapeParams = {
     sides: 6,
@@ -94,6 +117,8 @@ export class NibGliderEngine {
     n3: 1.7,
     a1: 1.0,
     a2: 1.0,
+    angle: 60,
+    sector: 90,
   };
   rectangleInnerShapeType: RectangleInnerShape = 'rectangle';
   rectangleInnerShapeParams: InnerShapeParams = {
@@ -104,6 +129,8 @@ export class NibGliderEngine {
     n3: 1.7,
     a1: 1.0,
     a2: 1.0,
+    angle: 60,
+    sector: 90,
   };
   polygonRadiusMode = 'inradius';
 
@@ -127,6 +154,9 @@ export class NibGliderEngine {
   path: AnyItem = null;
   mousePt: AnyItem = null;
   lastMousePt: AnyItem = null;
+  isPanning = false;
+  minZoom = 0.1;
+  maxZoom = 16;
 
   // --- Selection (selectionFunctions.js) ---
   selectedItems: AnyItem[] = [];
@@ -170,6 +200,7 @@ export class NibGliderEngine {
       fontSize: '18pt',
       fontWeight: 'normal',
       fontFamily: 'Monospace',
+      locked: true,
     });
 
     scope.view.onMouseDown = (event: paper.MouseEvent) =>
@@ -178,6 +209,7 @@ export class NibGliderEngine {
       this.onMouseMove(event);
     scope.view.onMouseDrag = (event: paper.MouseEvent) =>
       this.onMouseDrag(event);
+    scope.view.onMouseUp = () => this.endPan();
 
     const onKeyDown = (event: KeyboardEvent) => this.handleKeyDown(event);
     const onKeyUp = (event: KeyboardEvent) => {
@@ -203,22 +235,29 @@ export class NibGliderEngine {
     };
     const onDragOver = (e: DragEvent) => e.preventDefault();
     const onDrop = (e: DragEvent) => this.handleImageDrop(e);
+    const onWheel = (e: WheelEvent) => this.onMouseWheel(e);
+    const onDocMouseUp = () => this.endPan();
     canvas.addEventListener('mousemove', onCanvasMove);
     canvas.addEventListener('click', onCanvasClick);
     canvas.addEventListener('dragover', onDragOver);
     canvas.addEventListener('drop', onDrop);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    document.addEventListener('mouseup', onDocMouseUp);
 
     this.detachFns.push(() => {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keydown', onHighlightDown);
       document.removeEventListener('keyup', onKeyUp);
+      document.removeEventListener('mouseup', onDocMouseUp);
       canvas.removeEventListener('mousemove', onCanvasMove);
       canvas.removeEventListener('click', onCanvasClick);
       canvas.removeEventListener('dragover', onDragOver);
       canvas.removeEventListener('drop', onDrop);
+      canvas.removeEventListener('wheel', onWheel);
       scope.view.onMouseDown = null;
       scope.view.onMouseMove = null;
       scope.view.onMouseDrag = null;
+      scope.view.onMouseUp = null;
     });
 
     this.updatePreviewBox();
@@ -290,6 +329,27 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  setStrokeCap(cap: StrokeCap): void {
+    this.globalStrokeCap = cap;
+    this.updateCurrentDrawingStyles();
+    this.notify();
+  }
+
+  setStrokeJoin(join: StrokeJoin): void {
+    this.globalStrokeJoin = join;
+    this.updateCurrentDrawingStyles();
+    this.notify();
+  }
+
+  setMiterLimit(limit: number): void {
+    let v = limit;
+    if (!(v >= 1)) v = 1;
+    if (v > 40) v = 40;
+    this.globalMiterLimit = v;
+    this.updateCurrentDrawingStyles();
+    this.notify();
+  }
+
   setFillColor(colorVal: string): void {
     this.globalFillColor = colorVal;
     this.updateCurrentDrawingStyles();
@@ -335,6 +395,27 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  setAspectSnappingEnabled(v: boolean): void {
+    this.isAspectSnappingEnabled = v;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setAspectRatioKey(key: string): void {
+    const parts = key.split(':');
+    const a = Number(parts[0]);
+    const b = Number(parts[1]);
+    if (!(a > 0) || !(b > 0)) return;
+    this.aspectRatioA = a;
+    this.aspectRatioB = b;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  aspectRatioKey(): string {
+    return `${this.aspectRatioA}:${this.aspectRatioB}`;
+  }
+
   setCircleInnerShapeType(t: CircleInnerShape): void {
     this.circleInnerShapeType = t;
     this.updatePreviewBox();
@@ -375,6 +456,48 @@ export class NibGliderEngine {
     this.updatePreviewBox();
     this.updateTextContent();
     this.notify();
+  }
+
+  setCircleAngle(deg: number): void {
+    this.circleInnerShapeParams.angle = this.clampShapeAngle(deg);
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setCircleSector(deg: number): void {
+    this.circleInnerShapeParams.sector = this.clampSectorAngle(deg);
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRectangleAngle(deg: number): void {
+    this.rectangleInnerShapeParams.angle = this.clampShapeAngle(deg);
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  // Parallelogram / trapezoid interior angle. 180° is a line; keep a
+  // usable wedge on either side of 90°.
+  clampShapeAngle(deg: number): number {
+    if (!Number.isFinite(deg)) return 60;
+    return Math.max(10, Math.min(170, deg));
+  }
+
+  clampSectorAngle(deg: number): number {
+    if (!Number.isFinite(deg)) return 90;
+    return Math.max(10, Math.min(350, deg));
+  }
+
+  // Horizontal shear (as a fraction of the bottom edge) that makes the
+  // interior angle at the bottom-left of the u/v frame equal `angleDeg`.
+  private frameAngleShear(u: AnyItem, v: AnyItem, angleDeg: number): number {
+    const θ = this.clampShapeAngle(angleDeg) * (Math.PI / 180);
+    const lenU = u.length;
+    if (!(lenU > 0)) return 0;
+    return (v.length / lenU) * (Math.cos(θ) / Math.sin(θ));
   }
 
   toggleGrid(): void {
@@ -420,33 +543,47 @@ export class NibGliderEngine {
   }
 
   // --- Style helpers (drawingProperties.js) ---
+  applyStrokeGeometry(item: AnyItem): void {
+    if (!item) return;
+    item.strokeCap = this.globalStrokeCap;
+    item.strokeJoin = this.globalStrokeJoin;
+    item.miterLimit = this.globalMiterLimit;
+  }
+
   applyCurrentStyles(item: AnyItem): void {
     if (!item) return;
     item.strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
     item.strokeWidth = this.strokeEnabled ? this.globalStrokeWidth : 0;
     item.fillColor = this.fillEnabled ? this.globalFillColor : null;
-    item.strokeCap = 'round';
-    item.strokeJoin = 'round';
+    this.applyStrokeGeometry(item);
   }
 
   updateCurrentDrawingStyles(): void {
     const strokeWidth = this.strokeEnabled ? this.globalStrokeWidth : 0;
     const strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
     const fillColor = this.fillEnabled ? this.globalFillColor : null;
-    [this.path, this.previewShape, this.quadPath, this.previewPath, this.previewRect].forEach(
-      (item) => {
-        if (item) {
-          item.strokeWidth = strokeWidth;
-          item.strokeColor = strokeColor;
-          item.fillColor = fillColor;
-        }
-      },
-    );
+    [
+      this.path,
+      this.previewShape,
+      this.quadPath,
+      this.previewPath,
+      this.previewRect,
+      this.previewInner,
+    ].forEach((item) => {
+      if (item) {
+        item.strokeWidth = strokeWidth;
+        item.strokeColor = strokeColor;
+        item.fillColor = fillColor;
+        this.applyStrokeGeometry(item);
+      }
+    });
+    if (this.isDrawingShape) this.updateShapePreview();
   }
 
   innerShapePreviewPath(
     type: string,
     params: InnerShapeParams,
+    previewFrame: 'circle' | 'rect' = 'circle',
   ): string {
     const radius = 0.9;
     const steps = 72;
@@ -458,11 +595,23 @@ export class NibGliderEngine {
         `A ${radius},${radius} 0 1,1 ${radius},0 Z`
       );
     }
+    if (type === 'sector' || type === 'semicircle' || type === 'segment') {
+      const sweep =
+        type === 'semicircle' ? 180 : this.clampSectorAngle(params.sector);
+      return type === 'segment'
+        ? this.segmentPreviewPath(radius, sweep)
+        : this.sectorPreviewPath(radius, sweep);
+    }
     if (type === 'rectangle') {
       const h = radius * 0.7;
       return `M ${f(-h, -h)}L ${f(h, -h)}L ${f(h, h)}L ${f(-h, h)}Z`;
     }
-    const circumPts = this.circleInnerShapeUnitPoints(type);
+    if (previewFrame === 'rect' && type === 'rightTriangle') {
+      // Legs along the left and bottom of the preview well; 90° at bottom-left.
+      const h = radius;
+      return `M ${f(-h, h)}L ${f(h, h)}L ${f(-h, -h)}Z`;
+    }
+    const circumPts = this.circleInnerShapeUnitPoints(type, params.angle);
     if (circumPts) {
       let d = 'M ';
       for (const [x, y] of circumPts) {
@@ -512,6 +661,7 @@ export class NibGliderEngine {
         this.innerShapePreviewPath(
           this.rectangleInnerShapeType,
           this.rectangleInnerShapeParams,
+          'rect',
         ),
       );
     }
@@ -520,14 +670,15 @@ export class NibGliderEngine {
   // --- Grid (drawingProperties.js) ---
   drawGrid(): void {
     const scope = this.scope;
+    const active = scope.project.activeLayer;
     if (!this.gridLayer) {
       this.gridLayer = new scope.Layer();
       this.gridLayer.name = 'gridLayer';
+      this.gridLayer.locked = true;
       scope.project.addLayer(this.gridLayer);
     }
+    this.gridLayer.activate();
     this.gridLayer.removeChildren();
-    const canvas = scope.view.element;
-    void canvas;
     const viewBounds = scope.view.bounds;
     const startX = Math.floor(viewBounds.x / this.gridSpacing) * this.gridSpacing;
     const endX =
@@ -537,13 +688,15 @@ export class NibGliderEngine {
     const endY =
       Math.ceil((viewBounds.y + viewBounds.height) / this.gridSpacing) *
       this.gridSpacing;
+    const strokeW = 2 / (scope.view.zoom || 1);
     for (let x = startX; x <= endX; x += this.gridSpacing) {
       const line = new scope.Path.Line(
         new scope.Point(x, startY),
         new scope.Point(x, endY),
       );
       line.strokeColor = new scope.Color(0, 0, 1, 0.8);
-      line.strokeWidth = 2;
+      line.strokeWidth = strokeW;
+      line.locked = true;
       this.gridLayer.addChild(line);
     }
     for (let y = startY; y <= endY; y += this.gridSpacing) {
@@ -552,10 +705,12 @@ export class NibGliderEngine {
         new scope.Point(endX, y),
       );
       line.strokeColor = new scope.Color(0, 0, 1, 0.8);
-      line.strokeWidth = 2;
+      line.strokeWidth = strokeW;
+      line.locked = true;
       this.gridLayer.addChild(line);
     }
     this.gridLayer.sendToBack();
+    if (active && active !== this.gridLayer) active.activate();
     scope.view.update();
   }
 
@@ -612,6 +767,52 @@ export class NibGliderEngine {
       basePoint.x + Math.cos(snappedAngle) * len,
       basePoint.y + Math.sin(snappedAngle) * len,
     );
+  }
+
+  // Ordered pair of the configured ratio, smaller first. 3:4 and 4:3 share
+  // {lo:3, hi:4}; orientation is chosen from the live width vs height.
+  private aspectWH(): { w: number; h: number } {
+    return {
+      w: Math.abs(this.aspectRatioA) || 1,
+      h: Math.abs(this.aspectRatioB) || 1,
+    };
+  }
+
+  // Snap the second side so first:second matches the selected A:B ratio.
+  private snapAspectSecond(first: number, second: number): number {
+    if (!(first > 0)) return second;
+    const { w, h } = this.aspectWH();
+    return first * (h / w);
+  }
+
+  // Axis-aligned opposite corner: width:height stays the selected A:B.
+  applyAspectSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
+    const scope = this.scope;
+    if (!this.isAspectSnappingEnabled || !basePoint || !targetPoint) {
+      return targetPoint;
+    }
+    const dx = targetPoint.x - basePoint.x;
+    const dy = targetPoint.y - basePoint.y;
+    if (dx === 0 && dy === 0) return targetPoint;
+    const { w: aw, h: ah } = this.aspectWH();
+    const sx = dx === 0 ? 1 : Math.sign(dx);
+    const sy = dy === 0 ? 1 : Math.sign(dy);
+    const k = Math.max(Math.abs(dx) / aw, Math.abs(dy) / ah);
+    return new scope.Point(basePoint.x + sx * aw * k, basePoint.y + sy * ah * k);
+  }
+
+  private centerlineWidthForLength(length: number): number {
+    if (!this.isAspectSnappingEnabled) return this.shapeWidth;
+    return this.snapAspectSecond(length, this.shapeWidth);
+  }
+
+  private liveRectAspectLabel(): string | null {
+    if (!this.isAspectSnappingEnabled) return null;
+    if (this.shapeType == null || !this.shapeType.startsWith('rectangle_')) {
+      return null;
+    }
+    const { w, h } = this.aspectWH();
+    return `${w}:${h}`;
   }
 
   applyPathSnapping(originalPoint: AnyItem): void {
@@ -794,8 +995,11 @@ export class NibGliderEngine {
   // same circumradius convention as a regular polygon). Trapezoid and
   // right triangle are cyclic (every vertex on the circle); parallelogram
   // and rhombus keep their proportions, so only the long-diagonal vertices
-  // land on the circle.
-  circleInnerShapeUnitPoints(type: string): Array<[number, number]> | null {
+  // land on the circle. `angleDeg` is the interior angle (10–170).
+  circleInnerShapeUnitPoints(
+    type: string,
+    angleDeg = 60,
+  ): Array<[number, number]> | null {
     const circum = (
       pts: Array<[number, number]>,
     ): Array<[number, number]> => {
@@ -816,27 +1020,10 @@ export class NibGliderEngine {
           [1, 0],
           [0, -1],
         ];
-      case 'trapezoid': {
-        // Cyclic isosceles trapezoid: both bases are chords of the unit
-        // circle. Short top, long bottom; top/bottom width ratio 1:2.
-        const bottomX = 0.9;
-        const topX = 0.45;
-        const bottomY = Math.sqrt(Math.max(0, 1 - bottomX * bottomX));
-        const topY = -Math.sqrt(Math.max(0, 1 - topX * topX));
-        return [
-          [-topX, topY],
-          [topX, topY],
-          [bottomX, bottomY],
-          [-bottomX, bottomY],
-        ];
-      }
+      case 'trapezoid':
+        return this.trapezoidUnitPoints(angleDeg);
       case 'parallelogram':
-        return circum([
-          [-0.9, 0.6],
-          [0.3, 0.6],
-          [0.9, -0.6],
-          [-0.3, -0.6],
-        ]);
+        return circum(this.parallelogramUnitPoints(angleDeg));
       case 'rhombus':
         return circum([
           [0, -0.9],
@@ -844,9 +1031,48 @@ export class NibGliderEngine {
           [0, 0.9],
           [-0.7, 0],
         ]);
+      case 'kite':
+        // Two pairs of adjacent equal sides; cross-bar closer to the top.
+        return circum([
+          [0, -1],
+          [1, -1 / 3],
+          [0, 1],
+          [-1, -1 / 3],
+        ]);
       default:
         return null;
     }
+  }
+
+  private trapezoidUnitPoints(angleDeg: number): Array<[number, number]> {
+    const θ = this.clampShapeAngle(angleDeg) * (Math.PI / 180);
+    const cos = Math.cos(θ);
+    const sin = Math.max(Math.sin(θ), 1e-6);
+    const bottomHalf = 1;
+    const topHalf = 1 - cos;
+    const h = sin;
+    const yb = h / 2;
+    const yt = -h / 2;
+    const cy = (bottomHalf * bottomHalf - topHalf * topHalf) / (2 * h);
+    const R = Math.hypot(bottomHalf, yb - cy) || 1;
+    return [
+      [-topHalf / R, (yt - cy) / R],
+      [topHalf / R, (yt - cy) / R],
+      [bottomHalf / R, (yb - cy) / R],
+      [-bottomHalf / R, (yb - cy) / R],
+    ];
+  }
+
+  private parallelogramUnitPoints(angleDeg: number): Array<[number, number]> {
+    const θ = this.clampShapeAngle(angleDeg) * (Math.PI / 180);
+    const c = Math.cos(θ);
+    const s = Math.sin(θ);
+    return [
+      [-0.5 - 0.5 * c, 0.5 * s],
+      [0.5 - 0.5 * c, 0.5 * s],
+      [0.5 + 0.5 * c, -0.5 * s],
+      [-0.5 + 0.5 * c, -0.5 * s],
+    ];
   }
 
   createCircumShape(
@@ -865,6 +1091,73 @@ export class NibGliderEngine {
       const ry = x * s + y * c;
       path.add(center.add(new scope.Point(rx * radius, ry * radius)));
     }
+    path.closed = true;
+    return path;
+  }
+
+  sectorPreviewPath(radius: number, sweepDeg: number): string {
+    const sweep = this.clampSectorAngle(sweepDeg);
+    const a = (sweep * Math.PI) / 180;
+    const x2 = radius * Math.cos(a);
+    const y2 = radius * Math.sin(a);
+    const large = sweep > 180 ? 1 : 0;
+    return (
+      `M 0,0 L ${radius.toFixed(3)},0 ` +
+      `A ${radius.toFixed(3)},${radius.toFixed(3)} 0 ${large},1 ` +
+      `${x2.toFixed(3)},${y2.toFixed(3)} Z`
+    );
+  }
+
+  createSectorShape(
+    center: AnyItem,
+    radius: number,
+    sweepDeg: number,
+    rotationAngle = 0,
+  ): AnyItem {
+    const scope = this.scope;
+    const sweep = this.clampSectorAngle(sweepDeg);
+    const start = (rotationAngle * Math.PI) / 180;
+    const end = start + (sweep * Math.PI) / 180;
+    const mid = (start + end) / 2;
+    const pt = (ang: number): AnyItem =>
+      center.add(new scope.Point(Math.cos(ang) * radius, Math.sin(ang) * radius));
+    const path = new scope.Path();
+    path.moveTo(center);
+    path.lineTo(pt(start));
+    path.arcTo(pt(mid), pt(end));
+    path.closed = true;
+    return path;
+  }
+
+  segmentPreviewPath(radius: number, sweepDeg: number): string {
+    const sweep = this.clampSectorAngle(sweepDeg);
+    const a = (sweep * Math.PI) / 180;
+    const x2 = radius * Math.cos(a);
+    const y2 = radius * Math.sin(a);
+    const large = sweep > 180 ? 1 : 0;
+    return (
+      `M ${radius.toFixed(3)},0 ` +
+      `A ${radius.toFixed(3)},${radius.toFixed(3)} 0 ${large},1 ` +
+      `${x2.toFixed(3)},${y2.toFixed(3)} Z`
+    );
+  }
+
+  createSegmentShape(
+    center: AnyItem,
+    radius: number,
+    sweepDeg: number,
+    rotationAngle = 0,
+  ): AnyItem {
+    const scope = this.scope;
+    const sweep = this.clampSectorAngle(sweepDeg);
+    const start = (rotationAngle * Math.PI) / 180;
+    const end = start + (sweep * Math.PI) / 180;
+    const mid = (start + end) / 2;
+    const pt = (ang: number): AnyItem =>
+      center.add(new scope.Point(Math.cos(ang) * radius, Math.sin(ang) * radius));
+    const path = new scope.Path();
+    path.moveTo(pt(start));
+    path.arcTo(pt(mid), pt(end));
     path.closed = true;
     return path;
   }
@@ -899,6 +1192,22 @@ export class NibGliderEngine {
       case 'circle':
         path = new scope.Path.Circle(center, radius);
         break;
+      case 'sector':
+      case 'semicircle':
+      case 'segment': {
+        const sweep =
+          currentInnerType === 'semicircle'
+            ? 180
+            : this.clampSectorAngle(currentInnerParams['sector']);
+        path =
+          currentInnerType === 'segment'
+            ? this.createSegmentShape(center, radius, sweep, rotationAngle)
+            : this.createSectorShape(center, radius, sweep, rotationAngle);
+        if (this.shapeType === 'circle_diameter') {
+          path.rotate(180, center);
+        }
+        break;
+      }
       case 'rectangle':
         path = new scope.Path.Rectangle({
           center,
@@ -909,8 +1218,12 @@ export class NibGliderEngine {
       case 'rightTriangleB':
       case 'trapezoid':
       case 'parallelogram':
-      case 'rhombus': {
-        const unit = this.circleInnerShapeUnitPoints(currentInnerType);
+      case 'rhombus':
+      case 'kite': {
+        const unit = this.circleInnerShapeUnitPoints(
+          currentInnerType,
+          currentInnerParams['angle'],
+        );
         if (unit) {
           path = this.createCircumShape(center, radius, unit, rotationAngle);
         }
@@ -949,9 +1262,8 @@ export class NibGliderEngine {
         path.strokeColor = hasStroke ? this.globalStrokeColor : null;
         path.strokeWidth = hasStroke ? this.globalStrokeWidth * 0.7 : 0;
         path.fillColor = hasFill ? this.globalFillColor : null;
-        path.strokeCap = 'round';
-        path.strokeJoin = 'round';
       }
+      this.applyStrokeGeometry(path);
     }
     return path;
   }
@@ -1007,14 +1319,16 @@ export class NibGliderEngine {
     const scope = this.scope;
     const shapeType = this.shapeType;
     if (shapeType === 'rectangle_diagonal') {
-      if (!this.previewShape || !this.previewShape.size) return null;
-      const size = this.previewShape.size;
-      if (size.width <= 0 || size.height <= 0) return null;
-      const pos = this.previewShape.position;
+      // Origin at the drag start corner; u/v follow the mouse so the
+      // inner shape mirrors when the diagonal crosses into another quadrant.
+      if (!this.shapeStartPoint || !this.mousePt) return null;
+      const dx = this.mousePt.x - this.shapeStartPoint.x;
+      const dy = this.mousePt.y - this.shapeStartPoint.y;
+      if (dx === 0 || dy === 0) return null;
       return {
-        o: new scope.Point(pos.x - size.width / 2, pos.y - size.height / 2),
-        u: new scope.Point(size.width, 0),
-        v: new scope.Point(0, size.height),
+        o: this.shapeStartPoint,
+        u: new scope.Point(dx, 0),
+        v: new scope.Point(0, dy),
       };
     }
     if (shapeType === 'rectangle_two_edges') {
@@ -1035,7 +1349,7 @@ export class NibGliderEngine {
       const center = this.shapeStartPoint.add(this.mousePt).divide(2);
       const unitDir = dir.normalize();
       const perp = new scope.Point(-unitDir.y, unitDir.x);
-      const halfW = this.shapeWidth / 2;
+      const halfW = this.centerlineWidthForLength(dir.length) / 2;
       return {
         o: center.subtract(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW)),
         u: unitDir.multiply(2 * halfLen),
@@ -1089,16 +1403,19 @@ export class NibGliderEngine {
           closed: true,
         });
         break;
-      case 'trapezoid':
-        // Bottom base is the full bottom edge; top base centered at half width.
+      case 'trapezoid': {
+        // Base angle in the frame: inset the top so the legs meet the
+        // bottom at `angle` degrees. Obtuse values invert (top wider).
+        const k = this.frameAngleShear(u, v, params.angle);
+        const inset = Math.max(-0.49, Math.min(0.49, k));
         path = new scope.Path({
-          segments: [P(0.25, 0), P(0.75, 0), P(1, 1), P(0, 1)],
+          segments: [P(inset, 0), P(1 - inset, 0), P(1, 1), P(0, 1)],
           closed: true,
         });
         break;
+      }
       case 'parallelogram': {
-        // Bottom side is the full bottom edge; top side shifted by the slant.
-        const k = 0.25;
+        const k = this.frameAngleShear(u, v, params.angle);
         path = new scope.Path({
           segments: [P(0, 1), P(1, 1), P(1 + k, 0), P(k, 0)],
           closed: true,
@@ -1109,6 +1426,18 @@ export class NibGliderEngine {
         // Vertices at the four edge midpoints.
         path = new scope.Path({
           segments: [P(0.5, 0), P(1, 0.5), P(0.5, 1), P(0, 0.5)],
+          closed: true,
+        });
+        break;
+      case 'kite':
+        // Two pairs of adjacent equal sides; touches all four edges,
+        // with the cross-bar a third of the way from the top. Centerline
+        // rotates 90° so the spine follows the drag axis.
+        path = new scope.Path({
+          segments:
+            this.shapeType === 'rectangle_centerline'
+              ? [P(0, 0.5), P(1 / 3, 0), P(1, 0.5), P(1 / 3, 1)]
+              : [P(0.5, 0), P(1, 1 / 3), P(0.5, 1), P(0, 1 / 3)],
           closed: true,
         });
         break;
@@ -1149,6 +1478,7 @@ export class NibGliderEngine {
       path.opacity = 0.7;
       path.fillColor = null;
     }
+    this.applyStrokeGeometry(path);
     return path;
   }
 
@@ -1187,8 +1517,7 @@ export class NibGliderEngine {
     });
     scope.project.activeLayer.addChild(this.previewRect);
     this.stylePreviewFrame(this.previewRect, 1);
-    this.previewRect.strokeCap = 'round';
-    this.previewRect.strokeJoin = 'round';
+    this.applyStrokeGeometry(this.previewRect);
     this.updateTextContent();
     this.notify();
   }
@@ -1217,6 +1546,7 @@ export class NibGliderEngine {
         });
         scope.project.activeLayer.addChild(this.previewRect);
         this.stylePreviewFrame(this.previewRect, 1);
+        this.applyStrokeGeometry(this.previewRect);
         this.updateTextContent();
       } else {
         this.endShapeAsStroke();
@@ -1233,6 +1563,7 @@ export class NibGliderEngine {
       strokeColor: this.globalStrokeColor,
       strokeWidth: this.globalStrokeWidth,
     });
+    this.applyStrokeGeometry(this.previewPath);
     scope.project.activeLayer.addChild(this.previewPath);
     this.previewLine = new scope.Path({
       segments: [this.shapeStartPoint, this.shapeStartPoint],
@@ -1255,6 +1586,7 @@ export class NibGliderEngine {
         strokeWidth: this.globalStrokeWidth,
         fullySelected: true,
       });
+      this.applyStrokeGeometry(this.quadPath);
       this.quadPointCount = 1;
       this.isDrawingQuad = true;
     } else {
@@ -1336,8 +1668,7 @@ export class NibGliderEngine {
           stampedInner.strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
           stampedInner.strokeWidth = this.strokeEnabled ? this.globalStrokeWidth * 0.7 : 0;
           stampedInner.fillColor = this.fillEnabled ? this.globalFillColor : null;
-          stampedInner.strokeCap = 'round';
-          stampedInner.strokeJoin = 'round';
+          this.applyStrokeGeometry(stampedInner);
           stampedInner.selected = false;
           scope.project.activeLayer.addChild(stampedInner);
         }
@@ -1392,6 +1723,7 @@ export class NibGliderEngine {
         strokeWidth: this.globalStrokeWidth,
         fullySelected: true,
       });
+      this.applyStrokeGeometry(this.path);
     } else {
       const newSegment = this.path.add(this.mousePt);
       if (newSegment) {
@@ -1414,6 +1746,7 @@ export class NibGliderEngine {
         strokeWidth: this.globalStrokeWidth,
         fullySelected: true,
       });
+      this.applyStrokeGeometry(this.path);
     } else {
       const newSegment = this.path.add(this.mousePt);
       if (newSegment && this.path.segments.length >= 3) {
@@ -1552,7 +1885,7 @@ export class NibGliderEngine {
         const halfLen = dir.length / 2;
         const unitDir = dir.normalize();
         const perp = new scope.Point(-unitDir.y, unitDir.x);
-        const halfW = this.shapeWidth / 2;
+        const halfW = this.centerlineWidthForLength(dir.length) / 2;
         const ptA = center.add(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
         const ptB = center.add(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
         const ptC = center.subtract(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
@@ -1666,58 +1999,116 @@ export class NibGliderEngine {
       );
     }
     path.closed = true;
-    path.strokeCap = 'round';
-    path.strokeJoin = 'round';
+    this.applyStrokeGeometry(path);
     return path;
   }
 
   // --- Mouse (NibGliderApp.js) ---
-  private onMouseDown(event: paper.MouseEvent): void {
-    void event;
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad) return;
-    this.hitTestUnderCursor();
+  private isNonContentItem(item: AnyItem): boolean {
+    if (!item) return true;
+    if (item === this.pathSnapCursor || item === this.gridCursor) return true;
+    if (item === this.statusText) return true;
+    if (item.data && item.data.isUICursor) return true;
+    if (this.gridLayer && (item === this.gridLayer || item.layer === this.gridLayer)) {
+      return true;
+    }
+    if (
+      item === this.previewInner ||
+      item === this.previewShape ||
+      item === this.previewLine ||
+      item === this.previewPath ||
+      item === this.previewRect
+    ) {
+      return true;
+    }
+    return false;
   }
 
-  hitTestUnderCursor(): void {
+  private hitTestContent(point: AnyItem): AnyItem {
     const scope = this.scope;
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad) return;
+    if (!point) return null;
     const self = this;
-    let hitResult = scope.project.hitTest(this.mousePt, {
+    return scope.project.hitTest(point, {
       segments: true,
       stroke: true,
       fill: true,
       tolerance: 5,
-      match: (item: AnyItem) => {
-        if (!item) return false;
-        if (item === self.pathSnapCursor || item === self.gridCursor) return false;
-        if (item.data && item.data.isUICursor) return false;
-        return true;
-      },
+      match: (item: AnyItem) => !self.isNonContentItem(item),
     });
+  }
+
+  private setCanvasCursor(cursor: string): void {
+    const el = this.scope.view && this.scope.view.element;
+    if (el) el.style.cursor = cursor;
+  }
+
+  private endPan(): void {
+    if (!this.isPanning) return;
+    this.isPanning = false;
+    this.setCanvasCursor('');
+  }
+
+  private pinStatusText(): void {
+    if (!this.statusText) return;
+    const view = this.scope.view;
+    const z = view.zoom || 1;
+    const b = view.bounds;
+    this.statusText.justification = 'center';
+    this.statusText.fontSize = 18 / z;
+    this.statusText.leading = 24 / z;
+    this.statusText.point = new this.scope.Point(b.center.x, b.top + 30 / z);
+  }
+
+  private afterViewChange(): void {
+    if (this.isGridEnabled) this.drawGrid();
+    this.pinStatusText();
+  }
+
+  private onMouseWheel(event: WheelEvent): void {
+    event.preventDefault();
+    if (event.deltaY === 0) return;
+    const view = this.scope.view;
+    const canvas = view.element as HTMLCanvasElement;
+    const rect = canvas.getBoundingClientRect();
+    const viewPoint = new this.scope.Point(
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+    );
+    const oldZoom = view.zoom || 1;
+    const next = Math.min(
+      this.maxZoom,
+      Math.max(this.minZoom, oldZoom * Math.exp(-event.deltaY * 0.002)),
+    );
+    if (next === oldZoom) return;
+    const before = view.viewToProject(viewPoint);
+    view.zoom = next;
+    const after = view.viewToProject(viewPoint);
+    view.center = view.center.add(before.subtract(after));
+    this.afterViewChange();
+  }
+
+  private onMouseDown(event: paper.MouseEvent): void {
+    this.mousePt = event.point;
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad) return;
+    const hit = this.hitTestContent(this.mousePt);
+    if (!hit || !hit.item) {
+      this.clearOutSelection();
+      this.isPanning = true;
+      this.setCanvasCursor('grabbing');
+      this.updateTextContent();
+      return;
+    }
+    this.isPanning = false;
+    this.applyHitSelection(hit);
+  }
+
+  hitTestUnderCursor(): void {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad) return;
+    this.applyHitSelection(this.hitTestContent(this.mousePt));
+  }
+
+  private applyHitSelection(hitResult: AnyItem): void {
     if (hitResult && hitResult.item) {
-      if (
-        hitResult.item === this.pathSnapCursor ||
-        hitResult.item === this.gridCursor ||
-        (hitResult.item.data && hitResult.item.data.isUICursor)
-      ) {
-        const wasPathSnapVisible = this.pathSnapCursor && this.pathSnapCursor.visible;
-        const wasGridVisible = this.gridCursor && this.gridCursor.visible;
-        if (this.pathSnapCursor) this.pathSnapCursor.visible = false;
-        if (this.gridCursor) this.gridCursor.visible = false;
-        hitResult = scope.project.hitTest(this.mousePt, {
-          segments: true,
-          stroke: true,
-          fill: true,
-          tolerance: 5,
-        });
-        if (this.pathSnapCursor) this.pathSnapCursor.visible = wasPathSnapVisible;
-        if (this.gridCursor) this.gridCursor.visible = wasGridVisible;
-        if (!hitResult || !hitResult.item) {
-          this.clearOutSelection();
-          this.updateTextContent();
-          return;
-        }
-      }
       const alreadySelected = this.selectedItems.indexOf(hitResult.item) !== -1;
       if (alreadySelected) {
         hitResult.item.selected = false;
@@ -1764,6 +2155,28 @@ export class NibGliderEngine {
       }
     }
     this.applyPathSnapping(originalPoint);
+    if (
+      this.isAspectSnappingEnabled &&
+      this.isDrawingShape &&
+      this.shapeType != null &&
+      this.shapeType.startsWith('rectangle_') &&
+      this.shapeStartPoint
+    ) {
+      if (this.shapeType === 'rectangle_diagonal') {
+        this.mousePt = this.applyAspectSnapping(this.shapeStartPoint, this.mousePt);
+      } else if (this.shapeType === 'rectangle_two_edges' && this.shapePt2) {
+        const edge = this.shapePt2.subtract(this.shapeStartPoint);
+        if (edge.length > 0) {
+          const dir1 = edge.normalize();
+          const v2 = this.mousePt.subtract(this.shapePt2);
+          const perpVec = v2.subtract(dir1.multiply(v2.dot(dir1)));
+          if (perpVec.length > 0) {
+            const snapped = this.snapAspectSecond(edge.length, perpVec.length);
+            this.mousePt = this.shapePt2.add(perpVec.normalize().multiply(snapped));
+          }
+        }
+      }
+    }
     this.updateGridCursor();
     this.handleDragLock();
     if (this.isDrawingPath && this.path) {
@@ -1775,7 +2188,16 @@ export class NibGliderEngine {
         this.path.add(this.mousePt);
       }
     }
-    if (this.isDrawingShape) this.updateShapePreview();
+    if (this.isDrawingShape) {
+      this.updateShapePreview();
+      if (
+        this.isAspectSnappingEnabled &&
+        this.shapeType != null &&
+        this.shapeType.startsWith('rectangle_')
+      ) {
+        this.updateTextContent();
+      }
+    }
     if (this.isDrawingQuad && this.quadPath) {
       if (this.quadPath.segments.length === 1) {
         this.quadPath.add(this.mousePt);
@@ -1880,7 +2302,7 @@ export class NibGliderEngine {
       const halfLen = dir.length / 2;
       const unitDir = dir.normalize();
       const perp = new scope.Point(-unitDir.y, unitDir.x);
-      const halfW = this.shapeWidth / 2;
+      const halfW = this.centerlineWidthForLength(dir.length) / 2;
       const ptA = center.add(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
       const ptB = center.add(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
       const ptC = center.subtract(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
@@ -1986,6 +2408,11 @@ export class NibGliderEngine {
   }
 
   private onMouseDrag(event: paper.MouseEvent): void {
+    if (this.isPanning) {
+      this.scope.view.center = this.scope.view.center.subtract(event.delta);
+      this.afterViewChange();
+      return;
+    }
     this.mousePt = this.snapToGrid(event.point);
     if (this.lastMousePt === null) this.lastMousePt = this.mousePt;
     const delta = this.mousePt.subtract(this.lastMousePt);
@@ -2205,6 +2632,8 @@ export class NibGliderEngine {
         lines.push('Width: ' + Math.round(this.shapeWidth) + 'pt');
       }
       lines.push(shapeInfo);
+      const aspectLabel = this.liveRectAspectLabel();
+      if (aspectLabel) lines.push('Aspect ' + aspectLabel);
       if (this.shapeType != null && this.shapeType.startsWith('circle_')) {
         const finishKey = this.shapeType === 'circle_diameter' ? 'N' : 'M';
         instruction = `Press ${finishKey} to finish or W to stamp.`;
@@ -2231,10 +2660,8 @@ export class NibGliderEngine {
       lines.push(instruction);
     }
     if (this.statusText) {
-      this.statusText.justification = 'center';
-      const centerX = this.scope.view.center.x;
-      this.statusText.point = new this.scope.Point(centerX, 30);
       this.statusText.content = lines.join('\n');
+      this.pinStatusText();
     }
   }
 }

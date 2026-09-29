@@ -275,9 +275,8 @@ article {
 /* Keyboard styling integration */
 #keyboardContainer {
   position: absolute;
-  bottom: 1rem;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 10px;
+  left: 10px;
   z-index: 999;
 }
 
@@ -696,6 +695,29 @@ body {
   gap: 8px;
   align-items: stretch;
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dp-bg-3) var(--dp-bg-0);
+}
+
+#controlPanel::-webkit-scrollbar {
+  height: 8px;
+}
+
+#controlPanel::-webkit-scrollbar-track {
+  background: var(--dp-bg-0);
+}
+
+#controlPanel::-webkit-scrollbar-thumb {
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 4px;
+}
+
+#controlPanel::-webkit-scrollbar-thumb:hover {
+  background: var(--dp-border);
 }
 
 /* Unified pane cards with real titlebars (dark pro) */
@@ -711,7 +733,8 @@ body {
   flex-direction: column;
   align-items: stretch;
   overflow: hidden;
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: max-content;
 }
 
 /* Pane titlebar: flat dark strip, thin bottom border, dense type */
@@ -754,9 +777,14 @@ body {
   min-width: 0;
 }
 
+#controlPanel .pane-body-row,
+#controlPanel #circleFrameControls,
+#controlPanel #rectFrameControls {
+  flex-wrap: nowrap;
+}
+
 #controlPanel .pane-body-row {
   flex-direction: row;
-  flex-wrap: wrap;
 }
 
 #controlPanel .pane-body-col {
@@ -826,6 +854,18 @@ body {
   align-items: center;
 }
 
+#controlPanel .snapping-aspect {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#controlPanel .snapping-aspect select {
+  margin-left: auto;
+  min-width: 4.5rem;
+}
+
 /* Inputs on dark */
 #controlPanel select {
   background: var(--dp-bg-3);
@@ -893,6 +933,77 @@ body {
 
 #strokeWidthSlider {
   width: 90px;
+}
+
+#controlPanel .stroke-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+#controlPanel .stroke-seg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#controlPanel .stroke-seg-label {
+  color: var(--dp-text-2);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+#controlPanel .seg-ctrl {
+  display: inline-flex;
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--dp-bg-3);
+}
+
+#controlPanel .seg-ctrl button {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--dp-border);
+  color: var(--dp-text-3);
+  padding: 3px 5px;
+  cursor: pointer;
+  line-height: 0;
+}
+
+#controlPanel .seg-ctrl button:last-child {
+  border-right: none;
+}
+
+#controlPanel .seg-ctrl button.active {
+  background: var(--dp-accent-soft);
+  color: var(--dp-text-1);
+}
+
+#controlPanel .stroke-preview {
+  background: var(--dp-bg-1);
+  border: 1px solid var(--dp-border-soft);
+  border-radius: 5px;
+  flex: none;
+}
+
+#controlPanel .miter-limit-input {
+  width: 3.2rem;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  color: var(--dp-text-1);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-align: right;
+  padding: 3px 6px;
+}
+
+#controlPanel .miter-limit-input:disabled {
+  opacity: 0.45;
 }
 
 #strokeWidthDisplay {

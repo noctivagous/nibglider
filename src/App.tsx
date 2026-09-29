@@ -44,7 +44,10 @@ export default function App() {
           ref={canvasRef}
         />
         <div className="corner-div">
-          <div id="keyboardContainer">
+          <div
+            id="keyboardContainer"
+            className={showSpacebar ? undefined : 'no-spacebar'}
+          >
             <Keyboard activeCode={activeCode} showSpacebar={showSpacebar} />
           </div>
         </div>

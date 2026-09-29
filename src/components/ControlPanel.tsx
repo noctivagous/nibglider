@@ -4,7 +4,54 @@ import type {
   InnerShapeParams,
   NibGliderEngine,
   RectangleInnerShape,
+  StrokeCap,
+  StrokeJoin,
 } from '../engine/engine';
+
+const ASPECT_RATIO_PRESETS = ['1:1', '3:4', '2:3', '16:9'];
+
+function AngleSlider({
+  value,
+  onChange,
+  min = 10,
+  max = 170,
+  fallback = 60,
+}: {
+  value: number;
+  onChange: (deg: number) => void;
+  min?: number;
+  max?: number;
+  fallback?: number;
+}) {
+  const deg = Number.isFinite(value) ? value : fallback;
+  return (
+    <span className="panelParameters">
+      <span className="param-item">
+        <label>Angle: {Math.round(deg)}°</label>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={1}
+          value={deg}
+          onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        />
+      </span>
+    </span>
+  );
+}
+
+const CAP_OPTIONS: Array<{ value: StrokeCap; label: string; icon: string }> = [
+  { value: 'butt', label: 'Butt', icon: 'M3 7 H13 M13 4 V10' },
+  { value: 'round', label: 'Round', icon: 'M3 7 H10 A3.5 3.5 0 0 1 10 7' },
+  { value: 'square', label: 'Square', icon: 'M3 7 H10 M10 4 H16 V10 H10' },
+];
+
+const JOIN_OPTIONS: Array<{ value: StrokeJoin; label: string; icon: string }> = [
+  { value: 'miter', label: 'Miter', icon: 'M3 12 L8 4 L13 12' },
+  { value: 'round', label: 'Round', icon: 'M3 12 L8 7 A3 3 0 0 1 11 12' },
+  { value: 'bevel', label: 'Bevel', icon: 'M3 12 L6 6 L12 6 L13 12' },
+];
 
 const SUPERSHAPE_SLIDERS: Array<{
   key: keyof InnerShapeParams;
@@ -43,28 +90,123 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             Stroke <kbd>R</kbd>
           </span>
         </header>
-        <div className="pane-body pane-body-row">
-          <input
-            type="color"
-            id="strokeColorWell"
-            value={engine.globalStrokeColor}
-            title="Stroke Color"
-            onChange={(e) => engine.setStrokeColor(e.target.value)}
-          />
-          <div className="control-inline">
-            <label> Width:</label>
+        <div className="pane-body pane-body-col">
+          <div className="stroke-row">
             <input
-              type="range"
-              id="strokeWidthSlider"
-              min="1"
-              max="40"
-              step="0.5"
-              value={engine.globalStrokeWidth}
-              onChange={(e) => engine.setStrokeWidth(parseFloat(e.target.value))}
+              type="color"
+              id="strokeColorWell"
+              value={engine.globalStrokeColor}
+              title="Stroke Color"
+              onChange={(e) => engine.setStrokeColor(e.target.value)}
             />
-            <span id="strokeWidthDisplay">
-              {engine.globalStrokeWidth.toFixed(1)} pt
-            </span>
+            <div className="control-inline">
+              <label> Width:</label>
+              <input
+                type="range"
+                id="strokeWidthSlider"
+                min="1"
+                max="40"
+                step="0.5"
+                value={engine.globalStrokeWidth}
+                onChange={(e) => engine.setStrokeWidth(parseFloat(e.target.value))}
+              />
+              <span id="strokeWidthDisplay">
+                {engine.globalStrokeWidth.toFixed(1)} pt
+              </span>
+            </div>
+            <svg
+              className="stroke-preview"
+              viewBox="0 0 48 24"
+              width="56"
+              height="28"
+              aria-hidden="true"
+            >
+              <path
+                d="M6 18 L22 6 L42 18"
+                fill="none"
+                stroke={engine.strokeEnabled ? engine.globalStrokeColor : '#555'}
+                strokeWidth={Math.max(2, Math.min(8, engine.globalStrokeWidth * 0.45))}
+                strokeLinecap={engine.globalStrokeCap}
+                strokeLinejoin={engine.globalStrokeJoin}
+                strokeMiterlimit={engine.globalMiterLimit}
+              />
+            </svg>
+          </div>
+          <div className="stroke-row">
+            <div className="stroke-seg">
+              <span className="stroke-seg-label">Cap</span>
+              <div className="seg-ctrl" role="group" aria-label="Line cap">
+                {CAP_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    title={opt.label}
+                    className={
+                      engine.globalStrokeCap === opt.value ? 'active' : undefined
+                    }
+                    onClick={() => engine.setStrokeCap(opt.value)}
+                  >
+                    <svg viewBox="0 0 18 14" width="18" height="14">
+                      <path
+                        d={opt.icon}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap={opt.value}
+                        strokeLinejoin="miter"
+                      />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="stroke-seg">
+              <span className="stroke-seg-label">Join</span>
+              <div className="seg-ctrl" role="group" aria-label="Line join">
+                {JOIN_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    title={opt.label}
+                    className={
+                      engine.globalStrokeJoin === opt.value ? 'active' : undefined
+                    }
+                    onClick={() => engine.setStrokeJoin(opt.value)}
+                  >
+                    <svg viewBox="0 0 16 14" width="16" height="14">
+                      <path
+                        d={opt.icon}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="butt"
+                        strokeLinejoin={opt.value}
+                        strokeMiterlimit={4}
+                      />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="stroke-seg">
+              <span className="stroke-seg-label">Miter</span>
+              <input
+                type="number"
+                id="miterLimitInput"
+                className="miter-limit-input"
+                aria-label="Miter"
+                title="Miter"
+                min={1}
+                max={40}
+                step={0.5}
+                value={engine.globalMiterLimit}
+                disabled={engine.globalStrokeJoin !== 'miter'}
+                onChange={(e) => {
+                  const n = parseFloat(e.target.value);
+                  if (Number.isFinite(n)) engine.setMiterLimit(n);
+                }}
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -137,6 +279,29 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             />
             <span>Length</span>
           </label>
+          <div className="snapping-aspect">
+            <label className="check-row">
+              <input
+                type="checkbox"
+                id="aspectSnappingCheckbox"
+                checked={engine.isAspectSnappingEnabled}
+                onChange={(e) => engine.setAspectSnappingEnabled(e.target.checked)}
+              />
+              <span>Aspect</span>
+            </label>
+            <select
+              id="aspectRatioSelect"
+              aria-label="Aspect ratio"
+              value={engine.aspectRatioKey()}
+              onChange={(e) => engine.setAspectRatioKey(e.target.value)}
+            >
+              {ASPECT_RATIO_PRESETS.map((key) => (
+                <option key={key} value={key}>
+                  {key}
+                </option>
+              ))}
+            </select>
+          </div>
           </div>
         </div>
       </section>
@@ -154,6 +319,9 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           }
         >
           <option value="circle">Circle</option>
+          <option value="semicircle">Semicircle</option>
+          <option value="sector">Sector</option>
+          <option value="segment">Segment</option>
           <option value="polygon">Regular Polygon</option>
           <option value="supershape">Supershape</option>
           <option value="trapezoid">Trapezoid</option>
@@ -177,6 +345,23 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             />
           </svg>
         </div>
+        {(engine.circleInnerShapeType === 'sector' ||
+          engine.circleInnerShapeType === 'segment') && (
+          <AngleSlider
+            value={params.sector}
+            min={10}
+            max={350}
+            fallback={90}
+            onChange={(deg) => engine.setCircleSector(deg)}
+          />
+        )}
+        {(engine.circleInnerShapeType === 'trapezoid' ||
+          engine.circleInnerShapeType === 'parallelogram') && (
+          <AngleSlider
+            value={params.angle}
+            onChange={(deg) => engine.setCircleAngle(deg)}
+          />
+        )}
         {engine.circleInnerShapeType === 'polygon' && (
           <span id="regularPolygonParametersForPanel" className="panelParameters">
             <span className="param-item">
@@ -257,6 +442,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           <option value="parallelogram">Parallelogram</option>
           <option value="rightTriangle">Right Triangle</option>
           <option value="rhombus">Rhombus</option>
+          <option value="kite">Kite</option>
         </select>
         <div id="rectShapePreviewContainer">
           <svg id="rectShapePreview" viewBox="-1.2 -1.2 2.4 2.4" width="120" height="64">
@@ -270,10 +456,18 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               d={engine.innerShapePreviewPath(
                 engine.rectangleInnerShapeType,
                 engine.rectangleInnerShapeParams,
+                'rect',
               )}
             />
           </svg>
         </div>
+        {(engine.rectangleInnerShapeType === 'trapezoid' ||
+          engine.rectangleInnerShapeType === 'parallelogram') && (
+          <AngleSlider
+            value={rectParams.angle}
+            onChange={(deg) => engine.setRectangleAngle(deg)}
+          />
+        )}
         {engine.rectangleInnerShapeType === 'polygon' && (
           <span id="rectRegularPolygonParametersForPanel" className="panelParameters">
             <span className="param-item">

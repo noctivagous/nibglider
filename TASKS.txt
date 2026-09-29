@@ -1,13 +1,19 @@
 
+[ ] param sliders for parallelogram, trapezoid angle.  not 180 degrees for parallelogram
+[ ] aspect ratio snap for drawing with rect keys. if set to 3:4, aspect ratio will flip for dimensions when shape changes. 3:4 or 4:3
+
+
 [ ] We will need a more sophis. solution for mouse events over the onscreen kb 
 because in the future the user will click on the keys to configure them.
 
 [ ] make scale and rotate keys work on the hovered shape, without selection needed.
 
-[ ] aspect ratio snap for drawing with rect keys. aspect ratio will flip for dimensions when shape changes. 3:4 or 4:3
 
 [ ] circle keys:  [inradius | circumradius]
 
+
+[ ] Quad fieldset with dropdown and preview frame
+[ ] Loaded Object fieldset + entry in the select dropdown of Circle Keys, Rect Keys, Quad field.
 
 SNAPPING
 [ ] arrange params in two cols, drop "snapping" in label.
@@ -23,6 +29,15 @@ SNAPPING
   future these will be able to have their params opened up in UI on the drawing board itself, so it is a base class we 
   want to be using in the app for shapes and drawing page objects that will have the option to be configured.  example: 
   a repeat circle repeats one or more shapes around the circumference.
+ 
+ [ ] Grid fieldset - will have select dropdown with different grid types: square, hexagon horiz., hexagon vert, rhombus.
+ [ ] Grid painting.  - shape on grid points, grid type.  increase/decrease size of shapes on grid.
+  
+ [ ] from the Rect Key or Circle Keys select dropdowns, user will be able to select "Library Shape" where
+ there are stock shapes.
+ [ ] Because of parametric component objects, the spline keys can be made to draw shapes like ribbons
+ because the Ribbon parametric component object will be designed to take in spline information.
+ 
 ----
 
 gui-ref/
