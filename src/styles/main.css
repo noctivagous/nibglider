@@ -82,12 +82,10 @@ article {
   max-width: 100%;
   height: clamp(600px, 70vh, 800px);
   margin: 3rem auto;
-  box-shadow: 
-    0 25px 50px -12px rgba(0, 0, 0, 0.25),
-    0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: none;
   overflow: hidden;
   background: #1a202c;
-  outline: 3pt solid black;
+  outline: none;
   height: calc(100vh - 100pt);
   width: 100vw;
   margin-top: 100px;
@@ -104,12 +102,107 @@ article {
   position: absolute;
   top: 0;
   left: 0;
-  border: 1px solid #ccc;
+  border: none;
 }
 
 #nibgliderCanvas:focus {
   outline: none;
   box-shadow: none;
+}
+
+/* Canvas status HUD: semi-transparent dark-pro table. Display-only;
+   pointer events fall through to the canvas. */
+#statusOverlay {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  pointer-events: none;
+}
+
+#statusOverlay .status-table {
+  border-collapse: collapse;
+  background: rgba(13, 17, 22, 0.78);
+  border: 1px solid #0b0e12;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 4px 14px rgba(0, 0, 0, 0.5);
+  font-family: Monospace, monospace;
+  font-size: 12px;
+  color: #e8edf3;
+}
+
+#statusOverlay .status-table td {
+  padding: 2px 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+#statusOverlay tr:first-child td {
+  padding-top: 5px;
+}
+
+#statusOverlay tr:last-child td {
+  padding-bottom: 5px;
+}
+
+#statusOverlay tr.st-line-title td {
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+}
+
+#statusOverlay tr.st-line-meta td {
+  font-size: 11px;
+  color: #a7b1bd;
+}
+
+#statusOverlay tr.st-divider td {
+  height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+#statusOverlay kbd.st-key {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 0 5px;
+  font-family: Monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #e8edf3;
+  background: linear-gradient(to bottom, #2b3542, #1d242e);
+  border: 1px solid #8fa3bd;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 0 rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+#statusOverlay kbd.st-key.circle {
+  border-color: #4f8ff7;
+  color: #bcd6fd;
+}
+
+#statusOverlay kbd.st-key.rect {
+  border-color: #2dd4bf;
+  color: #b8f0e8;
+}
+
+#statusOverlay kbd.st-key.quad {
+  border-color: #f5a623;
+  color: #f7ddae;
+}
+
+#statusOverlay kbd.st-key.op {
+  border-color: #a86ef0;
+  color: #d9c2f7;
+}
+
+#statusOverlay kbd.st-key.end {
+  border-color: #e06565;
+  color: #e0a3a3;
 }
 
 /* Control panel */
@@ -292,7 +385,7 @@ article {
 #canvasContainer {
   flex: 1;
   position: relative;
-  outline: 3pt solid black;
+  outline: none;
   box-sizing: border-box;
   background: #1a202c;
 }
@@ -464,7 +557,7 @@ iframe {
 
 /* NEW: Canvas Container Inline Styles */
 #canvasContainer {
-  outline: 3pt solid black;
+  outline: none;
   position: relative;
   height: calc(100vh - 100pt);
   width: 100vw;
@@ -542,7 +635,7 @@ iframe {
   left: 0;
   width: 100%;
   height: 100%;
-  border: 1px solid #ccc;
+  border: none;
 }
 
 /* NEW: Instructions Table Inline Styles */
@@ -599,7 +692,8 @@ html, body {
   height: 0 !important;
   display: flex !important;
   position: relative !important;
-  outline: 3pt solid black !important;
+  outline: none !important;
+  box-shadow: none !important;
   box-sizing: border-box !important;
   background: #1a202c !important;
 }
@@ -611,16 +705,10 @@ html, body {
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
-  border: 1px solid #ccc !important;
+  border: none !important;
 }
 
-/* Stroke Controls */
-#strokeControls {
-  background: linear-gradient(135deg, #404040 0%, #2a2a2a 100%) !important;
-  background: linear-gradient(135deg, #404040 0%, #2a2a2a 100%), linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%) inset !important;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.3) !important;
-}
+/* Stroke Controls: surface comes from the dark-pro panel-card system. */
 
 #strokeColorWell {
   width: 44px;
@@ -647,13 +735,7 @@ html, body {
   text-align: center;
 }
 
-/* Fill Controls */
-#fillControls {
-  background: linear-gradient(135deg, #404040 0%, #2a2a2a 100%) !important;
-  background: linear-gradient(135deg, #404040 0%, #2a2a2a 100%), linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%) inset !important;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.3) !important;
-}
+/* Fill Controls: surface comes from the dark-pro panel-card system. */
 
 /* ============ Dark Pro theme ============
    Solid dark surfaces, one blue accent, no gradients.
@@ -742,19 +824,21 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--dp-bg-1);
-  border-bottom: 1px solid var(--dp-border-soft);
+  background: linear-gradient(to bottom, #242e3a, #1a212b);
+  border-bottom: 1px solid #0b0e12;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   padding: 4px 10px;
   min-height: 26px;
   flex: none;
 }
 
 #controlPanel .pane-title {
-  font-weight: 700;
-  font-size: 0.6875rem;
-  letter-spacing: 0.08em;
+  font-weight: 800;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--dp-text-2);
+  color: var(--dp-text-1);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -766,7 +850,8 @@ body {
   letter-spacing: 0;
 }
 
-/* Pane body carries the old row/col layouts */
+/* Pane body: recessed interior well under the raised legend bar.
+   flex:1 so the body fills the card instead of leaving empty space. */
 #controlPanel .pane-body {
   padding: 8px 10px;
   margin: 0;
@@ -775,6 +860,11 @@ body {
   gap: 8px;
   align-items: center;
   min-width: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: linear-gradient(to bottom, #12171d, #151b22);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45);
 }
 
 #controlPanel .pane-body-row,
@@ -1150,8 +1240,16 @@ body {
   background: linear-gradient(to bottom, rgba(79, 143, 247, 0.22), rgba(47, 111, 224, 0.22));
 }
 
+#controlPanel .panel-card.reflecting-selection .pane-titlebar {
+  position: relative;
+}
+
+/* Capsule overlays the titlebar corner so it never changes card width. */
 #controlPanel .sel-badge {
-  margin-left: auto;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   flex: none;
   font-size: 0.625rem;
   font-weight: 700;
@@ -1163,6 +1261,7 @@ body {
   border-radius: 999px;
   padding: 1px 7px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  pointer-events: none;
 }
 
 /* Toggle switches: dark red well when OFF, dark green well when ON */
@@ -1220,12 +1319,13 @@ body {
 /* Canvas frame */
 #canvasContainer {
   background: var(--dp-bg-0);
-  outline: 1px solid var(--dp-border-soft);
+  outline: none;
+  box-shadow: none;
 }
 
 #nibgliderCanvas,
 #nibgliderCanvas.nibglider-canvas {
-  border: 1px solid var(--dp-border-soft);
+  border: none;
 }
 
 /* kbd chips: miniature keycaps */

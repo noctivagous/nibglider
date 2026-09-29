@@ -55,6 +55,22 @@ export interface KeyActivity {
   active: boolean;
 }
 
+// Overlay schema: state lines (what is true) plus step lines (what to do
+// next). Text runs render plain; key runs render as keycaps in the key's
+// keyboard-group color.
+export type StatusKeyGroup = 'circle' | 'rect' | 'quad' | 'op' | 'end' | 'neutral';
+export type StatusRun =
+  | { t: 'text'; s: string }
+  | { t: 'key'; s: string; g: StatusKeyGroup };
+export type StatusLine = {
+  kind: 'title' | 'meta' | 'hint';
+  runs: StatusRun[];
+};
+export interface StatusSchema {
+  state: StatusLine[];
+  steps: StatusLine[];
+}
+
 // Paper item refs stay loosely typed: the original code leans on runtime
 // paper behavior (null style assignment, shape-specific fields) that the
 // bundled declarations model more narrowly.
@@ -164,7 +180,12 @@ export class NibGliderEngine {
   selectedItems: AnyItem[] = [];
   isInDragLock = false;
 
-  private statusText: AnyItem = null;
+  private statusSchema: StatusSchema = { state: [], steps: [] };
+  private lastStatusKey = '';
+
+  getStatusSchema(): StatusSchema {
+    return this.statusSchema;
+  }
 
   constructor(scope: paper.PaperScope, onKeyActivity: (a: KeyActivity) => void) {
     this.scope = scope;
@@ -195,15 +216,7 @@ export class NibGliderEngine {
       scope.view.size.height / 2,
     );
 
-    this.statusText = new scope.PointText({
-      content: '',
-      point: new scope.Point(50, 40),
-      fillColor: '#fff',
-      fontSize: '18pt',
-      fontWeight: 'normal',
-      fontFamily: 'Monospace',
-      locked: true,
-    });
+    this.updateTextContent();
 
     scope.view.onMouseDown = (event: paper.MouseEvent) =>
       this.onMouseDown(event);
@@ -2246,7 +2259,6 @@ export class NibGliderEngine {
   private isNonContentItem(item: AnyItem): boolean {
     if (!item) return true;
     if (item === this.pathSnapCursor || item === this.gridCursor) return true;
-    if (item === this.statusText) return true;
     if (item.data && item.data.isUICursor) return true;
     if (this.gridLayer && (item === this.gridLayer || item.layer === this.gridLayer)) {
       return true;
@@ -2287,20 +2299,31 @@ export class NibGliderEngine {
     this.setCanvasCursor('');
   }
 
-  private pinStatusText(): void {
-    if (!this.statusText) return;
-    const view = this.scope.view;
-    const z = view.zoom || 1;
-    const b = view.bounds;
-    this.statusText.justification = 'center';
-    this.statusText.fontSize = 18 / z;
-    this.statusText.leading = 24 / z;
-    this.statusText.point = new this.scope.Point(b.center.x, b.top + 30 / z);
+  // Keyboard group per key, mirroring keyboard.css. The overlay renders
+  // the group color; no paper items involved.
+  statusKeyGroup(key: string): StatusKeyGroup {
+    const k = key.toLowerCase();
+    if (k === 'n' || k === 'm') return 'circle';
+    if (k === 'i' || k === 'u' || k === 'y') return 'rect';
+    if (k === 'o') return 'quad';
+    if (k === 'w' || k === '[' || k === ']' || k === ';' || k === "'")
+      return 'op';
+    if (k === 'q' || k === 'a' || k === 'escape') return 'end';
+    return 'neutral';
+  }
+
+  // Publish only when the schema changes (this runs on hot paths like
+  // mousemove); the HTML overlay re-renders off the version counter.
+  private setStatusSchema(schema: StatusSchema): void {
+    const key = JSON.stringify(schema);
+    if (key === this.lastStatusKey) return;
+    this.lastStatusKey = key;
+    this.statusSchema = schema;
+    this.notify();
   }
 
   private afterViewChange(): void {
     if (this.isGridEnabled) this.drawGrid();
-    this.pinStatusText();
   }
 
   // Zoom around the view center, honoring min/max zoom.
@@ -2906,83 +2929,195 @@ export class NibGliderEngine {
       this.cancelCurrentDrawingOperation();
     }
     if (event.key === 'Tab') {
-      this.hitTestUnderCursor();
+      // Native tab order wins inside panel fields; everywhere else Tab
+      // selects under the cursor and must not leave the page for the
+      // Omnibox.
+      const target = event.target as HTMLElement | null;
+      const inField =
+        !!target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'SELECT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'BUTTON');
+      if (!inField) {
+        event.preventDefault();
+        this.hitTestUnderCursor();
+      }
     }
     this.updateTextContent();
   }
 
   // --- Canvas status overlay (NibGliderApp.js updateTextContent) ---
   updateTextContent(): void {
-    const lines: string[] = [];
+    const T = (s: string): StatusRun => ({ t: 'text', s });
+    const K = (s: string): StatusRun => ({
+      t: 'key',
+      s,
+      g: this.statusKeyGroup(s),
+    });
+    const state: StatusLine[] = [];
+    const steps: StatusLine[] = [];
+    const L = (kind: StatusLine['kind'], runs: StatusRun[]): StatusLine => ({
+      kind,
+      runs,
+    });
     const selectedCount = this.selectedItems.length;
     if (this.isGridEnabled) {
-      lines.push('Grid: ON (L to toggle)');
+      state.push(L('meta', [T('Grid: ON ('), K('L'), T(' to toggle)')]));
     }
     if (selectedCount) {
-      lines.push('Selected Objects: ' + selectedCount);
+      state.push(L('title', [T('Selected Objects: ' + selectedCount)]));
       if (this.isInDragLock === false) {
-        lines.push('Spacebar to begin Drag-Lock');
-        lines.push('[ and ] to Scale, ; and \' to Rotate');
+        steps.push(L('hint', [K('Space'), T(' to begin Drag-Lock')]));
+        steps.push(
+          L('hint', [
+            K('['),
+            T(' and '),
+            K(']'),
+            T(' to Scale, '),
+            K(';'),
+            T(' and '),
+            K("'"),
+            T(' to Rotate'),
+          ]),
+        );
       }
     }
     if (this.isInDragLock) {
-      lines.push('Drag-Lock On ');
-      lines.push('Move mouse to drag all selected.  Spacebar to release.');
-      lines.push('W to Stamp, [ and ] to Scale, ; and \' to Rotate');
+      state.push(L('title', [T('Drag-Lock On ')]));
+      steps.push(
+        L('hint', [
+          T('Move mouse to drag all selected.  '),
+          K('Space'),
+          T(' to release.'),
+        ]),
+      );
+      steps.push(
+        L('hint', [
+          K('W'),
+          T(' to Stamp, '),
+          K('['),
+          T(' and '),
+          K(']'),
+          T(' to Scale, '),
+          K(';'),
+          T(' and '),
+          K("'"),
+          T(' to Rotate'),
+        ]),
+      );
     }
-    let instruction = '';
     if (this.isDrawingPath) {
-      lines.push('Drawing Path');
-      instruction =
-        'Move mouse to adjust path. \n F = sharp point, G = spline(tension:' +
-        this.splineTension.toFixed(1) +
-        ') ';
-      instruction += '\nA = end, J/K = adjust tension';
+      state.push(L('title', [T('Drawing Path')]));
+      steps.push(L('hint', [T('Move mouse to adjust path.')]));
+      steps.push(
+        L('hint', [
+          K('F'),
+          T(' = sharp point, '),
+          K('G'),
+          T(' = spline (tension:' + this.splineTension.toFixed(1) + ')'),
+        ]),
+      );
+      steps.push(
+        L('hint', [K('A'), T(' = end, '), K('J/K'), T(' = adjust tension')]),
+      );
     }
     if (this.isDrawingShape) {
-      let shapeInfo = '';
-      if (this.shapeType === 'circle_radius' || this.shapeType === 'circle_diameter') {
+      if (
+        this.shapeType === 'circle_radius' ||
+        this.shapeType === 'circle_diameter'
+      ) {
         const mode = this.shapeType === 'circle_radius' ? 'radius' : 'diameter';
-        shapeInfo = 'Circle by (' + mode + ')';
+        state.push(L('title', [T('Circle by (' + mode + ')')]));
       } else if (this.shapeType === 'rectangle_diagonal') {
-        shapeInfo = 'Rectangle by Diagonal';
+        state.push(L('title', [T('Rectangle by Diagonal')]));
       } else if (this.shapeType === 'rectangle_two_edges') {
-        shapeInfo = 'Rectangle by Two Edges';
+        state.push(L('title', [T('Rectangle by Two Edges')]));
       } else if (this.shapeType === 'rectangle_centerline') {
-        shapeInfo = 'Rectangle by Centerline';
-        lines.push('Width: ' + Math.round(this.shapeWidth) + 'pt');
+        state.push(L('title', [T('Rectangle by Centerline')]));
+        state.push(L('meta', [T('Width: ' + Math.round(this.shapeWidth) + 'pt')]));
       }
-      lines.push(shapeInfo);
       const aspectLabel = this.liveRectAspectLabel();
-      if (aspectLabel) lines.push('Aspect ' + aspectLabel);
+      if (aspectLabel) state.push(L('meta', [T('Aspect ' + aspectLabel)]));
       if (this.shapeType != null && this.shapeType.startsWith('circle_')) {
         const finishKey = this.shapeType === 'circle_diameter' ? 'N' : 'M';
-        instruction = `Press ${finishKey} to finish or W to stamp.`;
+        steps.push(
+          L('hint', [
+            T('Press '),
+            K(finishKey),
+            T(' to finish or '),
+            K('W'),
+            T(' to stamp.'),
+          ]),
+        );
       } else if (this.shapeType === 'rectangle_diagonal') {
-        instruction = 'Press I to finish or W to stamp.';
+        steps.push(
+          L('hint', [
+            T('Press '),
+            K('I'),
+            T(' to finish or '),
+            K('W'),
+            T(' to stamp.'),
+          ]),
+        );
       } else if (this.shapeType === 'rectangle_two_edges') {
         if (this.shapePt2 === null) {
-          instruction =
-            '1. Move mouse to adjust this first edge. \n2. Press U again to start the second edge';
+          steps.push(L('hint', [T('1. Move mouse to adjust this first edge.')]));
+          steps.push(
+            L('hint', [
+              T('2. Press '),
+              K('U'),
+              T(' again to start the second edge'),
+            ]),
+          );
         } else {
-          instruction =
-            '1. Move mouse to adjust the second edge.\n2. Press U to finish or W to stamp.';
+          steps.push(L('hint', [T('1. Move mouse to adjust the second edge.')]));
+          steps.push(
+            L('hint', [
+              T('2. Press '),
+              K('U'),
+              T(' to finish or '),
+              K('W'),
+              T(' to stamp.'),
+            ]),
+          );
         }
       } else if (this.shapeType === 'rectangle_centerline') {
-        instruction =
-          "1. Move mouse to adjust the rectangle. \n'[': thin width, ']': thicken width, \nY: finish, W: stamp, Q: cancel";
+        steps.push(L('hint', [T('1. Move mouse to adjust the rectangle.')]));
+        steps.push(
+          L('hint', [
+            K('['),
+            T(': thin width, '),
+            K(']'),
+            T(': thicken width,'),
+          ]),
+        );
+        steps.push(
+          L('hint', [
+            K('Y'),
+            T(': finish, '),
+            K('W'),
+            T(': stamp, '),
+            K('Q'),
+            T(': cancel'),
+          ]),
+        );
       }
     }
     if (this.isDrawingQuad) {
-      lines.push('Drawing Quadrilateral (' + this.quadPointCount + '/4)');
-      instruction = 'Press O to add next point. Q: cancel';
+      state.push(
+        L('title', [T('Drawing Quadrilateral (' + this.quadPointCount + '/4)')]),
+      );
+      steps.push(
+        L('hint', [
+          T('Press '),
+          K('O'),
+          T(' to add next point. '),
+          K('Q'),
+          T(': cancel'),
+        ]),
+      );
     }
-    if (instruction) {
-      lines.push(instruction);
-    }
-    if (this.statusText) {
-      this.statusText.content = lines.join('\n');
-      this.pinStatusText();
-    }
+    this.setStatusSchema({ state, steps });
   }
 }

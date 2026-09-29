@@ -3,6 +3,7 @@ import paper from 'paper';
 import { NibGliderEngine, type KeyActivity } from './engine/engine';
 import ControlPanel from './components/ControlPanel';
 import Keyboard from './components/Keyboard';
+import StatusOverlay from './components/StatusOverlay';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -43,6 +44,7 @@ export default function App() {
           tabIndex={0}
           ref={canvasRef}
         />
+        <StatusOverlay engine={engine} />
         <div className="corner-div">
           <div
             id="keyboardContainer"
