@@ -3336,11 +3336,6 @@ export class NibGliderEngine {
             T(' to Rotate'),
           ]),
         );
-        steps.push(
-          L('hint', [
-            T('Shift: 45° / big scale, Alt: 5° / fine scale'),
-          ]),
-        );
       }
     }
     if (this.isInDragLock) {
