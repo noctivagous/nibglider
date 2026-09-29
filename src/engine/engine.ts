@@ -96,6 +96,8 @@ export class NibGliderEngine {
   globalStrokeCap: StrokeCap = 'butt';
   globalStrokeJoin: StrokeJoin = 'miter';
   globalMiterLimit = 10;
+  globalDashLength = 0;
+  globalGapLength = 0;
   strokeEnabled = true;
   fillEnabled = false;
 
@@ -408,6 +410,45 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  private clampDash(n: number): number {
+    if (!Number.isFinite(n) || n < 0) return 0;
+    if (n > 80) return 80;
+    return n;
+  }
+
+  strokeDashArrayValue(dash = this.globalDashLength, gap = this.globalGapLength): number[] | null {
+    const d = this.clampDash(dash);
+    const g = this.clampDash(gap);
+    if (d <= 0 && g <= 0) return null;
+    return [d, g];
+  }
+
+  applyStrokeDash(item: AnyItem, dash?: number, gap?: number): void {
+    if (!item) return;
+    const arr = this.strokeDashArrayValue(
+      dash ?? this.globalDashLength,
+      gap ?? this.globalGapLength,
+    );
+    item.dashArray = arr ? arr.slice() : [];
+    item.strokeDashArray = arr;
+    item.strokeDasharray = arr;
+  }
+
+  setStrokeDash(dash: number, gap: number): void {
+    const d = this.clampDash(dash);
+    const g = this.clampDash(gap);
+    if (this.hasSelection()) {
+      this.applyToSelection((item) => {
+        this.applyStrokeDash(item, d, g);
+      });
+    } else {
+      this.globalDashLength = d;
+      this.globalGapLength = g;
+    }
+    this.updateCurrentDrawingStyles();
+    this.notify();
+  }
+
   setFillColor(colorVal: string): void {
     if (this.hasSelection()) {
       this.applyToSelection((item) => {
@@ -713,6 +754,7 @@ export class NibGliderEngine {
     item.strokeWidth = this.strokeEnabled ? this.globalStrokeWidth : 0;
     item.fillColor = this.fillEnabled ? this.globalFillColor : null;
     this.applyStrokeGeometry(item);
+    this.applyStrokeDash(item);
   }
 
   updateCurrentDrawingStyles(): void {
@@ -734,6 +776,7 @@ export class NibGliderEngine {
         this.applyStrokeGeometry(item);
       }
     });
+    if (this.path) this.applyStrokeDash(this.path);
     if (this.isDrawingShape) this.updateShapePreview();
   }
 
@@ -1186,6 +1229,8 @@ export class NibGliderEngine {
     strokeCap: StrokeCap;
     strokeJoin: StrokeJoin;
     miterLimit: number;
+    dashLength: number;
+    gapLength: number;
     fillOn: boolean;
     fillColor: string;
   } | null {
@@ -1203,6 +1248,13 @@ export class NibGliderEngine {
         : 'round';
     const w = Number(it.strokeWidth);
     const m = Number(it.miterLimit);
+    const da = it.dashArray || it.strokeDashArray || it.strokeDasharray;
+    let dashLength = 0;
+    let gapLength = 0;
+    if (Array.isArray(da) && da.length) {
+      dashLength = Number(da[0]) || 0;
+      gapLength = da.length > 1 ? Number(da[1]) || 0 : dashLength;
+    }
     return {
       strokeOn: sc !== null,
       strokeColor: sc ?? this.globalStrokeColor,
@@ -1210,6 +1262,8 @@ export class NibGliderEngine {
       strokeCap: cap,
       strokeJoin: join,
       miterLimit: Number.isFinite(m) && m >= 1 ? m : this.globalMiterLimit,
+      dashLength,
+      gapLength,
       fillOn: fc !== null,
       fillColor: fc ?? this.globalFillColor,
     };
@@ -1545,6 +1599,7 @@ export class NibGliderEngine {
         path.strokeColor = hasStroke ? this.globalStrokeColor : null;
         path.strokeWidth = hasStroke ? this.globalStrokeWidth * 0.7 : 0;
         path.fillColor = hasFill ? this.globalFillColor : null;
+        this.applyStrokeDash(path);
       }
       this.applyStrokeGeometry(path);
     }
@@ -1908,7 +1963,6 @@ export class NibGliderEngine {
       this.applyCurrentStyles(stamped);
       if (this.fillEnabled) stamped.closed = true;
       stamped.selected = false;
-      stamped.strokeDasharray = null;
       stamped.opacity = 1;
       scope.project.activeLayer.addChild(stamped);
     } else if (this.isDrawingShape) {
@@ -1947,7 +2001,6 @@ export class NibGliderEngine {
           const stampedFrame = framePreview.clone();
           this.applyCurrentStyles(stampedFrame);
           this.clearShadow(stampedFrame);
-          stampedFrame.strokeDasharray = null;
           stampedFrame.opacity = 1;
           stampedFrame.selected = false;
           scope.project.activeLayer.addChild(stampedFrame);
@@ -1955,12 +2008,12 @@ export class NibGliderEngine {
         if (this.previewInner) {
           const stampedInner = this.previewInner.clone();
           this.clearShadow(stampedInner);
-          stampedInner.strokeDasharray = null;
           stampedInner.opacity = 1;
           stampedInner.strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
           stampedInner.strokeWidth = this.strokeEnabled ? this.globalStrokeWidth * 0.7 : 0;
           stampedInner.fillColor = this.fillEnabled ? this.globalFillColor : null;
           this.applyStrokeGeometry(stampedInner);
+          this.applyStrokeDash(stampedInner);
           stampedInner.selected = false;
           scope.project.activeLayer.addChild(stampedInner);
         }
@@ -1970,7 +2023,6 @@ export class NibGliderEngine {
       this.applyCurrentStyles(stamped);
       stamped.closed = true;
       stamped.selected = false;
-      stamped.strokeDasharray = null;
       stamped.opacity = 1;
       scope.project.activeLayer.addChild(stamped);
     }
@@ -2016,6 +2068,7 @@ export class NibGliderEngine {
         fullySelected: true,
       });
       this.applyStrokeGeometry(this.path);
+      this.applyStrokeDash(this.path);
     } else {
       const newSegment = this.path.add(this.mousePt);
       if (newSegment) {
@@ -2039,6 +2092,7 @@ export class NibGliderEngine {
         fullySelected: true,
       });
       this.applyStrokeGeometry(this.path);
+      this.applyStrokeDash(this.path);
     } else {
       const newSegment = this.path.add(this.mousePt);
       if (newSegment && this.path.segments.length >= 3) {
@@ -2918,6 +2972,10 @@ export class NibGliderEngine {
       this.toggleGrid();
       return;
     }
+    // NB: K toggles the on-screen keyboard (KB toggle) via App's own
+    // keydown listener. While drawing a path K adjusts spline tension
+    // instead (handled above), mirroring how L resets tension mid-path
+    // and toggles the grid otherwise.
     if (keyLower === 'c') {
       this.thinStrokeWidth();
       if (this.selectedItems.length > 0) {

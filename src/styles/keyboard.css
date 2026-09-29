@@ -38,6 +38,23 @@ UNUSED:
     aspect-ratio: 23 / 4.6;
 }
 
+/* KB toggle (K key): slide the board down out of view and back up.
+   The board stays mounted so the motion animates both ways; only the
+   resize grip needs pointer-events cut while hidden (the keys
+   themselves already fall through to the canvas). */
+#keyboardContainer {
+    transition: transform 0.32s ease, opacity 0.32s ease;
+}
+
+#keyboardContainer.kb-hidden {
+    transform: translateY(calc(100% + 24px));
+    opacity: 0;
+}
+
+#keyboardContainer.kb-hidden .keyboard-resize {
+    pointer-events: none;
+}
+
 #keyboardContainer.no-spacebar #keyboardKeysContainer {
     grid-template-rows: repeat(3, 1fr);
     grid-template-areas:

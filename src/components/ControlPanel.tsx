@@ -328,7 +328,7 @@ function ShapeParamsFlyout({
 }: {
   open: boolean;
   triggerRef: RefObject<HTMLElement | null>;
-  tone: 'circle' | 'rect';
+  tone: 'circle' | 'rect' | 'stroke';
   title: string;
   preview: ReactNode;
   onClose: () => void;
@@ -445,6 +445,185 @@ const JOIN_OPTIONS: Array<{ value: StrokeJoin; label: string; icon: string }> = 
   { value: 'bevel', label: 'Bevel', icon: 'M3 12 L6 6 L12 6 L13 12' },
 ];
 
+const DASH_PRESETS: Array<{ id: string; label: string; dash: number; gap: number }> = [
+  { id: 'solid', label: 'Solid', dash: 0, gap: 0 },
+  { id: 'dash', label: 'Dash', dash: 8, gap: 6 },
+  { id: 'dot', label: 'Dot', dash: 1, gap: 4 },
+  { id: 'long', label: 'Long', dash: 16, gap: 8 },
+];
+
+function svgDashArray(
+  dash: number,
+  gap: number,
+  scale: number,
+): string | undefined {
+  if (dash <= 0 && gap <= 0) return undefined;
+  const d = Math.max(0.25, dash * scale);
+  const g = Math.max(0.25, gap * scale);
+  return `${d} ${g}`;
+}
+
+function StrokePreviewSvg({
+  className,
+  color,
+  width,
+  cap,
+  join,
+  miter,
+  dash,
+  gap,
+  strokeOn,
+  wide,
+}: {
+  className?: string;
+  color: string;
+  width: number;
+  cap: StrokeCap;
+  join: StrokeJoin;
+  miter: number;
+  dash: number;
+  gap: number;
+  strokeOn: boolean;
+  wide?: boolean;
+}) {
+  const sw = wide
+    ? Math.max(2.5, Math.min(12, width * 0.7))
+    : Math.max(2, Math.min(8, width * 0.45));
+  const scale = width > 0 ? sw / width : 0.45;
+  return (
+    <svg
+      className={className ?? 'stroke-preview'}
+      viewBox={wide ? '0 0 120 36' : '0 0 48 24'}
+      width={wide ? 240 : 56}
+      height={wide ? 48 : 28}
+      aria-hidden="true"
+    >
+      <path
+        d={wide ? 'M10 28 L40 10 L70 26 L110 8' : 'M6 18 L22 6 L42 18'}
+        fill="none"
+        stroke={strokeOn ? color : '#555'}
+        strokeWidth={sw}
+        strokeLinecap={cap}
+        strokeLinejoin={join}
+        strokeMiterlimit={miter}
+        strokeDasharray={svgDashArray(dash, gap, scale)}
+      />
+    </svg>
+  );
+}
+
+function StrokeParams({
+  engine,
+  strokeWidth,
+  dash,
+  gap,
+}: {
+  engine: NibGliderEngine;
+  strokeWidth: number;
+  dash: number;
+  gap: number;
+}) {
+  const presetId =
+    DASH_PRESETS.find((p) => p.dash === dash && p.gap === gap)?.id ?? null;
+  return (
+    <div className="panelParameters">
+      <span className="param-item">
+        <label htmlFor="strokeWidthSlider">Width</label>
+        <span className="flyout-width-row">
+          <input
+            type="range"
+            id="strokeWidthSlider"
+            min="1"
+            max="40"
+            step="0.5"
+            value={strokeWidth}
+            title="Stroke width"
+            aria-label="Stroke width"
+            onChange={(e) => engine.setStrokeWidth(parseFloat(e.target.value))}
+          />
+          <input
+            type="number"
+            id="strokeWidthInput"
+            className="stroke-width-input"
+            min={1}
+            max={40}
+            step={0.5}
+            value={strokeWidth}
+            aria-label="Stroke width in points"
+            onChange={(e) => {
+              const n = parseFloat(e.target.value);
+              if (Number.isFinite(n)) engine.setStrokeWidth(n);
+            }}
+          />
+        </span>
+      </span>
+      <span className="param-item">
+        <label>Dash</label>
+        <div className="seg-ctrl dash-presets" role="group" aria-label="Dash pattern">
+          {DASH_PRESETS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              title={opt.label}
+              className={presetId === opt.id ? 'active' : undefined}
+              onClick={() => engine.setStrokeDash(opt.dash, opt.gap)}
+            >
+              <svg viewBox="0 0 28 10" width="28" height="10" aria-hidden="true">
+                <path
+                  d="M2 5 H26"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="butt"
+                  strokeDasharray={
+                    opt.dash <= 0 && opt.gap <= 0
+                      ? undefined
+                      : `${Math.max(0.8, opt.dash * 0.55)} ${Math.max(0.8, opt.gap * 0.55)}`
+                  }
+                />
+              </svg>
+            </button>
+          ))}
+        </div>
+        <span className="flyout-dash-row">
+          <label htmlFor="strokeDashInput">
+            Dash
+            <input
+              type="number"
+              id="strokeDashInput"
+              className="stroke-width-input"
+              min={0}
+              max={80}
+              step={0.5}
+              value={dash}
+              onChange={(e) => {
+                const n = parseFloat(e.target.value);
+                if (Number.isFinite(n)) engine.setStrokeDash(n, gap);
+              }}
+            />
+          </label>
+          <label htmlFor="strokeGapInput">
+            Gap
+            <input
+              type="number"
+              id="strokeGapInput"
+              className="stroke-width-input"
+              min={0}
+              max={80}
+              step={0.5}
+              value={gap}
+              onChange={(e) => {
+                const n = parseFloat(e.target.value);
+                if (Number.isFinite(n)) engine.setStrokeDash(dash, n);
+              }}
+            />
+          </label>
+        </span>
+      </span>
+    </div>
+  );
+}
+
 const CIRCLE_SHAPE_LABELS: Record<CircleInnerShape, string> = {
   circle: 'Circle',
   semicircle: 'Semicircle',
@@ -472,11 +651,12 @@ const RECT_SHAPE_LABELS: Record<RectangleInnerShape, string> = {
 
 export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
-  const [paramsFlyout, setParamsFlyout] = useState<'circle' | 'rect' | null>(
-    null,
-  );
+  const [paramsFlyout, setParamsFlyout] = useState<
+    'circle' | 'rect' | 'stroke' | null
+  >(null);
   const circlePreviewRef = useRef<HTMLButtonElement>(null);
   const rectPreviewRef = useRef<HTMLButtonElement>(null);
+  const strokePreviewRef = useRef<HTMLButtonElement>(null);
   const closeFlyout = () => setParamsFlyout(null);
   // Selection state: when items are selected the Stroke/Fill panels
   // reflect the selection (first selected item) instead of the globals.
@@ -487,6 +667,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   const strokeCap = sel ? sel.strokeCap : engine.globalStrokeCap;
   const strokeJoin = sel ? sel.strokeJoin : engine.globalStrokeJoin;
   const miterLimit = sel ? sel.miterLimit : engine.globalMiterLimit;
+  const dashLength = sel ? sel.dashLength : engine.globalDashLength;
+  const gapLength = sel ? sel.gapLength : engine.globalGapLength;
   const fillOn = sel ? sel.fillOn : engine.fillEnabled;
   const fillColor = sel ? sel.fillColor : engine.globalFillColor;
 
@@ -525,38 +707,63 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             title="Stroke Color"
             onChange={(e) => engine.setStrokeColor(e.target.value)}
           />
-          <input
-            type="range"
-            id="strokeWidthSlider"
-            className="titlebar-slider"
-            min="1"
-            max="40"
-            step="0.5"
-            value={strokeWidth}
-            title="Stroke width"
-            aria-label="Stroke width"
-            onChange={(e) => engine.setStrokeWidth(parseFloat(e.target.value))}
-          />
           <span id="strokeWidthDisplay">
             {strokeWidth.toFixed(1)} pt
           </span>
-          <svg
-            className="stroke-preview"
-            viewBox="0 0 48 24"
-            width="56"
-            height="28"
-            aria-hidden="true"
+          <button
+            type="button"
+            ref={strokePreviewRef}
+            id="strokePreviewContainer"
+            className={
+              'stroke-preview-trigger' +
+              (paramsFlyout === 'stroke' ? ' open' : '')
+            }
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'stroke'}
+            aria-label="Stroke parameters"
+            title="Stroke parameters"
+            onClick={() =>
+              setParamsFlyout((v) => (v === 'stroke' ? null : 'stroke'))
+            }
           >
-            <path
-              d="M6 18 L22 6 L42 18"
-              fill="none"
-              stroke={strokeOn ? strokeColor : '#555'}
-              strokeWidth={Math.max(2, Math.min(8, strokeWidth * 0.45))}
-              strokeLinecap={strokeCap}
-              strokeLinejoin={strokeJoin}
-              strokeMiterlimit={miterLimit}
+            <StrokePreviewSvg
+              color={strokeColor}
+              width={strokeWidth}
+              cap={strokeCap}
+              join={strokeJoin}
+              miter={miterLimit}
+              dash={dashLength}
+              gap={gapLength}
+              strokeOn={strokeOn}
             />
-          </svg>
+          </button>
+          <ShapeParamsFlyout
+            open={paramsFlyout === 'stroke'}
+            triggerRef={strokePreviewRef}
+            tone="stroke"
+            title="Stroke"
+            preview={
+              <StrokePreviewSvg
+                color={strokeColor}
+                width={strokeWidth}
+                cap={strokeCap}
+                join={strokeJoin}
+                miter={miterLimit}
+                dash={dashLength}
+                gap={gapLength}
+                strokeOn={strokeOn}
+                wide
+              />
+            }
+            onClose={closeFlyout}
+          >
+            <StrokeParams
+              engine={engine}
+              strokeWidth={strokeWidth}
+              dash={dashLength}
+              gap={gapLength}
+            />
+          </ShapeParamsFlyout>
         </header>
       </section>
 

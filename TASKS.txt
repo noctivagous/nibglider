@@ -1,5 +1,5 @@
 
-[ ]  K key will slide keyboard down and up (KB toggle)
+[X]  K key will slide keyboard down and up (KB toggle)
 
 [ ] change the keys to S and D for Stroke and Fill toggle
 [ ] V for Pan (anchors at point, mouse move pans)

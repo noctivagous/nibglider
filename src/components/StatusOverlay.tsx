@@ -25,11 +25,10 @@ function Section({ lines }: { lines: StatusLine[] }) {
   return (
     <>
       {lines.map((l, i) => (
-        <tr key={i} className={`st-line-${l.kind}`}>
-          <td>
-            <Runs runs={l.runs} />
-          </td>
-        </tr>
+        <span key={i} className={`st-seg st-line-${l.kind}`}>
+          {i > 0 && <span className="st-sep" aria-hidden="true"> · </span>}
+          <Runs runs={l.runs} />
+        </span>
       ))}
     </>
   );
@@ -43,17 +42,13 @@ export default function StatusOverlay({ engine }: { engine: NibGliderEngine }) {
   if (schema.state.length === 0 && schema.steps.length === 0) return null;
   return (
     <div id="statusOverlay" aria-hidden="true">
-      <table className="status-table">
-        <tbody>
-          <Section lines={schema.state} />
-          {schema.state.length > 0 && schema.steps.length > 0 && (
-            <tr className="st-divider" aria-hidden="true">
-              <td />
-            </tr>
-          )}
-          <Section lines={schema.steps} />
-        </tbody>
-      </table>
+      <div className="status-table">
+        <Section lines={schema.state} />
+        {schema.state.length > 0 && schema.steps.length > 0 && (
+          <span className="st-sep st-divider" aria-hidden="true"> | </span>
+        )}
+        <Section lines={schema.steps} />
+      </div>
     </div>
   );
 }

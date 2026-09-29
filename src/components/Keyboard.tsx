@@ -172,7 +172,7 @@ const ROW3: KeyDef[] = [
   { id: 'KeyG', dataKey: 'g', className: 'keyboardkey gKey drawingButton enabledButton', transform: 'translate(-27%, 0%)', html: 'SPLINE<br/>POINT', bg: GLYPH.spline },
   { id: 'KeyH', dataKey: 'h', className: 'keyboardkey hKey ', transform: 'translate(-27%, 0%)', html: '' },
   { id: 'KeyJ', dataKey: 'j', className: 'keyboardkey jKey ', transform: 'translate(-27%, 0%)', html: '' },
-  { id: 'KeyK', dataKey: 'k', className: 'keyboardkey kKey ', transform: 'translate(-27%, 0%)', html: '' },
+  { id: 'KeyK', dataKey: 'k', className: 'keyboardkey kKey toggleButton enabledButton', transform: 'translate(-27%, 0%)', html: 'KB<br/>TOGGLE' },
   { id: 'KeyL', dataKey: 'l', className: 'keyboardkey lKey ', transform: 'translate(-27%, 0%)', html: 'GRID<br/>TOGGLE', bg: GLYPH.grid },
   { id: 'Semicolon', dataKey: ';', className: 'keyboardkey semicolonKey operationButton enabledButton', transform: 'translate(-27%, 0%)', html: 'ROTATE <span class="key-rotate-glyph">⟲</span>', bg: GLYPH.rotateCcw },
   { id: 'Quote', dataKey: "'", className: 'keyboardkey  singleQuoteKey operationButton enabledButton', transform: 'translate(-27%, 0%)', html: 'ROTATE <span class="key-rotate-glyph">⥁</span>', bg: GLYPH.rotateCw },
