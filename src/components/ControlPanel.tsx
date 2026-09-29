@@ -853,7 +853,6 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             />
             <span className="slider" />
           </label>
-          {sel && <span className="sel-badge">Selection</span>}
           <input
             type="color"
             id="strokeColorWell"
@@ -948,7 +947,6 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             />
             <span className="slider" />
           </label>
-          {sel && <span className="sel-badge">Selection</span>}
           <input
             type="color"
             id="fillColorWell"
@@ -1226,7 +1224,6 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             </TitleIcon>
             <span className="pane-title-text">Caps &amp; Joins</span></span>
           </span>
-          {sel && <span className="sel-badge">Selection</span>}
           <div className="stroke-row">
             <div className="stroke-seg">
               <span className="stroke-seg-label">Cap</span>
