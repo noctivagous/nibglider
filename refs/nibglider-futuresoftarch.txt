@@ -1,0 +1,109 @@
+OOP Design for NibGlider (Refactored from Procedural Globals)
+
+TOP-LEVEL: App Controller
+NibGliderApp
+  - Singleton/entrypoint: init(), setupPaper(), registerEventListeners()
+  - Composes all managers
+  - Global state orchestration (e.g., currentTool, isDrawing)
+  - updateTextContent() for HUD
+
+GUI & SYNC
+GUIManager
+  - Factory for UI elements (sliders, color wells, checkboxes, shape previews)
+  - Syncs UI <-> managers (e.g., StyleManager.strokeWidth <-> strokeWidthSlider)
+  - Uses vanilla JS/DOM (no jQuery); future: jsrender/jsviews for templates
+  - Methods: createStrokeControls(), updatePreviewBox(shapeParams), bindEvents()
+
+DOCUMENT & PERSISTENCE
+DocumentManager
+  - Manages canvas state: page bounds/orientation, zoom/pan
+  - Layers: activeLayer, layer stack (Paper.js integration)
+  - Save/export: JSON/SVG/PNG via paper.project.exportJSON()
+  - Composes UndoManager (CommandManager below)
+
+INPUT ROUTING
+InputManager
+  - Routes all events: keyboard, mouse, touch
+  - Sub: KeyboardManager (key mappings: 'F'=polyline, 'G'=spline, etc.)
+    - tension controls (J/K), end/stamp (A/W), toggles (R/T), cancel (Q/Esc)
+    - manages the onscreen keyboard and reflects its state
+    from keymaps.
+  - Sub: MouseManager (onMouseDown/Move/Up/Drag: hitTest, drag-lock, previews)
+  - Prevents defaults (Tab/Space), hitTestUnderCursor()
+
+SELECTION & MANIPULATION
+SelectionManager
+  - selectedItems array, addItemToSelection(), clearOutSelection()
+  - collectiveBounds/Center, scale/rotate (brackets/;/')
+  - Drag-lock (_isInDragLock, handleDragLock())
+  - Stamp (clone+addChild), delete (Backspace), glow/highlight
+  - Live rotate
+  - Live scale (from center, from point)
+
+STYLES & PROPERTIES
+StyleManager
+  - Globals: strokeEnabled/fillEnabled, globalStrokeColor/FillColor/Width
+  - changeStrokeWidth/Color(), thinStrokeWidth(), applyCurrentStyles(item)
+  - Syncs UI, updates previews/paths dynamically
+  - Constraints: min=1, max=maxStrokeWidth
+
+DRAWING CORE
+DrawingManager
+  - States: idle, isDrawingPath/Shape/Quad
+  - Globals: path, previewShape/Line/Rect/Inner/Path, mousePt, shapeType/StartPoint/Pt2
+  - Modes: cancelCurrentDrawingOperation(), endPathOrShape()
+  - Snapping/constraints (future: grid, guides)
+  - Links to DrawingToolManager, PreviewManager
+  - updateShapePreview(), updateCurrentDrawingStyles()
+
+TOOLS & SHAPES
+DrawingToolManager
+  - Current tool registry/switch (polyline, spline, circle_radius/diameter, rect_diagonal/2edges/centerline, quad)
+  - Delegates: polyLineKC(), splinePointKC(tension), circleKC(mode), rect*KC(), quadPointKC()
+  - ShapeFactory: createRegularPolygon(), createSupershape(), createInnerShape(type='circle/polygon/supershape/rect/triangle')
+    - Params: circleInnerShapeType/Params, splineTension, shapeGuideAngle, shapeWidth
+  - StampCurrentPreview(), endShapeAsStroke() (handles inner shapes)
+
+PREVIEWS & VISUALS
+PreviewManager
+  - Live previews: dashed lines/shapes (strokeDasharray), inner previews (createInnerShape('preview'))
+  - Cleanup: remove previews on cancel/end
+  - HUD: textItem1 (status: selected count, drawing mode, instructions)
+
+COMMANDS & UNDO/REDO
+CommandManager (wraps UndoManager)
+  - add(command: {undo(), redo(), groupId?})
+  - execute(action='undo/redo'), hasUndo/Redo(), clear()
+  - Shapes as commands: {redo: createShape+addChild, undo: removeItem}
+  - Groups: multi-segment paths/shapes
+  - Callback: updateTextContent(), SelectionManager refresh
+
+INTEGRATION HIERARCHY
+NibGliderApp
+├── GUIManager (UI sync)
+├── DocumentManager
+│   └── CommandManager (UndoManager)
+├── InputManager
+│   ├── KeyboardManager
+│   └── MouseManager
+├── SelectionManager
+├── StyleManager
+├── DrawingManager
+│   ├── DrawingToolManager
+│   │   └── ShapeFactory
+│   └── PreviewManager
+
+MIGRATION PLAN
+1. Extract globals to manager instances (e.g., StyleManager.strokeWidth)
+2. Wrap drawing ops in commands (e.g., path.add() -> PathCommand)
+3. Refactor key/mouse handlers to InputManager.route()
+4. Paper.js events -> MouseManager
+5. Test: preserve all keys (F/G/N/M/Y/U/I/O/W/Q/R/T/J/K/[ ] ; ' Space Tab Backspace Esc)
+
+FUTURE
+- LayersManager (in DocumentManager)
+- ExportManager (PNG/SVG/JSON)
+- ConstraintManager (snapping, guides)
+- ToolPalette (UI for tools)
+- Multi-page docs
+

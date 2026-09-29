@@ -1,0 +1,830 @@
+NIBGLIDER DESIGN DOCUMENT
+
+
+This document explains what NibGlider
+does.  For the AI reading this document
+that is generating code:
+the API provided here does not have to be 1:1
+in the code though it should be 
+close overall.  There will be some changes
+and adaptations to the real program.
+
+
+Introduction
+
+Nibglider is a vector-drawing program in which
+mouse clicks are replaced by keyboard key
+presses (called "key-clicks" here). 
+The mouse continues to steer the cursor 
+but its buttons are left unused by the program.  
+When key-clicks are implemented comprehensively, 
+with the whole of a vector-drawing program's
+interactions and tools redesigned, 
+an altogether elevated form of interaction with 
+desktop software drawing occurs.
+
+Polyline or Hard Corner Point Key As Base Reference
+
+Laying down a polyline or sharp points, 
+which is a series of line segments that, in the tool, can 
+close into a polygon shape or remain open,
+involves moving the mouse and pressing the F
+key-- the Polyline / Hard Corner key-- to deposit each sharp point.  
+After the first point is deposited, a line extends to the
+cursor of the mouse and adjusts its angle and length as the user
+moves the cursor and this continues until
+the user terminates the entire sequence of points
+with the A key ("End", the primary, finalizing termination key for all 
+drawing tools and interactive sequences).  
+The appearance of the line is the same as 
+the Polygon Lasso tool in Adobe Photoshop
+except that the lines drawn onscreen are used 1:1 
+to make vectors for the drawing and the mouse click
+has been replaced by the F key for this function.  
+
+What this does is eliminate the toolbar panel for
+using tools.  The user does not have to
+"switch to the Path tool" because it is implicitly
+activated as soon as the Polyline ('F') key is 
+pressed.  The Polyline / Sharp Point key, F, does belong to the Path tool
+but in this case there are other keys that are also associated 
+with the tool in order to deposit specific contours on the 
+live path, including Curve and Rounded Corner. So, while
+the user is making a path to make a shape, he may press the Polyline 
+/ Sharp Point key a few times and then use others like Curve before finalizing
+the shape with 'A' ("End").  Path keys are color-coded the 
+same on the keyboard to indicate they belong to the Path Tool.  
+In summary, instead of the user switching
+to a Path tool and clicking and dragging with the mouse to manipulate 
+a Bezier Path directly, he constructs a path in real time with different
+keys belonging to the Path tool while moving the mouse, 
+which means that real drawing occurs with the mouse 
+and keyboard used in alternation.
+
+We start by mentioning the Polyline / Hard Corner key because depositing
+one or more line segments with points like this 
+is the basis for most of the app's drawing tools.  It is the
+means for drawing for a myriad of shapes in
+different ways because, to start, a single line segment 
+is resized and oriented live in this setup and it can
+can be used as either the diameter or radius 
+of a circle.  As the line's length and angle are adjusted 
+the circle resizes accordingly.  This is the basis of the Circle Tool,
+which uses the diameter or radius to draw not just circles but 
+any shape that has a radius (e.g. a regular polygon) 
+and also a custom shape that has been made to use one. 
+As the shape is drawn it will sit inside the circle
+that would be drawn if the setting were just "circle". 
+The Circle Tool is one tool where an individual line segment assists 
+in sizing and making shapes from their object components. 
+
+For the Rectangle Tool too, the single line segment is utilized
+for some of its keys. It acts as the live diagonal of a rectangle on the 
+Rectangle By Diagonal key. Drawing a rectangle by its diagonal is configured
+by default to deposit an upright rectangle (since from a diagonal
+you don't have enough information to determine the rotation or the orientation
+of the rectangle).  When the line segment instead acts as the centerline 
+for the rectangle with the Rectangle By Centerline key, the centerline
+determines its length while the width is adjusted live from this centerline
+by the [ and ] keys used as stepper keys)  
+
+
+Rectangle by Two Edges (two line segements) key: 
+
+Another key  belonging to the Rectangle Tool is the Rectangle by Two Edges 
+key.  Whereas the previously mentioned keys use just one line segment, 
+it uses a total of two line segments or a total of three points.  
+So we say that they are like the Hard Corner key used for one segment
+whereas this key is as if using it for two segments and that allows
+laying down the bounds of a rectangle at any desired angle or size on
+the page.  The first line segment deposited is the actual first edge of the rectangle
+that will be deposited on the page.  The tool doesn't stop after
+the first segment this time: the second edge of the rectangle
+is inferred from the second line segment that the user lays down. 
+The tool does not actually use the line segment that the user lays
+down for the second edge because it is very unlikely to be exactly
+the edge. The second live edge is used in the following way: it is the 
+hypoteneuse of a right triangle and its base will determine the length of 
+the edge. To recap: the first edge establishes 
+the first edge of the rectangle after the second point is deposited and 
+then after that the length of the live line is used to adjust the perpendicular 
+edges' length.  So this is more than just two points, for a total of three, 
+with the third point not likely being colinear on a rectangle edge and is
+discarded after being utilized.
+
+There is a preview rectangle for "rectangle by two edges" and the second 
+key press of this key, the u key, will deposit the shape and terminate,
+just like pressing the a Circle Tool key a second time.  So, we see the live 
+resizing of the the rectangle until the third point is deposited.
+  
+
+A fourth key is Rectangle From Center
+and it uses a single segment, the inradius
+of a corner (by default) to draw the rectangle
+from its center.
+
+A fifth key is Rectangle from Interior Edges
+and it uses two segments starting from the center. 
+
+
+The Quadrilateral Tool
+Then, four line segments is the basis of the Quadrilateral Tool, 
+which will draw inside the bounds of a quadrilateral any configured shape, 
+including just a quadrilateral.  An example usage includes an ellipse,
+which allows depositing circles in perspective quickly.  Tools
+have extra settings, such as adhering a rectangle to a certain aspect
+ratio or constraining the Quadrilateral Tool to a trapezoid.
+#codebase  Implement the Quatrilateral key as O.  To begin with, the quadrilateral key will just draw a quadrilateral and later we will allow it to contain a shape. This means that it will be four poly line steps, with the fourth one finishing the quadrilateral.  Of course, a quadrilateral cannot have overlapping edges.  The three line segments should be previewed and when the fourth point is provided the quadrilateral is finished.
+
+
+When the shape tools are placed next to each other
+on the keyboard and they utilize the same termination
+keys, A for complete and Q for cancel, the keyboard
+as it is provided for typing is recast as a set of
+buttons. The user knows already how to place fingers on
+the home row and now the home row is for mechanical buttons.
+This ends up providing the user much greater fluidity and
+control over the drawing.  The program provides a live, 
+interactive drawing experience that effects the use of a mechanical
+device because the user's alternation of key presses and 
+mouse movement, whether to lay down points for paths and shapes
+or move vector objects, feels like working with a physical machine. 
+Not only shape-making uses the keyboard and mouse this way but
+also the selection and movement (dragging) of objects too.
+The user can select from a wide array of functions while moving 
+the mouse on the keyboard.
+
+As mentioned, during drawing of a path, the path tool is represented by 
+multiple keys on the keyboard, one for just
+depositing the hard corners for polylines (the Polyline key) another for round
+corners, and curves.  The user may start out laying down
+curves with keys and transition to different contours, 
+achieving a complex shape in a single sequence by using the different
+path tool keys while moving the mouse-- without ever
+editing any control points of a bezier path.  Because
+this is live drawing and the keyboard provides many
+buttons, in mid-drawing the user can adjust drawing parameters such
+as the stroke width of the path with the - and = keys.
+That is, with a brief amount of practice,
+the user is drawing graphics fluidly like on paper but with
+vector lines.  Because there are many keys available,
+an onscreen keyboard overlayed on top of the drawing canvas 
+provides a reference for the user.
+
+The Tab key is utilized as the Select key-click, the
+equivalent to the left mouse button + Shift key that
+selects objects, and this is much faster.  It reveals
+again how mouse button clicks slow down the user
+compared to placing them on the keyboard.
+There is also no need to press the mouse button
+to drag objects because after they are selected,
+they can be quickly placed into a drag-lock ("sticky drag") 
+when Spacebar is pressed.  The selected objects 
+are locked into a drag mode, moving in lock step the
+cursor, after the spacebar is pressed.  When
+the spacebar is pressed again, the objects are
+released. The combination of Tab as the Select key 
+and Spacebar as activation and release of drag-lock produces another fluid
+mechanical dynamic for the program and works with
+the other drawing features.  Keys are chosen for their
+location and size: objects are selected with the Tab key 
+because it is easy to hit without looking at the keyboard
+and the Spacebar is the same.  They are easily used in
+rapid alternation.
+
+Using The Tools As Frames
+
+We are using the shape that is normally produced 
+by any given shape tool key, whether it is a 
+rectangle or a circle, and placing a shape inside 
+it as the program settings have configured by the user. 
+We call this the frame for the keys/the tool. 
+If the rectangle frame is configured that it is the same
+as its shape name, such as a rectangle for the rectangle
+tool (the rectangle keys), then it will do that.  
+We can draw a supershape inside a circle, for example, 
+or a regular polygon, so we go ahead and use the circle as a frame.  
+That's why we call it the frame for these keys and
+this takes priority in how we program the app in the code.
+
+
+A drawing tool may have multiple keys on the 
+keyboards. There are two Circle tool buttons, B and N,
+B for radius and N for diameter.  This program,
+though, takes a different route and goes beyond
+just the shape of the tool. The
+Circle tool, like the Rectangle tool and
+Quad tool, are not designed just for their
+namesake shape.  They are actually drawing
+a container and the user chooses what
+is inside that container, such as either
+a circle or a spiral for the Circle tool.  
+These tools have a selected shape property 
+for the object that fits inside their shape 
+frame.  In this way, the Rectangle tool, if
+it is drawing a rectangle from two points
+of a diagonal, can be using a Grid shape
+for its frame.  These are the shapes provided
+for each of these specific shape tools, but 
+a user can also load a custom shape 
+from the drawing into the Loaded Object slot
+in the app user interface and if "Loaded Object"
+is selected as the selected shape for
+a given tool, such as Quad, that tools will
+draw it live inside the bounds of its frame.
+
+
+
+
+Placing Text on The Page
+
+The Text Tool can be activated with more than one
+key.  First we'll talk about the mode for entering
+and placing a single line of text on the canvas. 
+If an path is selected, that will be the baseline for the text, the text object
+will acquire it and typing will follow the path.  If a closed
+path is selected, like a circle, the text entered will
+flow inside it.  If no path or object is selected, as soon 
+as the key is pressed, a baseline extends
+from the cursor that can move around. The keyboard
+is set into "typing" meta mode that only takes
+characters for typing and adds them to the baseline. 
+The [ and ] keys, usually used for scaling selected
+objects in the drawing, change the font height.  The keys
+';' and ''' rotate.  Control + w stamps
+the text as it exists.  This time, the Escape key serves as termination
+of the "typing" meta mode and returns it to
+the "drawing" meta mode. For example, since the A key is 
+sending text characters for A and a, Escape or a key combo
+has to be made the termination characters.
+
+Text usually takes two forms: rectangle and a single line.
+
+
+The Stamp Key And Multiple Contexts for The Same Key
+
+While a shape is being dragged, pressing the
+stamp key, W, and this will stamp it.  The stamp
+key is an example of how the same keys are used in multiple
+contexts: during live drawing of a shape, such as a circle,
+the stamp key will stamp the shape as it has been sized
+and oriented but the live drawing state of the tool will 
+be unaffected.  Some tools use the scale by increment 
+([ and ]) and rotate by increment (; and ') keys and
+other keys to adjust parameters of the drawing.  Additionally,
+parameters like stroke width, controlled by the - and = keys,
+will apply to the current drawing tool in its live drawing
+state and also apply to a selected object.
+
+The Spacebar will act as the "Bounce" key during
+live drawing of shapes so that, for example,
+the drawing tool will complete the existing
+shape and then start a new shape at the terminating
+point.  So, if a circle is being drawn by its radius
+from the origin to the circumference, pressing the 
+Spacebar will complete it (deposit it onto the canvas) 
+and start a new circle from the point on the circumference.
+
+Tool Submodes
+
+Submodes of a tool relate to the tool itself.
+The Circle tool has a submode called "Ellipse mode"
+and this allows the user to reduce and expand
+the height of the circle.
+
+
+The Property Slot
+
+The Property Slot replaces the usual color fill / stroke
+control in vector-drawing programs.
+It is that if the Property Slot is set to "Fill",
+the key-click Derive [Property] 
+will take the fill property of the vector object
+underneath the cursor and load it into the Property 
+Slot in the GUI.  Other properties include stroke, 
+fill and stroke, etc.  The "Apply" key-click, which pairs with
+"Derive" will then apply the property in the Property Slot 
+to the object underneath the cursor.  
+
+
+ DrawingManager
+    drawingDimensions (pt units)
+    drawingLayers : {layer1: {visibility:visible, name: "name", etc.}, }
+    currentDrawingLayer: layer1
+    drawingBoardBackgroundColor: #cccccc
+
+    drawingState: [idle,isInDrawing]
+    drawingTools: [pathTool,rectangleTool,circleTool,quadTool, arcTool, stampTool]
+    currentDrawingTool : none    // reset after 
+    
+    Drawing Transformations
+    combinatoricMode: [none, union, subtraction, intersection]
+    repeatMode: conwaySymmetryNotation // replicates shapes live according to conway symmetry notation.
+    noise: // perlin noise settings for the paths of shapes and paths being deposited.
+
+    Snapping
+    For live drawing, these are snapping applied to the path,
+    so if angleSnapping is on and its angle is 15 degrees, then
+    lines being drawn will only be in 15 degree intervals.
+    If lengthSnapping is on and the setting is 10pt, the lines drawn
+    will only move back and forth in 10pt increments.
+    Alignment Snapping shows guidelines across the canvas from rectangles with edges
+    on the same x or y axes as the cursor, allowing for drawing on
+    that guideline or aligning drawing of a shape on the same x or y coordinate
+    of a nearby rectangle or other shape.  A rectangle rotated will show its edge 
+    guidelines too.  
+    When the background grid is visible, the snapping can be on its
+    intersections, guidelines, or both.
+    snappingModes: [angleSnapping, lengthSnapping, pointSnapping, pathSnapping, alignSnapping, gridSnapping]
+    snappingModesConfig: {angleSnapping: { snapAngleInDegrees:15, on:false },
+    { on:false },{  on:false },{ gridSnapping:10, on:false, snappingType:guidelines,
+    gridtype:rectangle }    
+    
+    
+    
+    Loaded Object
+    loadedObject - This is the object loaded by the user, which can be
+    selected by any tool's GUI panel for its frame contents.  So, for the Circle tool,
+    if the Circle tool's GUI panel has "Loaded Object" selected for the contents
+    of the circle, it will draw that object. 
+    
+    
+ DrawingTool - base class
+ 
+ For drawing tools, most interactive sequences
+ serve this purpose: When DrawingManager.drawingState == "idle",
+ the first press of a key associated with a tool, such as
+ the polylinePt key that is part of the Path Tool,
+ will activate the tool.
+ 
+
+  > PathTool
+    interactiveSequence: openEnded
+    inputKeyCommands: [polylinePt,softPt1, softPt2 roundCornerPt, arcPt]
+    depositActivities:
+    depositShape: []
+    
+    With the polyline key,
+    
+
+
+
+ ShapeTool - base class for shape-making tools
+
+ 
+    > CircleTool - serves as frame for shapes made with radius or diameter
+        interactiveSequence: twoPoint
+
+        inputCommands:[]
+        drawingToolMode: [radiusFromOrigin,radiusFromCircumference,diameter]
+        depositShapesList: [Circle,Supershape,RegularPolygon]
+        currentDepositShape: null // set when interactiveSequence is active 
+        depositShapesConfig: {
+        
+                }
+        previewIsFinalOutput:true
+
+        
+    > RectangleTool - serves as frame for shapes made with rectangle
+        depositShapesList: [Rectangle, Triangle:Right, Triangle:Regular]
+        currentDepositShape:
+        
+        // different ways for the tool to place a rectangle on the canvas,
+        // corresponding to specific keys:
+        drawingToolMode: diagonal:twoPoint, fromCenter:twoPoint, twoEdges:threePoint, 
+        centerLine:twoPoint
+        aspectRatio: none // square:1:1  
+        // - diagonal is a rectangle drawn from its diagonal, so the
+        // first point is stationary and the moving mouse point
+        // adjusts the rectangle during drawing until it is finalized with a 
+        // termination key (the key itself or another such as the END key).
+        //- from center is drawing the rectangle from its center point outwards
+        //This allows
+        //
+        
+    > ArcTool
+        interactiveSequence: threePoint
+        drawingToolMode: byThreePoints, radiusFromOrigin,radiusFromCircumference
+        // - three
+           
+    QuadTool
+        // Four points deposited make a quadrilateral
+        // that applies a transform to the obj.
+        // If it is a rectangle, it will be a quadrilateral
+        // shape.  If it is a circle, it will be an ellipse
+        // contained in the quadrilateral bounds.
+        // This allows for immediate depiction of perspective
+        // in 2D vector drawing.
+        
+        interactiveSequence: fourPoint
+        symmetryMode:none // horizontal, vertical for making trapezoids.
+
+
+    > StampTool
+        interactiveSequence: sequenceType:continuous
+        > Vector Texture Mode    
+            - A preset of grass that randomizes after
+            each deposit. GrassRandomizing
+            inherits from RandomizingParametricShapeComponent
+            
+        
+ 
+    > DabTool - deposits and then exits
+        interactiveSequence: onePoint
+        combinatoricMode:none // subtract, union, intersection
+    
+ 
+
+    
+ InteractiveSequence - base class
+ 
+    A drawing tool has one or more interactive sequences
+    corresponding to different drawingToolModes.  The interactive
+    sequence for making an arc by three points of the arc is different
+    than the one starting from the radius.
+ 
+    initWith(name:int e.g. twoPoint, nPointMax:int e.g. 2, tool:DrawingTool)
+    name: // e.g. twoPoint
+    tool:
+    state: isInSequence // idle, isInSequence
+    nPointCount: e.g. 1 // after the first point has been provided by
+    the user, calls interactiveSequenceDidFinish().
+    nPointMax: 2 // e.g. 2 for twoPoint null for requires termination
+    reset() // resets state to idle
+    
+    // callbacks - sent to tool, which follows protocol/interface:
+    
+    nPointDidChange() // sends 2D point info to tool
+    interactiveSequenceWasCanceled() //
+    interactiveSequenceDidFinish() //
+ 
+ 
+ InputManager
+ 
+ InputKeyCommand - e.g. the PathTool has multiple associated keys
+ and on keypress the InputManager sends the command to the DrawingManager which
+ sends it to the current tool.
+ 
+
+
+ NGPath
+    mode: bezier,b-spline,ngComposite, smoothed polyline
+    
+ NGPath
+    mode: bezier
+    
+    
+ Shape inherits from NGPath
+
+    setters and getters
+    
+        makeFrom
+            circumradius:
+            radius:
+            quadrilateral:
+            rect:
+            rect:withRotation:atVertex:
+        
+        get
+            circumRadius:
+            radius:
+        
+        
+    > Circle
+    
+    > Supershape
+    
+    > Polygon
+        constructors or modes:
+            Regular
+            
+    > Quadrilateral
+        > Rectangle
+            aspect ratio constraint
+        constructors or modes:
+            Trapezoid
+            Rhombus
+            Parallelogram
+            
+    > Triangle
+        constructors or modes:
+            Right
+            Regular
+            3-4-5
+            Golden
+            
+    > Arc    
+        constructors or modes:
+            Semicircle from line segment / rect
+            Quarter
+    
+    
+    > ParametricShapeComponent
+        Allows for parametrically-controlled
+        shapes components, including those that respond
+        to specific sizes.
+
+        SplitRectangle
+                - a dividing line produces two separate
+                shapes.  parameters: gap, angle, 
+                x position where x position > 0.0 && < 1.0.
+                
+        RoundedRectangle
+                - inherits from ParametricShapeComponent
+                so that it preserves the corner radius on size.
+        
+        > RepeatingShapeComponent subclass
+        
+            > RepeatingShapeSymmetryNotation 
+                conwaySymmetryNotation - replicates shapes live according to 
+                conway symmetry notation.
+        
+        example: GridOfShapes component
+        inherits from RepeatingShapeComponent < ParametricShapeComponent
+        repeats shape(s) on grid according to
+        the component's parameters.
+            > GridRepeat
+            > CircleRepeat
+            > 
+        
+        > RandomizingParametricShapeComponent subclass
+            example: depositing a grass vector
+            shape can be randomized each time.
+            randomizing rules.  An individual
+            shape can be randomized or a provided
+            group can.
+            
+           
+            
+    
+    
+THE KEYBOARD KEYS
+
+The onscreen keyboard changes to reflect the keys
+available when modifier keys are pressed. So,
+for example, the [ and ] keys will scale a selected 
+object.  Shift + [ or ] will scale with a higher
+factor and so when Shift is pressed, the label for
+the [ and ] keys will change to show "Scale Up Upper"
+instead of the baseline "Scale Up".  The same
+applies to rotate, which is ";" and "'", which rotates
+forward and backwards.  Normally these buttons 
+are for operating on selections, but they are are also 
+sometimes utilized by drawing tools, such as the Text Tool,
+in which the [ and ] keys scale down and scale up
+the font height of the typed text.
+
+To achieve
+this, there is a keyboardMappings.plist file
+in which each entry is prefixed with 
+Cocoa keyboard bindings shorthand in front of
+the keycode.  So, $30 is for Shift + A while
+just 30 is A.  Shift + Command + A is entered
+as $@30.
+
+    $ - Shift
+    @ - Command/Super
+    ^ - Control
+    ~ - Option/Alt
+
+Each entry also contains the function to
+call in the program when the key is pressed
+So, when a key is pressed whatever modifier
+combination it is converted to the shorthand
+just mentioned and the entry in the
+dictionary (.plist) file is found and then
+the provided function is called.
+
+
+
+STROKE VS. STROKED PATH (A PATH OUTLINE OF THE STROKE)
+
+The stroke of the path is differentiated
+from the path made from the stroke, which
+is an outline of the path stroked turned
+into a path.  This is useful for drawing
+strokes.
+    - A stroked path with both ends removed
+    for a rails or two-track result. 
+
+SHAPES
+
+RandomizingParametricShapeComponent
+
+COMBINATORICS MODES
+
+    Operation applied after
+    deposit: Union, Subtraction, Intersection
+
+
+TODO
+
+    instructions bar:
+    - instructions text moved to separate instructions bar (overlay)
+    at top.
+
+    document:
+        - document size (default: US Legal)
+        - document orientation (default:landscape)
+        - left and top ruler.
+        - manually implemented scrollbars for document
+
+- instant select + draglock
+
+- control + i : import image/file
+- control + e : export file
+
+- spline:
+    note: rather than individual spline points
+    for rounded points, it is sometimes better
+    to insert multiple points.
+
+    - soft 1 - S key - tension low
+    - sharp - F key - sharp point
+    - soft 2 - D key - tension high
+    - round corner - G - made from arc function (arc from tangent) 
+            with radius parameter default at 10pt
+    - arc by three points 
+    
+- panel gui boxes:
+ - tool panels:
+  - menu options displayed in grid, not single column list
+    - spline tool
+        - polyline mode: subsegments by ratio
+         - assists in drawing lines with proportion built in.
+         -  single segment has points added
+         according to the configured ratio.
+         2:1 will place a point two parts in from
+         the left with one part to the right. 1:2 will
+         do the reverse.  1:1:1 will make two additional
+         points on the segment for three equal segments.  
+         - optional mode with 10pt perpendicular extensions
+         for more visible divisions.
+         - optional mode: ruler mode.
+         
+    - rectangle tool
+        - shape: rectangle, trapezoid, parallelogram
+        - parametric shapes: 
+            - split rectangle
+                - a dividing line that produces two separate
+                shapes.  parameters: gap, angle, 
+                x position where x position > 0.0 && < 1.0.
+                
+        - constraints: ratio, ratio presets.
+    - circle tool
+        - shape: circle, regular polygon, supershape, supershape presets,
+        cross, star
+        - inradius or circumradius
+        - repeat ring - 
+            - ; and ' rotate shapes on the ring
+            - [ and ] and scale shapes on the ring
+            - - and = increase or decrease count
+            - property: increase-count-on-scale-up
+            ties repeat count to scale.
+            - repeat ring algorithm (geometric scaling, etc.)
+         - construction circles, just like construction rectangles
+         that have snappable lines and points for constructing
+         shapes.
+         - turtle sequence polar
+         - parametric circle shapes, randomizing parametric shapes
+            - built-in, can react to changes in radius and angle.
+            
+         
+    - stamp tool modes - stamp tool is a 
+        mode for stamping with different settings and submodes
+        - repeat mode: repeat loaded shape 
+        and control repeat with keyboard.
+        - horizontal line (snapping = 12pt)
+        - vertical line  (snapping = 12pt)
+        - diagonal at degrees altered by rotation ; and ' keys
+    
+    
+    - onscreen keyboard modes:
+    onscreen keyboard keys can act like loupedeck or streamdeck
+    and load properties for configuration as keyboard layouts.
+        - colorpicker
+            - enter color picker mode
+            and keyboard becomes filled color keys
+            - tint, tone, shade keys add corresponding
+            to the selected color.
+
+            - onscreen keyboard layout as color picker
+        - gradient picker 
+            - selection of gradients.
+        - clip art browsing on the onscreen keyboard keys,
+        with arrow keys flipping through pages.
+        - selecting an object can have two steps where
+        the object is selected and then the return key
+        finalizes the selection.  the escape key can
+        exit the onscreen keyboard mode.
+        - (possibility of bringing properties from the
+        config panels into the keyboard keys)
+    
+    - vector brush - like stamp except parametric and randomizable contents
+        - brush shapes : square, circle, regular polygon
+        - textures with randomization after each deposit. randomziation rule
+        for predictable.
+        - loaded object rule: shape distribution rule
+        - union, subtraction, intersection.
+    
+ - fill and stroke
+    - fill: color,pattern,shading
+    - stroke: dashing, line cap, line join, miter limit
+    - the r key toggles stroke. the t key toggles fill
+    - If the stroke is turned off, the fill cannot be off as well, but stroke can be off if fill is on and both can be on.
+    - The END key for A will just be called "END" and it will make the object according to the settings in the control panel for fill and stroke.  Live drawing will reflect the settings in the control panel for fill and stroke.
+    - convert the appearance of the checkboxes in the fill and stroke control panels to look like switches, with "on" and "off" in the tabs.
+
+- document view
+    - document sizes (A4, US Letter, etc.)
+    - magnification. 
+    
+    
+- draglock
+    - show instructions
+    - spacebar as instant select + drag-lock
+    if no other activity on canvas
+    
+- spline operations
+    - alt + j - add point on spline underneath cursor
+    - alt + k - drag-lock point underneath cursor
+    
+- selection
+    - ` (backquote) key: 
+        - polyline stroke select: overlaps line segments
+        - polyline fill-stroke select: overlaps fill of polyline
+        - select-click from either fill or stroke
+    - capslock key: selection from live rectangle
+    
+    
+- additional tool modes
+    - rectangle by two edges:
+        - first segment as diagonal, then edge as sizing adjustment.
+            - 1. diagonal of rectangle is established by the first
+            segment and there is a live rectangle made that is fixed
+            and it will be a portion or the whole of the final rectangle.
+              2. the third point that makes the second segment, 
+              as it is adjusted, will end up depositing 
+              the fixed rectangle only if it stays inside its bounds.  
+              if it goes outside of the interior of the rectangle, it will expand
+              the final rectangle to be deposited according to which excess it
+              produces.  so if it goes above the rectangle, it will expand
+              it upwards.  if it goes to the left, it will expand it leftward.
+              if to the left and up, it will expand it in both dimensions.
+              and then, as said, if it stays inside the rectange, then no change
+              occurs on the original fixed rectangle. 
+        - edges as interior: the same interaction as the "rectangle by two exterior edges", 
+        but the rectangle that is made is this time interior edges-- is one quadrant,
+        and so the deposited rectangle is 4x the result of the rectangle.
+       
+
+Sequence:
+
+We said that drawing tools have available shapes, such as the CircleTool that
+exists to deposit the specified innerShape, which can be Circle or others like
+Regular Polygon.  However, even the PathTool can 
+deposit shapes using the path because it can have a mode where
+a shape or shapes repeat along the path.
+The available deposit shapes for each drawingtool subclass should be defined 
+in a method of the baseclass and overridden by each subclass so that each
+subclass has a default selected object.  
+Each drawingtool subclass carries its own config panel controls, 
+including the html to add to the config panel and binding of values. 
+On startup, the drawingmanager should query each drawing tool for its gui controls 
+and insert it into the config panel but the drawingtool subclass
+has bound the values.   This way the DrawingManager does not get involved
+in the complexity of the variety of inner shapes that all of the drawing tools
+can configure.  Each drawing tool carries that itself.  But the StyleManager
+does deal with the other, universal properties such as stroke, lineWidth,
+and fill.  Properties and behavior specific to a tool are carried by
+that tool.  In the object dictionary for each drawing tool there is
+"loadedObject" which stands for the Loaded Object config panel
+control, which is the object manually loaded by the user.  That config fieldset
+is produced by the StyleManager since it is universal.
+The config panel fieldsets should be constructed out of the code provided
+by the various classes on startup.
+
+For the controls in the config panel, if there is no
+selection then it shows the current style properties.
+When there is a selection, these config panels change
+and load the style properties from the selection.
+Then, changing them changes the properties on the
+objects in the selection and not the current style
+properties used by the drawing tools.  So, when
+the program is idle and there is no selection,
+it shows the properties for what will be drawn
+by the tools, the current style properties.
+When there is a selection, it shows the properties
+of that selection.
+
+
+
+USEFUL REFERENCES
+
+https://mathworld.wolfram.com/Circumradius.html
+
+
+
+
+
+

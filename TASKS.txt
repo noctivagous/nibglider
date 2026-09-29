@@ -1,0 +1,37 @@
+[ ] line snapping
+[ ] point snapping, including line intersections.
+   midpoint snappingg
+
+[ ] stroke type: uniform, oval, chisel
+[ ] stroke path
+
+----
+
+gui-ref/
+[ ] - Make demo page (vite) for complete library viewer and demo of
+dark pro gui components for pro apps.  It should have grid layout
+components where the AI/user snaps to (configurable) 
+10pt baseline grid x and y.  panes, panels, windows, dialog boxes,
+buttons, tables.
+
+
+----
+[ ] - i18n and physical layouts from keypilot
+[ ] - layout editor from keypilot
+[ ] - click key to open settings (from keypilot).
+[ ] - tooltip modes: show on hover, show on click
+[ ] - middle scroll zooms in and out
+[ ] - pan line - like keypilot's scroll line but for panning. assigned to s.
+[ ] - all icons from Floating Marker in bg of keys.
+
+[ ] - 
+
+[ ] - design widgets in page.  - elements open up gui widgets in page
+example: a print design grid widget.  on the drawing board/canvas it will show its GUI and controls,
+not in an inspector panel.  it will provide different interactive behaviors.  
+for example, a construction grid, polar or rectangular, would be configurable and
+allow the user to draw on it.  for the widgets that configure vector shapes, a "finalize" would
+end it.  it allows for, also, mini apps inside the drawing board like vector grid dot paint
+that are then finalized into their vector objects.  If they are not, they will be exported as vector.
+It will allow for embedded parametric components in the drawing space that, if the user
+chooses, can be vectorized or rasterized.  It will allow embedding 3D objects in a drawing.

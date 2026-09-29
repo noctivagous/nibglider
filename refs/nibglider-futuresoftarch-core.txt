@@ -1,0 +1,46 @@
+OOP design
+
+state-centric for the app, selection of objects, and its drawing tools.
+
+
+NibGliderApp - the app controller.
+    - sets up all of the managers
+    - sets up the paperjs canvas
+     
+GUIManager - factory functions for making GUI and syncing.
+    - jqueryui for GUI
+    - jsrender/jsviews for templates and value syncing.
+
+InputEventManager
+    - first place where input events occur and are routed.
+    - routes keyUp and keyDown to the KeyboardManager
+
+KeyboardManager
+    - when keys and key combos are pressed, updates the onscreen keyboard
+    and looks up the corresponding function from the functionRegistry
+    and calls it.  holds the functionRegistry and keyMappingsObject
+    
+DrawingManager
+    - current document page dimensions and orientation
+    - manages layers
+    - save/export functions
+    - manages overall interactive states of the drawing (idle, isInDrawing,selection,etc.) 
+    links to DrawingToolManager.
+    snapping.
+    
+StyleManager
+    - Manages drawing properties of the tools and the selected objects.
+
+AlignmentManager
+    - manages snapping: path, point, angle, length.
+    - manages display of grid
+
+DrawingToolManager
+    - manages the state of the current drawing tool
+    - links to DrawingManager
+
+DrawingTool
+    - base class for drawing tools: RectangleTool
+    - drawing keys belong to a drawingTool subclass
+    
+
