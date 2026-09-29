@@ -16,7 +16,7 @@ because in the future the user will click on the keys to configure them.
 
 [ ] make scale and rotate keys work on the hovered shape without shape selection needed.
 [ ] make it so that arrow keys nudge a selection of shapes.  shift + arrow keys longer dist.  opt/alt + arrow keys  moves shorter dist
-[ ] shift + rotate keys : 45 deg rotate, bigger scaling factor for scale keys, opt/alt + rotate keys : 5 deg rotate, smaller scaling factor for scale
+[X] shift + rotate keys : 45 deg rotate, shift + scaling keys : bigger scaling factor for scale keys, opt/alt + rotate keys : 5 deg rotate, opt/alt + scaling keys : smaller scaling factor for scale
 
 [ ] circle keys:  [inradius | circumradius]
 

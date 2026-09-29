@@ -91,6 +91,15 @@ export class NibGliderEngine {
   lastCenterlineWidth = 80;
   splineTensionDefault = 0.4;
   splineTension = 0.4;
+
+  // --- Path continuation gestures (all on by default) ---
+  // END near the active path's own start closes onto it; starting a
+  // stroke on an open path's end continues that path; END near another
+  // open path's endpoint joins the two paths.
+  closeShapeOnEndNearStart = true;
+  continuePathFromEndpoint = true;
+  joinPathsOnEndNearEndpoint = true;
+  endpointSnapTolerance = 12;
   globalStrokeColor = '#107cff';
   globalFillColor = '#000000';
   globalStrokeCap: StrokeCap = 'butt';
@@ -158,6 +167,10 @@ export class NibGliderEngine {
   polygonRadiusMode = 'inradius';
 
   // --- Drawing mode / shape state (drawingToolsAndFunctions.js) ---
+  // continuedPathBaseCount is the segment count of an adopted existing
+  // path (null while drawing a brand-new path); cancel strips only the
+  // newly added points so the original shape survives.
+  continuedPathBaseCount: number | null = null;
   isDrawingPath = false;
   isDrawingShape = false;
   isDrawingQuad = false;
@@ -1143,6 +1156,114 @@ export class NibGliderEngine {
     }
   }
 
+  // Screen-space endpoint tolerance in project units.
+  private endpointTolerance(): number {
+    return this.endpointSnapTolerance / (this.scope.view.zoom || 1);
+  }
+
+  private drawingIgnoredItems(): Set<AnyItem> {
+    return new Set([
+      this.path,
+      this.previewPath,
+      this.previewShape,
+      this.previewRect,
+      this.previewLine,
+      this.previewInner,
+      this.quadPath,
+      this.pathSnapCursor,
+      this.gridCursor,
+    ]);
+  }
+
+  // Nearest endpoint (first/last segment point) of an existing open path
+  // within tolerance. Ties prefer the drawing end.
+  findOpenEndpointNear(
+    pt: AnyItem,
+  ): { path: AnyItem; atStart: boolean } | null {
+    const scope = this.scope;
+    if (!pt) return null;
+    const ignored = this.drawingIgnoredItems();
+    const tol = this.endpointTolerance();
+    let best: { path: AnyItem; atStart: boolean } | null = null;
+    let bestDist = tol;
+    const items: AnyItem[] = scope.project.getItems({
+      match: (item: AnyItem) => {
+        if (!item || ignored.has(item)) return false;
+        if (!item.segments || item.segments.length === 0) return false;
+        if (item.closed) return false;
+        return true;
+      },
+    });
+    for (const item of items) {
+      const segs = item.segments;
+      const dFirst = segs[0].point.getDistance(pt);
+      const dLast = segs[segs.length - 1].point.getDistance(pt);
+      if (dLast <= bestDist) {
+        bestDist = dLast;
+        best = { path: item, atStart: false };
+      }
+      if (dFirst < bestDist) {
+        bestDist = dFirst;
+        best = { path: item, atStart: true };
+      }
+    }
+    return best;
+  }
+
+  // Start a stroke on an open path's drawing end: adopt that path so the
+  // new points continue the shape instead of starting a separate one.
+  // The adopting keypress adds no point; the endpoint is already current.
+  private tryContinuePath(): boolean {
+    if (!this.continuePathFromEndpoint || !this.mousePt) return false;
+    const hit = this.findOpenEndpointNear(this.mousePt);
+    if (!hit || hit.atStart) return false;
+    const segs = hit.path.segments;
+    this.path = hit.path;
+    this.continuedPathBaseCount = segs.length;
+    this.mousePt = segs[segs.length - 1].point.clone();
+    const idx = this.selectedItems.indexOf(hit.path);
+    if (idx !== -1) this.selectedItems.splice(idx, 1);
+    if (this.isDrawingPath === false) this.isDrawingPath = true;
+    return true;
+  }
+
+  private cloneSegmentInto(path: AnyItem, seg: AnyItem): void {
+    const added = path.add(seg.point.clone());
+    if (!added) return;
+    if (seg.handleIn) added.handleIn = seg.handleIn.clone();
+    if (seg.handleOut) added.handleOut = seg.handleOut.clone();
+  }
+
+  // END on another open path's endpoint: connect the drawing to it. The
+  // cursor point snaps onto the target endpoint for a clean joint, and
+  // the duplicate joint point is skipped so no zero-length segment forms.
+  // Ending on the target's end appends our points to it (it keeps its own
+  // styles); ending on its start appends its points to our drawing, which
+  // is then finalized with the current styles.
+  private joinDrawingInto(target: AnyItem, atStart: boolean): void {
+    const ours = this.path.segments;
+    const tsegs = target.segments;
+    const joint = atStart
+      ? tsegs[0].point
+      : tsegs[tsegs.length - 1].point;
+    ours[ours.length - 1].point = joint.clone();
+    if (atStart) {
+      for (let i = 1; i < tsegs.length; i++) {
+        this.cloneSegmentInto(this.path, tsegs[i]);
+      }
+      const idx = this.selectedItems.indexOf(target);
+      if (idx !== -1) this.selectedItems.splice(idx, 1);
+      target.remove();
+      this.applyCurrentStyles(this.path);
+      if (this.fillEnabled) this.path.closed = true;
+    } else {
+      for (let i = 0; i < ours.length - 1; i++) {
+        this.cloneSegmentInto(target, ours[i]);
+      }
+      this.path = target;
+    }
+  }
+
   // --- Selection (selectionFunctions.js + NibGliderApp.js) ---
   addItemToSelection(item: AnyItem): void {
     if (item === this.pathSnapCursor || item === this.gridCursor) return;
@@ -1285,9 +1406,18 @@ export class NibGliderEngine {
       this.previewInner = null;
     }
     if (this.isDrawingPath && this.path) {
-      this.path.remove();
+      if (this.continuedPathBaseCount != null) {
+        // Continuing an existing shape: strip only the newly added points
+        // (including the live preview) so the original shape survives.
+        while (this.path.segments.length > this.continuedPathBaseCount) {
+          this.path.removeSegment(this.path.segments.length - 1);
+        }
+      } else {
+        this.path.remove();
+      }
       this.path = null;
       this.isDrawingPath = false;
+      this.continuedPathBaseCount = null;
     }
     if (this.isDrawingShape) {
       if (this.previewShape) this.previewShape.remove();
@@ -2032,12 +2162,43 @@ export class NibGliderEngine {
   endPathOrShape(): void {
     const scope = this.scope;
     if (this.isDrawingPath && this.path) {
-      this.applyCurrentStyles(this.path);
-      if (this.fillEnabled) this.path.closed = true;
+      const segs = this.path.segments;
+      const first = segs.length > 0 ? segs[0].point : null;
+      const tol = this.endpointTolerance();
+      if (
+        this.closeShapeOnEndNearStart &&
+        first &&
+        segs.length >= 3 &&
+        this.mousePt &&
+        this.mousePt.getDistance(first) <= tol
+      ) {
+        // END on the shape's own start: the start point becomes the last
+        // point and the shape closes (straight, like END).
+        this.path.removeSegment(segs.length - 1);
+        this.path.add(first.clone());
+        this.applyCurrentStyles(this.path);
+        this.path.closed = true;
+      } else if (this.joinPathsOnEndNearEndpoint && this.mousePt) {
+        const hit = this.findOpenEndpointNear(this.mousePt);
+        if (hit) {
+          this.joinDrawingInto(hit.path, hit.atStart);
+        } else {
+          this.applyCurrentStyles(this.path);
+          if (this.fillEnabled) this.path.closed = true;
+        }
+      } else {
+        this.applyCurrentStyles(this.path);
+        if (this.fillEnabled) this.path.closed = true;
+      }
       this.path.selected = false;
-      scope.project.activeLayer.addChild(this.path);
+      // A continued path already lives in the layer; re-adding would only
+      // reorder it to the front.
+      if (this.path.parent == null) {
+        scope.project.activeLayer.addChild(this.path);
+      }
       this.path = null;
       this.isDrawingPath = false;
+      this.continuedPathBaseCount = null;
     } else if (this.isDrawingShape) {
       this.endShapeAsStroke();
       if (this.previewInner) {
@@ -2061,6 +2222,11 @@ export class NibGliderEngine {
     const scope = this.scope;
     if (!this.mousePt) return;
     if (!this.path) {
+      if (this.tryContinuePath()) {
+        this.updateTextContent();
+        this.notify();
+        return;
+      }
       this.path = new scope.Path({
         segments: [this.mousePt],
         strokeColor: this.globalStrokeColor,
@@ -2085,6 +2251,11 @@ export class NibGliderEngine {
     const scope = this.scope;
     if (!this.mousePt) return;
     if (!this.path) {
+      if (this.tryContinuePath()) {
+        this.updateTextContent();
+        this.notify();
+        return;
+      }
       this.path = new scope.Path({
         segments: [this.mousePt],
         strokeColor: this.globalStrokeColor,
@@ -2121,18 +2292,61 @@ export class NibGliderEngine {
     }
   }
 
+  // A joint drawn with the sharp key carries no handles; a spline joint
+  // does. The final segment inherits the character of the joint it leaves.
+  private jointIsSpline(seg: AnyItem): boolean {
+    if (!seg) return false;
+    const hi = seg.handleIn;
+    const ho = seg.handleOut;
+    return (
+      (!!hi && (hi.x !== 0 || hi.y !== 0)) ||
+      (!!ho && (ho.x !== 0 || ho.y !== 0))
+    );
+  }
+
   // Complete Shape (R key): finish a path being drawn by committing the
-  // last segment from where the mouse is as a spline point, then ending
-  // the path. The trailing live-preview segment is replaced in place so
-  // no zero-length stub is left behind.
+  // last segment from where the mouse is, then closing the shape. The
+  // trailing live-preview segment is replaced in place so no zero-length
+  // stub is left behind. The final segment is a spline only when the
+  // joint it leaves is one (all-sharp paths stay all-straight); otherwise
+  // it is committed sharp, exactly like the sharp key. When the mouse is
+  // near the first point, the final point lands exactly on it.
   completeShapeWithSpline(): void {
+    const scope = this.scope;
     if (!this.isDrawingPath || !this.path || !this.mousePt) return;
     if (this.path.segments.length > 1) {
       this.path.removeSegment(this.path.segments.length - 1);
     }
-    const newSegment = this.path.add(this.mousePt);
-    this.smoothLastSplineJoint(newSegment);
-    this.endPathOrShape();
+    let endPt = this.mousePt;
+    const first =
+      this.path.segments.length > 0 ? this.path.segments[0].point : null;
+    if (first) {
+      if (endPt.getDistance(first) <= this.endpointTolerance()) {
+        endPt = first.clone();
+      }
+    }
+    const newSegment = this.path.add(endPt);
+    const joint =
+      this.path.segments.length >= 2
+        ? this.path.segments[this.path.segments.length - 2]
+        : null;
+    if (this.jointIsSpline(joint)) {
+      this.smoothLastSplineJoint(newSegment);
+    } else if (newSegment) {
+      newSegment.handleIn = new scope.Point(0, 0);
+      newSegment.handleOut = new scope.Point(0, 0);
+    }
+    this.applyCurrentStyles(this.path);
+    this.path.closed = true;
+    this.path.selected = false;
+    if (this.path.parent == null) {
+      scope.project.activeLayer.addChild(this.path);
+    }
+    this.path = null;
+    this.isDrawingPath = false;
+    this.continuedPathBaseCount = null;
+    this.updateTextContent();
+    this.notify();
   }
 
   circleKC(mode: string): void {
@@ -2878,9 +3092,15 @@ export class NibGliderEngine {
       return;
     }
     const keyLower = event.key.toLowerCase();
-    if (event.key === '[' || event.key === ']') {
+    // Match by physical code: with Shift/Alt held, event.key reports the
+    // shifted character ('{', ':', ...) instead of '[', ';', etc.
+    const isBracketDown =
+      event.code === 'BracketLeft' || event.key === '[';
+    const isBracketUp =
+      event.code === 'BracketRight' || event.key === ']';
+    if (isBracketDown || isBracketUp) {
       if (this.isDrawingShape && this.shapeType === 'rectangle_centerline') {
-        if (event.key === '[') {
+        if (isBracketDown) {
           this.shapeWidth = Math.max(1, (this.shapeWidth || this.globalStrokeWidth * 2) - 2);
         } else {
           this.shapeWidth = Math.min(this.maxShapeWidth, (this.shapeWidth || this.globalStrokeWidth * 2) + 2);
@@ -2895,7 +3115,7 @@ export class NibGliderEngine {
         const down = event.shiftKey ? 0.8 : event.altKey ? 0.98 : 0.9;
         const up = event.shiftKey ? 1.25 : event.altKey ? 1.02 : 1.1;
         for (let i = 0; i < this.selectedItems.length; i++) {
-          if (event.key === '[') {
+          if (isBracketDown) {
             this.selectedItems[i].scale(down, center);
           } else {
             this.selectedItems[i].scale(up, center);
@@ -2904,12 +3124,16 @@ export class NibGliderEngine {
         return;
       }
     }
-    if (event.key === ';' || event.key === "'") {
+    const isRotateDown =
+      event.code === 'Semicolon' || event.key === ';';
+    const isRotateUp =
+      event.code === 'Quote' || event.key === "'";
+    if (isRotateDown || isRotateUp) {
       if (this.selectedItems.length > 0) {
         const center = this.collectiveCenter(this.selectedItems);
         // Shift = 45°, Alt = 5°, otherwise 10°.
         const step = event.shiftKey ? 45 : event.altKey ? 5 : 10;
-        const angle = event.key === ';' ? -step : step;
+        const angle = isRotateDown ? -step : step;
         for (let i = 0; i < this.selectedItems.length; i++) {
           this.selectedItems[i].rotate(angle, center);
         }
@@ -3112,6 +3336,11 @@ export class NibGliderEngine {
             T(' to Rotate'),
           ]),
         );
+        steps.push(
+          L('hint', [
+            T('Shift: 45° / big scale, Alt: 5° / fine scale'),
+          ]),
+        );
       }
     }
     if (this.isInDragLock) {
@@ -3153,6 +3382,9 @@ export class NibGliderEngine {
       );
       steps.push(
         L('hint', [K('A'), T(' = end, '), K('J'), T('/'), K('K'), T('/'), K('/'), T(' = adjust tension')]),
+      );
+      steps.push(
+        L('hint', [T('A near own start closes · A near a path end joins it')]),
       );
     }
     if (this.isDrawingShape) {
