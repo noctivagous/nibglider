@@ -261,6 +261,11 @@ export default function App() {
               showSpacebar={showSpacebar}
               width={keyboardWidth}
               onWidthChange={setKeyboardWidth}
+              onStatusToggle={() => {
+                // Same guard as the physical L key: no toggling mid-path.
+                if (engine.isDrawingPath) return;
+                setStatusVisible((v) => !v);
+              }}
             />
           </div>
         </div>

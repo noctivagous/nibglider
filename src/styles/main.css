@@ -368,7 +368,7 @@ article {
   z-index: 999;
 }
 
-/* Top overlay stack (J toggles the panel, / toggles the status box).
+/* Top overlay stack (J toggles the panel, L toggles the status box).
    One absolute column over the PaperJS canvas: the interactive
    controls bar on top, the display-only status box stacked beneath it.
    Both stay mounted so the show/hide motion animates both ways. The

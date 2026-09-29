@@ -40,8 +40,9 @@ UNUSED:
 
 /* KB toggle (K key): slide the board down out of view and back up.
    The board stays mounted so the motion animates both ways; only the
-   resize grip needs pointer-events cut while hidden (the keys
-   themselves already fall through to the canvas). */
+   resize grip and the clickable STATUS TOGGLE keycap need
+   pointer-events cut while hidden (the rest of the keys already fall
+   through to the canvas). */
 #keyboardContainer {
     transition: transform 0.32s ease, opacity 0.32s ease;
 }
@@ -626,6 +627,17 @@ color:rgb(210, 115, 115) !important;
     text-shadow: none;
     /* Display-only overlay: let mouse events fall through to the canvas
        so live drawing previews keep tracking under the keyboard. */
+    pointer-events: none;
+}
+
+/* The STATUS TOGGLE keycap is the one clickable exception: it fires the
+   same toggle as the physical L key. Cut it again while the board itself
+   is slid out of view so a hidden keycap can't be hit. */
+#keyboardKeysContainer button.statusToggle {
+    pointer-events: auto;
+}
+
+#keyboardContainer.kb-hidden #keyboardKeysContainer button.statusToggle {
     pointer-events: none;
 }
 

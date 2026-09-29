@@ -183,7 +183,7 @@ const ROW3: KeyDef[] = [
   { id: 'KeyH', dataKey: 'h', className: 'keyboardkey hKey ', transform: 'translate(-27%, 0%)', html: '' },
   { id: 'KeyJ', dataKey: 'j', className: 'keyboardkey jKey toggleButton enabledButton overlayToggle', transform: 'translate(-27%, 0%)', html: 'PANEL<br/>TOGGLE' },
   { id: 'KeyK', dataKey: 'k', className: 'keyboardkey kKey toggleButton enabledButton overlayToggle', transform: 'translate(-27%, 0%)', html: 'KB<br/>TOGGLE' },
-  { id: 'KeyL', dataKey: 'l', className: 'keyboardkey lKey toggleButton enabledButton overlayToggle', transform: 'translate(-27%, 0%)', html: 'STATUS<br/>TOGGLE', bg: GLYPH.status },
+  { id: 'KeyL', dataKey: 'l', className: 'keyboardkey lKey toggleButton enabledButton overlayToggle statusToggle', transform: 'translate(-27%, 0%)', html: 'STATUS<br/>TOGGLE', bg: GLYPH.status },
   { id: 'Semicolon', dataKey: ';', className: 'keyboardkey semicolonKey operationButton enabledButton', transform: 'translate(-27%, 0%)', html: 'ROTATE -', bg: GLYPH.rotateCcw },
   { id: 'Quote', dataKey: "'", className: 'keyboardkey  singleQuoteKey operationButton enabledButton', transform: 'translate(-27%, 0%)', html: 'ROTATE +', bg: GLYPH.rotateCw },
   { id: 'Enter', dataKey: 'return', className: 'keyboardkey returnKey OtherKey hidden', transform: 'translate(-5%, 0%)', html: 'RETURN' },
@@ -288,7 +288,15 @@ function ResizeHandle({
   );
 }
 
-function KeyButton({ def, active }: { def: KeyDef; active: boolean }) {
+function KeyButton({
+  def,
+  active,
+  onClick,
+}: {
+  def: KeyDef;
+  active: boolean;
+  onClick?: () => void;
+}) {
   return (
     <button
       tabIndex={-1}
@@ -296,6 +304,7 @@ function KeyButton({ def, active }: { def: KeyDef; active: boolean }) {
       id={def.id}
       className={def.className + (active ? ' active' : '')}
       style={def.transform ? { transform: def.transform } : undefined}
+      onClick={onClick}
     >
       {def.bg && (
         <span
@@ -326,23 +335,30 @@ export default function Keyboard({
   showSpacebar,
   width,
   onWidthChange,
+  onStatusToggle,
 }: {
   activeCode: string | null;
   showSpacebar: boolean;
   width: number;
   onWidthChange: (w: number) => void;
+  onStatusToggle?: () => void;
 }) {
+  // The on-screen STATUS TOGGLE keycap (KeyL) is clickable and fires the
+  // same toggle as the physical L key. Every other keycap stays
+  // display-only, falling through to the canvas.
+  const clickFor = (def: KeyDef) =>
+    def.id === 'KeyL' ? onStatusToggle : undefined;
   return (
     <>
     <div id="keyboardKeysContainer">
       {ROW2.map((def) => (
-        <KeyButton key={def.id} def={def} active={activeCode === def.id} />
+        <KeyButton key={def.id} def={def} active={activeCode === def.id} onClick={clickFor(def)} />
       ))}
       {ROW3.map((def) => (
-        <KeyButton key={def.id} def={def} active={activeCode === def.id} />
+        <KeyButton key={def.id} def={def} active={activeCode === def.id} onClick={clickFor(def)} />
       ))}
       {ROW4.map((def) => (
-        <KeyButton key={def.id} def={def} active={activeCode === def.id} />
+        <KeyButton key={def.id} def={def} active={activeCode === def.id} onClick={clickFor(def)} />
       ))}
       {showSpacebar && (
         <button
