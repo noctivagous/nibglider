@@ -112,7 +112,7 @@ UNUSED:
 
 
     /*border: 3px solid #999;*/
-    min-width: 900px;
+    min-width: 0;
     width: 920px;
     z-index: 200;
 
@@ -191,10 +191,8 @@ button {
 
 
 button {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     box-shadow: #333;
-    font-family: 'DDINExpRegular', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+    font-family: 'Chakra Petch', 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
     font-weight: normal;
     font-style: normal;
 }
@@ -531,13 +529,13 @@ color:rgb(210, 115, 115) !important;
 .keyboardkey::before {
     content: attr(data-key);
     position: absolute;
-    bottom: 4px;
-    right: 4px;
+    bottom: calc(4px * var(--kb-scale, 1));
+    right: calc(4px * var(--kb-scale, 1));
     color: white;
-    font-size: 10pt;
-    font-family: 'Arial Narrow', Arial, sans-serif;
+    font-size: calc(10pt * var(--kb-scale, 1));
+    font-family: 'JetBrains Mono', 'Arial Narrow', Arial, monospace;
     font-weight: normal;
-    font-style: italic;
+    font-style: normal;
     text-shadow: 1px 1px 2px #333;
     z-index: 3;
     pointer-events: none;
@@ -554,8 +552,8 @@ color:rgb(210, 115, 115) !important;
     height: 100%;
     background-color: rgba(0, 0, 0, 0.9);
     color: white;
-    font-size: 20pt;
-    font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+    font-size: calc(20pt * var(--kb-scale, 1));
+    font-family: 'Chakra Petch', 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
     font-weight: bold;
     text-transform: capitalize;
     display: flex;
@@ -607,6 +605,7 @@ color:rgb(210, 115, 115) !important;
    Beveled dark keycaps with per-group color coding.
    Wins over the legacy neon fills above. */
 #keyboardContainer {
+    --kb-scale: 1;
     text-shadow: none;
     /* Display-only overlay: let mouse events fall through to the canvas
        so live drawing previews keep tracking under the keyboard. */
@@ -624,7 +623,7 @@ color:rgb(210, 115, 115) !important;
     color: var(--key-text) !important;
     opacity: 0.55 !important;
     text-shadow: none;
-    font-size: 11px;
+    font-size: calc(11px * var(--kb-scale));
     line-height: 1.25;
 }
 
@@ -719,16 +718,71 @@ color:rgb(210, 115, 115) !important;
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0.13;
+    opacity: 0.22;
     pointer-events: none;
 }
 
+#keyboardKeysContainer button.active .key-bg {
+    opacity: 0.32;
+}
+
 #keyboardKeysContainer .key-bg svg {
-    width: 72%;
-    height: 72%;
+    width: 78%;
+    height: 78%;
+    overflow: visible;
 }
 
 #keyboardKeysContainer .key-label {
     position: relative;
     z-index: 1;
+    text-transform: uppercase;
+}
+
+#keyboardKeysContainer .key-rotate-glyph {
+    font-size: 2.73em;
+    line-height: 1;
+}
+
+/* Resize grip sits to the right of the \ key. Pointer events are on
+   so it can be dragged while the rest of the overlay falls through. */
+#keyboardContainer .keyboard-resize {
+    position: absolute;
+    width: 18px;
+    padding: 0;
+    margin: 0;
+    border: 1px solid #0b0e12;
+    border-radius: 5px;
+    background: linear-gradient(to bottom, #2b3542, #1d242e);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09),
+        inset 0 1px 0 #8fa3bd,
+        0 2px 0 rgba(0, 0, 0, 0.45);
+    color: #9aabbf;
+    pointer-events: auto;
+    cursor: nesw-resize;
+    touch-action: none;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#keyboardContainer .keyboard-resize:hover,
+#keyboardContainer .keyboard-resize:focus-visible {
+    color: #e8edf3;
+    outline: none;
+}
+
+#keyboardContainer .keyboard-resize:focus-visible {
+    outline: 2px solid #4f8ff7;
+    outline-offset: 1px;
+}
+
+#keyboardContainer .keyboard-resize svg {
+    width: 10px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }

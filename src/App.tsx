@@ -1,9 +1,28 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import paper from 'paper';
 import { NibGliderEngine, type KeyActivity } from './engine/engine';
 import ControlPanel from './components/ControlPanel';
 import Keyboard from './components/Keyboard';
 import StatusOverlay from './components/StatusOverlay';
+
+const KEYBOARD_WIDTH_DEFAULT = 920;
+const KEYBOARD_WIDTH_MIN = 480;
+const KEYBOARD_WIDTH_MAX = 1600;
+const KEYBOARD_WIDTH_KEY = 'nibglider.keyboardWidth';
+
+function loadKeyboardWidth(): number {
+  try {
+    const raw = localStorage.getItem(KEYBOARD_WIDTH_KEY);
+    if (raw == null || raw === '') return KEYBOARD_WIDTH_DEFAULT;
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) {
+      return Math.min(KEYBOARD_WIDTH_MAX, Math.max(KEYBOARD_WIDTH_MIN, n));
+    }
+  } catch {
+    /* ignore */
+  }
+  return KEYBOARD_WIDTH_DEFAULT;
+}
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -11,6 +30,7 @@ export default function App() {
   // Parity with the legacy showSpacebarKey=false default: the on-screen
   // Space key starts hidden; the physical spacebar still toggles drag-lock.
   const [showSpacebar, setShowSpacebar] = useState(false);
+  const [keyboardWidth, setKeyboardWidth] = useState(loadKeyboardWidth);
   const [engine] = useState(
     () =>
       new NibGliderEngine(new paper.PaperScope(), (a: KeyActivity) =>
@@ -32,6 +52,14 @@ export default function App() {
       setShowSpacebar;
   }, []);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(KEYBOARD_WIDTH_KEY, String(keyboardWidth));
+    } catch {
+      /* ignore */
+    }
+  }, [keyboardWidth]);
+
   return (
     <div id="mainLayout">
       <div id="controlPanel" className="control-panel-fixed">
@@ -49,8 +77,19 @@ export default function App() {
           <div
             id="keyboardContainer"
             className={showSpacebar ? undefined : 'no-spacebar'}
+            style={
+              {
+                width: keyboardWidth,
+                '--kb-scale': keyboardWidth / KEYBOARD_WIDTH_DEFAULT,
+              } as CSSProperties
+            }
           >
-            <Keyboard activeCode={activeCode} showSpacebar={showSpacebar} />
+            <Keyboard
+              activeCode={activeCode}
+              showSpacebar={showSpacebar}
+              width={keyboardWidth}
+              onWidthChange={setKeyboardWidth}
+            />
           </div>
         </div>
       </div>

@@ -27,6 +27,8 @@ export type CircleInnerShape =
 export type StrokeCap = 'butt' | 'round' | 'square';
 export type StrokeJoin = 'miter' | 'round' | 'bevel';
 
+export type GridType = 'square' | 'diamond';
+
 export type RectangleInnerShape =
   | 'rectangle'
   | 'circle'
@@ -99,6 +101,7 @@ export class NibGliderEngine {
 
   // --- Grid / cursors ---
   isGridEnabled = false;
+  gridType: GridType = 'square';
   gridSpacing = 20;
   gridLayer: AnyItem = null;
   gridCursor: AnyItem = null;
@@ -455,6 +458,27 @@ export class NibGliderEngine {
 
   setGridSnappingEnabled(v: boolean): void {
     this.isGridSnappingEnabled = v;
+    this.updateGridCursor();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setGridEnabled(v: boolean): void {
+    this.isGridEnabled = v;
+    if (this.isGridEnabled) {
+      this.drawGrid();
+    } else {
+      this.clearGrid();
+    }
+    this.updateGridCursor();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setGridType(t: GridType): void {
+    if (t !== 'square' && t !== 'diamond') return;
+    this.gridType = t;
+    if (this.isGridEnabled) this.drawGrid();
     this.updateTextContent();
     this.notify();
   }
@@ -641,14 +665,7 @@ export class NibGliderEngine {
   }
 
   toggleGrid(): void {
-    this.isGridEnabled = !this.isGridEnabled;
-    if (this.isGridEnabled) {
-      this.drawGrid();
-    } else {
-      this.clearGrid();
-    }
-    this.updateTextContent();
-    this.notify();
+    this.setGridEnabled(!this.isGridEnabled);
   }
 
   setSplineTension(val: number): void {
@@ -853,6 +870,9 @@ export class NibGliderEngine {
   }
 
   // --- Grid (drawingProperties.js) ---
+  // Dots, not lines: one small low-alpha dot per lattice point. Diamond is
+  // the square lattice rotated 45° with the same neighbor spacing, so snap
+  // targets coincide with the rendered dots (see snapToGrid).
   drawGrid(): void {
     const scope = this.scope;
     const active = scope.project.activeLayer;
@@ -865,34 +885,44 @@ export class NibGliderEngine {
     this.gridLayer.activate();
     this.gridLayer.removeChildren();
     const viewBounds = scope.view.bounds;
-    const startX = Math.floor(viewBounds.x / this.gridSpacing) * this.gridSpacing;
-    const endX =
-      Math.ceil((viewBounds.x + viewBounds.width) / this.gridSpacing) *
-      this.gridSpacing;
-    const startY = Math.floor(viewBounds.y / this.gridSpacing) * this.gridSpacing;
-    const endY =
-      Math.ceil((viewBounds.y + viewBounds.height) / this.gridSpacing) *
-      this.gridSpacing;
-    const strokeW = 2 / (scope.view.zoom || 1);
-    for (let x = startX; x <= endX; x += this.gridSpacing) {
-      const line = new scope.Path.Line(
-        new scope.Point(x, startY),
-        new scope.Point(x, endY),
-      );
-      line.strokeColor = new scope.Color(0, 0, 1, 0.8);
-      line.strokeWidth = strokeW;
-      line.locked = true;
-      this.gridLayer.addChild(line);
-    }
-    for (let y = startY; y <= endY; y += this.gridSpacing) {
-      const line = new scope.Path.Line(
-        new scope.Point(startX, y),
-        new scope.Point(endX, y),
-      );
-      line.strokeColor = new scope.Color(0, 0, 1, 0.8);
-      line.strokeWidth = strokeW;
-      line.locked = true;
-      this.gridLayer.addChild(line);
+    const s = this.gridSpacing;
+    const radius = 1.5 / (scope.view.zoom || 1);
+    const dotColor = new scope.Color(0.55, 0.62, 0.72, 0.55);
+    const addDot = (x: number, y: number): void => {
+      const dot: AnyItem = new scope.Shape.Circle(new scope.Point(x, y), radius);
+      dot.fillColor = dotColor;
+      dot.strokeColor = null;
+      dot.locked = true;
+      dot.selectable = false;
+      this.gridLayer.addChild(dot);
+    };
+    if (this.gridType === 'diamond') {
+      // Basis e1=(d,d), e2=(d,-d) with d=s/sqrt(2): neighbors are s apart.
+      const d = s / Math.SQRT2;
+      const step = s * Math.SQRT2;
+      const minX = viewBounds.x;
+      const maxX = viewBounds.x + viewBounds.width;
+      const minY = viewBounds.y;
+      const maxY = viewBounds.y + viewBounds.height;
+      const iMin = Math.floor((minX + minY) / step);
+      const iMax = Math.ceil((maxX + maxY) / step);
+      const jMin = Math.floor((minX - maxY) / step);
+      const jMax = Math.ceil((maxX - minY) / step);
+      for (let i = iMin; i <= iMax; i++) {
+        for (let j = jMin; j <= jMax; j++) {
+          addDot((i + j) * d, (i - j) * d);
+        }
+      }
+    } else {
+      const startX = Math.floor(viewBounds.x / s) * s;
+      const endX = Math.ceil((viewBounds.x + viewBounds.width) / s) * s;
+      const startY = Math.floor(viewBounds.y / s) * s;
+      const endY = Math.ceil((viewBounds.y + viewBounds.height) / s) * s;
+      for (let x = startX; x <= endX; x += s) {
+        for (let y = startY; y <= endY; y += s) {
+          addDot(x, y);
+        }
+      }
     }
     this.gridLayer.sendToBack();
     if (active && active !== this.gridLayer) active.activate();
@@ -908,15 +938,25 @@ export class NibGliderEngine {
   snapToGrid(point: AnyItem): AnyItem {
     if (!this.isGridSnappingEnabled) return point;
     const scope = this.scope;
+    const s = this.gridSpacing;
+    if (this.gridType === 'diamond') {
+      const d = s / Math.SQRT2;
+      const step = s * Math.SQRT2;
+      const i = Math.round((point.x + point.y) / step);
+      const j = Math.round((point.x - point.y) / step);
+      return new scope.Point((i + j) * d, (i - j) * d);
+    }
     return new scope.Point(
-      Math.round(point.x / this.gridSpacing) * this.gridSpacing,
-      Math.round(point.y / this.gridSpacing) * this.gridSpacing,
+      Math.round(point.x / s) * s,
+      Math.round(point.y / s) * s,
     );
   }
 
   updateGridCursor(): void {
     const scope = this.scope;
-    if (!this.isGridEnabled) {
+    // The red dot is a snap indicator, not a grid-visible indicator: it
+    // shows only while grid snapping is on (and the grid itself is shown).
+    if (!this.isGridEnabled || !this.isGridSnappingEnabled) {
       if (this.gridCursor) this.gridCursor.visible = false;
       return;
     }
@@ -2963,7 +3003,13 @@ export class NibGliderEngine {
     });
     const selectedCount = this.selectedItems.length;
     if (this.isGridEnabled) {
-      state.push(L('meta', [T('Grid: ON ('), K('L'), T(' to toggle)')]));
+      state.push(
+        L('meta', [
+          T(`Grid: ON · ${this.gridType === 'diamond' ? 'Diamond' : 'Square'} (`),
+          K('L'),
+          T(' to toggle)'),
+        ]),
+      );
     }
     if (selectedCount) {
       state.push(L('title', [T('Selected Objects: ' + selectedCount)]));
