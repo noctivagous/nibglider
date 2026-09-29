@@ -817,16 +817,6 @@ html, body {
   flex: 0 0 auto;
 }
 
-#controlPanel .panel-row-snap #capJoinControls {
-  flex: 0 0 auto;
-  align-self: stretch;
-}
-
-/* Caps & Joins spans the full height of the snap row. */
-#controlPanel .panel-row-snap #capJoinControls .pane-titlebar {
-  flex: 1 1 auto;
-}
-
 /* Fill runs a lot darker than the Stroke bevel. */
 #controlPanel #fillControls .pane-titlebar {
   background: linear-gradient(to bottom, #161c24 0%, #0e1218 60%, #090c10 100%);
@@ -915,6 +905,12 @@ body {
 
 #mainLayout {
   background: var(--dp-bg-0);
+}
+
+/* Section title labels are hidden behind the flag in App (icons, key
+   hints, and hover tooltips still identify each section). */
+#controlPanel.titles-hidden .pane-title-text {
+  display: none;
 }
 
 /* Top panel: dark bed so beveled strips and controls stand off it */
@@ -1585,27 +1581,6 @@ body {
   width: 90px;
 }
 
-#controlPanel .stroke-row {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-#controlPanel .stroke-seg {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-#controlPanel .stroke-seg-label {
-  color: var(--dp-text-2);
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
 #controlPanel .seg-ctrl {
   display: inline-flex;
   border: 1px solid var(--dp-border);
@@ -2060,6 +2035,46 @@ body {
   padding: 5px 4px;
 }
 
+/* Flyout segments: related controls grouped in a divider block. A
+   segment holds one param-item, or a trio-row of three side by side. */
+.shape-params-flyout .flyout-seg {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dp-border-soft);
+}
+
+.shape-params-flyout .flyout-trio-row {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.shape-params-flyout .flyout-trio-row .param-item {
+  flex: 1 1 0;
+}
+
+/* Number inputs inside the portaled flyout are outside #controlPanel,
+   so they need their own rules (mirroring the panel inputs). Miter
+   holds at most two digits, so it stays narrow. */
+.shape-params-flyout .miter-limit-input {
+  width: calc(2ch + 20px);
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  color: var(--dp-text-1);
+  font-family: var(--font-tech-mono);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-align: right;
+  padding: 3px 6px;
+}
+
+.shape-params-flyout .miter-limit-input:disabled {
+  opacity: 0.45;
+}
+
 .panelParameters .param-item label {
   color: var(--dp-text-2);
 }
@@ -2179,17 +2194,9 @@ kbd {
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
 }
 
-/* Neutral sections (Stroke / Fill / Caps & Joins): darker gray shade. */
+/* Neutral sections (Stroke / Fill): darker gray shade. */
 #controlPanel #strokeControls input[type="range"] {
   box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-#controlPanel #capJoinControls .seg-ctrl {
-  box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-#controlPanel #capJoinControls .miter-limit-input {
-  box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.3);
 }
 
 /* Circle Keys: darker blue cast. */
@@ -2263,13 +2270,12 @@ kbd {
    Data/readouts/keys: JetBrains Mono. */
 #controlPanel .pane-body label,
 #controlPanel .check-row,
-#controlPanel .stroke-seg-label,
 #controlPanel .panelParameters .param-item label,
 #controlPanel .seg-ctrl button {
   font-family: var(--font-tech-label);
 }
 
-/* Section titles grouped by typeface: Stroke/Fill (+ Caps & Joins) stay
+/* Section titles grouped by typeface: Stroke/Fill stay
    on Orbitron; Circle/Rect Keys share Exo 2; Grid/Snapping share
    Barlow Condensed. Hard offset shadow (no blur) for an
    engraved-protruding read. */
@@ -2324,10 +2330,6 @@ kbd,
 }
 
 @container cpanel (max-width: 1360px) {
-  #controlPanel .stroke-seg-label {
-    display: none;
-  }
-
   #controlPanel .snapping-seg .check-row > span,
   #controlPanel .snapping-aspect .check-row > span {
     display: none;
@@ -2339,14 +2341,12 @@ kbd,
   }
 
   #circleFrameControls .pane-title-text,
-  #rectFrameControls .pane-title-text,
-  #capJoinControls .pane-title-text {
+  #rectFrameControls .pane-title-text {
     display: none;
   }
 
   #circleFrameControls .title-seg,
-  #rectFrameControls .title-seg,
-  #capJoinControls .title-seg {
+  #rectFrameControls .title-seg {
     padding: 2px 6px;
   }
 }
@@ -2404,10 +2404,6 @@ kbd,
 
   #controlPanel .check-row {
     gap: 3px;
-  }
-
-  #controlPanel .stroke-row {
-    gap: 4px;
   }
 
   #controlPanel .miter-limit-input {
@@ -2493,10 +2489,6 @@ kbd,
   #controlPanel .seg-ctrl button svg {
     width: 14px;
     height: 12px;
-  }
-
-  #controlPanel .stroke-seg:has(.miter-limit-input) {
-    display: none;
   }
 
   #controlPanel .panel-group {

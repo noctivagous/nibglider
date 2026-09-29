@@ -518,11 +518,17 @@ function StrokeParams({
   strokeWidth,
   dash,
   gap,
+  strokeCap,
+  strokeJoin,
+  miterLimit,
 }: {
   engine: NibGliderEngine;
   strokeWidth: number;
   dash: number;
   gap: number;
+  strokeCap: StrokeCap;
+  strokeJoin: StrokeJoin;
+  miterLimit: number;
 }) {
   const presetId =
     DASH_PRESETS.find((p) => p.dash === dash && p.gap === gap)?.id ?? null;
@@ -558,6 +564,7 @@ function StrokeParams({
           />
         </span>
       </span>
+      <div className="flyout-seg">
       <span className="param-item">
         <label>Dash</label>
         <div className="seg-ctrl dash-presets" role="group" aria-label="Dash pattern">
@@ -621,6 +628,81 @@ function StrokeParams({
           </label>
         </span>
       </span>
+      </div>
+      <div className="flyout-seg">
+      <div className="flyout-trio-row">
+      <span className="param-item">
+        <label>Cap</label>
+        <div className="seg-ctrl" role="group" aria-label="Line cap">
+          {CAP_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              title={opt.label}
+              className={strokeCap === opt.value ? 'active' : undefined}
+              onClick={() => engine.setStrokeCap(opt.value)}
+            >
+              <svg viewBox="0 0 18 14" width="18" height="14">
+                <path
+                  d={opt.icon}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap={opt.value}
+                  strokeLinejoin="miter"
+                />
+              </svg>
+            </button>
+          ))}
+        </div>
+      </span>
+      <span className="param-item">
+        <label>Join</label>
+        <div className="seg-ctrl" role="group" aria-label="Line join">
+          {JOIN_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              title={opt.label}
+              className={strokeJoin === opt.value ? 'active' : undefined}
+              onClick={() => engine.setStrokeJoin(opt.value)}
+            >
+              <svg viewBox="0 0 16 14" width="16" height="14">
+                <path
+                  d={opt.icon}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="butt"
+                  strokeLinejoin={opt.value}
+                  strokeMiterlimit={4}
+                />
+              </svg>
+            </button>
+          ))}
+        </div>
+      </span>
+      <span className="param-item">
+        <label htmlFor="miterLimitInput">Miter</label>
+        <input
+          type="number"
+          id="miterLimitInput"
+          className="miter-limit-input"
+          aria-label="Miter"
+          title="Miter"
+          min={1}
+          max={40}
+          step={0.5}
+          value={miterLimit}
+          disabled={strokeJoin !== 'miter'}
+          onChange={(e) => {
+            const n = parseFloat(e.target.value);
+            if (Number.isFinite(n)) engine.setMiterLimit(n);
+          }}
+        />
+      </span>
+      </div>
+      </div>
     </div>
   );
 }
@@ -916,6 +998,9 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               strokeWidth={strokeWidth}
               dash={dashLength}
               gap={gapLength}
+              strokeCap={strokeCap}
+              strokeJoin={strokeJoin}
+              miterLimit={miterLimit}
             />
           </ShapeParamsFlyout>
         </header>
@@ -1206,99 +1291,6 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               onChange={(v) => engine.setAspectRatioKey(v)}
             />
           </div>
-          </div>
-        </header>
-      </section>
-      </div>
-      <div className="panel-group panel-group-capjoin" role="group" aria-label="Caps and joins">
-      <section
-        id="capJoinControls"
-        className={sel ? 'panel-card reflecting-selection' : 'panel-card'}
-        aria-label="Caps and Joins"
-      >
-        <header className="pane-titlebar titlebar-single">
-          <span className="title-seg" title="Caps & Joins"><span className="pane-title">
-            <TitleIcon>
-              <path d="M2 11 L8 4 L14 11" />
-              <path d="M2 11 H14" />
-            </TitleIcon>
-            <span className="pane-title-text">Caps &amp; Joins</span></span>
-          </span>
-          <div className="stroke-row">
-            <div className="stroke-seg">
-              <span className="stroke-seg-label">Cap</span>
-              <div className="seg-ctrl" role="group" aria-label="Line cap">
-                {CAP_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    title={opt.label}
-                    className={
-                      strokeCap === opt.value ? 'active' : undefined
-                    }
-                    onClick={() => engine.setStrokeCap(opt.value)}
-                  >
-                    <svg viewBox="0 0 18 14" width="18" height="14">
-                      <path
-                        d={opt.icon}
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap={opt.value}
-                        strokeLinejoin="miter"
-                      />
-                    </svg>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="stroke-seg">
-              <span className="stroke-seg-label">Join</span>
-              <div className="seg-ctrl" role="group" aria-label="Line join">
-                {JOIN_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    title={opt.label}
-                    className={
-                      strokeJoin === opt.value ? 'active' : undefined
-                    }
-                    onClick={() => engine.setStrokeJoin(opt.value)}
-                  >
-                    <svg viewBox="0 0 16 14" width="16" height="14">
-                      <path
-                        d={opt.icon}
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="butt"
-                        strokeLinejoin={opt.value}
-                        strokeMiterlimit={4}
-                      />
-                    </svg>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="stroke-seg">
-              <span className="stroke-seg-label">Miter</span>
-              <input
-                type="number"
-                id="miterLimitInput"
-                className="miter-limit-input"
-                aria-label="Miter"
-                title="Miter"
-                min={1}
-                max={40}
-                step={0.5}
-                value={miterLimit}
-                disabled={strokeJoin !== 'miter'}
-                onChange={(e) => {
-                  const n = parseFloat(e.target.value);
-                  if (Number.isFinite(n)) engine.setMiterLimit(n);
-                }}
-              />
-            </div>
           </div>
         </header>
       </section>

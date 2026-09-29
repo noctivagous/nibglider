@@ -5,6 +5,9 @@ import ControlPanel from './components/ControlPanel';
 import Keyboard from './components/Keyboard';
 import StatusOverlay from './components/StatusOverlay';
 
+// Section title labels in the panel are hidden; icons, keys, and hover
+// tooltips still identify each section.
+const HIDE_SECTION_TITLES = true;
 const KEYBOARD_WIDTH_DEFAULT = 920;
 const KEYBOARD_WIDTH_MIN = 480;
 const KEYBOARD_WIDTH_MAX = 1600;
@@ -226,9 +229,10 @@ export default function App() {
           <div
             id="controlPanel"
             className={
-              controlsVisible
+              (controlsVisible
                 ? 'control-panel-fixed'
-                : 'control-panel-fixed panel-hidden'
+                : 'control-panel-fixed panel-hidden') +
+              (HIDE_SECTION_TITLES ? ' titles-hidden' : '')
             }
             aria-hidden={!controlsVisible}
             inert={!controlsVisible}
