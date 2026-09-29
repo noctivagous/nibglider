@@ -882,10 +882,10 @@ body {
 }
 
 #controlPanel input[type="range"] {
-  background: var(--dp-bg-3);
-  border: 1px solid var(--dp-border);
+  background: linear-gradient(to bottom, #10151b, #161d25);
+  border: 1px solid #0b0e12;
   border-radius: 999px;
-  box-shadow: none;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.05);
   padding: 0;
   height: 4px;
   accent-color: var(--dp-accent);
@@ -897,8 +897,9 @@ body {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--dp-accent);
-  border: 1px solid var(--dp-accent-strong);
+  background: linear-gradient(to bottom, #5b9bff, #2f6fe0);
+  border: 1px solid #1c4da8;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 2px rgba(0, 0, 0, 0.5);
   cursor: pointer;
 }
 
@@ -906,9 +907,73 @@ body {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--dp-accent);
-  border: 1px solid var(--dp-accent-strong);
+  background: linear-gradient(to bottom, #5b9bff, #2f6fe0);
+  border: 1px solid #1c4da8;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 2px rgba(0, 0, 0, 0.5);
   cursor: pointer;
+}
+
+#controlPanel input[type="range"]::-moz-range-thumb:hover {
+  background: linear-gradient(to bottom, #7aafff, #3f8bf5);
+}
+
+#controlPanel input[type="range"]::-webkit-slider-thumb:hover {
+  background: linear-gradient(to bottom, #7aafff, #3f8bf5);
+}
+
+#controlPanel input[type="range"]:disabled {
+  opacity: 0.4;
+}
+
+#controlPanel input[type="range"]:disabled::-webkit-slider-thumb,
+#controlPanel input[type="range"]:disabled::-moz-range-thumb {
+  cursor: default;
+}
+
+#controlPanel input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, #10151b, #161d25);
+  border: 1px solid #0b0e12;
+}
+
+#controlPanel input[type="range"]::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, #3f8bf5, #2f6fe0);
+}
+
+/* Checkboxes: small bevel box, blue bevel check */
+#controlPanel .check-row input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1px solid #0b0e12;
+  border-radius: 4px;
+  background: linear-gradient(to bottom, #2c3642, #1e2530);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 1px 1px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+#controlPanel .check-row input[type="checkbox"]:hover {
+  border-color: var(--dp-accent);
+}
+
+#controlPanel .check-row input[type="checkbox"]:checked {
+  border-color: #1c4da8;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5.2 8.8 9.5 3.4' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(to bottom, #3f8bf5, #2f6fe0);
+  background-size: 10px 10px, cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 1px 1px rgba(0, 0, 0, 0.4);
+}
+
+#controlPanel .check-row input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 1px;
 }
 
 #controlPanel input[type="range"]:focus-visible,
@@ -956,21 +1021,27 @@ body {
 
 #controlPanel .seg-ctrl {
   display: inline-flex;
-  border: 1px solid var(--dp-border);
+  border: 1px solid #0b0e12;
   border-radius: 5px;
   overflow: hidden;
-  background: var(--dp-bg-3);
+  background: linear-gradient(to bottom, #10151b, #141b23);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 #controlPanel .seg-ctrl button {
   appearance: none;
-  background: transparent;
+  background: linear-gradient(to bottom, #2b3542, #1f2732);
   border: none;
-  border-right: 1px solid var(--dp-border);
-  color: var(--dp-text-3);
+  border-right: 1px solid #0b0e12;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  color: var(--dp-text-2);
   padding: 3px 5px;
   cursor: pointer;
   line-height: 0;
+}
+
+#controlPanel .seg-ctrl button:hover {
+  color: var(--dp-text-1);
 }
 
 #controlPanel .seg-ctrl button:last-child {
@@ -978,8 +1049,16 @@ body {
 }
 
 #controlPanel .seg-ctrl button.active {
-  background: var(--dp-accent-soft);
-  color: var(--dp-text-1);
+  background: linear-gradient(to bottom, #2f6fe0, #3a86f2);
+  color: #fff;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+#controlPanel .rect-shape-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 #controlPanel .stroke-preview {
@@ -1036,25 +1115,52 @@ body {
   color: var(--dp-text-2);
 }
 
-/* Toggle switches: flat dark with blue ON */
-#controlPanel .toggle-switch .slider {
-  background-color: var(--dp-bg-3);
-  border: 1px solid var(--dp-border);
-  box-shadow: none;
-}
-
-#controlPanel .toggle-switch .slider::before {
-  background-color: var(--dp-text-3);
-  box-shadow: none;
-}
-
-#controlPanel .toggle-switch input:checked + .slider {
-  background-color: var(--dp-accent-strong);
+/* Selection state: card edge + titlebar glow, badge names the source */
+#controlPanel .panel-card.reflecting-selection {
   border-color: var(--dp-accent-strong);
 }
 
+#controlPanel .panel-card.reflecting-selection .pane-titlebar {
+  background: linear-gradient(to bottom, rgba(79, 143, 247, 0.22), rgba(47, 111, 224, 0.22));
+}
+
+#controlPanel .sel-badge {
+  margin-left: auto;
+  flex: none;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(to bottom, #3f8bf5, #2f6fe0);
+  border: 1px solid #1c4da8;
+  border-radius: 999px;
+  padding: 1px 7px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* Toggle switches: recessed well, raised bevel knob, blue ON */
+#controlPanel .toggle-switch .slider {
+  background: linear-gradient(to bottom, #10151b, #161d25);
+  border: 1px solid #0b0e12;
+  border-radius: 5px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#controlPanel .toggle-switch .slider::before {
+  background: linear-gradient(to bottom, #3a4451, #232c37);
+  border: 1px solid #0b0e12;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+#controlPanel .toggle-switch input:checked + .slider {
+  background: linear-gradient(to bottom, #2f6fe0, #3f8bf5);
+  border-color: #1c4da8;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
 #controlPanel .toggle-switch input:checked + .slider::before {
-  background-color: #fff;
+  background: linear-gradient(to bottom, #ffffff, #d7dee7);
 }
 
 #controlPanel .toggle-switch .slider::after {
@@ -1063,6 +1169,26 @@ body {
 
 #controlPanel .toggle-switch input:checked + .slider::after {
   color: #fff;
+}
+
+#controlPanel .toggle-switch input:focus-visible + .slider {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 2px;
+}
+
+/* Tiny legend + check-row glyphs */
+#controlPanel .pane-icon {
+  flex: none;
+  color: var(--dp-text-3);
+}
+
+#controlPanel .check-row svg {
+  flex: none;
+  color: var(--dp-text-3);
+}
+
+#controlPanel .check-row input[type="checkbox"]:checked + svg {
+  color: var(--dp-accent);
 }
 
 /* Canvas frame */

@@ -121,6 +121,8 @@ export class NibGliderEngine {
     sector: 90,
   };
   rectangleInnerShapeType: RectangleInnerShape = 'rectangle';
+  // Orientation of the Rect Keys shape inside its frame, in 90° steps.
+  rectangleOrientation = 0;
   rectangleInnerShapeParams: InnerShapeParams = {
     sides: 6,
     m: 3,
@@ -304,11 +306,22 @@ export class NibGliderEngine {
   }
 
   // --- Control-panel setters (replace registerEventListeners wiring) ---
+  // Every paint setter writes the globals (used by subsequently drawn
+  // shapes) and, when items are selected, applies to the selection too.
+  private applyToSelection(fn: (item: AnyItem) => void): void {
+    for (let i = 0; i < this.selectedItems.length; i++) {
+      fn(this.selectedItems[i]);
+    }
+  }
+
   setStrokeWidth(strokeVal: number): void {
     let v = strokeVal;
     if (v < 1) v = 1;
     if (v > this.maxStrokeWidth) v = this.maxStrokeWidth;
     this.globalStrokeWidth = v;
+    this.applyToSelection((item) => {
+      item.strokeWidth = v;
+    });
     this.updateCurrentDrawingStyles();
     this.updateTextContent();
     this.notify();
@@ -324,6 +337,11 @@ export class NibGliderEngine {
 
   setStrokeColor(colorVal: string): void {
     this.globalStrokeColor = colorVal;
+    this.applyToSelection((item) => {
+      item.strokeColor = colorVal;
+      if (!(item.strokeWidth > 0)) item.strokeWidth = this.globalStrokeWidth;
+      this.applyStrokeGeometry(item);
+    });
     this.updateCurrentDrawingStyles();
     this.updateTextContent();
     this.notify();
@@ -331,12 +349,18 @@ export class NibGliderEngine {
 
   setStrokeCap(cap: StrokeCap): void {
     this.globalStrokeCap = cap;
+    this.applyToSelection((item) => {
+      item.strokeCap = cap;
+    });
     this.updateCurrentDrawingStyles();
     this.notify();
   }
 
   setStrokeJoin(join: StrokeJoin): void {
     this.globalStrokeJoin = join;
+    this.applyToSelection((item) => {
+      item.strokeJoin = join;
+    });
     this.updateCurrentDrawingStyles();
     this.notify();
   }
@@ -346,12 +370,18 @@ export class NibGliderEngine {
     if (!(v >= 1)) v = 1;
     if (v > 40) v = 40;
     this.globalMiterLimit = v;
+    this.applyToSelection((item) => {
+      item.miterLimit = v;
+    });
     this.updateCurrentDrawingStyles();
     this.notify();
   }
 
   setFillColor(colorVal: string): void {
     this.globalFillColor = colorVal;
+    this.applyToSelection((item) => {
+      item.fillColor = colorVal;
+    });
     this.updateCurrentDrawingStyles();
     this.updateTextContent();
     this.notify();
@@ -360,6 +390,15 @@ export class NibGliderEngine {
   setStrokeEnabled(enabled: boolean): void {
     this.strokeEnabled = enabled;
     if (!this.strokeEnabled && !this.fillEnabled) this.fillEnabled = true;
+    this.applyToSelection((item) => {
+      if (enabled) {
+        if (!item.strokeColor) item.strokeColor = this.globalStrokeColor;
+        if (!(item.strokeWidth > 0)) item.strokeWidth = this.globalStrokeWidth;
+      } else {
+        item.strokeColor = null;
+      }
+      this.applyStrokeGeometry(item);
+    });
     this.updateCurrentDrawingStyles();
     this.notify();
   }
@@ -367,6 +406,13 @@ export class NibGliderEngine {
   setFillEnabled(enabled: boolean): void {
     this.fillEnabled = enabled;
     if (!this.fillEnabled && !this.strokeEnabled) this.strokeEnabled = true;
+    this.applyToSelection((item) => {
+      if (enabled) {
+        if (!item.fillColor) item.fillColor = this.globalFillColor;
+      } else {
+        item.fillColor = null;
+      }
+    });
     this.updateCurrentDrawingStyles();
     this.notify();
   }
@@ -444,6 +490,14 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  setRectangleOrientation(o: number): void {
+    const v = Number.isFinite(o) ? Math.round(o) : 0;
+    this.rectangleOrientation = ((v % 4) + 4) % 4;
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
   setRectangleSides(sides: number): void {
     this.rectangleInnerShapeParams.sides = sides;
     this.updatePreviewBox();
@@ -498,6 +552,56 @@ export class NibGliderEngine {
     const lenU = u.length;
     if (!(lenU > 0)) return 0;
     return (v.length / lenU) * (Math.cos(θ) / Math.sin(θ));
+  }
+
+  // Rotate (s, t) frame coords about the frame center by
+  // rectangleOrientation * 90°. The unit square maps onto itself, so an
+  // oriented shape still fits inside the frame bounds.
+  private rotST(s: number, t: number): [number, number] {
+    const o = ((this.rectangleOrientation % 4) + 4) % 4;
+    if (o === 1) return [1 - t, s];
+    if (o === 2) return [1 - s, 1 - t];
+    if (o === 3) return [t, 1 - s];
+    return [s, t];
+  }
+
+  // Shear for a square frame (the panel preview well): cot of the
+  // clamped interior angle.
+  private squareShear(angleDeg: number): number {
+    const θ = this.clampShapeAngle(angleDeg) * (Math.PI / 180);
+    return Math.cos(θ) / Math.max(Math.sin(θ), 1e-6);
+  }
+
+  // Canonical (s, t) quads for the frame-fitted shapes, shared by the
+  // canvas draw and the Rect Keys preview so both show the same vertex
+  // layout. Every vertex stays in [0, 1]: fixed height, shear varies.
+  // The canvas passes the aspect-correct frameAngleShear; the square
+  // preview well passes squareShear.
+  private trapezoidFrameST(shear: number): Array<[number, number]> {
+    const inset = Math.max(-0.49, Math.min(0.49, shear));
+    return [
+      [inset, 0],
+      [1 - inset, 0],
+      [1, 1],
+      [0, 1],
+    ];
+  }
+
+  private parallelogramFrameST(shear: number): Array<[number, number]> {
+    const k = Math.max(-0.9, Math.min(0.9, shear));
+    return k >= 0
+      ? [
+          [0, 1],
+          [1 - k, 1],
+          [1, 0],
+          [k, 0],
+        ]
+      : [
+          [-k, 1],
+          [1, 1],
+          [1 + k, 0],
+          [0, 0],
+        ];
   }
 
   toggleGrid(): void {
@@ -606,16 +710,44 @@ export class NibGliderEngine {
       const h = radius * 0.7;
       return `M ${f(-h, -h)}L ${f(h, -h)}L ${f(h, h)}L ${f(-h, h)}Z`;
     }
-    if (previewFrame === 'rect' && type === 'rightTriangle') {
-      // Legs along the left and bottom of the preview well; 90° at bottom-left.
-      const h = radius;
-      return `M ${f(-h, h)}L ${f(h, h)}L ${f(-h, -h)}Z`;
+    if (previewFrame === 'rect') {
+      // Rect Keys preview: the frame-fitted layout in the square well, so
+      // the height never rescales with the angle slider — only the shear
+      // varies. Oriented the same way as the canvas draw via rotST.
+      const e = radius;
+      const w = (s: number, t: number): [number, number] => {
+        const [rs, rt] = this.rotST(s, t);
+        return [-e + 2 * e * rs, -e + 2 * e * rt];
+      };
+      let quad: Array<[number, number]> | null = null;
+      if (type === 'rightTriangle') {
+        // Legs along the left and bottom of the well; 90° at bottom-left.
+        quad = [
+          [0, 1],
+          [1, 1],
+          [0, 0],
+        ];
+      } else if (type === 'trapezoid') {
+        quad = this.trapezoidFrameST(this.squareShear(params.angle));
+      } else if (type === 'parallelogram') {
+        quad = this.parallelogramFrameST(this.squareShear(params.angle));
+      }
+      if (quad) {
+        let d = 'M ';
+        for (const [s, t] of quad) {
+          const [x, y] = w(s, t);
+          d += f(x, y);
+        }
+        return d + 'Z';
+      }
     }
     const circumPts = this.circleInnerShapeUnitPoints(type, params.angle);
     if (circumPts) {
       let d = 'M ';
       for (const [x, y] of circumPts) {
-        d += f(radius * x, radius * y);
+        const [rx, ry] =
+          previewFrame === 'rect' ? this.rotWell(x, y) : [x, y];
+        d += f(radius * rx, radius * ry);
       }
       return d + 'Z';
     }
@@ -625,7 +757,11 @@ export class NibGliderEngine {
       let d = 'M ';
       for (let i = 0; i < sides; i++) {
         const angle = angleStep * i;
-        d += f(radius * Math.cos(angle), radius * Math.sin(angle));
+        const [rx, ry] =
+          previewFrame === 'rect'
+            ? this.rotWell(Math.cos(angle), Math.sin(angle))
+            : [Math.cos(angle), Math.sin(angle)];
+        d += f(radius * rx, radius * ry);
       }
       return d + 'Z';
     }
@@ -636,11 +772,24 @@ export class NibGliderEngine {
         const phi = (i / steps) * Math.PI * 2;
         const r = this.supershapeRadius(phi, m, n1, n2, n3, a1, a2);
         const scaledR = radius * (r || 0);
-        d += f(scaledR * Math.cos(phi), scaledR * Math.sin(phi));
+        const [rx, ry] =
+          previewFrame === 'rect'
+            ? this.rotWell(Math.cos(phi), Math.sin(phi))
+            : [Math.cos(phi), Math.sin(phi)];
+        d += f(scaledR * rx, scaledR * ry);
       }
       return d + 'Z';
     }
     return 'M 0,0';
+  }
+
+  // Rotate a preview-well point about the well center, mirroring rotST.
+  private rotWell(x: number, y: number): [number, number] {
+    const o = ((this.rectangleOrientation % 4) + 4) % 4;
+    if (o === 1) return [-y, x];
+    if (o === 2) return [-x, -y];
+    if (o === 3) return [y, -x];
+    return [x, y];
   }
 
   updatePreviewBox(): void {
@@ -914,6 +1063,8 @@ export class NibGliderEngine {
       this.selectedItems[i].selected = false;
     }
     this.selectedItems = [];
+    this.updateTextContent();
+    this.notify();
   }
 
   removeAllSelectedItemsAndReset(): void {
@@ -930,6 +1081,62 @@ export class NibGliderEngine {
     this.isInDragLock = status;
     this.updateTextContent();
     this.notify();
+  }
+
+  hasSelection(): boolean {
+    return this.selectedItems.length > 0;
+  }
+
+  private itemHexColor(c: AnyItem): string | null {
+    if (!c) return null;
+    if (typeof c === 'string') return c;
+    if (typeof c.toCSS === 'function') {
+      try {
+        return c.toCSS(true);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  // Paint of the selection for the Stroke/Fill panels: the first selected
+  // item's values, falling back to the globals where the item has none.
+  // Null when nothing is selected (panels show the globals instead).
+  selectionPaint(): {
+    strokeOn: boolean;
+    strokeColor: string;
+    strokeWidth: number;
+    strokeCap: StrokeCap;
+    strokeJoin: StrokeJoin;
+    miterLimit: number;
+    fillOn: boolean;
+    fillColor: string;
+  } | null {
+    if (this.selectedItems.length === 0) return null;
+    const it = this.selectedItems[0];
+    const sc = this.itemHexColor(it.strokeColor);
+    const fc = this.itemHexColor(it.fillColor);
+    const cap: StrokeCap =
+      it.strokeCap === 'butt' || it.strokeCap === 'square'
+        ? it.strokeCap
+        : 'round';
+    const join: StrokeJoin =
+      it.strokeJoin === 'miter' || it.strokeJoin === 'bevel'
+        ? it.strokeJoin
+        : 'round';
+    const w = Number(it.strokeWidth);
+    const m = Number(it.miterLimit);
+    return {
+      strokeOn: sc !== null,
+      strokeColor: sc ?? this.globalStrokeColor,
+      strokeWidth: Number.isFinite(w) && w > 0 ? w : this.globalStrokeWidth,
+      strokeCap: cap,
+      strokeJoin: join,
+      miterLimit: Number.isFinite(m) && m >= 1 ? m : this.globalMiterLimit,
+      fillOn: fc !== null,
+      fillColor: fc ?? this.globalFillColor,
+    };
   }
 
   // --- Drawing tools (drawingToolsAndFunctions.js) ---
@@ -1391,8 +1598,12 @@ export class NibGliderEngine {
     const basis = this.rectFrameBasis();
     if (!basis) return null;
     const { o, u, v } = basis;
-    const P = (s: number, t: number): AnyItem =>
+    const P0 = (s: number, t: number): AnyItem =>
       o.add(u.multiply(s)).add(v.multiply(t));
+    // Oriented frame map: rotate (s, t) about the frame center first, so
+    // every shape drawn below follows rectangleOrientation and still
+    // fits inside the frame bounds.
+    const P = (s: number, t: number): AnyItem => P0(...this.rotST(s, t));
     const params = this.rectangleInnerShapeParams;
     let path: AnyItem = null;
     switch (type) {
@@ -1406,18 +1617,23 @@ export class NibGliderEngine {
       case 'trapezoid': {
         // Base angle in the frame: inset the top so the legs meet the
         // bottom at `angle` degrees. Obtuse values invert (top wider).
-        const k = this.frameAngleShear(u, v, params.angle);
-        const inset = Math.max(-0.49, Math.min(0.49, k));
+        const quad = this.trapezoidFrameST(
+          this.frameAngleShear(u, v, params.angle),
+        );
         path = new scope.Path({
-          segments: [P(inset, 0), P(1 - inset, 0), P(1, 1), P(0, 1)],
+          segments: quad.map(([s, t]) => P(s, t)),
           closed: true,
         });
         break;
       }
       case 'parallelogram': {
-        const k = this.frameAngleShear(u, v, params.angle);
+        // Fit inside the frame: shrink both bases to 1-|k| and pin
+        // opposite corners to the frame so every (s, t) stays in [0, 1].
+        const quad = this.parallelogramFrameST(
+          this.frameAngleShear(u, v, params.angle),
+        );
         path = new scope.Path({
-          segments: [P(0, 1), P(1, 1), P(1 + k, 0), P(k, 0)],
+          segments: quad.map(([s, t]) => P(s, t)),
           closed: true,
         });
         break;
@@ -2064,6 +2280,26 @@ export class NibGliderEngine {
     this.pinStatusText();
   }
 
+  // Zoom around the view center, honoring min/max zoom.
+  private stepZoom(dir: 1 | -1): void {
+    const view = this.scope.view;
+    const oldZoom = view.zoom || 1;
+    const next = Math.min(
+      this.maxZoom,
+      Math.max(this.minZoom, oldZoom * (dir > 0 ? 1.25 : 1 / 1.25)),
+    );
+    if (next === oldZoom) return;
+    view.zoom = next;
+    this.afterViewChange();
+  }
+
+  private resetZoom(): void {
+    const view = this.scope.view;
+    if ((view.zoom || 1) === 1) return;
+    view.zoom = 1;
+    this.afterViewChange();
+  }
+
   private onMouseWheel(event: WheelEvent): void {
     event.preventDefault();
     if (event.deltaY === 0) return;
@@ -2121,6 +2357,7 @@ export class NibGliderEngine {
       this.clearOutSelection();
     }
     this.updateTextContent();
+    this.notify();
   }
 
   private onMouseMove(event: paper.MouseEvent): void {
@@ -2426,6 +2663,60 @@ export class NibGliderEngine {
   // The legacy window.onKeyDown duplicate was never invoked (no InputManager),
   // so only this handler defines behavior.
   handleKeyDown(event: KeyboardEvent): void {
+    if (event.metaKey || event.ctrlKey) {
+      if (event.key === '0') {
+        event.preventDefault();
+        this.resetZoom();
+        return;
+      }
+      if (event.key === '-' || event.key === '=' || event.key === '+') {
+        event.preventDefault();
+        this.stepZoom(event.key === '-' ? -1 : 1);
+        return;
+      }
+    }
+    if (
+      event.key === 'ArrowLeft' ||
+      event.key === 'ArrowRight' ||
+      event.key === 'ArrowUp' ||
+      event.key === 'ArrowDown'
+    ) {
+      // Let focused panel controls keep native arrow behavior (sliders etc.).
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'SELECT' ||
+          target.tagName === 'TEXTAREA')
+      ) {
+        return;
+      }
+      event.preventDefault();
+      if (
+        !this.isDrawingPath &&
+        !this.isDrawingShape &&
+        !this.isDrawingQuad &&
+        this.selectedItems.length > 0
+      ) {
+        // Base nudge 1 unit; Shift = longer, Alt = shorter.
+        let d = 1;
+        if (event.shiftKey) d *= 10;
+        if (event.altKey) d *= 0.2;
+        let dx = 0;
+        let dy = 0;
+        if (event.key === 'ArrowLeft') dx = -d;
+        else if (event.key === 'ArrowRight') dx = d;
+        else if (event.key === 'ArrowUp') dy = -d;
+        else dy = d;
+        const delta = new this.scope.Point(dx, dy);
+        for (let i = 0; i < this.selectedItems.length; i++) {
+          this.selectedItems[i].position =
+            this.selectedItems[i].position.add(delta);
+        }
+        this.updateTextContent();
+      }
+      return;
+    }
     const keyLower = event.key.toLowerCase();
     if (event.key === '[' || event.key === ']') {
       if (this.isDrawingShape && this.shapeType === 'rectangle_centerline') {
@@ -2440,11 +2731,14 @@ export class NibGliderEngine {
         return;
       } else if (this.selectedItems.length > 0) {
         const center = this.collectiveCenter(this.selectedItems);
+        // Shift = bigger step, Alt = finer step.
+        const down = event.shiftKey ? 0.8 : event.altKey ? 0.98 : 0.9;
+        const up = event.shiftKey ? 1.25 : event.altKey ? 1.02 : 1.1;
         for (let i = 0; i < this.selectedItems.length; i++) {
           if (event.key === '[') {
-            this.selectedItems[i].scale(0.9, center);
+            this.selectedItems[i].scale(down, center);
           } else {
-            this.selectedItems[i].scale(1.1, center);
+            this.selectedItems[i].scale(up, center);
           }
         }
         return;
@@ -2453,7 +2747,9 @@ export class NibGliderEngine {
     if (event.key === ';' || event.key === "'") {
       if (this.selectedItems.length > 0) {
         const center = this.collectiveCenter(this.selectedItems);
-        const angle = event.key === ';' ? -10 : 10;
+        // Shift = 45°, Alt = 5°, otherwise 10°.
+        const step = event.shiftKey ? 45 : event.altKey ? 5 : 10;
+        const angle = event.key === ';' ? -step : step;
         for (let i = 0; i < this.selectedItems.length; i++) {
           this.selectedItems[i].rotate(angle, center);
         }
@@ -2567,12 +2863,12 @@ export class NibGliderEngine {
       }
     }
     if (!this.isDrawingPath && !this.isDrawingShape && !this.isDrawingQuad) {
-      if (keyLower === 'r') {
+      if (keyLower === 's') {
         this.setStrokeEnabled(!this.strokeEnabled);
         this.updateTextContent();
         return;
       }
-      if (keyLower === 't') {
+      if (keyLower === 'd') {
         this.setFillEnabled(!this.fillEnabled);
         this.updateTextContent();
         return;

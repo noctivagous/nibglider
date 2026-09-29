@@ -1,16 +1,32 @@
 
-[ ] param sliders for parallelogram, trapezoid angle.  not 180 degrees for parallelogram
-[ ] aspect ratio snap for drawing with rect keys. if set to 3:4, aspect ratio will flip for dimensions when shape changes. 3:4 or 4:3
+[ ]  K key will slide keyboard down and up (KB toggle)
 
+[ ] change the keys to S and D for Stroke and Fill toggle
+[ ] V for Pan (anchors at point, mouse move pans)
+[ ] hook up trackpad gestures, pan and zoom
+
+[X] param sliders for parallelogram, trapezoid angle.  not 180 degrees for parallelogram
+[x] aspect ratio snap for drawing with rect keys. if set to 3:4, aspect ratio will flip for dimensions when shape changes. 3:4 or 4:3
+
+[ ] presets dropdown for supershape, with it switching to "Custom" if the user moves a value after selecting a preset.
+Look up on the web different shapes that are known.
 
 [ ] We will need a more sophis. solution for mouse events over the onscreen kb 
 because in the future the user will click on the keys to configure them.
 
-[ ] make scale and rotate keys work on the hovered shape, without selection needed.
-
+[ ] make scale and rotate keys work on the hovered shape without shape selection needed.
+[ ] make it so that arrow keys nudge a selection of shapes.  shift + arrow keys longer dist.  opt/alt + arrow keys  moves shorter dist
+[ ] shift + rotate keys : 45 deg rotate, bigger scaling factor for scale keys, opt/alt + rotate keys : 5 deg rotate, smaller scaling factor for scale
 
 [ ] circle keys:  [inradius | circumradius]
 
+[ ] "Text" fieldset : font + size + style.  Then in Rect Keys "Display Text" option.
+In Circle Keys, "Display Text" has two modes: Circum. 1 Line,  Circum. 2 Lines.
+for Circum. 1 Line it will wrap the text around the circumference, adding configured gap
+plus angle offset.  for Circum. 2 Lines it will have will wrap two different entered lines of 
+text around the adding configured gap plus angle offset. 
+
+[ ] Shape builder will allow user to build custom composite shapes for Loaded Object.
 
 [ ] Quad fieldset with dropdown and preview frame
 [ ] Loaded Object fieldset + entry in the select dropdown of Circle Keys, Rect Keys, Quad field.

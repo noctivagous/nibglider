@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import type {
   CircleInnerShape,
   InnerShapeParams,
@@ -9,6 +9,45 @@ import type {
 } from '../engine/engine';
 
 const ASPECT_RATIO_PRESETS = ['1:1', '3:4', '2:3', '16:9'];
+
+// Tiny legend glyph for pane titles (Adobe CS-style: small, currentColor).
+function TitleIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      className="pane-icon"
+      viewBox="0 0 16 14"
+      width="14"
+      height="12"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  );
+}
+
+// Tiny glyph marking each snapping mode in its check-row label.
+function CheckIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      width="12"
+      height="12"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  );
+}
 
 function AngleSlider({
   value,
@@ -72,30 +111,49 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const params = engine.circleInnerShapeParams;
   const rectParams = engine.rectangleInnerShapeParams;
+  // Selection state: when items are selected the Stroke/Fill panels
+  // reflect the selection (first selected item) instead of the globals.
+  const sel = engine.selectionPaint();
+  const strokeOn = sel ? sel.strokeOn : engine.strokeEnabled;
+  const strokeColor = sel ? sel.strokeColor : engine.globalStrokeColor;
+  const strokeWidth = sel ? sel.strokeWidth : engine.globalStrokeWidth;
+  const strokeCap = sel ? sel.strokeCap : engine.globalStrokeCap;
+  const strokeJoin = sel ? sel.strokeJoin : engine.globalStrokeJoin;
+  const miterLimit = sel ? sel.miterLimit : engine.globalMiterLimit;
+  const fillOn = sel ? sel.fillOn : engine.fillEnabled;
+  const fillColor = sel ? sel.fillColor : engine.globalFillColor;
 
   return (
     <>
-      <section id="strokeControls" className="panel-card" aria-label="Stroke">
+      <section
+        id="strokeControls"
+        className={sel ? 'panel-card reflecting-selection' : 'panel-card'}
+        aria-label="Stroke"
+      >
         <header className="pane-titlebar">
           <label className="toggle-switch square-knob">
             <input
               type="checkbox"
               id="strokeEnabledCheckbox"
-              checked={engine.strokeEnabled}
+              checked={strokeOn}
               onChange={(e) => engine.setStrokeEnabled(e.target.checked)}
             />
             <span className="slider" />
           </label>
           <span className="pane-title">
-            Stroke <kbd>R</kbd>
+            <TitleIcon>
+              <path d="M2 12 L14 2" />
+            </TitleIcon>
+            Stroke <kbd>S</kbd>
           </span>
+          {sel && <span className="sel-badge">Selection</span>}
         </header>
         <div className="pane-body pane-body-col">
           <div className="stroke-row">
             <input
               type="color"
               id="strokeColorWell"
-              value={engine.globalStrokeColor}
+              value={strokeColor}
               title="Stroke Color"
               onChange={(e) => engine.setStrokeColor(e.target.value)}
             />
@@ -107,11 +165,11 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
                 min="1"
                 max="40"
                 step="0.5"
-                value={engine.globalStrokeWidth}
+                value={strokeWidth}
                 onChange={(e) => engine.setStrokeWidth(parseFloat(e.target.value))}
               />
               <span id="strokeWidthDisplay">
-                {engine.globalStrokeWidth.toFixed(1)} pt
+                {strokeWidth.toFixed(1)} pt
               </span>
             </div>
             <svg
@@ -124,11 +182,11 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               <path
                 d="M6 18 L22 6 L42 18"
                 fill="none"
-                stroke={engine.strokeEnabled ? engine.globalStrokeColor : '#555'}
-                strokeWidth={Math.max(2, Math.min(8, engine.globalStrokeWidth * 0.45))}
-                strokeLinecap={engine.globalStrokeCap}
-                strokeLinejoin={engine.globalStrokeJoin}
-                strokeMiterlimit={engine.globalMiterLimit}
+                stroke={strokeOn ? strokeColor : '#555'}
+                strokeWidth={Math.max(2, Math.min(8, strokeWidth * 0.45))}
+                strokeLinecap={strokeCap}
+                strokeLinejoin={strokeJoin}
+                strokeMiterlimit={miterLimit}
               />
             </svg>
           </div>
@@ -142,7 +200,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
                     type="button"
                     title={opt.label}
                     className={
-                      engine.globalStrokeCap === opt.value ? 'active' : undefined
+                      strokeCap === opt.value ? 'active' : undefined
                     }
                     onClick={() => engine.setStrokeCap(opt.value)}
                   >
@@ -169,7 +227,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
                     type="button"
                     title={opt.label}
                     className={
-                      engine.globalStrokeJoin === opt.value ? 'active' : undefined
+                      strokeJoin === opt.value ? 'active' : undefined
                     }
                     onClick={() => engine.setStrokeJoin(opt.value)}
                   >
@@ -199,8 +257,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
                 min={1}
                 max={40}
                 step={0.5}
-                value={engine.globalMiterLimit}
-                disabled={engine.globalStrokeJoin !== 'miter'}
+                value={miterLimit}
+                disabled={strokeJoin !== 'miter'}
                 onChange={(e) => {
                   const n = parseFloat(e.target.value);
                   if (Number.isFinite(n)) engine.setMiterLimit(n);
@@ -211,26 +269,38 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         </div>
       </section>
 
-      <section id="fillControls" className="panel-card" aria-label="Fill">
+      <section
+        id="fillControls"
+        className={sel ? 'panel-card reflecting-selection' : 'panel-card'}
+        aria-label="Fill"
+      >
         <header className="pane-titlebar">
           <label className="toggle-switch square-knob">
             <input
               type="checkbox"
               id="fillEnabledCheckbox"
-              checked={engine.fillEnabled}
+              checked={fillOn}
               onChange={(e) => engine.setFillEnabled(e.target.checked)}
             />
             <span className="slider" />
           </label>
           <span className="pane-title">
-            Fill <kbd>T</kbd>
+            <TitleIcon>
+              <path
+                d="M8 1.5 C8 1.5 3.5 7.5 3.5 10 A4.5 4.5 0 0 0 12.5 10 C12.5 7.5 8 1.5 8 1.5 Z"
+                fill="currentColor"
+                stroke="none"
+              />
+            </TitleIcon>
+            Fill <kbd>D</kbd>
           </span>
+          {sel && <span className="sel-badge">Selection</span>}
         </header>
         <div className="pane-body pane-body-row">
           <input
             type="color"
             id="fillColorWell"
-            value={engine.globalFillColor}
+            value={fillColor}
             title="Fill Color"
             onChange={(e) => engine.setFillColor(e.target.value)}
           />
@@ -239,7 +309,14 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
 
       <section id="snappingControls" className="panel-card" aria-label="Snapping">
         <header className="pane-titlebar">
-          <span className="pane-title">Snapping</span>
+          <span className="pane-title">
+            <TitleIcon>
+              <circle cx="8" cy="7" r="3.5" />
+              <path d="M8 0.5 V2.5 M8 11.5 V13.5 M1.5 7 H3.5 M12.5 7 H14.5" />
+              <circle cx="8" cy="7" r="1" fill="currentColor" stroke="none" />
+            </TitleIcon>
+            Snapping
+          </span>
         </header>
         <div className="pane-body pane-body-col">
           <div className="snapping-grid">
@@ -250,6 +327,9 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               checked={engine.isGridSnappingEnabled}
               onChange={(e) => engine.setGridSnappingEnabled(e.target.checked)}
             />
+            <CheckIcon>
+              <path d="M1 4 H11 M1 8 H11 M4 1 V11 M8 1 V11" />
+            </CheckIcon>
             <span>Grid</span>
           </label>
           <label className="check-row">
@@ -259,6 +339,11 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               checked={engine.isPathSnappingEnabled}
               onChange={(e) => engine.setPathSnappingEnabled(e.target.checked)}
             />
+            <CheckIcon>
+              <path d="M1.5 9 C4 9 4 3.5 6.5 3.5 S9.5 6 10.5 6" />
+              <circle cx="1.5" cy="9" r="1.1" fill="currentColor" stroke="none" />
+              <circle cx="10.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
+            </CheckIcon>
             <span>Path</span>
           </label>
           <label className="check-row">
@@ -268,6 +353,10 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               checked={engine.isAngleSnappingEnabled}
               onChange={(e) => engine.setAngleSnappingEnabled(e.target.checked)}
             />
+            <CheckIcon>
+              <path d="M1.5 10.5 H10.5 M1.5 10.5 L8.5 2" />
+              <path d="M4.8 10.5 A3.4 3.4 0 0 0 4.2 7.6" />
+            </CheckIcon>
             <span>Angle</span>
           </label>
           <label className="check-row">
@@ -277,6 +366,9 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               checked={engine.isLengthSnappingEnabled}
               onChange={(e) => engine.setLengthSnappingEnabled(e.target.checked)}
             />
+            <CheckIcon>
+              <path d="M2 6 H10 M2 6 L4 4 M2 6 L4 8 M10 6 L8 4 M10 6 L8 8" />
+            </CheckIcon>
             <span>Length</span>
           </label>
           <div className="snapping-aspect">
@@ -287,6 +379,9 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
                 checked={engine.isAspectSnappingEnabled}
                 onChange={(e) => engine.setAspectSnappingEnabled(e.target.checked)}
               />
+              <CheckIcon>
+                <path d="M1 2.5 H11 V9.5 H1 Z M6 2.5 V9.5" />
+              </CheckIcon>
               <span>Aspect</span>
             </label>
             <select
@@ -308,7 +403,12 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
 
       <section id="circleFrameControls" className="panel-card" aria-label="Circle Keys">
         <header className="pane-titlebar">
-          <span className="pane-title">Circle Keys</span>
+          <span className="pane-title">
+            <TitleIcon>
+              <circle cx="8" cy="7" r="5" />
+            </TitleIcon>
+            Circle Keys
+          </span>
         </header>
         <div className="pane-body pane-body-row">
         <select
@@ -424,9 +524,15 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
 
       <section id="rectFrameControls" className="panel-card" aria-label="Rect Keys">
         <header className="pane-titlebar">
-          <span className="pane-title">Rect Keys</span>
+          <span className="pane-title">
+            <TitleIcon>
+              <path d="M3 2 H13 V12 H3 Z" />
+            </TitleIcon>
+            Rect Keys
+          </span>
         </header>
         <div className="pane-body pane-body-row">
+        <div className="rect-shape-col">
         <select
           id="rectInnerShapeSelect"
           value={engine.rectangleInnerShapeType}
@@ -444,8 +550,45 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           <option value="rhombus">Rhombus</option>
           <option value="kite">Kite</option>
         </select>
+        {(engine.rectangleInnerShapeType !== 'rectangle' &&
+          engine.rectangleInnerShapeType !== 'circle') && (
+          <div className="seg-ctrl" role="group" aria-label="Orientation">
+            {[0, 1, 2, 3].map((o) => (
+              <button
+                key={o}
+                type="button"
+                title={`Orientation ${o * 90}°`}
+                aria-label={`Orientation ${o * 90} degrees`}
+                className={engine.rectangleOrientation === o ? 'active' : undefined}
+                onClick={() => engine.setRectangleOrientation(o)}
+              >
+                <svg viewBox="0 0 16 14" width="16" height="14">
+                  <path
+                    d="M14 12 L2 12 L2 2"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                    transform={`rotate(${o * 90} 8 7)`}
+                  />
+                </svg>
+              </button>
+            ))}
+          </div>
+        )}
+        </div>
         <div id="rectShapePreviewContainer">
           <svg id="rectShapePreview" viewBox="-1.2 -1.2 2.4 2.4" width="120" height="64">
+            <rect
+              x="-0.9"
+              y="-0.9"
+              width="1.8"
+              height="1.8"
+              fill="none"
+              stroke="#888"
+              strokeWidth="0.015"
+              strokeDasharray="0.06 0.04"
+            />
             <path
               id="rectShapePreviewPath"
               fill="#ddd"
