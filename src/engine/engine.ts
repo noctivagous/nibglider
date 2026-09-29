@@ -444,7 +444,7 @@ export class NibGliderEngine {
     );
   }
 
-  private innerShapePreviewPath(
+  innerShapePreviewPath(
     type: string,
     params: InnerShapeParams,
   ): string {

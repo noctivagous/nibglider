@@ -170,7 +170,10 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               strokeWidth="0.015"
               strokeLinejoin="round"
               strokeLinecap="round"
-              d="M 1,0 L 1,0"
+              d={engine.innerShapePreviewPath(
+                engine.circleInnerShapeType,
+                engine.circleInnerShapeParams,
+              )}
             />
           </svg>
         </div>
@@ -264,7 +267,10 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               strokeWidth="0.015"
               strokeLinejoin="round"
               strokeLinecap="round"
-              d="M 1,0 L 1,0"
+              d={engine.innerShapePreviewPath(
+                engine.rectangleInnerShapeType,
+                engine.rectangleInnerShapeParams,
+              )}
             />
           </svg>
         </div>

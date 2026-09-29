@@ -32,6 +32,21 @@ components where the AI/user snaps to (configurable)
 10pt baseline grid x and y.  panes, panels, windows, dialog boxes,
 buttons, tables.
 
+----
+
+[ ] a parametric component will 1. react to the key's provided values.  Let's say that it is a
+"T" parametric object and the user is using Rect By Centerline.    The top of the "T"
+might stay a constant width while the parametric object just uses the center line
+to extend the vertical part of the "T".  Yet we can also include in this kind of
+component, in the object class, the ability to control parameters of the object during
+live drawing, so that while the "T" is being drawn, say the ; and ' keys lengthen or shorten
+the length of the top of the "T" while the movement of the mouse extends the the vertical
+side of shape.  Then in the app already the [ and ] keys determine the thickness of
+the shape, its stroke width, which will be processed for both bars by the shape.
+a parametric component can change what happens to the corners of a rectangle,
+and allow for completely customized vector objects instead of just 
+geometric primitives.
+
 
 ----
 [ ] - i18n and physical layouts from keypilot
