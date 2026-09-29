@@ -368,6 +368,65 @@ article {
   z-index: 999;
 }
 
+/* Top overlay stack (J toggles the panel, / toggles the status box).
+   One absolute column over the PaperJS canvas: the interactive
+   controls bar on top, the display-only status box stacked beneath it.
+   Both stay mounted so the show/hide motion animates both ways. The
+   stack itself never takes pointer events; the panel re-enables them.
+   Scoped !important wins over the legacy top-bar layout rules. */
+#canvasContainer #topOverlayStack {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  max-height: calc(100% - 20px);
+  overflow: hidden;
+  z-index: 600;
+  pointer-events: none;
+}
+
+#canvasContainer #topOverlayStack #controlPanel.control-panel-fixed {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  width: auto !important;
+  flex: none !important;
+  pointer-events: auto;
+  border: 1px solid var(--dp-border-soft);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  transition: transform 0.32s ease, opacity 0.32s ease, max-height 0.32s ease;
+}
+
+/* Collapse (not just translate) so the status box slides up to fill
+   the freed space. The bar already clips overflow when fixed. */
+#canvasContainer #topOverlayStack #controlPanel.control-panel-fixed.panel-hidden {
+  max-height: 0 !important;
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+}
+
+#canvasContainer #topOverlayStack #statusOverlay {
+  position: static;
+  top: auto;
+  left: auto;
+  z-index: auto;
+  max-width: 100%;
+  align-self: flex-start;
+  transition: transform 0.32s ease, opacity 0.32s ease;
+}
+
+#canvasContainer #topOverlayStack #statusOverlay.status-hidden {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
 /* NEW: Main layout container */
 #mainLayout {
   display: flex;

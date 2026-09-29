@@ -237,7 +237,7 @@ export class NibGliderEngine {
     };
     const onHighlightDown = (event: KeyboardEvent) => {
       const keyLower = event.key.toLowerCase();
-      if (keyLower === 'l') return;
+      if (keyLower === '/') return;
       if (event.code && event.metaKey === false) {
         this.onKeyActivity({ code: event.code, active: true });
       }
@@ -2961,20 +2961,23 @@ export class NibGliderEngine {
         this.notify();
         return;
       }
-      if (keyLower === 'l') {
+      if (keyLower === '/') {
         this.splineTension = this.splineTensionDefault;
         this.updateTextContent();
         this.notify();
         return;
       }
     }
-    if (!this.isDrawingPath && keyLower === 'l') {
+    if (!this.isDrawingPath && keyLower === '/') {
       this.toggleGrid();
       return;
     }
+    // NB: J toggles the controls bar overlay and L the status box,
+    // both via App's own keydown listeners. While drawing a path J
+    // trims spline tension instead (handled above).
     // NB: K toggles the on-screen keyboard (KB toggle) via App's own
     // keydown listener. While drawing a path K adjusts spline tension
-    // instead (handled above), mirroring how L resets tension mid-path
+    // instead (handled above), mirroring how / resets tension mid-path
     // and toggles the grid otherwise.
     if (keyLower === 'c') {
       this.thinStrokeWidth();
@@ -3123,7 +3126,7 @@ export class NibGliderEngine {
         ]),
       );
       steps.push(
-        L('hint', [K('A'), T(' = end, '), K('J/K'), T(' = adjust tension')]),
+        L('hint', [K('A'), T(' = end, '), K('J'), T('/'), K('K'), T('/'), K('/'), T(' = adjust tension')]),
       );
     }
     if (this.isDrawingShape) {

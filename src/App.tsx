@@ -10,6 +10,8 @@ const KEYBOARD_WIDTH_MIN = 480;
 const KEYBOARD_WIDTH_MAX = 1600;
 const KEYBOARD_WIDTH_KEY = 'nibglider.keyboardWidth';
 const KEYBOARD_VISIBLE_KEY = 'nibglider.keyboardVisible';
+const CONTROLS_VISIBLE_KEY = 'nibglider.controlsVisible';
+const STATUS_VISIBLE_KEY = 'nibglider.statusVisible';
 
 function loadKeyboardWidth(): number {
   try {
@@ -36,6 +38,28 @@ function loadKeyboardVisible(): boolean {
   return true;
 }
 
+function loadControlsVisible(): boolean {
+  try {
+    const raw = localStorage.getItem(CONTROLS_VISIBLE_KEY);
+    if (raw == null || raw === '') return true;
+    return raw !== '0' && raw.toLowerCase() !== 'false';
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
+function loadStatusVisible(): boolean {
+  try {
+    const raw = localStorage.getItem(STATUS_VISIBLE_KEY);
+    if (raw == null || raw === '') return true;
+    return raw !== '0' && raw.toLowerCase() !== 'false';
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [activeCode, setActiveCode] = useState<string | null>(null);
@@ -44,6 +68,8 @@ export default function App() {
   const [showSpacebar, setShowSpacebar] = useState(false);
   const [keyboardWidth, setKeyboardWidth] = useState(loadKeyboardWidth);
   const [keyboardVisible, setKeyboardVisible] = useState(loadKeyboardVisible);
+  const [controlsVisible, setControlsVisible] = useState(loadControlsVisible);
+  const [statusVisible, setStatusVisible] = useState(loadStatusVisible);
   const [engine] = useState(
     () =>
       new NibGliderEngine(new paper.PaperScope(), (a: KeyActivity) =>
@@ -103,6 +129,36 @@ export default function App() {
     }
   }, [keyboardWidth]);
 
+  // J key toggles the controls bar overlay with a slide. Listened here
+  // (not in the engine) because the visible state lives in React.
+  // Skipped while drawing a path, where J trims spline tension, and
+  // inside panel text fields, where "j" is typed content.
+  useEffect(() => {
+    const onToggleControls = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey) return;
+      if (event.key.toLowerCase() !== 'j') return;
+      if (engine.isDrawingPath) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'SELECT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      setControlsVisible((v) => !v);
+    };
+    document.addEventListener('keydown', onToggleControls);
+    (
+      window as unknown as { setControlsVisible: (v: boolean) => void }
+    ).setControlsVisible = setControlsVisible;
+    return () => {
+      document.removeEventListener('keydown', onToggleControls);
+    };
+  }, [engine]);
+
   useEffect(() => {
     try {
       localStorage.setItem(KEYBOARD_VISIBLE_KEY, keyboardVisible ? '1' : '0');
@@ -111,11 +167,54 @@ export default function App() {
     }
   }, [keyboardVisible]);
 
+  // L key toggles the status box overlay with a slide. Listened here
+  // (not in the engine) because the visible state lives in React.
+  // Skipped while drawing a path and inside panel text fields, matching
+  // the J/K listeners.
+  useEffect(() => {
+    const onToggleStatus = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey) return;
+      if (event.key.toLowerCase() !== 'l') return;
+      if (engine.isDrawingPath) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'SELECT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      setStatusVisible((v) => !v);
+    };
+    document.addEventListener('keydown', onToggleStatus);
+    (
+      window as unknown as { setStatusVisible: (v: boolean) => void }
+    ).setStatusVisible = setStatusVisible;
+    return () => {
+      document.removeEventListener('keydown', onToggleStatus);
+    };
+  }, [engine]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CONTROLS_VISIBLE_KEY, controlsVisible ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [controlsVisible]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STATUS_VISIBLE_KEY, statusVisible ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [statusVisible]);
+
   return (
     <div id="mainLayout">
-      <div id="controlPanel" className="control-panel-fixed">
-        <ControlPanel engine={engine} />
-      </div>
       <div id="canvasContainer">
         <canvas
           id="nibgliderCanvas"
@@ -123,7 +222,21 @@ export default function App() {
           tabIndex={0}
           ref={canvasRef}
         />
-        <StatusOverlay engine={engine} />
+        <div id="topOverlayStack">
+          <div
+            id="controlPanel"
+            className={
+              controlsVisible
+                ? 'control-panel-fixed'
+                : 'control-panel-fixed panel-hidden'
+            }
+            aria-hidden={!controlsVisible}
+            inert={!controlsVisible}
+          >
+            <ControlPanel engine={engine} />
+          </div>
+          <StatusOverlay engine={engine} hidden={!statusVisible} />
+        </div>
         <div className="corner-div">
           <div
             id="keyboardContainer"

@@ -967,7 +967,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             <TitleIcon>
               <path d="M1 4 H11 M1 8 H11 M4 1 V11 M8 1 V11" />
             </TitleIcon>
-            <span className="pane-title-text">Grid</span></span> <kbd>L</kbd>
+            <span className="pane-title-text">Grid</span></span> <kbd>/</kbd>
           </span>
           <label className="toggle-switch square-knob">
             <input

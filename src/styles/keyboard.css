@@ -652,7 +652,7 @@ color:rgb(210, 115, 115) !important;
    operations = purple, destructive = red. Matches the fieldset accents. */
 #keyboardKeysContainer button.circleButton {
     --key-accent: #4f8ff7;
-    --key-text: #bcd6fd;
+    --key-text: #7fb2ff;
     --key-active: #2f6fe0;
     background: linear-gradient(to bottom, #2c3d5c, #1c2635) !important;
 }
@@ -664,11 +664,23 @@ color:rgb(210, 115, 115) !important;
     background: linear-gradient(to bottom, #23443e, #182726) !important;
 }
 
+/* Quad: green, near-complementary to the red stop/cancel/end keys so
+   it never reads as destructive. Same beveled treatment. */
 #keyboardKeysContainer button.quadButton {
-    --key-accent: #f5a623;
-    --key-text: #f7ddae;
-    --key-active: #b97a1a;
-    background: linear-gradient(to bottom, #4a3d24, #26221a) !important;
+    --key-accent: #58c472;
+    --key-text: #bde8c4;
+    --key-active: #2f8f46;
+    background: linear-gradient(to bottom, #24402c, #1a2620) !important;
+}
+
+/* Overlay toggles (J = panel, K = keyboard, L = status): one shared
+   yellow cast — accent edge, legend text, and keycap alike. Same
+   beveled treatment as the other groups, hue unused elsewhere. */
+#keyboardKeysContainer button.overlayToggle {
+    --key-accent: #e3c04b;
+    --key-text: #f0dfa8;
+    --key-active: #a8871f;
+    background: linear-gradient(to bottom, #474022, #27241a) !important;
 }
 
 #keyboardKeysContainer button.operationButton {
@@ -749,15 +761,38 @@ color:rgb(210, 115, 115) !important;
     overflow: visible;
 }
 
+/* Corner badge echoing the panel section icon: small circle on Circle
+   Keys, small square on Rect Keys. Upper right, above the ghost glyph
+   but under the hover veil; colors match the panel section coding. */
+#keyboardKeysContainer .key-badge {
+    position: absolute;
+    top: calc(3px * var(--kb-scale, 1));
+    right: calc(1px * var(--kb-scale, 1));
+    width: calc(15px * var(--kb-scale, 1));
+    z-index: 1;
+    line-height: 0;
+    pointer-events: none;
+}
+
+#keyboardKeysContainer .key-badge svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+#keyboardKeysContainer button.circleButton .key-badge {
+    color: #4f8ff7;
+}
+
+#keyboardKeysContainer button.rectangleButton .key-badge {
+    color: #2dd4bf;
+}
+
 #keyboardKeysContainer .key-label {
     position: relative;
     z-index: 1;
     text-transform: uppercase;
-}
-
-#keyboardKeysContainer .key-rotate-glyph {
-    font-size: 2.73em;
-    line-height: 1;
 }
 
 /* Resize grip sits to the right of the \ key. Pointer events are on

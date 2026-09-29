@@ -9,7 +9,16 @@ interface KeyDef {
   transform?: string;
   html: string;
   bg?: string;
+  badge?: 'circle' | 'rect';
 }
+
+// Corner badges echoing the panel section icons (TitleIcon in
+// ControlPanel): same 16x14 viewBox, stroke styling, and geometry —
+// circle outline for Circle Keys, rect outline for Rect Keys.
+const BADGE_ATTRS =
+  'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"';
+const BADGE_CIRCLE = `<svg ${BADGE_ATTRS}><circle cx="8" cy="7" r="5"/></svg>`;
+const BADGE_RECT = `<svg ${BADGE_ATTRS}><path d="M3 2 H13 V12 H3 Z"/></svg>`;
 
 // Ghost construction glyphs behind the legend: 24x24, currentColor.
 const BG_ATTRS =
@@ -103,6 +112,7 @@ const GLYPH = {
       dot(9.47, 14.53, 1.05) +
       dot(14.53, 14.53, 1.05)
   ),
+  status: bg(`<path d="M4 7 H20 M4 12 H20 M4 17 H14" stroke-width="2"/>`),
   rotateCcw: bg(
     `<rect x="8.2" y="8.2" width="7.6" height="7.6" rx="1" opacity="0.55"/>` +
       `<path d="M18.7 13.4 A7 7 0 1 1 13.6 5.15"/>` +
@@ -153,9 +163,9 @@ const ROW2: KeyDef[] = [
   { id: 'KeyE', dataKey: 'e', className: 'keyboardkey eKey ', html: '' },
   { id: 'KeyR', dataKey: 'r', className: 'keyboardkey rKey ', transform: 'translate(-45%, 0%)', html: '' },
   { id: 'KeyT', dataKey: 't', className: 'keyboardkey tKey ', transform: 'translate(-45%, 0%)', html: '' },
-  { id: 'KeyY', dataKey: 'y', className: 'keyboardkey yKey drawingButton enabledButton rectangleButton', transform: 'translate(-45%, 0%)', html: 'RECT.<br/>BY CENTERLINE', bg: GLYPH.rectCenterline },
-  { id: 'KeyU', dataKey: 'u', className: 'keyboardkey uKey drawingButton enabledButton rectangleButton', transform: 'translate(-45%, 0%)', html: 'RECT.<br/>BY 2 EDGES', bg: GLYPH.rectTwoEdges },
-  { id: 'KeyI', dataKey: 'i', className: 'keyboardkey iKey drawingButton enabledButton rectangleButton', transform: 'translate(-47%, 0%)', html: 'RECT.<br/>BY DIAG.', bg: GLYPH.rectDiag },
+  { id: 'KeyY', dataKey: 'y', className: 'keyboardkey yKey drawingButton enabledButton rectangleButton', transform: 'translate(-45%, 0%)', html: 'RECT.<br/>BY CENTERLINE', bg: GLYPH.rectCenterline, badge: 'rect' },
+  { id: 'KeyU', dataKey: 'u', className: 'keyboardkey uKey drawingButton enabledButton rectangleButton', transform: 'translate(-45%, 0%)', html: 'RECT.<br/>BY 2 EDGES', bg: GLYPH.rectTwoEdges, badge: 'rect' },
+  { id: 'KeyI', dataKey: 'i', className: 'keyboardkey iKey drawingButton enabledButton rectangleButton', transform: 'translate(-47%, 0%)', html: 'RECT.<br/>BY DIAG.', bg: GLYPH.rectDiag, badge: 'rect' },
   { id: 'KeyO', dataKey: 'o', className: 'keyboardkey oKey drawingButton enabledButton quadButton', transform: 'translate(-45%, 0%)', html: 'QUAD<br/>4 PTS', bg: GLYPH.quad },
   { id: 'KeyP', dataKey: 'p', className: 'keyboardkey pKey ', html: '' },
   { id: 'BracketLeft', dataKey: '[', className: 'keyboardkey  bracketLeftKey operationButton enabledButton', html: 'SCALE -', bg: GLYPH.scaleDown },
@@ -171,11 +181,11 @@ const ROW3: KeyDef[] = [
   { id: 'KeyF', dataKey: 'f', className: 'keyboardkey fKey drawingButton', transform: 'translate(-27%, 0%)', html: 'SHARP</br>POINT', bg: GLYPH.sharp },
   { id: 'KeyG', dataKey: 'g', className: 'keyboardkey gKey drawingButton enabledButton', transform: 'translate(-27%, 0%)', html: 'SPLINE<br/>POINT', bg: GLYPH.spline },
   { id: 'KeyH', dataKey: 'h', className: 'keyboardkey hKey ', transform: 'translate(-27%, 0%)', html: '' },
-  { id: 'KeyJ', dataKey: 'j', className: 'keyboardkey jKey ', transform: 'translate(-27%, 0%)', html: '' },
-  { id: 'KeyK', dataKey: 'k', className: 'keyboardkey kKey toggleButton enabledButton', transform: 'translate(-27%, 0%)', html: 'KB<br/>TOGGLE' },
-  { id: 'KeyL', dataKey: 'l', className: 'keyboardkey lKey ', transform: 'translate(-27%, 0%)', html: 'GRID<br/>TOGGLE', bg: GLYPH.grid },
-  { id: 'Semicolon', dataKey: ';', className: 'keyboardkey semicolonKey operationButton enabledButton', transform: 'translate(-27%, 0%)', html: 'ROTATE <span class="key-rotate-glyph">⟲</span>', bg: GLYPH.rotateCcw },
-  { id: 'Quote', dataKey: "'", className: 'keyboardkey  singleQuoteKey operationButton enabledButton', transform: 'translate(-27%, 0%)', html: 'ROTATE <span class="key-rotate-glyph">⥁</span>', bg: GLYPH.rotateCw },
+  { id: 'KeyJ', dataKey: 'j', className: 'keyboardkey jKey toggleButton enabledButton overlayToggle', transform: 'translate(-27%, 0%)', html: 'PANEL<br/>TOGGLE' },
+  { id: 'KeyK', dataKey: 'k', className: 'keyboardkey kKey toggleButton enabledButton overlayToggle', transform: 'translate(-27%, 0%)', html: 'KB<br/>TOGGLE' },
+  { id: 'KeyL', dataKey: 'l', className: 'keyboardkey lKey toggleButton enabledButton overlayToggle', transform: 'translate(-27%, 0%)', html: 'STATUS<br/>TOGGLE', bg: GLYPH.status },
+  { id: 'Semicolon', dataKey: ';', className: 'keyboardkey semicolonKey operationButton enabledButton', transform: 'translate(-27%, 0%)', html: 'ROTATE -', bg: GLYPH.rotateCcw },
+  { id: 'Quote', dataKey: "'", className: 'keyboardkey  singleQuoteKey operationButton enabledButton', transform: 'translate(-27%, 0%)', html: 'ROTATE +', bg: GLYPH.rotateCw },
   { id: 'Enter', dataKey: 'return', className: 'keyboardkey returnKey OtherKey hidden', transform: 'translate(-5%, 0%)', html: 'RETURN' },
 ];
 
@@ -186,11 +196,11 @@ const ROW4: KeyDef[] = [
   { id: 'KeyC', dataKey: 'c', className: 'keyboardkey cKey stepper1Decrement enabledButton', transform: 'translate(38%, 0%)', html: '-<br />STROKE<br />WIDTH', bg: GLYPH.strokeMinus },
   { id: 'KeyV', dataKey: 'v', className: 'keyboardkey vKey stepper1Increment enabledButton', transform: 'translate(38%, 0%)', html: '+<br />STROKE<br />WIDTH', bg: GLYPH.strokePlus },
   { id: 'KeyB', dataKey: 'b', className: 'keyboardkey bKey ', transform: 'translate(38%, 0%)', html: '' },
-  { id: 'KeyN', dataKey: 'n', className: 'keyboardkey nKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', html: 'CIRCLE<br/>BY DIAMETER', bg: GLYPH.circleDiameter },
-  { id: 'KeyM', dataKey: 'm', className: 'keyboardkey mKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', html: 'CIRCLE<br/>BY RADIUS', bg: GLYPH.circleRadius },
+  { id: 'KeyN', dataKey: 'n', className: 'keyboardkey nKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', html: 'CIRCLE<br/>BY DIAMETER', bg: GLYPH.circleDiameter, badge: 'circle' },
+  { id: 'KeyM', dataKey: 'm', className: 'keyboardkey mKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', html: 'CIRCLE<br/>BY RADIUS', bg: GLYPH.circleRadius, badge: 'circle' },
   { id: 'Comma', dataKey: ',', className: 'keyboardkey commaKey ', transform: 'translate(38%, 0%)', html: '' },
   { id: 'Period', dataKey: '.', className: 'keyboardkey periodKey ', transform: 'translate(38%, 0%)', html: '' },
-  { id: 'Slash', dataKey: '/', className: 'keyboardkey forwardSlashKey OtherKey', transform: 'translate(38%, 0%)', html: '' },
+  { id: 'Slash', dataKey: '/', className: 'keyboardkey forwardSlashKey OtherKey enabledButton', transform: 'translate(38%, 0%)', html: 'GRID<br/>TOGGLE', bg: GLYPH.grid },
   { id: 'ShiftRight', dataKey: 'shift', className: 'keyboardkey shiftKeyRight OtherKey hidden', transform: 'translate(15%, 0%)', html: '' },
 ];
 
@@ -292,6 +302,15 @@ function KeyButton({ def, active }: { def: KeyDef; active: boolean }) {
           className="key-bg"
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: def.bg }}
+        />
+      )}
+      {def.badge && (
+        <span
+          className={`key-badge badge-${def.badge}`}
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{
+            __html: def.badge === 'circle' ? BADGE_CIRCLE : BADGE_RECT,
+          }}
         />
       )}
       <span

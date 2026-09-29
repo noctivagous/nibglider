@@ -36,12 +36,22 @@ function Section({ lines }: { lines: StatusLine[] }) {
 
 // Display-only canvas HUD: state of things, then next steps.
 // Pointer events fall through to the canvas like the on-screen keyboard.
-export default function StatusOverlay({ engine }: { engine: NibGliderEngine }) {
+export default function StatusOverlay({
+  engine,
+  hidden,
+}: {
+  engine: NibGliderEngine;
+  hidden?: boolean;
+}) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const schema = engine.getStatusSchema();
   if (schema.state.length === 0 && schema.steps.length === 0) return null;
   return (
-    <div id="statusOverlay" aria-hidden="true">
+    <div
+      id="statusOverlay"
+      className={hidden ? 'status-hidden' : undefined}
+      aria-hidden="true"
+    >
       <div className="status-table">
         <Section lines={schema.state} />
         {schema.state.length > 0 && schema.steps.length > 0 && (
