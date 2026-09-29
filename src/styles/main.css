@@ -1745,8 +1745,35 @@ body {
   font-weight: 600;
   font-size: 0.8125rem;
   color: var(--dp-text-1);
-  min-width: 48px;
-  text-align: right;
+  /* Fixed width so longer values never widen the titlebar. */
+  width: 4.5rem;
+  flex: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: center;
+}
+
+button#strokeWidthDisplay {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  margin: 0;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+button#strokeWidthDisplay:hover {
+  color: #fff;
+}
+
+input#strokeWidthDisplay {
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  padding: 2px 4px;
+  text-overflow: clip;
 }
 
 /* Shape preview well */

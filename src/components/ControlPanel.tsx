@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -325,6 +326,8 @@ function ShapeParamsFlyout({
   title,
   preview,
   onClose,
+  onMenuMouseEnter,
+  onMenuMouseLeave,
   children,
 }: {
   open: boolean;
@@ -333,6 +336,8 @@ function ShapeParamsFlyout({
   title: string;
   preview: ReactNode;
   onClose: () => void;
+  onMenuMouseEnter?: () => void;
+  onMenuMouseLeave?: () => void;
   children: ReactNode;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -403,6 +408,12 @@ function ShapeParamsFlyout({
       role="dialog"
       aria-label={`${title} parameters`}
       tabIndex={-1}
+      onMouseEnter={onMenuMouseEnter}
+      onMouseLeave={() => {
+        // Keyboard focus inside the menu pins it open past a mouse slip.
+        if (menuRef.current?.contains(document.activeElement)) return;
+        onMenuMouseLeave?.();
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           e.preventDefault();
@@ -513,6 +524,76 @@ function StrokePreviewSvg({
   );
 }
 
+// Up to three decimal places, no trailing zeros ("4", "4.5", "4.125").
+function formatStrokeWidth(n: number): string {
+  if (!Number.isFinite(n)) return '0';
+  return String(Math.round(n * 1000) / 1000);
+}
+
+// Number input that tolerates intermediate text ("4.", ""): the draft is
+// shown verbatim while every finite prefix still commits live. A plain
+// controlled value={number} would erase the dot or revert a cleared field
+// on each render, and the engine notify on every keystroke must not move
+// focus, so Enter/Escape stay local to the field.
+function NumericDraftInput({
+  id,
+  className,
+  ariaLabel,
+  title,
+  value,
+  min,
+  max,
+  step,
+  autoFocus,
+  onCommit,
+  onDone,
+}: {
+  id?: string;
+  className?: string;
+  ariaLabel: string;
+  title?: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  autoFocus?: boolean;
+  onCommit: (n: number) => void;
+  onDone?: () => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      type="number"
+      id={id}
+      className={className}
+      aria-label={ariaLabel}
+      title={title}
+      min={min}
+      max={max}
+      step={step}
+      value={draft ?? formatStrokeWidth(value)}
+      autoFocus={autoFocus}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const n = parseFloat(e.target.value);
+        if (Number.isFinite(n)) onCommit(n);
+      }}
+      onBlur={() => {
+        setDraft(null);
+        onDone?.();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === 'Escape') {
+          e.stopPropagation();
+          setDraft(null);
+          onDone?.();
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 function StrokeParams({
   engine,
   strokeWidth,
@@ -548,19 +629,15 @@ function StrokeParams({
             aria-label="Stroke width"
             onChange={(e) => engine.setStrokeWidth(parseFloat(e.target.value))}
           />
-          <input
-            type="number"
+          <NumericDraftInput
             id="strokeWidthInput"
             className="stroke-width-input"
             min={1}
             max={40}
             step={0.5}
             value={strokeWidth}
-            aria-label="Stroke width in points"
-            onChange={(e) => {
-              const n = parseFloat(e.target.value);
-              if (Number.isFinite(n)) engine.setStrokeWidth(n);
-            }}
+            ariaLabel="Stroke width in points"
+            onCommit={(n) => engine.setStrokeWidth(n)}
           />
         </span>
       </span>
@@ -891,10 +968,38 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   const [paramsFlyout, setParamsFlyout] = useState<
     'circle' | 'rect' | 'stroke' | null
   >(null);
+  const [editingWidth, setEditingWidth] = useState(false);
   const circlePreviewRef = useRef<HTMLButtonElement>(null);
   const rectPreviewRef = useRef<HTMLButtonElement>(null);
   const strokePreviewRef = useRef<HTMLButtonElement>(null);
-  const closeFlyout = () => setParamsFlyout(null);
+  // Stable so the flyout's focus effect only runs when it opens — an
+  // inline identity would refocus the flyout shell on every keystroke.
+  const closeFlyout = useCallback(() => setParamsFlyout(null), []);
+  // Hover preview: the flyouts open on preview mouseenter (fine pointers
+  // only, so touch tap-to-toggle is unaffected) and close shortly after
+  // the mouse leaves both the trigger and the menu.
+  const hoverCloseTimer = useRef<number | null>(null);
+  const cancelHoverClose = useCallback(() => {
+    if (hoverCloseTimer.current !== null) {
+      window.clearTimeout(hoverCloseTimer.current);
+      hoverCloseTimer.current = null;
+    }
+  }, []);
+  const scheduleHoverClose = useCallback(() => {
+    cancelHoverClose();
+    hoverCloseTimer.current = window.setTimeout(() => {
+      hoverCloseTimer.current = null;
+      setParamsFlyout(null);
+    }, 180);
+  }, [cancelHoverClose]);
+  const hoverOpenFlyout = useCallback(
+    (name: 'circle' | 'rect' | 'stroke') => {
+      if (window.matchMedia?.('(hover: none)').matches) return;
+      cancelHoverClose();
+      setParamsFlyout(name);
+    },
+    [cancelHoverClose],
+  );
   // Selection state: when items are selected the Stroke/Fill panels
   // reflect the selection (first selected item) instead of the globals.
   const sel = engine.selectionPaint();
@@ -943,9 +1048,30 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             title="Stroke Color"
             onChange={(e) => engine.setStrokeColor(e.target.value)}
           />
-          <span id="strokeWidthDisplay">
-            {strokeWidth.toFixed(1)} pt
-          </span>
+          {editingWidth ? (
+            <NumericDraftInput
+              id="strokeWidthDisplay"
+              value={strokeWidth}
+              min={1}
+              max={40}
+              step={0.5}
+              ariaLabel="Stroke width in points"
+              title="Stroke width"
+              autoFocus
+              onCommit={(n) => engine.setStrokeWidth(n)}
+              onDone={() => setEditingWidth(false)}
+            />
+          ) : (
+            <button
+              type="button"
+              id="strokeWidthDisplay"
+              title="Edit stroke width"
+              aria-label={`Stroke width ${formatStrokeWidth(strokeWidth)} points. Activate to edit.`}
+              onClick={() => setEditingWidth(true)}
+            >
+              {formatStrokeWidth(strokeWidth)} pt
+            </button>
+          )}
           <button
             type="button"
             ref={strokePreviewRef}
@@ -958,6 +1084,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             aria-expanded={paramsFlyout === 'stroke'}
             aria-label="Stroke parameters"
             title="Stroke parameters"
+            onMouseEnter={() => hoverOpenFlyout('stroke')}
+            onMouseLeave={scheduleHoverClose}
             onClick={() =>
               setParamsFlyout((v) => (v === 'stroke' ? null : 'stroke'))
             }
@@ -992,6 +1120,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               />
             }
             onClose={closeFlyout}
+            onMenuMouseEnter={cancelHoverClose}
+            onMenuMouseLeave={scheduleHoverClose}
           >
             <StrokeParams
               engine={engine}
@@ -1074,6 +1204,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           aria-expanded={paramsFlyout === 'circle'}
           aria-label="Circle Keys shape parameters"
           title="Shape parameters"
+          onMouseEnter={() => hoverOpenFlyout('circle')}
+          onMouseLeave={scheduleHoverClose}
           onClick={() =>
             setParamsFlyout((v) => (v === 'circle' ? null : 'circle'))
           }
@@ -1105,6 +1237,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             />
           }
           onClose={closeFlyout}
+          onMenuMouseEnter={cancelHoverClose}
+          onMenuMouseLeave={scheduleHoverClose}
         >
           <CircleShapeParams engine={engine} />
         </ShapeParamsFlyout>
@@ -1140,6 +1274,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           aria-expanded={paramsFlyout === 'rect'}
           aria-label="Rect Keys shape parameters"
           title="Shape parameters"
+          onMouseEnter={() => hoverOpenFlyout('rect')}
+          onMouseLeave={scheduleHoverClose}
           onClick={() =>
             setParamsFlyout((v) => (v === 'rect' ? null : 'rect'))
           }
@@ -1173,6 +1309,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             />
           }
           onClose={closeFlyout}
+          onMenuMouseEnter={cancelHoverClose}
+          onMenuMouseLeave={scheduleHoverClose}
         >
           <RectShapeParams engine={engine} />
         </ShapeParamsFlyout>
