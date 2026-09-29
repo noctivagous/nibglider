@@ -462,40 +462,13 @@ export class NibGliderEngine {
       const h = radius * 0.7;
       return `M ${f(-h, -h)}L ${f(h, -h)}L ${f(h, h)}L ${f(-h, h)}Z`;
     }
-    if (type === 'trapezoid') {
-      return (
-        'M ' +
-        f(-0.45 * radius, -0.9 * radius) +
-        `L ${f(0.45 * radius, -0.9 * radius)}` +
-        `L ${f(0.9 * radius, 0.9 * radius)}` +
-        `L ${f(-0.9 * radius, 0.9 * radius)}Z`
-      );
-    }
-    if (type === 'parallelogram') {
-      return (
-        'M ' +
-        f(-0.8 * radius, 0.8 * radius) +
-        `L ${f(0.8 * radius, 0.8 * radius)}` +
-        `L ${f(1.2 * radius, -0.8 * radius)}` +
-        `L ${f(-0.4 * radius, -0.8 * radius)}Z`
-      );
-    }
-    if (type === 'rightTriangle') {
-      return (
-        'M ' +
-        f(-radius, 0) +
-        `L ${f(radius, 0)}` +
-        `L ${f(0, -radius)}Z`
-      );
-    }
-    if (type === 'rhombus') {
-      return (
-        'M ' +
-        f(0, -0.9 * radius) +
-        `L ${f(0.7 * radius, 0)}` +
-        `L ${f(0, 0.9 * radius)}` +
-        `L ${f(-0.7 * radius, 0)}Z`
-      );
+    const circumPts = this.circleInnerShapeUnitPoints(type);
+    if (circumPts) {
+      let d = 'M ';
+      for (const [x, y] of circumPts) {
+        d += f(radius * x, radius * y);
+      }
+      return d + 'Z';
     }
     if (type === 'polygon') {
       const sides = params.sides || 6;
@@ -816,6 +789,86 @@ export class NibGliderEngine {
     shape.rotate(angleDeg, center);
   }
 
+  // Canonical vertices for trapezoid / parallelogram / right triangle /
+  // rhombus, scaled so the farthest vertex sits on the unit circle (the
+  // same circumradius convention as a regular polygon). Trapezoid and
+  // right triangle are cyclic (every vertex on the circle); parallelogram
+  // and rhombus keep their proportions, so only the long-diagonal vertices
+  // land on the circle.
+  circleInnerShapeUnitPoints(type: string): Array<[number, number]> | null {
+    const circum = (
+      pts: Array<[number, number]>,
+    ): Array<[number, number]> => {
+      let maxR = 0;
+      for (const [x, y] of pts) {
+        const r = Math.hypot(x, y);
+        if (r > maxR) maxR = r;
+      }
+      if (!(maxR > 0)) return pts;
+      return pts.map(([x, y]) => [x / maxR, y / maxR]);
+    };
+    switch (type) {
+      case 'rightTriangle':
+      case 'rightTriangleB':
+        // Thales: hypotenuse is the diameter; right angle at (0, -1).
+        return [
+          [-1, 0],
+          [1, 0],
+          [0, -1],
+        ];
+      case 'trapezoid': {
+        // Cyclic isosceles trapezoid: both bases are chords of the unit
+        // circle. Short top, long bottom; top/bottom width ratio 1:2.
+        const bottomX = 0.9;
+        const topX = 0.45;
+        const bottomY = Math.sqrt(Math.max(0, 1 - bottomX * bottomX));
+        const topY = -Math.sqrt(Math.max(0, 1 - topX * topX));
+        return [
+          [-topX, topY],
+          [topX, topY],
+          [bottomX, bottomY],
+          [-bottomX, bottomY],
+        ];
+      }
+      case 'parallelogram':
+        return circum([
+          [-0.9, 0.6],
+          [0.3, 0.6],
+          [0.9, -0.6],
+          [-0.3, -0.6],
+        ]);
+      case 'rhombus':
+        return circum([
+          [0, -0.9],
+          [0.7, 0],
+          [0, 0.9],
+          [-0.7, 0],
+        ]);
+      default:
+        return null;
+    }
+  }
+
+  createCircumShape(
+    center: AnyItem,
+    radius: number,
+    unitPoints: Array<[number, number]>,
+    rotationAngle = 0,
+  ): AnyItem {
+    const scope = this.scope;
+    const rot = (rotationAngle * Math.PI) / 180;
+    const c = Math.cos(rot);
+    const s = Math.sin(rot);
+    const path = new scope.Path();
+    for (const [x, y] of unitPoints) {
+      const rx = x * c - y * s;
+      const ry = x * s + y * c;
+      path.add(center.add(new scope.Point(rx * radius, ry * radius)));
+    }
+    path.closed = true;
+    return path;
+  }
+
   createInnerShape(
     center: AnyItem,
     radius: number,
@@ -853,60 +906,16 @@ export class NibGliderEngine {
         });
         break;
       case 'rightTriangle':
-        // True right triangle: hypotenuse is the full diameter across the
-        // top, right angle at the bottom of the circle (Thales' theorem).
-        path = new scope.Path({
-          segments: [
-            center.add(new scope.Point(-radius, 0)),
-            center.add(new scope.Point(radius, 0)),
-            center.add(new scope.Point(0, -radius)),
-          ],
-          closed: true,
-        });
-        break;
       case 'rightTriangleB':
-        path = new scope.Path({
-          segments: [
-            center.add(new scope.Point(-radius * 0.9, radius * 0.5)),
-            center.add(new scope.Point(radius * 0.9, radius * 0.5)),
-            center.add(new scope.Point(0, -radius * 0.9)),
-          ],
-          closed: true,
-        });
-        break;
       case 'trapezoid':
-        path = new scope.Path({
-          segments: [
-            center.add(new scope.Point(-radius * 0.5, -radius * 0.6)),
-            center.add(new scope.Point(radius * 0.5, -radius * 0.6)),
-            center.add(new scope.Point(radius * 0.9, radius * 0.6)),
-            center.add(new scope.Point(-radius * 0.9, radius * 0.6)),
-          ],
-          closed: true,
-        });
-        break;
       case 'parallelogram':
-        path = new scope.Path({
-          segments: [
-            center.add(new scope.Point(-radius * 0.9, radius * 0.6)),
-            center.add(new scope.Point(radius * 0.3, radius * 0.6)),
-            center.add(new scope.Point(radius * 0.9, -radius * 0.6)),
-            center.add(new scope.Point(-radius * 0.3, -radius * 0.6)),
-          ],
-          closed: true,
-        });
+      case 'rhombus': {
+        const unit = this.circleInnerShapeUnitPoints(currentInnerType);
+        if (unit) {
+          path = this.createCircumShape(center, radius, unit, rotationAngle);
+        }
         break;
-      case 'rhombus':
-        path = new scope.Path({
-          segments: [
-            center.add(new scope.Point(0, -radius * 0.9)),
-            center.add(new scope.Point(radius * 0.7, 0)),
-            center.add(new scope.Point(0, radius * 0.9)),
-            center.add(new scope.Point(-radius * 0.7, 0)),
-          ],
-          closed: true,
-        });
-        break;
+      }
       case 'regularTriangle':
         path = this.createRegularPolygon(center, radius, 3, rotationAngle);
         break;

@@ -4,7 +4,7 @@ because in the future the user will click on the keys to configure them.
 
 [ ] make scale and rotate keys work on the hovered shape, without selection needed.
 
-[ ] aspect ratio snap for drawing with rect keys. aspect ratio will flip for dimensions. 3:4 or 4:3
+[ ] aspect ratio snap for drawing with rect keys. aspect ratio will flip for dimensions when shape changes. 3:4 or 4:3
 
 [ ] circle keys:  [inradius | circumradius]
 
