@@ -1393,22 +1393,26 @@ body {
 /* Thin dark scrollbars for the menu (and the params flyout, which also
    scrolls) so the OS default doesn't clash with the panel idiom. */
 .custom-select-menu,
+.font-select-menu,
 .shape-params-flyout {
   scrollbar-width: thin;
   scrollbar-color: #4b5866 transparent;
 }
 
 .custom-select-menu::-webkit-scrollbar,
+.font-select-menu::-webkit-scrollbar,
 .shape-params-flyout::-webkit-scrollbar {
   width: 10px;
 }
 
 .custom-select-menu::-webkit-scrollbar-track,
+.font-select-menu::-webkit-scrollbar-track,
 .shape-params-flyout::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .custom-select-menu::-webkit-scrollbar-thumb,
+.font-select-menu::-webkit-scrollbar-thumb,
 .shape-params-flyout::-webkit-scrollbar-thumb {
   background: #4b5866;
   border-radius: 5px;
@@ -1416,6 +1420,7 @@ body {
 }
 
 .custom-select-menu::-webkit-scrollbar-thumb:hover,
+.font-select-menu::-webkit-scrollbar-thumb:hover,
 .shape-params-flyout::-webkit-scrollbar-thumb:hover {
   background: #64748b;
 }
@@ -1478,9 +1483,152 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   #controlPanel .custom-select-trigger .cs-caret,
+  #controlPanel .font-select-trigger .cs-caret,
   .custom-select-menu .cs-caret {
     transition: none;
   }
+}
+
+/* Typeface picker in the Text flyout: port of banner-studio's FontSelect —
+   grouped list with each entry previewed in its own typeface. Trigger and
+   menu mirror the custom-select idiom; the menu portals to document.body. */
+#controlPanel .font-select {
+  display: inline-flex;
+  min-width: 0;
+}
+
+#controlPanel .font-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  box-shadow: none;
+  color: var(--dp-text-1);
+  padding: 4px 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  white-space: nowrap;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+}
+
+#controlPanel .font-select-trigger:hover {
+  border-color: #3d4a59;
+}
+
+#controlPanel .font-select-trigger:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 1px;
+}
+
+#controlPanel .font-select-trigger .fs-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#controlPanel .font-select-trigger .cs-caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  margin-left: auto;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: 0.7;
+  transition: transform 0.12s ease;
+}
+
+#controlPanel .font-select-trigger .cs-caret.open {
+  transform: rotate(180deg);
+}
+
+.font-select-menu {
+  position: fixed;
+  z-index: 1200;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 22%),
+    linear-gradient(to bottom, #242e3a, #161c24);
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.6),
+    0 2px 6px rgba(0, 0, 0, 0.5);
+  font-size: 0.8125rem;
+  color: var(--dp-text-2);
+}
+
+.font-select-menu:focus {
+  outline: none;
+}
+
+.font-select-menu .fs-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 3px;
+}
+
+.font-select-menu .fs-group-label {
+  font-family: var(--font-tech-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dp-text-3);
+  flex: none;
+}
+
+.font-select-menu .fs-group-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--dp-border);
+  opacity: 0.6;
+}
+
+.font-select-menu .fs-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dp-text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.font-select-menu .fs-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.font-select-menu .fs-item.focused {
+  background: var(--dp-accent-soft);
+  color: var(--dp-text-1);
+}
+
+.font-select-menu .fs-item.selected {
+  background: rgba(79, 143, 247, 0.22);
+  border-left-color: var(--dp-accent);
+  color: #fff;
+}
+
+.font-select-menu .fs-check {
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--dp-accent);
 }
 
 #controlPanel input[type="range"] {

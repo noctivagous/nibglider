@@ -50,6 +50,9 @@ export type TextMode = 'display' | 'body';
 /** Display Text placement relative to the shape boundary. */
 export type DisplayFlow = 'interior' | 'exterior';
 
+/** Which way Display glyph tops point: to the circumference or origin. */
+export type GlyphOrientation = 'outward' | 'inward';
+
 export type StrokeCap = 'butt' | 'round' | 'square';
 export type StrokeJoin = 'miter' | 'round' | 'bevel';
 
@@ -227,6 +230,7 @@ export class NibGliderEngine {
   textModeEnabled = false;
   textMode: TextMode = 'display';
   displayFlow: DisplayFlow = 'exterior';
+  glyphOrientation: GlyphOrientation = 'outward';
   // Boundary offset for Display Text rings, in points.
   displayOffset = 18;
   // Extra advance between flow glyphs, in points.
@@ -321,6 +325,7 @@ export class NibGliderEngine {
       if (event.code) this.onKeyActivity({ code: event.code, active: false });
     };
     const onHighlightDown = (event: KeyboardEvent) => {
+      if (this.isTextEntryTarget(event)) return;
       const keyLower = event.key.toLowerCase();
       if (keyLower === '/') return;
       if (event.code && event.metaKey === false) {
@@ -946,6 +951,14 @@ export class NibGliderEngine {
   setDisplayFlow(f: DisplayFlow): void {
     if (f !== 'interior' && f !== 'exterior') return;
     this.displayFlow = f;
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setGlyphOrientation(o: GlyphOrientation): void {
+    if (o !== 'outward' && o !== 'inward') return;
+    this.glyphOrientation = o;
     this.updatePreviewBox();
     this.updateTextContent();
     this.notify();
@@ -2064,13 +2077,26 @@ export class NibGliderEngine {
    * flows around the boundary, Body fills the interior. Returns the
    * geometry untouched when Text Mode is off or no text results.
    */
-  private withShapeText(path: AnyItem, isPreview: boolean): AnyItem {
+  private withShapeText(
+    path: AnyItem,
+    isPreview: boolean,
+    textRotation = 0,
+    center: AnyItem = null,
+  ): AnyItem {
     if (!path || !this.textModeEnabled) return path;
     const text =
       this.textMode === 'body'
         ? this.createBodyTextFor(path)
         : this.createBoundaryText(path);
     if (!text) return path;
+    if (
+      Number.isFinite(textRotation) &&
+      textRotation !== 0 &&
+      center &&
+      text.children
+    ) {
+      text.rotate(textRotation, center);
+    }
     const group: AnyItem = new this.scope.Group();
     group.addChild(path);
     group.addChild(text);
@@ -2271,13 +2297,13 @@ export class NibGliderEngine {
         pt.justification = 'center';
         const at = pos.add(nor.multiply(side * ring));
         pt.position = at;
-        // Tops point away from the shape (exterior) or toward its center
-        // (interior), independent of boundary travel direction; degenerate
-        // normals fall back to the tangent.
-        const upSign =
-          this.displayFlow === 'interior' ? interiorSign : -interiorSign;
+        // Glyph tops point to the circumference (outward) or the origin
+        // (inward) along the local normal, independent of boundary travel
+        // direction; degenerate normals fall back to the tangent.
+        const facing =
+          this.glyphOrientation === 'outward' ? -interiorSign : interiorSign;
         pt.rotate(
-          upSign !== 0 ? nor.multiply(upSign).angle + 90 : lastTan,
+          facing !== 0 ? nor.multiply(facing).angle + 90 : lastTan,
           at,
         );
         pt.data.textKind = 'display';
@@ -2320,9 +2346,13 @@ export class NibGliderEngine {
       : isRect
         ? (this.rectangleInnerShapeParams as unknown as Record<string, number>)
         : (this.innerShapeParams as Record<string, number>);
+    // Rotationally symmetric branches ignore rotationAngle, so text
+    // needs it applied explicitly to follow the guide (see below).
+    let geoRotates = true;
     switch (currentInnerType) {
       case 'circle':
         path = new scope.Path.Circle(center, radius);
+        geoRotates = false;
         break;
       case 'sector':
       case 'semicircle':
@@ -2345,6 +2375,7 @@ export class NibGliderEngine {
           center,
           size: new scope.Size(radius * 1.4, radius * 1.4),
         });
+        geoRotates = false;
         break;
       case 'rightTriangle':
       case 'rightTriangleB':
@@ -2402,8 +2433,15 @@ export class NibGliderEngine {
       }
       this.applyStrokeGeometry(path);
     }
-    // Text Mode derives text from the finished (already rotated) geometry.
-    return this.withShapeText(path, isPreview);
+    // Text Mode derives text from the finished geometry. Branches that
+    // baked the guide rotation in need no extra turn; symmetric ones
+    // (circle, rectangle) get the angle applied to the text explicitly.
+    return this.withShapeText(
+      path,
+      isPreview,
+      geoRotates ? 0 : rotationAngle,
+      center,
+    );
   }
 
   drawInnerShape(frameItem: AnyItem, style: string): void {
@@ -3730,7 +3768,17 @@ export class NibGliderEngine {
   // --- Keyboard: the document keydown listener (NibGliderApp.js) ---
   // The legacy window.onKeyDown duplicate was never invoked (no InputManager),
   // so only this handler defines behavior.
+  /** Typing in panel fields must never arm canvas functions. */
+  private isTextEntryTarget(event: KeyboardEvent): boolean {
+    const t = event.target as HTMLElement | null;
+    if (!t) return false;
+    if (t.isContentEditable) return true;
+    const tag = t.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  }
+
   handleKeyDown(event: KeyboardEvent): void {
+    if (this.isTextEntryTarget(event)) return;
     if (event.metaKey || event.ctrlKey) {
       if (event.key === '0') {
         event.preventDefault();

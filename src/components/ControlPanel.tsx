@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
+import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
 import NumericStepper from './NumericStepper';
 import type {
   CircleInnerShape,
@@ -413,9 +414,13 @@ function ShapeParamsFlyout({
       if (triggerRef.current?.contains(t) || menuRef.current?.contains(t)) {
         return;
       }
-      // A CustomSelect opened from inside the flyout portals its menu to
-      // document.body; picking an option there must not close the flyout.
-      if (t instanceof Element && t.closest('.custom-select-menu')) {
+      // A CustomSelect (or the typeface FontFamilySelect) opened from
+      // inside the flyout portals its menu to document.body; picking an
+      // option there must not close the flyout.
+      if (
+        t instanceof Element &&
+        t.closest('.custom-select-menu, .font-select-menu')
+      ) {
         return;
       }
       onClose();
@@ -941,23 +946,33 @@ function FillParams({
   );
 }
 
-const TEXT_FONT_OPTIONS: CustomSelectOption[] = [
-  'Helvetica',
-  'Arial',
-  'Georgia',
-  'Times New Roman',
-  'Courier New',
-  'Verdana',
-  // Vendored under public/fonts with parsed-metric measurement.
-  'Barlow Condensed',
-  'Chakra Petch',
-  'Exo 2',
-  'JetBrains Mono',
-  'Orbitron',
-  'sans-serif',
-  'serif',
-  'monospace',
-].map((f) => ({ value: f, label: f }));
+const TEXT_FONT_GROUPS: FontFamilyGroup[] = [
+  {
+    // Vendored under public/fonts with parsed-metric measurement.
+    label: 'nibglider',
+    fonts: [
+      { value: 'Barlow Condensed', label: 'Barlow Condensed', family: 'Barlow Condensed', weight: 600 },
+      { value: 'Chakra Petch', label: 'Chakra Petch', family: 'Chakra Petch', weight: 600 },
+      { value: 'Exo 2', label: 'Exo 2', family: 'Exo 2', weight: 600 },
+      { value: 'JetBrains Mono', label: 'JetBrains Mono', family: 'JetBrains Mono', weight: 600 },
+      { value: 'Orbitron', label: 'Orbitron', family: 'Orbitron', weight: 700 },
+    ],
+  },
+  {
+    label: 'System',
+    fonts: [
+      'Helvetica',
+      'Arial',
+      'Georgia',
+      'Times New Roman',
+      'Courier New',
+      'Verdana',
+      'sans-serif',
+      'serif',
+      'monospace',
+    ].map((f) => ({ value: f, label: f, family: f })),
+  },
+];
 
 const TEXT_WEIGHT_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'normal', label: 'Regular' },
@@ -999,6 +1014,7 @@ function TextParams({
 }) {
   const textMode = engine.textMode;
   const displayFlow = engine.displayFlow;
+  const glyphOrientation = engine.glyphOrientation;
   return (
     <div className="panelParameters">
       <span className="param-item">
@@ -1043,6 +1059,37 @@ function TextParams({
                   title={`${opt.label} of the shape boundary`}
                   className={displayFlow === opt.value ? 'active' : undefined}
                   onClick={() => engine.setDisplayFlow(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </span>
+          <span className="param-item">
+            <label>Orientation</label>
+            <div
+              className="seg-ctrl seg-text"
+              role="group"
+              aria-label="Glyph orientation"
+            >
+              {(
+                [
+                  { value: 'outward', label: 'Outward' },
+                  { value: 'inward', label: 'Inward' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  title={
+                    opt.value === 'outward'
+                      ? 'Glyph tops point to the circumference'
+                      : 'Glyph tops point to the origin'
+                  }
+                  className={
+                    glyphOrientation === opt.value ? 'active' : undefined
+                  }
+                  onClick={() => engine.setGlyphOrientation(opt.value)}
                 >
                   {opt.label}
                 </button>
@@ -1105,11 +1152,11 @@ function TextParams({
       </span>
       <span className="param-item">
         <label>Typeface</label>
-        <CustomSelect
+        <FontFamilySelect
           id="textFontSelect"
           ariaLabel="Typeface"
           value={spec.fontFamily}
-          options={TEXT_FONT_OPTIONS}
+          groups={TEXT_FONT_GROUPS}
           onChange={(v) => engine.setTextFontFamily(v)}
         />
       </span>
