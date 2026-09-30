@@ -2514,6 +2514,25 @@ input#strokeWidthDisplay {
   flex: 1 1 0;
 }
 
+/* Inline row: label beside its control (Typeface + dropdown) instead of
+   stacked like param-item. */
+.shape-params-flyout .flyout-inline-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shape-params-flyout .flyout-inline-row > label {
+  flex: none;
+}
+
+.shape-params-flyout .flyout-inline-row > .font-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .panelParameters .param-item label {
   color: var(--dp-text-2);
 }

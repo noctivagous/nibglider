@@ -107,7 +107,15 @@ a parametric component can change what happens to the corners of a rectangle,
 and allow for completely customized vector objects instead of just 
 geometric primitives.
 
+----
 
+Usable for work checklist
+[ ] - undomanager.
+[ ] - can drop an image onto the canvas, including SVG. - paperjs resource
+[ ] - can export current drawing to SVG and PDF (jspdf) and other file types - paperjs resource
+[ ] - Page Size and Page Orientation settings for visible drawing board.
+
+ 
 ----
 [ ] - i18n and physical layouts from keypilot
 [ ] - layout editor from keypilot

@@ -90,6 +90,29 @@ export class FontMetrics {
     return this.ctx;
   }
 
+  /** Ascent/descent in points as positive magnitudes for placement math. */
+  vertical(
+    family: string,
+    size: number,
+    weight: string,
+  ): { asc: number; desc: number } {
+    const px = Math.max(4, size);
+    const font = this.fonts.get(this.key(family, weight));
+    if (font) {
+      try {
+        const upm = font.unitsPerEm;
+        if (upm > 0) {
+          const asc = (font.ascender / upm) * px;
+          const desc = Math.abs(font.descender / upm) * px;
+          if (asc > 0 && desc >= 0) return { asc, desc };
+        }
+      } catch {
+        // Fall through to the estimate.
+      }
+    }
+    return { asc: px * 0.8, desc: px * 0.2 };
+  }
+
   /** Advance width of text in points. Italic is ignored (sub-pixel). */
   advance(
     text: string,

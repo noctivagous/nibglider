@@ -54,6 +54,9 @@ export type DisplayFlow = 'interior' | 'exterior';
 /** Which way Display glyph tops point: to the circumference or origin. */
 export type GlyphOrientation = 'outward' | 'inward';
 
+/** Vertical anchoring of Display Text glyphs on open spline strokes. */
+export type SplineTextPlacement = 'above' | 'baseline' | 'below';
+
 export type StrokeCap = 'butt' | 'round' | 'square';
 export type StrokeJoin = 'miter' | 'round' | 'bevel';
 
@@ -232,6 +235,10 @@ export class NibGliderEngine {
   textMode: TextMode = 'display';
   displayFlow: DisplayFlow = 'exterior';
   glyphOrientation: GlyphOrientation = 'outward';
+  // Vertical anchoring of Display glyphs on open spline strokes: Above
+  // rests the descender line on the spline, Baseline uses the spline as
+  // the text baseline, Below hangs the ascender line from the spline.
+  splineTextPlacement: SplineTextPlacement = 'above';
   // Boundary offset for Display Text rings, in points.
   displayOffset = 18;
   // Extra advance between flow glyphs, in points.
@@ -240,6 +247,10 @@ export class NibGliderEngine {
   circumferenceAngleOffset = -90;
   // Last combinatorics outcome, surfaced under the panel buttons.
   lastCombineNote = '';
+  // Persistent deposit-time combinatoric setting: with a selection
+  // present, each deposited shape folds into it using this mode ('none'
+  // deposits plainly, exactly as before).
+  combineMode: CombineMode | 'none' = 'none';
   // Kerned advance measurement (parsed font bytes → canvas → estimate).
   textMetrics = new FontMetrics();
 
@@ -260,6 +271,7 @@ export class NibGliderEngine {
   quadPointCount = 0;
   shapeGuideAngle = 0;
   previewInner: AnyItem = null;
+  previewSplineText: AnyItem = null;
   previewShape: AnyItem = null;
   previewLine: AnyItem = null;
   previewPath: AnyItem = null;
@@ -965,6 +977,14 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  setSplineTextPlacement(p: SplineTextPlacement): void {
+    if (p !== 'above' && p !== 'baseline' && p !== 'below') return;
+    this.splineTextPlacement = p;
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
   setDisplayOffset(v: number): void {
     if (!Number.isFinite(v)) return;
     this.displayOffset = Math.max(0, Math.min(200, v));
@@ -1043,6 +1063,185 @@ export class NibGliderEngine {
       : 'No result — shapes may not overlap.';
     this.updateTextContent();
     this.notify();
+  }
+
+  setCombineMode(m: CombineMode | 'none'): void {
+    if (m !== 'none' && m !== 'union' && m !== 'subtract' && m !== 'intersect')
+      return;
+    this.combineMode = m;
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  // Do two shapes touch (overlap, edge-touch, or containment either
+  // way)? intersects() only sees curve crossings, so a shape fully
+  // inside another needs the containment checks. Unknown shapes count
+  // as touching (attempt the op) rather than risk skipping a real cut.
+  private somePointOn(item: AnyItem): AnyItem | null {
+    try {
+      if (item.segments && item.segments.length > 0)
+        return item.segments[0].point;
+      if (Array.isArray(item.children)) {
+        for (const c of item.children) {
+          const p = this.somePointOn(c);
+          if (p) return p;
+        }
+      }
+      if (item.bounds) return item.bounds.center;
+    } catch {
+      // Fall through to null.
+    }
+    return null;
+  }
+
+  private shapesTouch(a: AnyItem, b: AnyItem): boolean {
+    try {
+      if (a && b && typeof a.intersects === 'function' && a.intersects(b))
+        return true;
+      const pa = this.somePointOn(a);
+      const pb = this.somePointOn(b);
+      if (pa && this.containsPoint(b, pa)) return true;
+      if (pb && this.containsPoint(a, pb)) return true;
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  // Remove a layer item entirely: out of the selection and off the
+  // layer. Missing parents (detached clones, already-removed items) are
+  // not errors.
+  private dropItem(item: AnyItem): void {
+    if (!item) return;
+    this.removeItemFromSelection(item);
+    try {
+      if (item.parent != null) item.remove();
+    } catch {
+      // Detached already.
+    }
+  }
+
+  // Fresh shape text for a boolean result when Text Mode is on. Falls
+  // back to the bare geometry when derivation fails (e.g. compounds
+  // paper cannot walk for glyphs).
+  private retextResult(geo: AnyItem): AnyItem {
+    if (!this.textModeEnabled) return geo;
+    try {
+      return this.withShapeText(geo, false);
+    } catch {
+      return geo;
+    }
+  }
+
+  // Deposit-time combinatorics: a deposited shape combines with every
+  // combinable shape it touches, using the persistent combine mode —
+  // no selection needed. Union merges everything touched plus the
+  // deposit into one shape (deposit paint wins); subtract cuts the
+  // deposit out of each touched shape and consumes the deposit itself
+  // (returns null: nothing to place); intersect keeps the deposit's
+  // overlap with the union of what it touches. Returns the item to
+  // place on the layer, the input untouched when the mode is 'none',
+  // nothing is touched, or an op fails. Shape+text groups combine by
+  // geometry and get fresh text re-derived from the result when Text
+  // Mode is on. Callers place a non-null return; consumed operands are
+  // already removed. Results stay unselected, matching plain deposits.
+  depositWithCombine(deposited: AnyItem): AnyItem | null {
+    if (!deposited || this.combineMode === 'none') return deposited;
+    const opName = this.combineMode === 'union' ? 'unite' : this.combineMode;
+    const depositGeo = this.shapePartOf(deposited);
+    if (!depositGeo || typeof depositGeo[opName] !== 'function') {
+      return deposited;
+    }
+    // Touching = top-level active-layer art the deposit overlaps.
+    // Live drawing state, previews, cursors, and the grid are never
+    // targets (mirrors isNonContentItem plus the in-progress stroke).
+    const targets: Array<{ geo: AnyItem; container: AnyItem }> = [];
+    const layer = this.scope.project.activeLayer;
+    for (const item of [...layer.children]) {
+      if (!item || item === deposited) continue;
+      if (item === this.path || item === this.quadPath) continue;
+      if (this.isNonContentItem(item)) continue;
+      const geo = this.shapePartOf(item);
+      if (!geo || geo === depositGeo || typeof geo[opName] !== 'function')
+        continue;
+      if (!this.shapesTouch(depositGeo, geo)) continue;
+      targets.push({ geo, container: item });
+    }
+    if (targets.length === 0) return deposited;
+    // insert:false keeps intermediates off the layer throughout.
+    try {
+      if (this.combineMode === 'subtract') {
+        // Two-phase: compute every cut detached first, so a throwing
+        // op cannot leave half the touched shapes modified.
+        const cuts: Array<{
+          container: AnyItem;
+          cut: AnyItem | null;
+          wasSelected: boolean;
+        }> = [];
+        for (const { geo, container } of targets) {
+          cuts.push({
+            container,
+            cut: geo.subtract(depositGeo, { insert: false }),
+            wasSelected: this.selectedItems.indexOf(container) !== -1,
+          });
+        }
+        for (const { container, cut, wasSelected } of cuts) {
+          this.dropItem(container);
+          // Fully covered base vanishes entirely; otherwise the cut
+          // replaces it, keeping its selection membership and paint
+          // (first-operand convention).
+          if (cut && Math.abs(cut.area || 0) > 1e-6) {
+            const replaced = this.retextResult(cut);
+            layer.addChild(replaced);
+            if (wasSelected) this.addItemToSelection(replaced);
+          }
+        }
+        // The deposit is the cutter: it never survives a subtract.
+        for (const doomed of new Set([deposited, depositGeo])) {
+          try {
+            if (doomed && doomed.parent != null) doomed.remove();
+          } catch {
+            // Detached already.
+          }
+        }
+        this.lastCombineNote = '';
+        return null;
+      }
+      // Union folds everything touched plus the deposit (deposit paint
+      // wins as the first operand); intersect keeps the deposit's
+      // overlap with the union of what it touches.
+      let acc: AnyItem = depositGeo;
+      if (this.combineMode === 'intersect') {
+        let union: AnyItem = targets[0].geo;
+        for (const { geo } of targets.slice(1)) {
+          union = union.unite(geo, { insert: false });
+          if (!union) throw new Error('empty union');
+        }
+        acc = depositGeo.intersect(union, { insert: false });
+      } else {
+        for (const { geo } of targets) {
+          acc = acc.unite(geo, { insert: false });
+          if (!acc) throw new Error('empty union');
+        }
+      }
+      if (!acc || !(Math.abs(acc.area || 0) > 1e-6)) {
+        throw new Error('empty boolean result');
+      }
+      for (const { container } of targets) this.dropItem(container);
+      for (const doomed of new Set([deposited, depositGeo])) {
+        try {
+          if (doomed && doomed.parent != null) doomed.remove();
+        } catch {
+          // Detached already.
+        }
+      }
+      this.lastCombineNote = '';
+      return this.retextResult(acc);
+    } catch {
+      this.lastCombineNote = 'No result — shapes may not overlap.';
+      return deposited;
+    }
   }
 
   // Parallelogram / trapezoid interior angle. 180° is a line; keep a
@@ -1520,6 +1719,7 @@ export class NibGliderEngine {
       this.pathSnapCursor,
       this.previewLine,
       this.previewInner,
+      this.previewSplineText,
     ]);
     let bestPoint: AnyItem = null;
     let bestDist = Infinity;
@@ -1578,6 +1778,7 @@ export class NibGliderEngine {
       this.previewRect,
       this.previewLine,
       this.previewInner,
+      this.previewSplineText,
       this.quadPath,
       this.pathSnapCursor,
       this.gridCursor,
@@ -1816,6 +2017,7 @@ export class NibGliderEngine {
       this.previewInner.remove();
       this.previewInner = null;
     }
+    this.clearSplineTextPreview();
     if (this.isDrawingPath && this.path) {
       if (this.continuedPathBaseCount != null) {
         // Continuing an existing shape: strip only the newly added points
@@ -2125,6 +2327,41 @@ export class NibGliderEngine {
     }
   }
 
+  // Live spline text: rebuild the derived Display/Body text for the
+  // in-progress stroke, faded like other previews. The stroke itself is
+  // untouched; the group is ignored by content hit-testing and snapping
+  // and is cleared on finalize/cancel.
+  private refreshSplineTextPreview(): void {
+    const scope = this.scope;
+    if (this.previewSplineText) {
+      this.previewSplineText.remove();
+      this.previewSplineText = null;
+    }
+    if (!this.isDrawingPath || !this.path || !this.textModeEnabled) return;
+    if (this.path.segments.length < 2) return;
+    let text: AnyItem = null;
+    try {
+      text =
+        this.textMode === 'body'
+          ? this.createBodyTextFor(this.path)
+          : this.createBoundaryText(this.path);
+    } catch {
+      text = null;
+    }
+    if (!text) return;
+    this.fadeShapeText(text);
+    this.addPreviewShadow(text);
+    this.previewSplineText = text;
+    scope.project.activeLayer.addChild(text);
+  }
+
+  private clearSplineTextPreview(): void {
+    if (this.previewSplineText) {
+      this.previewSplineText.remove();
+      this.previewSplineText = null;
+    }
+  }
+
   /** Clear preview fading after a preview group is stamped/finalized. */
   private resetStampedText(item: AnyItem): void {
     if (!item) return;
@@ -2318,6 +2555,12 @@ export class NibGliderEngine {
           facing !== 0 ? nor.multiply(facing).angle + 90 : lastTan,
           at,
         );
+        // Open spline strokes have no ring offset, so centered glyphs
+        // would straddle the path: anchor them vertically per the spline
+        // placement instead. Closed boundaries keep the ring layout above.
+        if (boundary.closed === false) {
+          this.anchorSplineGlyph(pt, at, spec, size);
+        }
         pt.data.textKind = 'display';
         group.addChild(pt);
         d += step;
@@ -2330,6 +2573,46 @@ export class NibGliderEngine {
     group.data.isShapeText = true;
     group.data.textKind = 'display';
     return group;
+  }
+
+  /**
+   * Shift a spline glyph from path-centered to its spline placement.
+   * Paper.js `position` is the visual center while the anchor (`point`)
+   * sits on the baseline at center justification, so the anchor rests
+   * `dcb` below the center along glyph-up. Moving the center along
+   * glyph-up by `dcb` lands the baseline on the spline; Above adds the
+   * descent (descender line on the spline) and Below subtracts the
+   * ascent (ascender line on the spline).
+   */
+  private anchorSplineGlyph(
+    pt: AnyItem,
+    at: AnyItem,
+    spec: TextSpec,
+    size: number,
+  ): void {
+    try {
+      const center = pt.bounds ? pt.bounds.center : null;
+      const anchor = pt.point;
+      if (!center || !anchor) return;
+      const up = center.subtract(anchor);
+      const dcb = up.length;
+      if (!(dcb > 0)) return;
+      const dir = up.normalize();
+      const m = this.textMetrics.vertical(
+        spec.fontFamily,
+        size,
+        spec.fontWeight,
+      );
+      const extra =
+        this.splineTextPlacement === 'above'
+          ? m.desc
+          : this.splineTextPlacement === 'below'
+            ? -m.asc
+            : 0;
+      pt.position = at.add(dir.multiply(dcb + extra));
+    } catch {
+      // Keep the centered glyph when bounds are unavailable.
+    }
   }
 
   createInnerShape(
@@ -2812,7 +3095,11 @@ export class NibGliderEngine {
         this.applyCurrentStyles(this.quadPath);
         this.quadPath.closed = true;
         this.quadPath.selected = false;
-        scope.project.activeLayer.addChild(this.quadPath);
+        const placed = this.depositWithCombine(this.quadPath);
+        if (placed) {
+          placed.selected = false;
+          if (placed.parent == null) scope.project.activeLayer.addChild(placed);
+        }
         this.quadPath = null;
         this.isDrawingQuad = false;
         this.quadPointCount = 0;
@@ -2833,8 +3120,12 @@ export class NibGliderEngine {
       if (this.fillEnabled) stampedBase.closed = true;
       const stamped = this.withShapeText(stampedBase, false);
       stamped.selected = false;
-      stamped.opacity = 1;
-      scope.project.activeLayer.addChild(stamped);
+      const placedStamp = this.depositWithCombine(stamped);
+      if (placedStamp) {
+        placedStamp.selected = false;
+        placedStamp.opacity = 1;
+        scope.project.activeLayer.addChild(placedStamp);
+      }
     } else if (this.isDrawingShape) {
       if (
         this.shapeType != null &&
@@ -2851,7 +3142,11 @@ export class NibGliderEngine {
           if (stampedInner) {
             this.applyCurrentStyles(this.shapePartOf(stampedInner));
             stampedInner.selected = false;
-            scope.project.activeLayer.addChild(stampedInner);
+            const placedInner = this.depositWithCombine(stampedInner);
+            if (placedInner) {
+              placedInner.selected = false;
+              scope.project.activeLayer.addChild(placedInner);
+            }
           }
         }
       } else if (
@@ -2863,7 +3158,11 @@ export class NibGliderEngine {
         if (stampedShape) {
           this.applyCurrentStyles(this.shapePartOf(stampedShape));
           stampedShape.selected = false;
-          scope.project.activeLayer.addChild(stampedShape);
+          const placedShape = this.depositWithCombine(stampedShape);
+          if (placedShape) {
+            placedShape.selected = false;
+            scope.project.activeLayer.addChild(placedShape);
+          }
         }
       } else {
         const framePreview = this.previewShape || this.previewRect || this.previewPath;
@@ -2873,7 +3172,11 @@ export class NibGliderEngine {
           this.clearShadow(stampedFrame);
           stampedFrame.opacity = 1;
           stampedFrame.selected = false;
-          scope.project.activeLayer.addChild(stampedFrame);
+          const placedFrame = this.depositWithCombine(stampedFrame);
+          if (placedFrame) {
+            placedFrame.selected = false;
+            scope.project.activeLayer.addChild(placedFrame);
+          }
         }
         if (this.previewInner) {
           const stampedInner = this.previewInner.clone();
@@ -2890,7 +3193,11 @@ export class NibGliderEngine {
           this.applyStrokeGeometry(target);
           this.applyStrokeDash(target);
           stampedInner.selected = false;
-          scope.project.activeLayer.addChild(stampedInner);
+          const placedPreview = this.depositWithCombine(stampedInner);
+          if (placedPreview) {
+            placedPreview.selected = false;
+            scope.project.activeLayer.addChild(placedPreview);
+          }
         }
       }
     } else if (this.isDrawingQuad && this.quadPath) {
@@ -2898,8 +3205,12 @@ export class NibGliderEngine {
       this.applyCurrentStyles(stamped);
       stamped.closed = true;
       stamped.selected = false;
-      stamped.opacity = 1;
-      scope.project.activeLayer.addChild(stamped);
+      const placedQuad = this.depositWithCombine(stamped);
+      if (placedQuad) {
+        placedQuad.selected = false;
+        placedQuad.opacity = 1;
+        scope.project.activeLayer.addChild(placedQuad);
+      }
     }
     this.updateTextContent();
   }
@@ -2941,14 +3252,21 @@ export class NibGliderEngine {
       // returned group when it has no parent yet.
       const finished = this.withShapeText(this.path, false);
       finished.selected = false;
-      // A continued path already lives in the layer; re-adding would only
-      // reorder it to the front.
-      if (finished.parent == null) {
-        scope.project.activeLayer.addChild(finished);
+      // Deposit-time combinatorics folds the stroke into the selection
+      // when a combine mode is armed.
+      const placed = this.depositWithCombine(finished);
+      if (placed) {
+        placed.selected = false;
+        // A continued path already lives in the layer; re-adding would
+        // only reorder it to the front.
+        if (placed.parent == null) {
+          scope.project.activeLayer.addChild(placed);
+        }
       }
       this.path = null;
       this.isDrawingPath = false;
       this.continuedPathBaseCount = null;
+      this.clearSplineTextPreview();
     } else if (this.isDrawingShape) {
       this.endShapeAsStroke();
       if (this.previewInner) {
@@ -2959,7 +3277,13 @@ export class NibGliderEngine {
       this.applyCurrentStyles(this.quadPath);
       this.quadPath.closed = true;
       this.quadPath.selected = false;
-      scope.project.activeLayer.addChild(this.quadPath);
+      const placedQuadEnd = this.depositWithCombine(this.quadPath);
+      if (placedQuadEnd) {
+        placedQuadEnd.selected = false;
+        if (placedQuadEnd.parent == null) {
+          scope.project.activeLayer.addChild(placedQuadEnd);
+        }
+      }
       this.quadPath = null;
       this.isDrawingQuad = false;
       this.quadPointCount = 0;
@@ -3090,12 +3414,17 @@ export class NibGliderEngine {
     this.path.closed = true;
     const completed = this.withShapeText(this.path, false);
     completed.selected = false;
-    if (completed.parent == null) {
-      scope.project.activeLayer.addChild(completed);
+    const placedComplete = this.depositWithCombine(completed);
+    if (placedComplete) {
+      placedComplete.selected = false;
+      if (placedComplete.parent == null) {
+        scope.project.activeLayer.addChild(placedComplete);
+      }
     }
     this.path = null;
     this.isDrawingPath = false;
     this.continuedPathBaseCount = null;
+    this.clearSplineTextPreview();
     this.updateTextContent();
     this.notify();
   }
@@ -3174,7 +3503,13 @@ export class NibGliderEngine {
         if (innerPath) {
           this.applyCurrentStyles(this.shapePartOf(innerPath));
           innerPath.selected = false;
-          scope.project.activeLayer.addChild(innerPath);
+          const placedInner = this.depositWithCombine(innerPath);
+          if (placedInner) {
+            placedInner.selected = false;
+            if (placedInner.parent == null) {
+              scope.project.activeLayer.addChild(placedInner);
+            }
+          }
         }
       }
     } else if (shapeType === 'rectangle_diagonal') {
@@ -3233,8 +3568,16 @@ export class NibGliderEngine {
     }
     if (finalPath) {
       finalPath.selected = false;
-      scope.project.activeLayer.addChild(finalPath);
-      if (!rectShapeOnly) this.drawInnerShape(finalPath, 'stroke');
+      const placedFinal = this.depositWithCombine(finalPath);
+      if (placedFinal) {
+        placedFinal.selected = false;
+        if (placedFinal.parent == null) {
+          scope.project.activeLayer.addChild(placedFinal);
+        }
+        // Inner decoration follows the deposited (possibly combined)
+        // bounds; it is never itself combined.
+        if (!rectShapeOnly) this.drawInnerShape(placedFinal, 'stroke');
+      }
     }
     if (this.previewInner) {
       this.previewInner.remove();
@@ -3344,6 +3687,7 @@ export class NibGliderEngine {
     }
     if (
       item === this.previewInner ||
+      item === this.previewSplineText ||
       item === this.previewShape ||
       item === this.previewLine ||
       item === this.previewPath ||
@@ -3549,6 +3893,7 @@ export class NibGliderEngine {
         this.path.removeSegment(this.path.segments.length - 1);
         this.path.add(this.mousePt);
       }
+      this.refreshSplineTextPreview();
     }
     if (this.isDrawingShape) {
       this.updateShapePreview();

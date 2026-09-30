@@ -988,8 +988,10 @@ const TEXT_JUSTIFY_OPTIONS: Array<{ value: TextJustification; label: string; ico
 ];
 
 function TextPreviewBox({ spec, large }: { spec: TextSpec; large?: boolean }) {
+  // The flyout preview reflects the Size slider; clamped to the 96px
+  // preview well so the sample stays legible instead of clipping away.
   const size = large
-    ? 30
+    ? Math.max(12, Math.min(72, spec.fontSize))
     : Math.max(10, Math.min(18, spec.fontSize * 0.55));
   return (
     <span
@@ -1017,6 +1019,7 @@ function TextParams({
   const textMode = engine.textMode;
   const displayFlow = engine.displayFlow;
   const glyphOrientation = engine.glyphOrientation;
+  const splineTextPlacement = engine.splineTextPlacement;
   return (
     <div className="panelParameters">
       <span className="param-item">
@@ -1042,56 +1045,98 @@ function TextParams({
       </span>
       {textMode === 'display' ? (
         <>
+          <div className="flyout-trio-row">
+            <span className="param-item">
+              <label>Flow</label>
+              <div
+                className="seg-ctrl seg-text"
+                role="group"
+                aria-label="Display flow"
+              >
+                {(
+                  [
+                    { value: 'interior', label: 'Interior' },
+                    { value: 'exterior', label: 'Exterior' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    title={`${opt.label} of the shape boundary`}
+                    className={displayFlow === opt.value ? 'active' : undefined}
+                    onClick={() => engine.setDisplayFlow(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </span>
+            <span className="param-item">
+              <label>Orientation</label>
+              <div
+                className="seg-ctrl seg-text"
+                role="group"
+                aria-label="Glyph orientation"
+              >
+                {(
+                  [
+                    { value: 'outward', label: 'Outward' },
+                    { value: 'inward', label: 'Inward' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    title={
+                      opt.value === 'outward'
+                        ? 'Glyph tops point to the circumference'
+                        : 'Glyph tops point to the origin'
+                    }
+                    className={
+                      glyphOrientation === opt.value ? 'active' : undefined
+                    }
+                    onClick={() => engine.setGlyphOrientation(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </span>
+          </div>
           <span className="param-item">
-            <label>Flow</label>
+            <label>Spline</label>
             <div
               className="seg-ctrl seg-text"
               role="group"
-              aria-label="Display flow"
+              aria-label="Spline text placement"
             >
               {(
                 [
-                  { value: 'interior', label: 'Interior' },
-                  { value: 'exterior', label: 'Exterior' },
+                  {
+                    value: 'above',
+                    label: 'Above',
+                    title: 'Descender bottom rests on the spline',
+                  },
+                  {
+                    value: 'baseline',
+                    label: 'Baseline',
+                    title: 'Spline is the text baseline',
+                  },
+                  {
+                    value: 'below',
+                    label: 'Below',
+                    title: 'Spline is the ascender line',
+                  },
                 ] as const
               ).map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
-                  title={`${opt.label} of the shape boundary`}
-                  className={displayFlow === opt.value ? 'active' : undefined}
-                  onClick={() => engine.setDisplayFlow(opt.value)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </span>
-          <span className="param-item">
-            <label>Orientation</label>
-            <div
-              className="seg-ctrl seg-text"
-              role="group"
-              aria-label="Glyph orientation"
-            >
-              {(
-                [
-                  { value: 'outward', label: 'Outward' },
-                  { value: 'inward', label: 'Inward' },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  title={
-                    opt.value === 'outward'
-                      ? 'Glyph tops point to the circumference'
-                      : 'Glyph tops point to the origin'
-                  }
+                  title={opt.title}
                   className={
-                    glyphOrientation === opt.value ? 'active' : undefined
+                    splineTextPlacement === opt.value ? 'active' : undefined
                   }
-                  onClick={() => engine.setGlyphOrientation(opt.value)}
+                  onClick={() => engine.setSplineTextPlacement(opt.value)}
                 >
                   {opt.label}
                 </button>
@@ -1152,7 +1197,7 @@ function TextParams({
           onChange={(e) => engine.setTextLine2(e.target.value)}
         />
       </span>
-      <span className="param-item">
+      <div className="flyout-inline-row param-item">
         <label>Typeface</label>
         <FontFamilySelect
           id="textFontSelect"
@@ -1161,7 +1206,7 @@ function TextParams({
           groups={TEXT_FONT_GROUPS}
           onChange={(v) => engine.setTextFontFamily(v)}
         />
-      </span>
+      </div>
       <ParamSlider
         id="textSizeSlider"
         label="Size"
@@ -1283,18 +1328,50 @@ const COMBINE_OPTIONS: Array<{
 ];
 
 function CombinatoricsButtons({ engine }: { engine: NibGliderEngine }) {
-  const can = engine.canCombineSelection();
+  const mode = engine.combineMode;
+  // One control, two jobs: arming a button sets the deposit mode, and
+  // with 2+ shapes already selected the same click combines the
+  // selection on the spot (the old dedicated buttons' behavior).
+  const arm = (value: CombineMode | 'none'): void => {
+    engine.setCombineMode(value);
+    if (value !== 'none' && engine.canCombineSelection()) {
+      engine.combineSelection(value);
+    }
+  };
   return (
     <span className="param-item">
-      <div className="seg-ctrl" role="group" aria-label="Boolean operation">
+      <div className="seg-ctrl" role="group" aria-label="Combine mode">
+        <button
+          key="none"
+          type="button"
+          title="None: deposit shapes plainly"
+          aria-label="No combining"
+          className={mode === 'none' ? 'active' : undefined}
+          onClick={() => arm('none')}
+        >
+          <svg
+            viewBox="0 0 16 14"
+            width="18"
+            height="16"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="8" cy="7" r="3.6" />
+            <path d="M5.5 9.5 L10.5 4.5" />
+          </svg>
+        </button>
         {COMBINE_OPTIONS.map((opt) => (
           <button
             key={opt.value}
             type="button"
-            title={opt.tip}
+            title={`${opt.tip} — arms future deposits; combines the selection now when 2+ shapes are selected`}
             aria-label={opt.label}
-            disabled={!can}
-            onClick={() => engine.combineSelection(opt.value)}
+            className={mode === opt.value ? 'active' : undefined}
+            onClick={() => arm(opt.value)}
           >
             <svg
               viewBox="0 0 16 14"
