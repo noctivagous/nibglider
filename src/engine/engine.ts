@@ -23,7 +23,8 @@ export type CircleInnerShape =
   | 'trapezoid'
   | 'parallelogram'
   | 'rightTriangle'
-  | 'rhombus';
+  | 'rhombus'
+  | 'kite';
 
 export type CombineMode = 'union' | 'subtract' | 'intersect';
 
@@ -869,7 +870,7 @@ export class NibGliderEngine {
   }
 
   setCircleAngle(deg: number): void {
-    this.circleInnerShapeParams.angle = this.clampShapeAngle(deg);
+    this.circleInnerShapeParams.angle = this.snapShapeAngle(deg);
     this.updatePreviewBox();
     this.updateTextContent();
     this.notify();
@@ -883,7 +884,7 @@ export class NibGliderEngine {
   }
 
   setRectangleAngle(deg: number): void {
-    this.rectangleInnerShapeParams.angle = this.clampShapeAngle(deg);
+    this.rectangleInnerShapeParams.angle = this.snapShapeAngle(deg);
     this.updatePreviewBox();
     this.updateTextContent();
     this.notify();
@@ -1049,6 +1050,13 @@ export class NibGliderEngine {
   clampShapeAngle(deg: number): number {
     if (!Number.isFinite(deg)) return 60;
     return Math.max(10, Math.min(170, deg));
+  }
+
+  // Slider grid for the trapezoid / parallelogram angle: 15° steps from
+  // 15°. Typed entries snap onto the same grid as the slider.
+  snapShapeAngle(deg: number): number {
+    const c = this.clampShapeAngle(deg);
+    return Math.max(15, Math.min(165, Math.round(c / 15) * 15));
   }
 
   clampSectorAngle(deg: number): number {
@@ -2190,9 +2198,13 @@ export class NibGliderEngine {
       pt.data.textKind = 'body';
       group.addChild(pt);
     });
-    const mask: AnyItem = boundary.clone();
-    mask.clipMask = true;
-    group.addChild(mask);
+    // Open spline strokes have no interior to clip to: keep the centered
+    // wrapped lines visible instead of masking them away.
+    if (boundary.closed !== false) {
+      const mask: AnyItem = boundary.clone();
+      mask.clipMask = true;
+      group.addChild(mask);
+    }
     group.data.isShapeText = true;
     group.data.textKind = 'body';
     return group;
@@ -2816,9 +2828,10 @@ export class NibGliderEngine {
   stampCurrentPreview(): void {
     const scope = this.scope;
     if (this.isDrawingPath && this.path) {
-      const stamped = this.path.clone();
-      this.applyCurrentStyles(stamped);
-      if (this.fillEnabled) stamped.closed = true;
+      const stampedBase = this.path.clone();
+      this.applyCurrentStyles(stampedBase);
+      if (this.fillEnabled) stampedBase.closed = true;
+      const stamped = this.withShapeText(stampedBase, false);
       stamped.selected = false;
       stamped.opacity = 1;
       scope.project.activeLayer.addChild(stamped);
@@ -2922,11 +2935,16 @@ export class NibGliderEngine {
         this.applyCurrentStyles(this.path);
         if (this.fillEnabled) this.path.closed = true;
       }
-      this.path.selected = false;
+      // Text Mode applies to spline drawing too: derive Display/Body
+      // text from the finished stroke, same as circle/rect keys. Grouping
+      // reparents a continued path out of the layer, so always add the
+      // returned group when it has no parent yet.
+      const finished = this.withShapeText(this.path, false);
+      finished.selected = false;
       // A continued path already lives in the layer; re-adding would only
       // reorder it to the front.
-      if (this.path.parent == null) {
-        scope.project.activeLayer.addChild(this.path);
+      if (finished.parent == null) {
+        scope.project.activeLayer.addChild(finished);
       }
       this.path = null;
       this.isDrawingPath = false;
@@ -3070,9 +3088,10 @@ export class NibGliderEngine {
     }
     this.applyCurrentStyles(this.path);
     this.path.closed = true;
-    this.path.selected = false;
-    if (this.path.parent == null) {
-      scope.project.activeLayer.addChild(this.path);
+    const completed = this.withShapeText(this.path, false);
+    completed.selected = false;
+    if (completed.parent == null) {
+      scope.project.activeLayer.addChild(completed);
     }
     this.path = null;
     this.isDrawingPath = false;

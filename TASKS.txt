@@ -1,4 +1,24 @@
 
+Related: during live drawing of Circle Keys or Rect Keys, 
+certain keys can take on other functions in Live Drawing mode
+(this holds for any drawing state including splines) such that
+they can affect the characteristics of what is being drawn live.
+In a future repeat circle component.  in particular the number keys
+can be used as a slot for this, with pairs or individual keys being used.
+for our first example we will make a parameteric shape component
+for the Circle Keys
+
+Text mode popver:
+[ ] Put Flow and Orientation on same row
+[ ] Put typeface and typeface dropdown on same row.
+[ ] make size in preview reflect font size. 
+
+Display Text + Circle Keys:
+[ ] scaling up and down font in relation to established median length of radius or diameter.  
+
+Display Text + Circle Keys and Rect Keys:
+[ ] in flyover popover: param: deposit shape with text [checked by default]
+
 [ ] new panel sections: combinatorics (union, subtract, intersection), text (preview box with flyout for configuring font typeface, size, etc.)
 in preparation for:
 [ ] Display Text, Body Text menu items in Circle Keys and Rect Keys, Display Text is one line of text, Body Text uses the shape as the container for the text.

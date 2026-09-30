@@ -233,8 +233,9 @@ function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
         <ParamSlider
           label="Angle"
           value={deg}
-          min={10}
-          max={170}
+          min={15}
+          max={165}
+          step={15}
           unit="°"
           formatValue={(v) => String(Math.round(v))}
           onChange={(n) => engine.setCircleAngle(n)}
@@ -290,8 +291,9 @@ function RectShapeParams({ engine }: { engine: NibGliderEngine }) {
         <ParamSlider
           label="Angle"
           value={deg}
-          min={10}
-          max={170}
+          min={15}
+          max={165}
+          step={15}
           unit="°"
           formatValue={(v) => String(Math.round(v))}
           onChange={(n) => engine.setRectangleAngle(n)}
@@ -1330,6 +1332,7 @@ const CIRCLE_SHAPE_LABELS: Record<CircleInnerShape, string> = {
   parallelogram: 'Parallelogram',
   rightTriangle: 'Right Triangle',
   rhombus: 'Rhombus',
+  kite: 'Kite',
 };
 
 const RECT_SHAPE_LABELS: Record<RectangleInnerShape, string> = {
@@ -1452,7 +1455,14 @@ const CIRCLE_OPTION_TREE: CustomSelectOption[] = [
     value: 'grp-angled',
     label: 'Angled',
     children: (
-      ['polygon', 'trapezoid', 'parallelogram', 'rightTriangle', 'rhombus'] as const
+      [
+        'polygon',
+        'trapezoid',
+        'parallelogram',
+        'rightTriangle',
+        'rhombus',
+        'kite',
+      ] as const
     ).map((v) => shapeLeaf(v, CIRCLE_SHAPE_LABELS)),
   },
   shapeLeaf('supershape', CIRCLE_SHAPE_LABELS),
