@@ -1,9 +1,18 @@
 
+[ ] new panel sections: combinatorics (union, subtract, intersection), text (preview box with flyout for configuring font typeface, size, etc.)
+in preparation for:
+[ ] Display Text, Body Text menu items in Circle Keys and Rect Keys, Display Text is one line of text, Body Text uses the shape as the container for the text.
+  For Circle Keys: Circumference Text.  modes: [1 Line | 2 Lines].
+for Circum. 1 Line it will wrap the text around the circumference, adding configured gap
+plus angle offset.  for Circum. 2 Lines it will have will wrap two different entered lines of 
+text around the adding configured gap plus angle offset. 
+
+
 [X]  K key will slide keyboard down and up (KB toggle)
 
-[ ] change the keys to S and D for Stroke and Fill toggle
+[x] change the keys to S and D for Stroke and Fill toggle
 [ ] V for Pan (anchors at point, mouse move pans)
-[ ] hook up trackpad gestures, pan and zoom
+[ ] hook up trackpad gestures for pan and zoom on canvas
 
 [X] param sliders for parallelogram, trapezoid angle.  not 180 degrees for parallelogram
 [x] aspect ratio snap for drawing with rect keys. if set to 3:4, aspect ratio will flip for dimensions when shape changes. 3:4 or 4:3

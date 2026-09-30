@@ -11,8 +11,11 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
+import NumericStepper from './NumericStepper';
 import type {
+  CircleDisplayMode,
   CircleInnerShape,
+  CombineMode,
   FillSpec,
   FillType,
   GridType,
@@ -21,6 +24,8 @@ import type {
   RectangleInnerShape,
   StrokeCap,
   StrokeJoin,
+  TextJustification,
+  TextSpec,
 } from '../engine/engine';
 
 const ASPECT_RATIO_PRESETS = ['1:1', '3:4', '2:3', '16:9'];
@@ -68,35 +73,54 @@ function ParamSlider({
   id,
   label,
   value,
-  display,
   min,
   max,
   step = 1,
+  unit,
+  decimals,
+  formatValue,
+  parseValue,
   onChange,
 }: {
   id?: string;
   label: string;
   value: number;
-  display: string;
   min: number;
   max: number;
   step?: number;
+  unit?: string;
+  decimals?: number;
+  formatValue?: (v: number) => string;
+  parseValue?: (s: string) => number;
   onChange: (n: number) => void;
 }) {
   return (
     <span className="param-item">
-      <label htmlFor={id}>
-        {label}: {display}
-      </label>
-      <input
-        id={id}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-      />
+      <label htmlFor={id}>{label}</label>
+      <span className="param-slider-row">
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          aria-label={label}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+        />
+        <NumericStepper
+          id={id}
+          value={value}
+          min={min}
+          max={max}
+          step={step}
+          unit={unit}
+          decimals={decimals}
+          formatValue={formatValue}
+          parseValue={parseValue}
+          ariaLabel={label}
+          onCommit={onChange}
+        />
+      </span>
     </span>
   );
 }
@@ -183,19 +207,79 @@ function OrientationSeg({
   );
 }
 
+const CIRCLE_DISPLAY_MODES: Array<{ value: CircleDisplayMode; label: string }> = [
+  { value: 'line', label: 'Line' },
+  { value: 'circumference1', label: 'Circum. 1 Line' },
+  { value: 'circumference2', label: 'Circum. 2 Lines' },
+];
+
+function CircumferenceParams({ engine }: { engine: NibGliderEngine }) {
+  return (
+    <span className="panelParameters">
+      <ParamSlider
+        label="Gap"
+        value={engine.circumferenceGap}
+        min={0}
+        max={60}
+        step={0.5}
+        unit="pt"
+        onChange={(n) => engine.setCircumferenceGap(n)}
+      />
+      <ParamSlider
+        label="Angle offset"
+        value={engine.circumferenceAngleOffset}
+        min={-180}
+        max={180}
+        step={1}
+        unit="°"
+        formatValue={(v) => String(Math.round(v))}
+        onChange={(n) => engine.setCircumferenceAngleOffset(n)}
+      />
+    </span>
+  );
+}
+
 function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
   const type = engine.circleInnerShapeType;
   const params = engine.circleInnerShapeParams;
+  if (type === 'displayText') {
+    const mode = engine.circleDisplayMode;
+    return (
+      <>
+        <span className="param-item">
+          <label>Mode</label>
+          <div className="seg-ctrl seg-text" role="group" aria-label="Circle display text mode">
+            {CIRCLE_DISPLAY_MODES.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                title={opt.label}
+                className={mode === opt.value ? 'active' : undefined}
+                onClick={() => engine.setCircleDisplayMode(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </span>
+        {mode !== 'line' ? <CircumferenceParams engine={engine} /> : null}
+      </>
+    );
+  }
+  if (type === 'bodyText') {
+    return <p className="param-empty">Uses the shape as the text container</p>;
+  }
   if (type === 'sector' || type === 'segment') {
     const deg = Number.isFinite(params.sector) ? params.sector : 90;
     return (
       <span className="panelParameters">
         <ParamSlider
           label="Angle"
-          display={`${Math.round(deg)}°`}
           value={deg}
           min={10}
           max={350}
+          unit="°"
+          formatValue={(v) => String(Math.round(v))}
           onChange={(n) => engine.setCircleSector(n)}
         />
       </span>
@@ -207,10 +291,11 @@ function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
       <span className="panelParameters">
         <ParamSlider
           label="Angle"
-          display={`${Math.round(deg)}°`}
           value={deg}
           min={10}
           max={170}
+          unit="°"
+          formatValue={(v) => String(Math.round(v))}
           onChange={(n) => engine.setCircleAngle(n)}
         />
       </span>
@@ -222,10 +307,10 @@ function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
         <ParamSlider
           id="circlePolySides"
           label="Sides"
-          display={String(params.sides)}
           value={params.sides}
           min={3}
           max={12}
+          formatValue={(v) => String(Math.round(v))}
           onChange={(n) => engine.setCircleSides(Math.round(n))}
         />
       </span>
@@ -238,11 +323,11 @@ function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
           <ParamSlider
             key={s.key}
             label={s.label}
-            display={params[s.key].toFixed(1)}
             value={params[s.key]}
             min={s.min}
             max={s.max}
             step={s.step}
+            decimals={1}
             onChange={(n) => engine.setSupershapeParam(s.key, n)}
           />
         ))}
@@ -255,7 +340,8 @@ function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
 function RectShapeParams({ engine }: { engine: NibGliderEngine }) {
   const type = engine.rectangleInnerShapeType;
   const params = engine.rectangleInnerShapeParams;
-  const showOrient = type !== 'rectangle' && type !== 'circle';
+  const isText = type === 'displayText' || type === 'bodyText';
+  const showOrient = type !== 'rectangle' && type !== 'circle' && !isText;
   let sliders: ReactNode = null;
   if (type === 'trapezoid' || type === 'parallelogram') {
     const deg = Number.isFinite(params.angle) ? params.angle : 60;
@@ -263,10 +349,11 @@ function RectShapeParams({ engine }: { engine: NibGliderEngine }) {
       <span className="panelParameters">
         <ParamSlider
           label="Angle"
-          display={`${Math.round(deg)}°`}
           value={deg}
           min={10}
           max={170}
+          unit="°"
+          formatValue={(v) => String(Math.round(v))}
           onChange={(n) => engine.setRectangleAngle(n)}
         />
       </span>
@@ -277,10 +364,10 @@ function RectShapeParams({ engine }: { engine: NibGliderEngine }) {
         <ParamSlider
           id="rectPolySides"
           label="Sides"
-          display={String(params.sides)}
           value={params.sides}
           min={3}
           max={12}
+          formatValue={(v) => String(Math.round(v))}
           onChange={(n) => engine.setRectangleSides(Math.round(n))}
         />
       </span>
@@ -292,15 +379,24 @@ function RectShapeParams({ engine }: { engine: NibGliderEngine }) {
           <ParamSlider
             key={s.key}
             label={s.label}
-            display={params[s.key].toFixed(1)}
             value={params[s.key]}
             min={s.min}
             max={s.max}
             step={s.step}
+            decimals={1}
             onChange={(n) => engine.setRectangleSupershapeParam(s.key, n)}
           />
         ))}
       </span>
+    );
+  }
+  if (isText) {
+    return (
+      <p className="param-empty">
+        {type === 'displayText'
+          ? 'One line of text, centered in the frame'
+          : 'Uses the frame as the text container'}
+      </p>
     );
   }
   if (!showOrient && !sliders) {
@@ -335,7 +431,7 @@ function ShapeParamsFlyout({
 }: {
   open: boolean;
   triggerRef: RefObject<HTMLElement | null>;
-  tone: 'circle' | 'rect' | 'stroke' | 'fill';
+  tone: 'circle' | 'rect' | 'stroke' | 'fill' | 'text';
   title: string;
   preview: ReactNode;
   onClose: () => void;
@@ -385,6 +481,11 @@ function ShapeParamsFlyout({
     const onPointerDown = (e: PointerEvent) => {
       const t = e.target as Node;
       if (triggerRef.current?.contains(t) || menuRef.current?.contains(t)) {
+        return;
+      }
+      // A CustomSelect opened from inside the flyout portals its menu to
+      // document.body; picking an option there must not close the flyout.
+      if (t instanceof Element && t.closest('.custom-select-menu')) {
         return;
       }
       onClose();
@@ -527,76 +628,6 @@ function StrokePreviewSvg({
   );
 }
 
-// Up to three decimal places, no trailing zeros ("4", "4.5", "4.125").
-function formatStrokeWidth(n: number): string {
-  if (!Number.isFinite(n)) return '0';
-  return String(Math.round(n * 1000) / 1000);
-}
-
-// Number input that tolerates intermediate text ("4.", ""): the draft is
-// shown verbatim while every finite prefix still commits live. A plain
-// controlled value={number} would erase the dot or revert a cleared field
-// on each render, and the engine notify on every keystroke must not move
-// focus, so Enter/Escape stay local to the field.
-function NumericDraftInput({
-  id,
-  className,
-  ariaLabel,
-  title,
-  value,
-  min,
-  max,
-  step,
-  autoFocus,
-  onCommit,
-  onDone,
-}: {
-  id?: string;
-  className?: string;
-  ariaLabel: string;
-  title?: string;
-  value: number;
-  min?: number;
-  max?: number;
-  step?: number;
-  autoFocus?: boolean;
-  onCommit: (n: number) => void;
-  onDone?: () => void;
-}) {
-  const [draft, setDraft] = useState<string | null>(null);
-  return (
-    <input
-      type="number"
-      id={id}
-      className={className}
-      aria-label={ariaLabel}
-      title={title}
-      min={min}
-      max={max}
-      step={step}
-      value={draft ?? formatStrokeWidth(value)}
-      autoFocus={autoFocus}
-      onChange={(e) => {
-        setDraft(e.target.value);
-        const n = parseFloat(e.target.value);
-        if (Number.isFinite(n)) onCommit(n);
-      }}
-      onBlur={() => {
-        setDraft(null);
-        onDone?.();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === 'Escape') {
-          e.stopPropagation();
-          setDraft(null);
-          onDone?.();
-          if (e.key === 'Enter') e.currentTarget.blur();
-        }
-      }}
-    />
-  );
-}
-
 function StrokeParams({
   engine,
   strokeWidth,
@@ -619,7 +650,7 @@ function StrokeParams({
   return (
     <div className="panelParameters">
       <span className="param-item">
-        <label htmlFor="strokeWidthSlider">Width</label>
+        <label htmlFor="strokeWidthInput">Width</label>
         <span className="flyout-width-row">
           <input
             type="range"
@@ -632,14 +663,15 @@ function StrokeParams({
             aria-label="Stroke width"
             onChange={(e) => engine.setStrokeWidth(parseFloat(e.target.value))}
           />
-          <NumericDraftInput
+          <NumericStepper
             id="strokeWidthInput"
-            className="stroke-width-input"
-            min={1}
-            max={40}
-            step={0.5}
             value={strokeWidth}
+            min={1}
+            max={200}
+            step={1}
+            unit="pt"
             ariaLabel="Stroke width in points"
+            title="Stroke width"
             onCommit={(n) => engine.setStrokeWidth(n)}
           />
         </span>
@@ -674,38 +706,30 @@ function StrokeParams({
           ))}
         </div>
         <span className="flyout-dash-row">
-          <label htmlFor="strokeDashInput">
-            Dash
-            <input
-              type="number"
+          <span className="flyout-dash-cell">
+            <label htmlFor="strokeDashInput">Dash</label>
+            <NumericStepper
               id="strokeDashInput"
-              className="stroke-width-input"
-              min={0}
-              max={80}
-              step={0.5}
               value={dash}
-              onChange={(e) => {
-                const n = parseFloat(e.target.value);
-                if (Number.isFinite(n)) engine.setStrokeDash(n, gap);
-              }}
-            />
-          </label>
-          <label htmlFor="strokeGapInput">
-            Gap
-            <input
-              type="number"
-              id="strokeGapInput"
-              className="stroke-width-input"
               min={0}
               max={80}
               step={0.5}
-              value={gap}
-              onChange={(e) => {
-                const n = parseFloat(e.target.value);
-                if (Number.isFinite(n)) engine.setStrokeDash(dash, n);
-              }}
+              ariaLabel="Dash length"
+              onCommit={(n) => engine.setStrokeDash(n, gap)}
             />
-          </label>
+          </span>
+          <span className="flyout-dash-cell">
+            <label htmlFor="strokeGapInput">Gap</label>
+            <NumericStepper
+              id="strokeGapInput"
+              value={gap}
+              min={0}
+              max={80}
+              step={0.5}
+              ariaLabel="Gap length"
+              onCommit={(n) => engine.setStrokeDash(dash, n)}
+            />
+          </span>
         </span>
       </span>
       </div>
@@ -764,21 +788,16 @@ function StrokeParams({
       </span>
       <span className="param-item">
         <label htmlFor="miterLimitInput">Miter</label>
-        <input
-          type="number"
+        <NumericStepper
           id="miterLimitInput"
-          className="miter-limit-input"
-          aria-label="Miter"
-          title="Miter"
+          value={miterLimit}
           min={1}
           max={40}
           step={0.5}
-          value={miterLimit}
+          ariaLabel="Miter"
+          title="Miter"
           disabled={strokeJoin !== 'miter'}
-          onChange={(e) => {
-            const n = parseFloat(e.target.value);
-            if (Number.isFinite(n)) engine.setMiterLimit(n);
-          }}
+          onCommit={(n) => engine.setMiterLimit(n)}
         />
       </span>
       </div>
@@ -935,7 +954,7 @@ function FillParams({
           )}
           {spec.type === 'linear' && (
             <span className="param-item">
-              <label>Angle</label>
+              <label htmlFor="fillAngleInput">Angle</label>
               <span className="flyout-angle-row">
                 <input
                   type="range"
@@ -946,13 +965,23 @@ function FillParams({
                   value={spec.angle}
                   onChange={(e) => engine.setFillAngle(parseFloat(e.target.value))}
                 />
-                <span className="flyout-angle-readout">{Math.round(spec.angle)}°</span>
+                <NumericStepper
+                  id="fillAngleInput"
+                  value={spec.angle}
+                  min={0}
+                  max={360}
+                  step={5}
+                  unit="°"
+                  formatValue={(v) => String(Math.round(v))}
+                  ariaLabel="Gradient angle"
+                  onCommit={(n) => engine.setFillAngle(n)}
+                />
               </span>
             </span>
           )}
           {spec.type === 'radial' && (
             <span className="param-item">
-              <label>Inner</label>
+              <label htmlFor="fillInnerInput">Inner</label>
               <span className="flyout-angle-row">
                 <input
                   type="range"
@@ -963,15 +992,265 @@ function FillParams({
                   value={spec.inner}
                   onChange={(e) => engine.setFillInner(parseFloat(e.target.value))}
                 />
-                <span className="flyout-angle-readout">
-                  {Math.round(spec.inner * 100)}%
-                </span>
+                <NumericStepper
+                  id="fillInnerInput"
+                  value={Math.round(spec.inner * 100)}
+                  min={0}
+                  max={95}
+                  step={5}
+                  unit="%"
+                  ariaLabel="Radial inner radius percent"
+                  onCommit={(n) => engine.setFillInner(n / 100)}
+                />
               </span>
             </span>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+const TEXT_FONT_OPTIONS: CustomSelectOption[] = [
+  'Helvetica',
+  'Arial',
+  'Georgia',
+  'Times New Roman',
+  'Courier New',
+  'Verdana',
+  'sans-serif',
+  'serif',
+  'monospace',
+].map((f) => ({ value: f, label: f }));
+
+const TEXT_WEIGHT_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'normal', label: 'Regular' },
+  { value: 'bold', label: 'Bold' },
+];
+
+const TEXT_JUSTIFY_OPTIONS: Array<{ value: TextJustification; label: string; icon: string }> = [
+  { value: 'left', label: 'Left', icon: 'M2 3 H14 M2 7 H10 M2 11 H14' },
+  { value: 'center', label: 'Center', icon: 'M2 3 H14 M4 7 H12 M2 11 H14' },
+  { value: 'right', label: 'Right', icon: 'M2 3 H14 M6 7 H14 M2 11 H14' },
+];
+
+function TextPreviewBox({ spec, large }: { spec: TextSpec; large?: boolean }) {
+  const size = large
+    ? 30
+    : Math.max(10, Math.min(18, spec.fontSize * 0.55));
+  return (
+    <span
+      className="text-preview"
+      aria-hidden="true"
+      style={{
+        fontFamily: spec.fontFamily,
+        fontSize: size,
+        fontWeight: spec.fontWeight,
+        fontStyle: spec.italic ? 'italic' : 'normal',
+      }}
+    >
+      {(spec.content || 'Ag').slice(0, 10)}
+    </span>
+  );
+}
+
+function TextParams({
+  engine,
+  spec,
+}: {
+  engine: NibGliderEngine;
+  spec: TextSpec;
+}) {
+  return (
+    <div className="panelParameters">
+      <span className="param-item">
+        <label htmlFor="textContentInput">Text</label>
+        <input
+          type="text"
+          id="textContentInput"
+          className="flyout-text-input"
+          value={spec.content}
+          aria-label="Text content"
+          onChange={(e) => engine.setTextContent(e.target.value)}
+        />
+      </span>
+      <span className="param-item">
+        <label htmlFor="textLine2Input">Line 2 (Circum.)</label>
+        <input
+          type="text"
+          id="textLine2Input"
+          className="flyout-text-input"
+          value={spec.line2}
+          aria-label="Second line for two-line circumference text"
+          onChange={(e) => engine.setTextLine2(e.target.value)}
+        />
+      </span>
+      <span className="param-item">
+        <label>Typeface</label>
+        <CustomSelect
+          id="textFontSelect"
+          ariaLabel="Typeface"
+          value={spec.fontFamily}
+          options={TEXT_FONT_OPTIONS}
+          onChange={(v) => engine.setTextFontFamily(v)}
+        />
+      </span>
+      <ParamSlider
+        id="textSizeSlider"
+        label="Size"
+        value={spec.fontSize}
+        min={4}
+        max={200}
+        step={1}
+        unit="pt"
+        formatValue={(v) => String(Math.round(v))}
+        onChange={(n) => engine.setTextFontSize(n)}
+      />
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label>Weight</label>
+          <div className="seg-ctrl seg-text" role="group" aria-label="Font weight">
+            {TEXT_WEIGHT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                title={opt.label}
+                className={spec.fontWeight === opt.value ? 'active' : undefined}
+                onClick={() => engine.setTextFontWeight(opt.value)}
+              >
+                <span style={{ fontWeight: opt.value === 'bold' ? 700 : 400 }}>
+                  {opt.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </span>
+        <span className="param-item">
+          <label>Style</label>
+          <div className="seg-ctrl seg-text" role="group" aria-label="Font style">
+            <button
+              type="button"
+              title="Italic"
+              className={spec.italic ? 'active' : undefined}
+              onClick={() => engine.setTextItalic(!spec.italic)}
+            >
+              <span style={{ fontStyle: 'italic' }}>Italic</span>
+            </button>
+          </div>
+        </span>
+      </div>
+      <span className="param-item">
+        <label>Align</label>
+        <div className="seg-ctrl" role="group" aria-label="Text alignment">
+          {TEXT_JUSTIFY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              title={opt.label}
+              aria-label={opt.label}
+              className={spec.justification === opt.value ? 'active' : undefined}
+              onClick={() => engine.setTextJustification(opt.value)}
+            >
+              <svg viewBox="0 0 16 14" width="18" height="14" aria-hidden="true">
+                <path
+                  d={opt.icon}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          ))}
+        </div>
+      </span>
+      <ParamSlider
+        id="textLeadingSlider"
+        label="Leading"
+        value={spec.leading}
+        min={0.8}
+        max={3}
+        step={0.05}
+        decimals={2}
+        formatValue={(v) => v.toFixed(2)}
+        onChange={(n) => engine.setTextLeading(n)}
+      />
+    </div>
+  );
+}
+
+const COMBINE_OPTIONS: Array<{
+  value: CombineMode;
+  label: string;
+  tip: string;
+  icon: ReactNode;
+}> = [
+  {
+    value: 'union',
+    label: 'Union',
+    tip: 'Union: merge base + tool (selection order)',
+    icon: (
+      <>
+        <circle cx="6" cy="7" r="3.6" />
+        <circle cx="10" cy="7" r="3.6" />
+      </>
+    ),
+  },
+  {
+    value: 'subtract',
+    label: 'Subtract',
+    tip: 'Subtract: cut tool out of base (selection order: base first)',
+    icon: (
+      <>
+        <circle cx="6" cy="7" r="3.6" />
+        <circle cx="10" cy="7" r="3.6" strokeDasharray="2 1.4" opacity="0.55" />
+      </>
+    ),
+  },
+  {
+    value: 'intersect',
+    label: 'Intersect',
+    tip: 'Intersect: keep the overlap of base + tool',
+    icon: <path d="M6 3.4 A3.6 3.6 0 0 1 6 10.6 A3.6 3.6 0 0 1 6 3.4 Z M10 3.4 A3.6 3.6 0 0 0 10 10.6 A3.6 3.6 0 0 0 10 3.4 Z" />,
+  },
+];
+
+function CombinatoricsButtons({ engine }: { engine: NibGliderEngine }) {
+  const can = engine.canCombineSelection();
+  return (
+    <span className="param-item">
+      <div className="seg-ctrl" role="group" aria-label="Boolean operation">
+        {COMBINE_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            title={opt.tip}
+            aria-label={opt.label}
+            disabled={!can}
+            onClick={() => engine.combineSelection(opt.value)}
+          >
+            <svg
+              viewBox="0 0 16 14"
+              width="18"
+              height="16"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              {opt.icon}
+            </svg>
+          </button>
+        ))}
+      </div>
+      {engine.lastCombineNote ? (
+        <span className="combine-note" role="status">
+          {engine.lastCombineNote}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -986,6 +1265,8 @@ const CIRCLE_SHAPE_LABELS: Record<CircleInnerShape, string> = {
   parallelogram: 'Parallelogram',
   rightTriangle: 'Right Triangle',
   rhombus: 'Rhombus',
+  displayText: 'Display Text',
+  bodyText: 'Body Text',
 };
 
 const RECT_SHAPE_LABELS: Record<RectangleInnerShape, string> = {
@@ -998,6 +1279,8 @@ const RECT_SHAPE_LABELS: Record<RectangleInnerShape, string> = {
   rightTriangle: 'Right Triangle',
   rhombus: 'Rhombus',
   kite: 'Kite',
+  displayText: 'Display Text',
+  bodyText: 'Body Text',
 };
 
 // Mini silhouette per shape, drawn in the option list and the closed
@@ -1022,6 +1305,8 @@ const SHAPE_THUMB_PATHS: Record<string, ReactNode> = {
   rhombus: <path d="M8 1.8 L12.8 7 L8 12.2 L3.2 7 Z" />,
   kite: <path d="M8 1.5 L11 6.5 L8 12.5 L5 6.5 Z" />,
   rectangle: <path d="M2.8 3.2 H13.2 V10.8 H2.8 Z" />,
+  displayText: <path d="M2.5 3 H13.5 M8 3 V11" />,
+  bodyText: <path d="M2.5 3 H13.5 M8 3 V11 M2.5 12.5 H13.5" />,
 };
 
 function ShapeThumb({ kind }: { kind: string }) {
@@ -1112,6 +1397,13 @@ const CIRCLE_OPTION_TREE: CustomSelectOption[] = [
     ).map((v) => shapeLeaf(v, CIRCLE_SHAPE_LABELS)),
   },
   shapeLeaf('supershape', CIRCLE_SHAPE_LABELS),
+  {
+    value: 'grp-text',
+    label: 'Text',
+    children: (['displayText', 'bodyText'] as const).map((v) =>
+      shapeLeaf(v, CIRCLE_SHAPE_LABELS),
+    ),
+  },
 ];
 
 const GRID_TYPE_OPTIONS: CustomSelectOption[] = [
@@ -1152,14 +1444,21 @@ const RECT_OPTION_TREE: CustomSelectOption[] = [
     ).map((v) => shapeLeaf(v, RECT_SHAPE_LABELS)),
   },
   shapeLeaf('supershape', RECT_SHAPE_LABELS),
+  {
+    value: 'grp-text',
+    label: 'Text',
+    children: (['displayText', 'bodyText'] as const).map((v) =>
+      shapeLeaf(v, RECT_SHAPE_LABELS),
+    ),
+  },
 ];
 
 export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
-    'circle' | 'rect' | 'stroke' | 'fill' | null
+    'circle' | 'rect' | 'stroke' | 'fill' | 'text' | null
   >(null);
-  const [editingWidth, setEditingWidth] = useState(false);
+  const textPreviewRef = useRef<HTMLButtonElement>(null);
   const fillPreviewRef = useRef<HTMLButtonElement>(null);
   const circlePreviewRef = useRef<HTMLButtonElement>(null);
   const rectPreviewRef = useRef<HTMLButtonElement>(null);
@@ -1185,7 +1484,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     }, 180);
   }, [cancelHoverClose]);
   const hoverOpenFlyout = useCallback(
-    (name: 'circle' | 'rect' | 'stroke' | 'fill') => {
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text') => {
       if (window.matchMedia?.('(hover: none)').matches) return;
       cancelHoverClose();
       setParamsFlyout(name);
@@ -1241,30 +1540,18 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             title="Stroke Color"
             onChange={(e) => engine.setStrokeColor(e.target.value)}
           />
-          {editingWidth ? (
-            <NumericDraftInput
-              id="strokeWidthDisplay"
-              value={strokeWidth}
-              min={1}
-              max={40}
-              step={0.5}
-              ariaLabel="Stroke width in points"
-              title="Stroke width"
-              autoFocus
-              onCommit={(n) => engine.setStrokeWidth(n)}
-              onDone={() => setEditingWidth(false)}
-            />
-          ) : (
-            <button
-              type="button"
-              id="strokeWidthDisplay"
-              title="Edit stroke width"
-              aria-label={`Stroke width ${formatStrokeWidth(strokeWidth)} points. Activate to edit.`}
-              onClick={() => setEditingWidth(true)}
-            >
-              {formatStrokeWidth(strokeWidth)} pt
-            </button>
-          )}
+          <NumericStepper
+            id="strokeWidthDisplay"
+            size="compact"
+            value={strokeWidth}
+            min={1}
+            max={200}
+            step={1}
+            unit="pt"
+            ariaLabel="Stroke width in points"
+            title="Stroke width"
+            onCommit={(n) => engine.setStrokeWidth(n)}
+          />
           <button
             type="button"
             ref={strokePreviewRef}
@@ -1396,6 +1683,49 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             onMenuMouseLeave={scheduleHoverClose}
           >
             <FillParams engine={engine} spec={fillSpec} />
+          </ShapeParamsFlyout>
+        </header>
+      </section>
+
+      <section id="textControls" className="panel-card" aria-label="Text">
+        <header className="pane-titlebar titlebar-single">
+          <span className="title-seg" title="Text"><span className="pane-title">
+            <TitleIcon>
+              <path d="M3 3 H13 M8 3 V11" />
+            </TitleIcon>
+            <span className="pane-title-text">Text</span></span>
+          </span>
+          <button
+            type="button"
+            ref={textPreviewRef}
+            id="textPreviewContainer"
+            className={
+              'text-preview-trigger' +
+              (paramsFlyout === 'text' ? ' open' : '')
+            }
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'text'}
+            aria-label="Text parameters"
+            title="Text parameters"
+            onMouseEnter={() => hoverOpenFlyout('text')}
+            onMouseLeave={scheduleHoverClose}
+            onClick={() =>
+              setParamsFlyout((v) => (v === 'text' ? null : 'text'))
+            }
+          >
+            <TextPreviewBox spec={engine.globalText} />
+          </button>
+          <ShapeParamsFlyout
+            open={paramsFlyout === 'text'}
+            triggerRef={textPreviewRef}
+            tone="text"
+            title="Text"
+            preview={<TextPreviewBox spec={engine.globalText} large />}
+            onClose={closeFlyout}
+            onMenuMouseEnter={cancelHoverClose}
+            onMenuMouseLeave={scheduleHoverClose}
+          >
+            <TextParams engine={engine} spec={engine.globalText} />
           </ShapeParamsFlyout>
         </header>
       </section>
@@ -1541,6 +1871,19 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         >
           <RectShapeParams engine={engine} />
         </ShapeParamsFlyout>
+        </header>
+      </section>
+
+      <section id="combinatoricsControls" className="panel-card" aria-label="Combinatorics">
+        <header className="pane-titlebar titlebar-single">
+          <span className="title-seg" title="Combinatorics"><span className="pane-title">
+            <TitleIcon>
+              <circle cx="6" cy="7" r="3.5" />
+              <circle cx="10" cy="7" r="3.5" />
+            </TitleIcon>
+            <span className="pane-title-text">Combinatorics</span></span>
+          </span>
+          <CombinatoricsButtons engine={engine} />
         </header>
       </section>
       </div>

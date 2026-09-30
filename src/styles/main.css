@@ -863,14 +863,8 @@ html, body {
   border-radius: 3px;
 }
 
-#strokeWidthDisplay {
-  font-family: 'Monaco', monospace;
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: #fff;
-  min-width: 45px;
-  text-align: center;
-}
+/* Legacy stroke-width readout rule retired with the NumericStepper
+   migration; the stepper core above owns the field's sizing. */
 
 /* Fill Controls: surface comes from the dark-pro panel-card system. */
 
@@ -997,8 +991,7 @@ body {
 #controlPanel .shape-preview-trigger,
 #controlPanel .stroke-preview-trigger,
 #controlPanel .seg-ctrl,
-#controlPanel .miter-limit-input,
-#controlPanel #strokeWidthDisplay {
+#controlPanel .num-stepper {
   flex-shrink: 0;
 }
 
@@ -1111,9 +1104,7 @@ body {
   flex: none;
 }
 
-#controlPanel .pane-titlebar #strokeWidthDisplay {
-  font-size: 0.75rem;
-  min-width: 0;
+#controlPanel .pane-titlebar .num-stepper {
   flex: none;
 }
 
@@ -1762,6 +1753,115 @@ body {
   outline-offset: 1px;
 }
 
+/* Text preview well: same treatment as the stroke/fill wells, but the
+   content is a live type sample instead of an SVG. */
+#controlPanel .text-preview-trigger {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  width: 56px;
+  height: 28px;
+  background: var(--dp-bg-1);
+  border: 1px solid var(--dp-border-soft);
+  border-radius: 5px;
+  overflow: hidden;
+  flex: none;
+}
+
+#controlPanel .text-preview-trigger:hover,
+#controlPanel .text-preview-trigger.open {
+  border-color: var(--dp-accent);
+}
+
+#controlPanel .text-preview-trigger:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 1px;
+}
+
+#controlPanel .text-preview,
+.shape-params-flyout .text-preview {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.1;
+  color: var(--dp-text-1);
+}
+
+/* The fixed-height preview well centers the type sample instead of
+   leaving it stranded top-left. */
+.shape-params-flyout.tone-text .flyout-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Text and Combinatorics titlebar coding: violet for text, orange for
+   boolean ops, distinct from the Stroke/Fill neutral and shape keys. */
+#controlPanel #textControls .pane-titlebar {
+  background: linear-gradient(to bottom, rgba(251, 113, 133, 0.20), rgba(190, 60, 90, 0.20)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #textControls .pane-icon {
+  color: #fb7185;
+}
+
+#controlPanel #textControls .pane-title-text {
+  color: #f0a3b0;
+}
+
+#controlPanel #combinatoricsControls .pane-titlebar {
+  background: linear-gradient(to bottom, rgba(251, 146, 60, 0.20), rgba(194, 94, 20, 0.20)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #combinatoricsControls .pane-icon {
+  color: #fb923c;
+}
+
+#controlPanel #combinatoricsControls .pane-title-text {
+  color: #eab88a;
+}
+
+#controlPanel .combine-note {
+  font-size: 11px;
+  color: var(--dp-text-2);
+  white-space: nowrap;
+}
+
+.shape-params-flyout.tone-text {
+  border-color: rgba(251, 113, 133, 0.5);
+  background: linear-gradient(to bottom, rgba(251, 113, 133, 0.20), rgba(190, 60, 90, 0.16)),
+    linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+.shape-params-flyout.tone-text .flyout-title {
+  color: #f0a3b0;
+}
+
+.shape-params-flyout .flyout-text-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--dp-bg-1);
+  border: 1px solid var(--dp-border-soft);
+  border-radius: 5px;
+  color: var(--dp-text-1);
+  font: inherit;
+  padding: 4px 8px;
+}
+
+.shape-params-flyout .flyout-text-input:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 1px;
+}
+
 .shape-params-flyout.tone-fill .flyout-title {
   color: #d8d2c4;
 }
@@ -1779,15 +1879,6 @@ body {
   min-width: 0;
 }
 
-.shape-params-flyout .flyout-angle-readout {
-  flex: none;
-  min-width: 2.6rem;
-  text-align: right;
-  font-family: var(--font-tech-mono);
-  font-size: 0.75rem;
-  color: var(--dp-text-1);
-}
-
 /* Color wells inside the portaled flyout sit outside #controlPanel,
    so they carry their own sizing. */
 .shape-params-flyout .titlebar-well {
@@ -1801,56 +1892,9 @@ body {
   flex: none;
 }
 
-#controlPanel .miter-limit-input {
-  width: 3.2rem;
-  background: var(--dp-bg-3);
-  border: 1px solid var(--dp-border);
-  border-radius: 5px;
-  color: var(--dp-text-1);
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-weight: 600;
-  font-size: 0.8125rem;
-  text-align: right;
-  padding: 3px 6px;
-}
-
-#controlPanel .miter-limit-input:disabled {
-  opacity: 0.45;
-}
-
-#strokeWidthDisplay {
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-weight: 600;
-  font-size: 0.8125rem;
-  color: var(--dp-text-1);
-  /* Fixed width so longer values never widen the titlebar. */
-  width: 4.5rem;
-  flex: none;
-  overflow: hidden;
-  white-space: nowrap;
-  text-align: center;
-}
-
-button#strokeWidthDisplay {
-  appearance: none;
-  -webkit-appearance: none;
-  background: transparent;
-  border: none;
-  padding: 2px 0;
-  margin: 0;
-  cursor: pointer;
-  text-overflow: ellipsis;
-}
-
-button#strokeWidthDisplay:hover {
-  color: #fff;
-}
-
+/* The stroke-width readout id lives on the compact stepper's text
+   field; the stepper core above owns its sizing. */
 input#strokeWidthDisplay {
-  background: var(--dp-bg-3);
-  border: 1px solid var(--dp-border);
-  border-radius: 5px;
-  padding: 2px 4px;
   text-overflow: clip;
 }
 
@@ -2072,6 +2116,13 @@ input#strokeWidthDisplay {
   border-right: none;
 }
 
+/* Text-labeled seg buttons need a real line box; the zero line-height
+   above is only for icon buttons with intrinsic-height SVGs. */
+.shape-params-flyout .seg-ctrl.seg-text button {
+  line-height: 1.4;
+  font-size: 12px;
+}
+
 .shape-params-flyout .seg-ctrl button.active {
   background: linear-gradient(to bottom, #5a6675, #454f5c);
   color: #fff;
@@ -2108,27 +2159,152 @@ input#strokeWidthDisplay {
   min-width: 0;
 }
 
-.shape-params-flyout .stroke-width-input {
-  width: 3.6rem;
+/* Custom numeric stepper: [-] field [unit] [+]. One component serves
+   panel titlebars (compact) and flyout popovers (medium), so the core
+   rules live outside #controlPanel (the portaled flyout is not inside
+   it). Buttons echo the seg-ctrl bevel idiom. */
+.num-stepper {
+  display: inline-flex;
+  align-items: stretch;
   flex: none;
   background: var(--dp-bg-3);
   border: 1px solid var(--dp-border);
   border-radius: 5px;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.num-stepper:focus-within {
+  border-color: var(--dp-accent);
+}
+
+.num-stepper-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  background: linear-gradient(to bottom, #2b3542, #1f2732);
+  border: none;
+  color: var(--dp-text-2);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  line-height: 0;
+}
+
+.num-stepper-btn:first-child {
+  border-right: 1px solid #0b0e12;
+}
+
+.num-stepper-btn:last-child {
+  border-left: 1px solid #0b0e12;
+}
+
+.num-stepper-btn:hover:not(:disabled) {
+  color: #fff;
+  background: linear-gradient(to bottom, #354052, #26303d);
+}
+
+.num-stepper-btn:active:not(:disabled) {
+  background: linear-gradient(to bottom, #1a212b, #232c37);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.num-stepper-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.num-stepper-btn:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: -2px;
+}
+
+.num-stepper-input {
+  width: 3rem;
+  min-width: 0;
+  background: transparent;
+  border: none;
   color: var(--dp-text-1);
   font-family: var(--font-tech-mono);
   font-weight: 600;
   font-size: 0.8125rem;
   text-align: right;
-  padding: 3px 6px;
+  padding: 3px 2px 3px 6px;
 }
 
-.shape-params-flyout .flyout-dash-row label {
-  display: inline-flex;
+.num-stepper-input:focus {
+  outline: none;
+}
+
+.num-stepper-input:disabled {
+  opacity: 0.45;
+}
+
+/* The [-]/[+] buttons own stepping; hide the native spinners. */
+.num-stepper-input::-webkit-outer-spin-button,
+.num-stepper-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.num-stepper-input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.num-stepper-unit {
+  align-self: center;
+  padding: 0 6px 0 3px;
+  font-family: var(--font-tech-mono);
+  font-size: 0.72rem;
+  color: var(--dp-text-2);
+  white-space: nowrap;
+}
+
+/* Compact fits panel titlebars: fixed total width so longer values
+   never widen the bar. */
+.num-stepper-compact .num-stepper-input {
+  width: 2.4rem;
+  font-size: 0.75rem;
+  padding: 2px 2px 2px 5px;
+}
+
+.num-stepper-compact .num-stepper-btn {
+  padding: 0 5px;
+}
+
+.num-stepper-compact .num-stepper-unit {
+  padding-right: 5px;
+}
+
+/* Slider + stepper rows in flyout popovers. */
+.param-slider-row {
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.param-slider-row input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shape-params-flyout .flyout-dash-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.shape-params-flyout .flyout-dash-cell > label {
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--dp-text-2);
+  margin: 0;
 }
 
 .shape-params-flyout .dash-presets {
@@ -2158,26 +2334,6 @@ input#strokeWidthDisplay {
 
 .shape-params-flyout .flyout-trio-row .param-item {
   flex: 1 1 0;
-}
-
-/* Number inputs inside the portaled flyout are outside #controlPanel,
-   so they need their own rules (mirroring the panel inputs). Miter
-   holds at most two digits, so it stays narrow. */
-.shape-params-flyout .miter-limit-input {
-  width: calc(2ch + 20px);
-  background: var(--dp-bg-3);
-  border: 1px solid var(--dp-border);
-  border-radius: 5px;
-  color: var(--dp-text-1);
-  font-family: var(--font-tech-mono);
-  font-weight: 600;
-  font-size: 0.8125rem;
-  text-align: right;
-  padding: 3px 6px;
-}
-
-.shape-params-flyout .miter-limit-input:disabled {
-  opacity: 0.45;
 }
 
 .panelParameters .param-item label {
@@ -2417,8 +2573,6 @@ kbd {
 kbd,
 #controlPanel select,
 #controlPanel input,
-#controlPanel .miter-limit-input,
-#strokeWidthDisplay,
 #controlPanel .toggle-switch .slider::after {
   font-family: var(--font-tech-mono);
 }
@@ -2512,9 +2666,8 @@ kbd,
     gap: 3px;
   }
 
-  #controlPanel .miter-limit-input {
-    width: 2.6rem;
-    padding: 3px 4px;
+  #controlPanel .num-stepper-compact .num-stepper-input {
+    width: 2rem;
   }
 
   #controlPanel .pane-titlebar .titlebar-well {
