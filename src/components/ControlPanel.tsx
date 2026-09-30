@@ -209,8 +209,8 @@ function OrientationSeg({
 
 const CIRCLE_DISPLAY_MODES: Array<{ value: CircleDisplayMode; label: string }> = [
   { value: 'line', label: 'Line' },
-  { value: 'circumference1', label: 'Circum. 1 Line' },
-  { value: 'circumference2', label: 'Circum. 2 Lines' },
+  { value: 'circumference1', label: 'Circumference 1 Line' },
+  { value: 'circumference2', label: 'Circumference 2 Lines' },
 ];
 
 function CircumferenceParams({ engine }: { engine: NibGliderEngine }) {
@@ -1075,7 +1075,7 @@ function TextParams({
         />
       </span>
       <span className="param-item">
-        <label htmlFor="textLine2Input">Line 2 (Circum.)</label>
+        <label htmlFor="textLine2Input">Line 2 (Circumference)</label>
         <input
           type="text"
           id="textLine2Input"

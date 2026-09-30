@@ -1390,6 +1390,36 @@ body {
   outline: none;
 }
 
+/* Thin dark scrollbars for the menu (and the params flyout, which also
+   scrolls) so the OS default doesn't clash with the panel idiom. */
+.custom-select-menu,
+.shape-params-flyout {
+  scrollbar-width: thin;
+  scrollbar-color: #4b5866 transparent;
+}
+
+.custom-select-menu::-webkit-scrollbar,
+.shape-params-flyout::-webkit-scrollbar {
+  width: 10px;
+}
+
+.custom-select-menu::-webkit-scrollbar-track,
+.shape-params-flyout::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-select-menu::-webkit-scrollbar-thumb,
+.shape-params-flyout::-webkit-scrollbar-thumb {
+  background: #4b5866;
+  border-radius: 5px;
+  border: 2px solid #1a212b;
+}
+
+.custom-select-menu::-webkit-scrollbar-thumb:hover,
+.shape-params-flyout::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
 .custom-select-menu .cs-item {
   display: flex;
   align-items: center;

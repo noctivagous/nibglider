@@ -33,7 +33,7 @@ export type TextJustification = 'left' | 'center' | 'right';
 export interface TextSpec {
   /** Primary line of text (Display Text, and line 1 of Circumference). */
   content: string;
-  /** Second circumference line (Circum. 2 Lines). */
+  /** Second circumference line (Circumference 2 Lines). */
   line2: string;
   fontFamily: string;
   /** Font size in points. */
@@ -2090,7 +2090,7 @@ export class NibGliderEngine {
   /**
    * Circumference text: one PointText per glyph, placed along the circle
    * from the angle offset with the configured inter-glyph gap. Line 2
-   * (Circum. 2 Lines) runs on a smaller concentric radius.
+   * (Circumference 2 Lines) runs on a smaller concentric radius.
    */
   createCircumferenceText(
     center: AnyItem,

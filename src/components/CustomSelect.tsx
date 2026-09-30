@@ -55,16 +55,20 @@ export default function CustomSelect({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Ancestors of the current value are always revealed, so an
-  // outside value change can never hide inside a collapsed branch.
-  const valueAncestors = useMemo(() => {
+  // Ancestors of the current value join the expanded set (instead of
+  // overriding it at render time), so an outside value change still
+  // reveals its branch — while a manual toggle always wins and the caret
+  // always matches what is actually visible. Single source of truth.
+  useEffect(() => {
     const path = findPath(options, value);
-    return new Set((path ?? []).slice(0, -1).map((o) => o.value));
+    if (!path) return;
+    const ancestors = path.slice(0, -1).map((o) => o.value);
+    if (ancestors.length === 0) return;
+    setExpanded((prev) => {
+      if (ancestors.every((a) => prev.has(a))) return prev;
+      return new Set([...prev, ...ancestors]);
+    });
   }, [options, value]);
-  const effectiveExpanded = useMemo(
-    () => new Set([...expanded, ...valueAncestors]),
-    [expanded, valueAncestors],
-  );
 
   const rows: FlatRow[] = useMemo(() => {
     const out: FlatRow[] = [];
@@ -72,13 +76,12 @@ export default function CustomSelect({
       for (const o of opts) {
         const isParent = !!o.children?.length;
         out.push({ option: o, depth, isParent });
-        if (isParent && effectiveExpanded.has(o.value))
-          walk(o.children!, depth + 1);
+        if (isParent && expanded.has(o.value)) walk(o.children!, depth + 1);
       }
     };
     walk(options, 0);
     return out;
-  }, [options, effectiveExpanded]);
+  }, [options, expanded]);
 
   const selectedLeaf = useMemo(
     () => findPath(options, value)?.at(-1) ?? null,
@@ -116,7 +119,12 @@ export default function CustomSelect({
         setOpen(false);
       }
     };
-    const onViewportShift = () => setOpen(false);
+    // A scroll inside the menu itself (wheel, trackpad, or dragging its
+    // scrollbar) must not close it — only a viewport shift behind it.
+    const onViewportShift = (e: Event) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
     document.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('scroll', onViewportShift, true);
     window.addEventListener('resize', onViewportShift);
