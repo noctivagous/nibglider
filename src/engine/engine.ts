@@ -4,6 +4,7 @@
 // PaperScope is injected instead of paper.install(window).
 // NB: `paper.*` below refers to the global namespace from paper's bundled
 // declarations (type positions only); the runtime value is never imported here.
+import { FontMetrics } from './fontMetrics';
 
 export type ShapeType =
   | 'circle_radius'
@@ -22,9 +23,7 @@ export type CircleInnerShape =
   | 'trapezoid'
   | 'parallelogram'
   | 'rightTriangle'
-  | 'rhombus'
-  | 'displayText'
-  | 'bodyText';
+  | 'rhombus';
 
 export type CombineMode = 'union' | 'subtract' | 'intersect';
 
@@ -45,8 +44,11 @@ export interface TextSpec {
   leading: number;
 }
 
-/** Circle Display Text variant: straight line vs wrapped circumference. */
-export type CircleDisplayMode = 'line' | 'circumference1' | 'circumference2';
+/** Text Mode content: flowing display type vs. contained body type. */
+export type TextMode = 'display' | 'body';
+
+/** Display Text placement relative to the shape boundary. */
+export type DisplayFlow = 'interior' | 'exterior';
 
 export type StrokeCap = 'butt' | 'round' | 'square';
 export type StrokeJoin = 'miter' | 'round' | 'bevel';
@@ -76,9 +78,7 @@ export type RectangleInnerShape =
   | 'parallelogram'
   | 'rightTriangle'
   | 'rhombus'
-  | 'kite'
-  | 'displayText'
-  | 'bodyText';
+  | 'kite';
 
 export interface InnerShapeParams {
   sides: number;
@@ -213,7 +213,7 @@ export class NibGliderEngine {
   // --- Text config (Text panel + Display/Body/Circumference text) ---
   globalText: TextSpec = {
     content: 'Ag',
-    line2: 'Ag',
+    line2: '',
     fontFamily: 'Helvetica',
     fontSize: 24,
     fontWeight: 'normal',
@@ -221,15 +221,22 @@ export class NibGliderEngine {
     justification: 'center',
     leading: 1.2,
   };
-  // Circle Display Text variant. Rect Display Text is always one line;
-  // Body Text uses the shape as its container in both key groups.
-  circleDisplayMode: CircleDisplayMode = 'line';
-  // Extra advance between circumference glyphs, in points.
+  // Text Mode: when on, every shape key draws its geometric shape plus
+  // text derived from it (Display flows around the boundary, Body fills
+  // the interior) instead of the bare shape.
+  textModeEnabled = false;
+  textMode: TextMode = 'display';
+  displayFlow: DisplayFlow = 'exterior';
+  // Boundary offset for Display Text rings, in points.
+  displayOffset = 18;
+  // Extra advance between flow glyphs, in points.
   circumferenceGap = 2;
-  // Start-angle offset for circumference text, degrees.
+  // Start offset along the boundary, in degrees of total loop length.
   circumferenceAngleOffset = -90;
   // Last combinatorics outcome, surfaced under the panel buttons.
   lastCombineNote = '';
+  // Kerned advance measurement (parsed font bytes → canvas → estimate).
+  textMetrics = new FontMetrics();
 
   // --- Drawing mode / shape state (drawingToolsAndFunctions.js) ---
   // continuedPathBaseCount is the segment count of an adopted existing
@@ -356,6 +363,12 @@ export class NibGliderEngine {
       scope.view.onMouseMove = null;
       scope.view.onMouseDrag = null;
       scope.view.onMouseUp = null;
+    });
+
+    // Preload parsed-font measurement bytes without blocking setup;
+    // layout falls back to canvas/estimate until they land.
+    void this.textMetrics.preload().then(() => {
+      if (this.isDrawingShape) this.updateShapePreview();
     });
 
     this.updatePreviewBox();
@@ -915,9 +928,32 @@ export class NibGliderEngine {
     this.setText({ leading: Math.max(0.8, Math.min(3, v)) });
   }
 
-  setCircleDisplayMode(m: CircleDisplayMode): void {
-    if (m !== 'line' && m !== 'circumference1' && m !== 'circumference2') return;
-    this.circleDisplayMode = m;
+  setTextModeEnabled(v: boolean): void {
+    this.textModeEnabled = !!v;
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setTextMode(m: TextMode): void {
+    if (m !== 'display' && m !== 'body') return;
+    this.textMode = m;
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setDisplayFlow(f: DisplayFlow): void {
+    if (f !== 'interior' && f !== 'exterior') return;
+    this.displayFlow = f;
+    this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setDisplayOffset(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.displayOffset = Math.max(0, Math.min(200, v));
     this.updatePreviewBox();
     this.updateTextContent();
     this.notify();
@@ -1225,22 +1261,6 @@ export class NibGliderEngine {
         d += f(radius * rx, radius * ry);
       }
       return d + 'Z';
-    }
-    if (type === 'displayText' || type === 'bodyText') {
-      // Preview-well "T" glyph: top bar plus stem (body adds a baseline).
-      const bar = 0.55;
-      const top = -0.5;
-      const stem = 0.55;
-      let d =
-        `M ${f(-bar, top)}L ${f(bar, top)}L ${f(bar, top + 0.18)}` +
-        `L ${f(0.09, top + 0.18)}L ${f(0.09, stem)}L ${f(-0.09, stem)}` +
-        `L ${f(-0.09, top + 0.18)}L ${f(-bar, top + 0.18)}Z`;
-      if (type === 'bodyText') {
-        d +=
-          `M ${f(-bar, stem + 0.15)}L ${f(bar, stem + 0.15)}` +
-          `L ${f(bar, stem + 0.3)}L ${f(-bar, stem + 0.3)}Z`;
-      }
-      return d;
     }
     if (type === 'supershape') {
       const { m = 5, n1 = 0.2, n2 = 1.7, n3 = 1.7, a1 = 1, a2 = 1 } = params;
@@ -2019,42 +2039,89 @@ export class NibGliderEngine {
     item.data.isShapeText = true;
   }
 
-  /** One line of text centered on the shape. */
-  createDisplayText(center: AnyItem, content?: string): AnyItem {
-    const scope = this.scope;
-    const spec = this.globalText;
-    const item: AnyItem = new scope.PointText(center);
-    item.content = content ?? spec.content;
-    this.styleTextItem(item, spec);
-    item.data.textKind = 'display';
+  /**
+   * Geometry child of a shape+text group (marked data.shapeTextGroup by
+   * withShapeText): the child without text styling. Plain items return
+   * themselves, so paint call sites stay uniform.
+   */
+  private shapePartOf(item: AnyItem): AnyItem {
+    if (
+      item &&
+      item.data &&
+      item.data.shapeTextGroup &&
+      Array.isArray(item.children)
+    ) {
+      const geo = item.children.find(
+        (c: AnyItem) => !(c.data && c.data.isShapeText),
+      );
+      if (geo) return geo;
+    }
     return item;
   }
 
   /**
-   * Body text: the string word-wrapped to the container width and clipped
-   * to the container circle, since Paper.js has no AreaText yet. Lines are
-   * one PointText each inside a Group masked by a clip circle.
+   * Attach derived text to finished geometry under Text Mode: Display
+   * flows around the boundary, Body fills the interior. Returns the
+   * geometry untouched when Text Mode is off or no text results.
    */
-  createBodyText(center: AnyItem, radius: number, content?: string): AnyItem {
-    const scope = this.scope;
-    const spec = this.globalText;
+  private withShapeText(path: AnyItem, isPreview: boolean): AnyItem {
+    if (!path || !this.textModeEnabled) return path;
+    const text =
+      this.textMode === 'body'
+        ? this.createBodyTextFor(path)
+        : this.createBoundaryText(path);
+    if (!text) return path;
+    const group: AnyItem = new this.scope.Group();
+    group.addChild(path);
+    group.addChild(text);
+    group.data.shapeTextGroup = true;
+    if (isPreview) this.fadeShapeText(text);
+    return group;
+  }
+
+  /** Fade preview text to match the dashed-geometry preview treatment. */
+  private fadeShapeText(item: AnyItem): void {
+    if (!item) return;
+    if (item.className === 'PointText') {
+      item.opacity = 0.7;
+      return;
+    }
+    if (Array.isArray(item.children)) {
+      item.children.forEach((c: AnyItem) => this.fadeShapeText(c));
+    }
+  }
+
+  /** Clear preview fading after a preview group is stamped/finalized. */
+  private resetStampedText(item: AnyItem): void {
+    if (!item) return;
+    item.opacity = 1;
+    if (Array.isArray(item.children)) {
+      item.children.forEach((c: AnyItem) => this.resetStampedText(c));
+    }
+  }
+
+  private containsPoint(boundary: AnyItem, pt: AnyItem): boolean {
+    try {
+      return !!boundary.contains(pt);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Word-wrap shared by every Body Text container. */
+  private layoutBodyLines(
+    spec: TextSpec,
+    maxWidth: number,
+    content?: string,
+  ): string[] {
     const words = (content ?? spec.content).split(/\s+/).filter(Boolean);
     const size = Math.max(4, spec.fontSize);
-    const maxWidth = Math.max(8, radius * 1.5);
+    // Kerned advances from parsed font bytes when available, else
+    // canvas measurement, else an em estimate.
+    const widthOf = (s: string): number =>
+      this.textMetrics.advance(s, spec.fontFamily, size, spec.fontWeight);
     const lines: string[] = [];
     let cur = '';
-    // Measure with a scratch item so wraps match the real font.
-    const scratch: AnyItem = new scope.PointText(new scope.Point(0, 0));
-    scratch.fontFamily = spec.fontFamily;
-    scratch.fontSize = size;
-    scratch.fontWeight = spec.fontWeight;
-    const widthOf = (s: string): number => {
-      scratch.content = s || ' ';
-      const measured = scratch.bounds ? scratch.bounds.width : 0;
-      // No font metrics headless or before fonts load: estimate.
-      if (!(measured > 0)) return (s || ' ').length * size * 0.55;
-      return measured;
-    };
     for (const w of words) {
       const trial = cur ? `${cur} ${w}` : w;
       if (cur && widthOf(trial) > maxWidth) {
@@ -2066,20 +2133,38 @@ export class NibGliderEngine {
     }
     if (cur) lines.push(cur);
     if (lines.length === 0) lines.push(' ');
-    scratch.remove();
+    return lines;
+  }
+
+  /**
+   * Body text: the string word-wrapped to the boundary width, centered on
+   * its center, and clipped to the boundary itself (Paper.js has no
+   * AreaText). Works for any closed shape: hexagon, circle, rect frame.
+   */
+  createBodyTextFor(boundary: AnyItem, content?: string): AnyItem | null {
+    const scope = this.scope;
+    const spec = this.globalText;
+    const bounds = boundary.bounds;
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
+    const size = Math.max(4, spec.fontSize);
+    const lines = this.layoutBodyLines(
+      spec,
+      Math.max(8, bounds.width * 0.75),
+      content,
+    );
     const leading = Math.max(0.8, spec.leading || 1.2) * size;
     const group: AnyItem = new scope.Group();
-    const startY = center.y - ((lines.length - 1) * leading) / 2;
+    const startY = bounds.center.y - ((lines.length - 1) * leading) / 2;
     lines.forEach((line, i) => {
       const pt: AnyItem = new scope.PointText(
-        new scope.Point(center.x, startY + i * leading),
+        new scope.Point(bounds.center.x, startY + i * leading),
       );
       pt.content = line;
       this.styleTextItem(pt, spec);
       pt.data.textKind = 'body';
       group.addChild(pt);
     });
-    const mask: AnyItem = new scope.Path.Circle(center, Math.max(1, radius));
+    const mask: AnyItem = boundary.clone();
     mask.clipMask = true;
     group.addChild(mask);
     group.data.isShapeText = true;
@@ -2088,51 +2173,124 @@ export class NibGliderEngine {
   }
 
   /**
-   * Circumference text: one PointText per glyph, placed along the circle
-   * from the angle offset with the configured inter-glyph gap. Line 2
-   * (Circumference 2 Lines) runs on a smaller concentric radius.
+   * Display text: one PointText per glyph walked along the boundary by arc
+   * length, oriented by the local tangent, offset inward (interior) or
+   * outward (exterior) by displayOffset per ring. The start offset is the
+   * configured degrees mapped onto total loop length, so circles keep
+   * their historic placement. Non-empty second line runs a second ring.
    */
-  createCircumferenceText(
-    center: AnyItem,
-    radius: number,
+  createBoundaryText(
+    boundary: AnyItem,
     content?: string,
     line2?: string,
-  ): AnyItem {
+  ): AnyItem | null {
     const scope = this.scope;
     const spec = this.globalText;
+    const size = Math.max(4, spec.fontSize);
+    const L = boundary.length;
+    if (!(L > 0)) return null;
+    const lines = [content ?? spec.content, line2 ?? spec.line2].filter(
+      (s) => s && s.length > 0,
+    );
+    if (lines.length === 0) return null;
+    const offset = Math.max(0, this.displayOffset);
+    // Start offset in degrees, negated onto loop fraction: Paper.js
+    // circles run counter-clockwise from 3 o'clock, so -90° lands at the
+    // top exactly like the historic circle-only layout did.
+    const start =
+      ((((-this.circumferenceAngleOffset % 360) + 360) % 360) / 360) * L;
+    // Which normal side is interior? Probe once; fall back to the
+    // centroid side when the offset outgrows the shape. Open paths have
+    // no interior: both flows sit on the boundary.
+    let interiorSign = 0;
+    if (boundary.closed !== false) {
+      const p0 = boundary.getPointAt(0);
+      let n0 = boundary.getNormalAt(0);
+      if (p0 && n0 && n0.length > 0) {
+        n0 = n0.normalize();
+        const probeLen = Math.max(1, offset);
+        const plusIn = this.containsPoint(
+          boundary,
+          p0.add(n0.multiply(probeLen)),
+        );
+        const minusIn = this.containsPoint(
+          boundary,
+          p0.subtract(n0.multiply(probeLen)),
+        );
+        if (plusIn !== minusIn) {
+          interiorSign = plusIn ? 1 : -1;
+        } else {
+          const b = boundary.bounds;
+          const toC = b ? b.center.subtract(p0) : null;
+          interiorSign = toC && toC.dot(n0) >= 0 ? 1 : -1;
+        }
+      }
+    }
     const group: AnyItem = new scope.Group();
-    const lines =
-      this.circleDisplayMode === 'circumference2'
-        ? [content ?? spec.content, line2 ?? spec.line2]
-        : [content ?? spec.content];
     lines.forEach((text, li) => {
-      const r = Math.max(1, li === 0 ? radius : radius * 0.72);
-      let angle = (this.circumferenceAngleOffset * Math.PI) / 180;
+      const side =
+        this.displayFlow === 'interior' ? interiorSign : -interiorSign;
+      const ring = offset * (li + 1);
+      let d = start;
+      let lastTan: number | null = null;
       for (const ch of text) {
+        const w =
+          ch === ' '
+            ? size * 0.4
+            : this.textMetrics.advance(
+                ch,
+                spec.fontFamily,
+                size,
+                spec.fontWeight,
+              );
+        const step = w + this.circumferenceGap;
+        if (d + step > start + L) break;
         if (ch === ' ') {
-          angle += (spec.fontSize * 0.4 + this.circumferenceGap) / r;
+          d += step;
           continue;
+        }
+        const mid = d + w / 2;
+        const pos = boundary.getPointAt(mid);
+        if (!pos) break;
+        const tan = boundary.getTangentAt(mid);
+        if (tan && tan.length > 0) lastTan = tan.angle;
+        if (lastTan === null) {
+          d += step;
+          continue;
+        }
+        let nor = boundary.getNormalAt(mid);
+        if (!nor || nor.length === 0) {
+          const ra = ((lastTan + 90) * Math.PI) / 180;
+          nor = new scope.Point(Math.cos(ra), Math.sin(ra));
+        } else {
+          nor = nor.normalize();
         }
         const pt: AnyItem = new scope.PointText(new scope.Point(0, 0));
         pt.content = ch;
         this.styleTextItem(pt, spec);
         pt.justification = 'center';
-        const measuredW = pt.bounds ? pt.bounds.width : 0;
-        const w = measuredW > 0 ? measuredW : spec.fontSize * 0.6;
-        const half = w / 2 / r;
-        const a = angle + half;
-        pt.position = new scope.Point(
-          center.x + Math.cos(a) * r,
-          center.y + Math.sin(a) * r,
+        const at = pos.add(nor.multiply(side * ring));
+        pt.position = at;
+        // Tops point away from the shape (exterior) or toward its center
+        // (interior), independent of boundary travel direction; degenerate
+        // normals fall back to the tangent.
+        const upSign =
+          this.displayFlow === 'interior' ? interiorSign : -interiorSign;
+        pt.rotate(
+          upSign !== 0 ? nor.multiply(upSign).angle + 90 : lastTan,
+          at,
         );
-        pt.rotate((a * 180) / Math.PI + 90, pt.position);
-        pt.data.textKind = 'circumference';
+        pt.data.textKind = 'display';
         group.addChild(pt);
-        angle += (w + this.circumferenceGap) / r;
+        d += step;
       }
     });
+    if (group.children.length === 0) {
+      group.remove();
+      return null;
+    }
     group.data.isShapeText = true;
-    group.data.textKind = 'circumference';
+    group.data.textKind = 'display';
     return group;
   }
 
@@ -2222,27 +2380,11 @@ export class NibGliderEngine {
       case 'supershape':
         path = this.createSupershape(center, radius, currentInnerParams, rotationAngle);
         break;
-      case 'displayText': {
-        // Circles honor the Display variant (line vs circumference);
-        // rects always draw the straight one-liner here.
-        path =
-          useCircleInner && this.circleDisplayMode !== 'line'
-            ? this.createCircumferenceText(center, radius)
-            : this.createDisplayText(center);
-        break;
-      }
-      case 'bodyText':
-        path = this.createBodyText(center, radius);
-        break;
       default:
         break;
     }
     if (path) {
-      if (path.data && path.data.isShapeText) {
-        // Text items carry their own style from the Text spec; previews
-        // only fade them.
-        if (isPreview) path.opacity = 0.7;
-      } else if (isPreview) {
+      if (isPreview) {
         path.strokeColor = this.globalStrokeColor;
         path.strokeWidth = this.globalStrokeWidth;
         path.strokeDasharray = [3, 3];
@@ -2258,9 +2400,10 @@ export class NibGliderEngine {
         }
         this.applyStrokeDash(path);
       }
-      if (!(path.data && path.data.isShapeText)) this.applyStrokeGeometry(path);
+      this.applyStrokeGeometry(path);
     }
-    return path;
+    // Text Mode derives text from the finished (already rotated) geometry.
+    return this.withShapeText(path, isPreview);
   }
 
   drawInnerShape(frameItem: AnyItem, style: string): void {
@@ -2382,7 +2525,6 @@ export class NibGliderEngine {
   createRectFrameShape(styleOrPreview = 'stroke'): AnyItem {
     const scope = this.scope;
     const type = this.rectangleInnerShapeType;
-    if (type === 'rectangle') return null;
     const basis = this.rectFrameBasis();
     if (!basis) return null;
     const { o, u, v } = basis;
@@ -2392,6 +2534,25 @@ export class NibGliderEngine {
     // every shape drawn below follows rectangleOrientation and still
     // fits inside the frame bounds.
     const P = (s: number, t: number): AnyItem => P0(...this.rotST(s, t));
+    const isPreview = styleOrPreview === 'preview';
+    if (type === 'rectangle') {
+      // Bare frame: no inner shape — but Text Mode still flows text
+      // around the frame itself. The caller draws the frame; only the
+      // text group is returned so nothing double-draws.
+      if (!this.textModeEnabled) return null;
+      const frame = new scope.Path({
+        segments: [P(0, 0), P(1, 0), P(1, 1), P(0, 1)],
+        closed: true,
+      });
+      const text =
+        this.textMode === 'body'
+          ? this.createBodyTextFor(frame)
+          : this.createBoundaryText(frame);
+      frame.remove();
+      if (!text) return null;
+      if (isPreview) this.fadeShapeText(text);
+      return text;
+    }
     const params = this.rectangleInnerShapeParams;
     let path: AnyItem = null;
     switch (type) {
@@ -2471,76 +2632,11 @@ export class NibGliderEngine {
         path = this.fitUnitPoints(unit, P);
         break;
       }
-      case 'displayText': {
-        const c = P(0.5, 0.5);
-        path = this.createDisplayText(c);
-        break;
-      }
-      case 'bodyText': {
-        // Rect Body Text: wrap to the frame width and clip to the frame.
-        const c = P(0.5, 0.5);
-        const w = Math.max(1, u.length);
-        const h = Math.max(1, v.length);
-        const spec = this.globalText;
-        const size = Math.max(4, spec.fontSize);
-        const group: AnyItem = new scope.Group();
-        const scratch: AnyItem = new scope.PointText(new scope.Point(0, 0));
-        scratch.fontFamily = spec.fontFamily;
-        scratch.fontSize = size;
-        scratch.fontWeight = spec.fontWeight;
-        const widthOf = (s: string): number => {
-          scratch.content = s || ' ';
-          const measured = scratch.bounds ? scratch.bounds.width : 0;
-          // No font metrics headless or before fonts load: estimate.
-          if (!(measured > 0)) return (s || ' ').length * size * 0.55;
-          return measured;
-        };
-        const words = spec.content.split(/\s+/).filter(Boolean);
-        const lines: string[] = [];
-        let cur = '';
-        for (const wd of words) {
-          const trial = cur ? `${cur} ${wd}` : wd;
-          if (cur && widthOf(trial) > w * 0.9) {
-            lines.push(cur);
-            cur = wd;
-          } else {
-            cur = trial;
-          }
-        }
-        if (cur) lines.push(cur);
-        if (lines.length === 0) lines.push(' ');
-        scratch.remove();
-        const leading = Math.max(0.8, spec.leading || 1.2) * size;
-        const startY = c.y - ((lines.length - 1) * leading) / 2;
-        lines.forEach((line, i) => {
-          const pt: AnyItem = new scope.PointText(
-            new scope.Point(c.x, startY + i * leading),
-          );
-          pt.content = line;
-          this.styleTextItem(pt, spec);
-          pt.data.textKind = 'body';
-          group.addChild(pt);
-        });
-        const mask: AnyItem = new scope.Path.Rectangle({
-          center: c,
-          size: new scope.Size(w, h),
-        });
-        mask.clipMask = true;
-        group.addChild(mask);
-        group.data.isShapeText = true;
-        group.data.textKind = 'body';
-        path = group;
-        break;
-      }
       default:
         break;
     }
     if (!path) return null;
-    if (path.data && path.data.isShapeText) {
-      if (styleOrPreview === 'preview') path.opacity = 0.7;
-      return path;
-    }
-    if (styleOrPreview === 'preview') {
+    if (isPreview) {
       path.strokeColor = this.globalStrokeColor;
       path.strokeWidth = this.globalStrokeWidth;
       path.strokeDasharray = [3, 3];
@@ -2548,7 +2644,8 @@ export class NibGliderEngine {
       path.fillColor = null;
     }
     this.applyStrokeGeometry(path);
-    return path;
+    // Text Mode derives text from the finished frame-fitted geometry.
+    return this.withShapeText(path, isPreview);
   }
 
   rectCenterlineKC(): void {
@@ -2701,7 +2798,7 @@ export class NibGliderEngine {
         if (iradius > 0) {
           const stampedInner = this.createInnerShape(center, iradius, 'stroke', this.shapeGuideAngle);
           if (stampedInner) {
-            this.applyCurrentStyles(stampedInner);
+            this.applyCurrentStyles(this.shapePartOf(stampedInner));
             stampedInner.selected = false;
             scope.project.activeLayer.addChild(stampedInner);
           }
@@ -2713,7 +2810,7 @@ export class NibGliderEngine {
       ) {
         const stampedShape = this.createRectFrameShape('stroke');
         if (stampedShape) {
-          this.applyCurrentStyles(stampedShape);
+          this.applyCurrentStyles(this.shapePartOf(stampedShape));
           stampedShape.selected = false;
           scope.project.activeLayer.addChild(stampedShape);
         }
@@ -2730,16 +2827,17 @@ export class NibGliderEngine {
         if (this.previewInner) {
           const stampedInner = this.previewInner.clone();
           this.clearShadow(stampedInner);
-          stampedInner.opacity = 1;
-          stampedInner.strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
-          stampedInner.strokeWidth = this.strokeEnabled ? this.globalStrokeWidth * 0.7 : 0;
+          this.resetStampedText(stampedInner);
+          const target = this.shapePartOf(stampedInner);
+          target.strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
+          target.strokeWidth = this.strokeEnabled ? this.globalStrokeWidth * 0.7 : 0;
           if (this.fillEnabled) {
-            this.applyFillSpec(stampedInner, this.fillSpec());
+            this.applyFillSpec(target, this.fillSpec());
           } else {
-            stampedInner.fillColor = null;
+            target.fillColor = null;
           }
-          this.applyStrokeGeometry(stampedInner);
-          this.applyStrokeDash(stampedInner);
+          this.applyStrokeGeometry(target);
+          this.applyStrokeDash(target);
           stampedInner.selected = false;
           scope.project.activeLayer.addChild(stampedInner);
         }
@@ -3017,7 +3115,7 @@ export class NibGliderEngine {
       if (iradius > 0) {
         const innerPath = this.createInnerShape(center, iradius, 'stroke', this.shapeGuideAngle);
         if (innerPath) {
-          this.applyCurrentStyles(innerPath);
+          this.applyCurrentStyles(this.shapePartOf(innerPath));
           innerPath.selected = false;
           scope.project.activeLayer.addChild(innerPath);
         }
@@ -3031,7 +3129,7 @@ export class NibGliderEngine {
           size: this.previewShape.size,
         });
       }
-      if (finalPath) this.applyCurrentStyles(finalPath);
+      if (finalPath) this.applyCurrentStyles(this.shapePartOf(finalPath));
     } else if (shapeType === 'rectangle_two_edges') {
       if (rectShapeOnly) {
         finalPath = this.createRectFrameShape('stroke');
@@ -3049,7 +3147,7 @@ export class NibGliderEngine {
           closed: true,
         });
       }
-      if (finalPath) this.applyCurrentStyles(finalPath);
+      if (finalPath) this.applyCurrentStyles(this.shapePartOf(finalPath));
     } else if (shapeType === 'rectangle_centerline') {
       if (rectShapeOnly) {
         finalPath = this.createRectFrameShape('stroke');
@@ -3071,7 +3169,7 @@ export class NibGliderEngine {
           closed: true,
         });
       }
-      if (finalPath) this.applyCurrentStyles(finalPath);
+      if (finalPath) this.applyCurrentStyles(this.shapePartOf(finalPath));
     }
     if (shapeType === 'rectangle_centerline') {
       this.lastCenterlineWidth = this.shapeWidth;

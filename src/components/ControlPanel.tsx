@@ -13,7 +13,6 @@ import { createPortal } from 'react-dom';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import NumericStepper from './NumericStepper';
 import type {
-  CircleDisplayMode,
   CircleInnerShape,
   CombineMode,
   FillSpec,
@@ -207,68 +206,9 @@ function OrientationSeg({
   );
 }
 
-const CIRCLE_DISPLAY_MODES: Array<{ value: CircleDisplayMode; label: string }> = [
-  { value: 'line', label: 'Line' },
-  { value: 'circumference1', label: 'Circumference 1 Line' },
-  { value: 'circumference2', label: 'Circumference 2 Lines' },
-];
-
-function CircumferenceParams({ engine }: { engine: NibGliderEngine }) {
-  return (
-    <span className="panelParameters">
-      <ParamSlider
-        label="Gap"
-        value={engine.circumferenceGap}
-        min={0}
-        max={60}
-        step={0.5}
-        unit="pt"
-        onChange={(n) => engine.setCircumferenceGap(n)}
-      />
-      <ParamSlider
-        label="Angle offset"
-        value={engine.circumferenceAngleOffset}
-        min={-180}
-        max={180}
-        step={1}
-        unit="°"
-        formatValue={(v) => String(Math.round(v))}
-        onChange={(n) => engine.setCircumferenceAngleOffset(n)}
-      />
-    </span>
-  );
-}
-
 function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
   const type = engine.circleInnerShapeType;
   const params = engine.circleInnerShapeParams;
-  if (type === 'displayText') {
-    const mode = engine.circleDisplayMode;
-    return (
-      <>
-        <span className="param-item">
-          <label>Mode</label>
-          <div className="seg-ctrl seg-text" role="group" aria-label="Circle display text mode">
-            {CIRCLE_DISPLAY_MODES.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                title={opt.label}
-                className={mode === opt.value ? 'active' : undefined}
-                onClick={() => engine.setCircleDisplayMode(opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </span>
-        {mode !== 'line' ? <CircumferenceParams engine={engine} /> : null}
-      </>
-    );
-  }
-  if (type === 'bodyText') {
-    return <p className="param-empty">Uses the shape as the text container</p>;
-  }
   if (type === 'sector' || type === 'segment') {
     const deg = Number.isFinite(params.sector) ? params.sector : 90;
     return (
@@ -340,8 +280,7 @@ function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
 function RectShapeParams({ engine }: { engine: NibGliderEngine }) {
   const type = engine.rectangleInnerShapeType;
   const params = engine.rectangleInnerShapeParams;
-  const isText = type === 'displayText' || type === 'bodyText';
-  const showOrient = type !== 'rectangle' && type !== 'circle' && !isText;
+  const showOrient = type !== 'rectangle' && type !== 'circle';
   let sliders: ReactNode = null;
   if (type === 'trapezoid' || type === 'parallelogram') {
     const deg = Number.isFinite(params.angle) ? params.angle : 60;
@@ -388,15 +327,6 @@ function RectShapeParams({ engine }: { engine: NibGliderEngine }) {
           />
         ))}
       </span>
-    );
-  }
-  if (isText) {
-    return (
-      <p className="param-empty">
-        {type === 'displayText'
-          ? 'One line of text, centered in the frame'
-          : 'Uses the frame as the text container'}
-      </p>
     );
   }
   if (!showOrient && !sliders) {
@@ -1018,6 +948,12 @@ const TEXT_FONT_OPTIONS: CustomSelectOption[] = [
   'Times New Roman',
   'Courier New',
   'Verdana',
+  // Vendored under public/fonts with parsed-metric measurement.
+  'Barlow Condensed',
+  'Chakra Petch',
+  'Exo 2',
+  'JetBrains Mono',
+  'Orbitron',
   'sans-serif',
   'serif',
   'monospace',
@@ -1061,8 +997,90 @@ function TextParams({
   engine: NibGliderEngine;
   spec: TextSpec;
 }) {
+  const textMode = engine.textMode;
+  const displayFlow = engine.displayFlow;
   return (
     <div className="panelParameters">
+      <span className="param-item">
+        <label>Kind</label>
+        <div className="seg-ctrl seg-text" role="group" aria-label="Text kind">
+          {(
+            [
+              { value: 'display', label: 'Display Text' },
+              { value: 'body', label: 'Body Text' },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              title={opt.label}
+              className={textMode === opt.value ? 'active' : undefined}
+              onClick={() => engine.setTextMode(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </span>
+      {textMode === 'display' ? (
+        <>
+          <span className="param-item">
+            <label>Flow</label>
+            <div
+              className="seg-ctrl seg-text"
+              role="group"
+              aria-label="Display flow"
+            >
+              {(
+                [
+                  { value: 'interior', label: 'Interior' },
+                  { value: 'exterior', label: 'Exterior' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  title={`${opt.label} of the shape boundary`}
+                  className={displayFlow === opt.value ? 'active' : undefined}
+                  onClick={() => engine.setDisplayFlow(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </span>
+          <ParamSlider
+            id="displayOffsetSlider"
+            label="Offset"
+            value={engine.displayOffset}
+            min={0}
+            max={200}
+            step={1}
+            unit="pt"
+            formatValue={(v) => String(Math.round(v))}
+            onChange={(n) => engine.setDisplayOffset(n)}
+          />
+          <ParamSlider
+            label="Gap"
+            value={engine.circumferenceGap}
+            min={0}
+            max={60}
+            step={0.5}
+            unit="pt"
+            onChange={(n) => engine.setCircumferenceGap(n)}
+          />
+          <ParamSlider
+            label="Start"
+            value={engine.circumferenceAngleOffset}
+            min={-180}
+            max={180}
+            step={1}
+            unit="°"
+            formatValue={(v) => String(Math.round(v))}
+            onChange={(n) => engine.setCircumferenceAngleOffset(n)}
+          />
+        </>
+      ) : null}
       <span className="param-item">
         <label htmlFor="textContentInput">Text</label>
         <input
@@ -1075,13 +1093,13 @@ function TextParams({
         />
       </span>
       <span className="param-item">
-        <label htmlFor="textLine2Input">Line 2 (Circumference)</label>
+        <label htmlFor="textLine2Input">Line 2 (second ring)</label>
         <input
           type="text"
           id="textLine2Input"
           className="flyout-text-input"
           value={spec.line2}
-          aria-label="Second line for two-line circumference text"
+          aria-label="Second line for a second display ring"
           onChange={(e) => engine.setTextLine2(e.target.value)}
         />
       </span>
@@ -1265,8 +1283,6 @@ const CIRCLE_SHAPE_LABELS: Record<CircleInnerShape, string> = {
   parallelogram: 'Parallelogram',
   rightTriangle: 'Right Triangle',
   rhombus: 'Rhombus',
-  displayText: 'Display Text',
-  bodyText: 'Body Text',
 };
 
 const RECT_SHAPE_LABELS: Record<RectangleInnerShape, string> = {
@@ -1279,8 +1295,6 @@ const RECT_SHAPE_LABELS: Record<RectangleInnerShape, string> = {
   rightTriangle: 'Right Triangle',
   rhombus: 'Rhombus',
   kite: 'Kite',
-  displayText: 'Display Text',
-  bodyText: 'Body Text',
 };
 
 // Mini silhouette per shape, drawn in the option list and the closed
@@ -1305,8 +1319,6 @@ const SHAPE_THUMB_PATHS: Record<string, ReactNode> = {
   rhombus: <path d="M8 1.8 L12.8 7 L8 12.2 L3.2 7 Z" />,
   kite: <path d="M8 1.5 L11 6.5 L8 12.5 L5 6.5 Z" />,
   rectangle: <path d="M2.8 3.2 H13.2 V10.8 H2.8 Z" />,
-  displayText: <path d="M2.5 3 H13.5 M8 3 V11" />,
-  bodyText: <path d="M2.5 3 H13.5 M8 3 V11 M2.5 12.5 H13.5" />,
 };
 
 function ShapeThumb({ kind }: { kind: string }) {
@@ -1397,13 +1409,6 @@ const CIRCLE_OPTION_TREE: CustomSelectOption[] = [
     ).map((v) => shapeLeaf(v, CIRCLE_SHAPE_LABELS)),
   },
   shapeLeaf('supershape', CIRCLE_SHAPE_LABELS),
-  {
-    value: 'grp-text',
-    label: 'Text',
-    children: (['displayText', 'bodyText'] as const).map((v) =>
-      shapeLeaf(v, CIRCLE_SHAPE_LABELS),
-    ),
-  },
 ];
 
 const GRID_TYPE_OPTIONS: CustomSelectOption[] = [
@@ -1444,13 +1449,6 @@ const RECT_OPTION_TREE: CustomSelectOption[] = [
     ).map((v) => shapeLeaf(v, RECT_SHAPE_LABELS)),
   },
   shapeLeaf('supershape', RECT_SHAPE_LABELS),
-  {
-    value: 'grp-text',
-    label: 'Text',
-    children: (['displayText', 'bodyText'] as const).map((v) =>
-      shapeLeaf(v, RECT_SHAPE_LABELS),
-    ),
-  },
 ];
 
 export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
@@ -1695,6 +1693,16 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             </TitleIcon>
             <span className="pane-title-text">Text</span></span>
           </span>
+          <label className="toggle-switch square-knob">
+            <input
+              type="checkbox"
+              id="textModeEnabledCheckbox"
+              checked={engine.textModeEnabled}
+              title="Text Mode: shape keys draw text"
+              onChange={(e) => engine.setTextModeEnabled(e.target.checked)}
+            />
+            <span className="slider" />
+          </label>
           <button
             type="button"
             ref={textPreviewRef}
