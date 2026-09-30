@@ -1,3 +1,6 @@
+[ ] annulus shape for Circle Keys. 
+
+---
 
 Related: during live drawing of Circle Keys or Rect Keys, 
 certain keys can take on other functions in Live Drawing mode

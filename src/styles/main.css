@@ -1301,7 +1301,8 @@ body {
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
 }
 
-#controlPanel .custom-select-trigger:hover {
+#controlPanel .custom-select-trigger:hover,
+#controlPanel .custom-select-trigger.open {
   border-color: #3d4a59;
 }
 

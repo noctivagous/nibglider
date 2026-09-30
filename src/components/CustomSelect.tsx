@@ -37,12 +37,21 @@ export default function CustomSelect({
   value,
   options,
   onChange,
+  openOnHover = false,
+  onHoverOpen,
+  forceCloseKey,
 }: {
   id?: string;
   ariaLabel: string;
   value: string;
   options: CustomSelectOption[];
   onChange: (value: string) => void;
+  /** Opt-in hover-open (panel selects only): mirrors preview-flyout hover rules. */
+  openOnHover?: boolean;
+  /** Fired when hover opens the menu so the parent can close other popups. */
+  onHoverOpen?: () => void;
+  /** Changing value forces the menu closed (single-open invariant). */
+  forceCloseKey?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => {
@@ -54,6 +63,37 @@ export default function CustomSelect({
   const rootRef = useRef<HTMLSpanElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Hover-open timer: same 180ms delayed-close idiom as the panel
+  // preview flyouts, so the pointer can travel trigger -> menu.
+  const hoverCloseTimer = useRef<number | null>(null);
+  const cancelHoverClose = () => {
+    if (hoverCloseTimer.current !== null) {
+      window.clearTimeout(hoverCloseTimer.current);
+      hoverCloseTimer.current = null;
+    }
+  };
+  const scheduleHoverClose = () => {
+    cancelHoverClose();
+    hoverCloseTimer.current = window.setTimeout(() => {
+      hoverCloseTimer.current = null;
+      setOpen(false);
+    }, 180);
+  };
+  useEffect(() => {
+    return () => {
+      if (hoverCloseTimer.current !== null) {
+        window.clearTimeout(hoverCloseTimer.current);
+        hoverCloseTimer.current = null;
+      }
+    };
+  }, []);
+  // Parent bumps this to enforce a single open popup.
+  useEffect(() => {
+    if (forceCloseKey === undefined) return;
+    cancelHoverClose();
+    setOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceCloseKey]);
 
   // Ancestors of the current value join the expanded set (instead of
   // overriding it at render time), so an outside value change still
@@ -192,15 +232,33 @@ export default function CustomSelect({
     }
   };
 
+  const hoverWantsMouse = () => {
+    if (!openOnHover) return false;
+    if (window.matchMedia?.('(hover: none)').matches) return false;
+    return true;
+  };
+  const handleTriggerMouseEnter = () => {
+    if (!hoverWantsMouse()) return;
+    cancelHoverClose();
+    if (!open) openMenu();
+    onHoverOpen?.();
+  };
+  const handleTriggerMouseLeave = () => {
+    if (!openOnHover) return;
+    scheduleHoverClose();
+  };
+
   return (
     <span ref={rootRef} className="custom-select" id={id}>
       <button
         ref={triggerRef}
         type="button"
-        className="custom-select-trigger"
+        className={'custom-select-trigger' + (open ? ' open' : '')}
         aria-haspopup="tree"
         aria-expanded={open}
         aria-label={ariaLabel}
+        onMouseEnter={handleTriggerMouseEnter}
+        onMouseLeave={handleTriggerMouseLeave}
         onClick={() => {
           if (open) closeMenu(false);
           else openMenu();
@@ -235,6 +293,14 @@ export default function CustomSelect({
               minWidth: menuPos.minWidth,
             }}
             onKeyDown={onMenuKeyDown}
+            onMouseEnter={() => {
+              if (openOnHover) cancelHoverClose();
+            }}
+            onMouseLeave={() => {
+              if (!openOnHover) return;
+              if (menuRef.current?.contains(document.activeElement)) return;
+              scheduleHoverClose();
+            }}
           >
             {rows.map((row, i) => (
               <div

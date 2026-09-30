@@ -1615,13 +1615,38 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
       setParamsFlyout(null);
     }, 180);
   }, [cancelHoverClose]);
+  // Hover-open select menus (panel CustomSelects only) share the same
+  // single-open invariant: opening one closes the params flyout, and
+  // opening a flyout dismisses any hover-open select menu.
+  const [selectCloseKey, setSelectCloseKey] = useState(0);
+  const dismissSelects = useCallback(() => setSelectCloseKey((k) => k + 1), []);
+  const handleSelectHoverOpen = useCallback(() => {
+    setParamsFlyout(null);
+  }, []);
+  const openFlyoutAndDismissSelects = useCallback(
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text') => {
+      setParamsFlyout(name);
+      dismissSelects();
+    },
+    [dismissSelects],
+  );
   const hoverOpenFlyout = useCallback(
     (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text') => {
       if (window.matchMedia?.('(hover: none)').matches) return;
       cancelHoverClose();
-      setParamsFlyout(name);
+      openFlyoutAndDismissSelects(name);
     },
-    [cancelHoverClose],
+    [cancelHoverClose, openFlyoutAndDismissSelects],
+  );
+  const toggleFlyout = useCallback(
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text') => {
+      if (paramsFlyout === name) setParamsFlyout(null);
+      else {
+        setParamsFlyout(name);
+        dismissSelects();
+      }
+    },
+    [paramsFlyout, dismissSelects],
   );
   // Selection state: when items are selected the Stroke/Fill panels
   // reflect the selection (first selected item) instead of the globals.
@@ -1698,9 +1723,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             title="Stroke parameters"
             onMouseEnter={() => hoverOpenFlyout('stroke')}
             onMouseLeave={scheduleHoverClose}
-            onClick={() =>
-              setParamsFlyout((v) => (v === 'stroke' ? null : 'stroke'))
-            }
+            onClick={() => toggleFlyout('stroke')}
           >
             <StrokePreviewSvg
               color={strokeColor}
@@ -1796,9 +1819,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             title="Fill parameters"
             onMouseEnter={() => hoverOpenFlyout('fill')}
             onMouseLeave={scheduleHoverClose}
-            onClick={() =>
-              setParamsFlyout((v) => (v === 'fill' ? null : 'fill'))
-            }
+            onClick={() => toggleFlyout('fill')}
           >
             <FillPreviewSvg spec={fillSpec} on={fillOn} />
           </button>
@@ -1851,9 +1872,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             title="Text parameters"
             onMouseEnter={() => hoverOpenFlyout('text')}
             onMouseLeave={scheduleHoverClose}
-            onClick={() =>
-              setParamsFlyout((v) => (v === 'text' ? null : 'text'))
-            }
+            onClick={() => toggleFlyout('text')}
           >
             <TextPreviewBox spec={engine.globalText} />
           </button>
@@ -1890,6 +1909,9 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           onChange={(v) =>
             engine.setCircleInnerShapeType(v as CircleInnerShape)
           }
+          openOnHover
+          onHoverOpen={handleSelectHoverOpen}
+          forceCloseKey={selectCloseKey}
         />
         <button
           type="button"
@@ -1905,9 +1927,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           title="Shape parameters"
           onMouseEnter={() => hoverOpenFlyout('circle')}
           onMouseLeave={scheduleHoverClose}
-          onClick={() =>
-            setParamsFlyout((v) => (v === 'circle' ? null : 'circle'))
-          }
+          onClick={() => toggleFlyout('circle')}
         >
           <InnerShapePreviewSvg
             id="shapePreview"
@@ -1960,6 +1980,9 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           onChange={(v) =>
             engine.setRectangleInnerShapeType(v as RectangleInnerShape)
           }
+          openOnHover
+          onHoverOpen={handleSelectHoverOpen}
+          forceCloseKey={selectCloseKey}
         />
         <button
           type="button"
@@ -1975,9 +1998,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           title="Shape parameters"
           onMouseEnter={() => hoverOpenFlyout('rect')}
           onMouseLeave={scheduleHoverClose}
-          onClick={() =>
-            setParamsFlyout((v) => (v === 'rect' ? null : 'rect'))
-          }
+          onClick={() => toggleFlyout('rect')}
         >
           <InnerShapePreviewSvg
             id="rectShapePreview"
@@ -2055,6 +2076,9 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             value={engine.gridType}
             options={GRID_TYPE_OPTIONS}
             onChange={(v) => engine.setGridType(v as GridType)}
+            openOnHover
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
           />
         </header>
       </section>
@@ -2139,6 +2163,9 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               value={engine.aspectRatioKey()}
               options={ASPECT_RATIO_OPTIONS}
               onChange={(v) => engine.setAspectRatioKey(v)}
+              openOnHover
+              onHoverOpen={handleSelectHoverOpen}
+              forceCloseKey={selectCloseKey}
             />
           </div>
           </div>
