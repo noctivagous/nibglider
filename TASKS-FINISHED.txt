@@ -1,0 +1,68 @@
+SECTIONS IN PANELS
+[x] Panel sections should have drag bar on the left that stays when the section collapses to icon and left bar only.  They should be able to be removed with right click menu and restored from a new menu, one that sits to the left of the panel, spans both rows, make of a grid of boxes within the same design style as the panel.  to begin with it will have only one column with two boxes (we will allow more later and may turn it into horizontal arrangement later).   the two boxes inherit from CustomSelect, which should have the param. that it opens on hover.  One of the menu items is Operations and its items operate on selections of objects.  Some of them will show a modal dialog entry to ask for input (with preview on the page) before doing the thing.  Others just do the thing.
+
+[x] section icons in the panel will be a custom kind of menu that opens when the
+user clicks it.  for now only Snapping will have menu items.  what they will be is
+a checklist corresponding to which snapping types are shown in the UI and
+all of the ones shown now will be shown except for Aspect, which will be turned off.
+For the panel section that has Redo and Undo, it will show: Undo/Redo, Grouping,
+and History as segments of the section to turn on and off.  For the Snapping
+icon, it will also show inches/pt/cm with the default being pt.
+
+---
+
+[x] We should have internal to the code for now,
+different modes for handling points and open paths
+as they are deposited.  The base would be 0 - no action.
+Whatever the user draws just gets deposited as is.
+users will not want this most of the time but
+sometimes they will in complex drawings, so later it will be a UI feature.
+Right now, even with Points Snapping disabled,
+we have as the default that we 
+automatically connect the points to path points close to the cursor.
+We should have a name for this, Auto-Join Drawn Points.
+Secondly, right now it is the case that if the user draws on a point at
+the end of a segment of an open shape and then connects
+it to the other end, it will join what the user made into the
+shape and close it.  but if the user just starts drawing on the end
+of a segment and then leaves the shape open, it won't
+join those segments of what the user made into the path.
+
+---
+
+[x] Radial Stamp: 0 key locks and unlocks the current radius
+
+[x] we want to add another circle key, this one on the , (comma) key. It will be called Radial Stamp. After the user  
+  presses Radial Stamp the origin of the circle is established. Then the shape, still the same one selected in the Circle 
+  Keys section of the panel, will move and be rotated with the tangent point on the circle. then this relates to a        
+  different feature which is is that when we are drawing live, the keyboard keys can take on different functions for the  
+  live drawing. for this feature, for example, the [ and ] keys will scale the shape (same scale factors as for canvas)   
+  and the ; and ' keys will rotate it. Related: 
+ we are drawing live, the keyboard keys can take on different functions
+during live drawing of Circle Keys (for Rect Keys laters), 
+certain keys can take on other functions in Live Drawing mode
+(this holds for any drawing state including splines) such that designated
+keyboard keys during the liveDrawing state can affect 
+the characteristics of what is being drawn live.
+In a future repeat circle component, for example, it will be able to 
+affect the count of repeats around the circle, the scale keys will affect
+their scale, the rotate keys will rotate.  additionally, the repeat component
+can have different modes that are turned on and off, such as that
+instead of manual scaling the mode is that the shapes scale with
+the radius.  then for that there would be a key that establishes which
+radius is the base reference for scaling (the same is at 1x magn at this
+radius and then scales up and down relative to it).  in particular the number keys
+can be used as a slot for these functions, allowing for either 
+pairs or individual keys to be used.  and when keys are available during
+live drawing, we will show them in the Status Box.  
+ for our first example we will make a parameteric shape component
+for the Circle Keys
+
+[X]  K key will slide keyboard down and up (KB toggle)
+
+[x] change the keys to S and D for Stroke and Fill toggle
+
+[X] param sliders for parallelogram, trapezoid angle.  not 180 degrees for parallelogram
+[x] aspect ratio snap for drawing with rect keys. if set to 3:4, aspect ratio will flip for dimensions when shape changes. 3:4 or 4:3
+
+[X] shift + rotate keys : 45 deg rotate, shift + scaling keys : bigger scaling factor for scale keys, opt/alt + rotate keys : 5 deg rotate, opt/alt + scaling keys : smaller scaling factor for scale
