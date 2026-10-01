@@ -6234,14 +6234,7 @@ export class NibGliderEngine {
         steps.push(L('hint', runs));
       }
     }
-    if (this.history.canUndo() || this.history.canRedo()) {
-      const bits: string[] = [];
-      if (this.history.canUndo())
-        bits.push(`Undo ${this.history.undoLabel() ?? ''}`.trim());
-      if (this.history.canRedo())
-        bits.push(`Redo ${this.history.redoLabel() ?? ''}`.trim());
-      state.push(L('meta', [T(`${bits.join(' · ')} (Ctrl/⌘+Z)`)]));
-    }
+    // Undo/redo labels are suspended here; the History panel still shows them.
     this.setStatusSchema({ state, steps });
   }
 }

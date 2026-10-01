@@ -1,3 +1,6 @@
+[ ] issue: in the code the snapping points that are drawn are made out of PaperJS canvas vector objects but
+they can be clicked by the user, might be printed.
+
 [ ] in the code we want to set the data foundation for measurement and page units, whether the user
 is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app should
 be aware of pt, inch, pica, cm.  users will stay within mm to m for SI
@@ -10,10 +13,15 @@ make sure the Custom Select can accommodate controls this in in the menu item.
 e.g.  Grid: [inch]:[1/8].  This also related to measurement system, so we should
 go from mm to m and inch to feet in our measurements.
 
-SECTIONS IN PANELS
-[ ] Panel sections should have left draggable bar where they collapse to icon and left bar only.  They should be able to be removed with right click menu and restored from a new menu, one that sits to the left of the panel, spans both rows, make of a grid of boxes within the same design style as the panel.  to begin with it will have only one column with two boxes (we will allow more later and may turn it into horizontal arrangement later).   the two boxes inherit from CustomSelect, which should have the param. that it opens on hover.  One of the menu items is Operations and its items operate on selections of objects.  Some of them will show a modal dialog entry to ask for input (with preview on the page) before doing the thing.  Others just do the thing.
+PANEL SECTION POPOVERS
+[ ] Panel Sections will have two views.  The first is the current where they
+exist in a panel bar.
+[ ] for the preview boxes
 
-[ ] section icons in the panel will be a custom kind of menu that opens when the
+SECTIONS IN PANELS
+[x] Panel sections should have drag bar on the left that stays when the section collapses to icon and left bar only.  They should be able to be removed with right click menu and restored from a new menu, one that sits to the left of the panel, spans both rows, make of a grid of boxes within the same design style as the panel.  to begin with it will have only one column with two boxes (we will allow more later and may turn it into horizontal arrangement later).   the two boxes inherit from CustomSelect, which should have the param. that it opens on hover.  One of the menu items is Operations and its items operate on selections of objects.  Some of them will show a modal dialog entry to ask for input (with preview on the page) before doing the thing.  Others just do the thing.
+
+[x] section icons in the panel will be a custom kind of menu that opens when the
 user clicks it.  for now only Snapping will have menu items.  what they will be is
 a checklist corresponding to which snapping types are shown in the UI and
 all of the ones shown now will be shown except for Aspect, which will be turned off.
