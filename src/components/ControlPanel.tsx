@@ -1443,8 +1443,8 @@ function HistoryButtons({ engine }: { engine: NibGliderEngine }) {
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <path d="M6.5 3.5 H3.8 A4.2 4.2 0 0 0 3.8 10.9 H8" />
-            <path d="M6.2 1.2 L3 3.5 L6.2 5.8" />
+            <path d="M6.5 3.5 H3 A4 4 0 0 0 3 10.7 H9" />
+            <path d="M5.3 1.6 L3 3.5 L5.3 5.4" />
           </svg>
         </button>
         <button
@@ -1465,8 +1465,8 @@ function HistoryButtons({ engine }: { engine: NibGliderEngine }) {
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <path d="M9.5 3.5 H12.2 A4.2 4.2 0 0 1 12.2 10.9 H8" />
-            <path d="M9.8 1.2 L13 3.5 L9.8 5.8" />
+            <path d="M9.5 3.5 H13 A4 4 0 0 1 13 10.7 H7" />
+            <path d="M10.7 1.6 L13 3.5 L10.7 5.4" />
           </svg>
         </button>
       </div>
@@ -2247,8 +2247,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         <header className="pane-titlebar titlebar-single">
           <span className="title-seg" title="History"><span className="pane-title">
             <TitleIcon>
-              <path d="M6.5 3.5 H3.8 A4.2 4.2 0 0 0 3.8 10.9 H8" />
-              <path d="M6.2 1.2 L3 3.5 L6.2 5.8" />
+              <path d="M6.5 3.5 H3 A4 4 0 0 0 3 10.7 H9" />
+              <path d="M5.3 1.6 L3 3.5 L5.3 5.4" />
             </TitleIcon>
             <span className="pane-title-text">History</span></span>
           </span>
