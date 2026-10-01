@@ -1,10 +1,44 @@
+[ ] we want to set the data foundation for measurement and page units, whether the user
+is using SI Units or English Unit.  ISO page sizes vs. US page sizes.
+
+[ ] add different grid presentation variations.  for example, it may
+still snap to a 10x10 pt grid.  We may want inch intervals emphasized
+but then have snapping at the 1/8 inch level.  In the dropdown for grid,
+make sure the Custom Select can accommodate controls this in in the menu item. 
+e.g.  Grid: [inch]:[1/8].  This also related to measurement system, so we should
+go from mm to m and inch to feet in our measurements.
 
 SECTIONS IN PANELS
-[ ] Panel sections should have left draggable bar where they collapse to icon and left bar only.  They should be able to be removed with right click menu and restored from a new menu, one that sits to the left of the panel, spans both rows, make of a grid of boxes within the same design style as the panel.  to begin with it will have only one column with two boxes (we will allow more later and may turn it into horizontal arrangement later).   the two boxes inherit from CustomSelect, which should have the param. that it opens on hover.
+[ ] Panel sections should have left draggable bar where they collapse to icon and left bar only.  They should be able to be removed with right click menu and restored from a new menu, one that sits to the left of the panel, spans both rows, make of a grid of boxes within the same design style as the panel.  to begin with it will have only one column with two boxes (we will allow more later and may turn it into horizontal arrangement later).   the two boxes inherit from CustomSelect, which should have the param. that it opens on hover.  One of the menu items is Operations and its items operate on selections of objects.  Some of them will show a modal dialog entry to ask for input (with preview on the page) before doing the thing.  Others just do the thing.
+
 [ ] section icons in the panel will be a custom kind of menu that opens when the
 user clicks it.  for now only Snapping will have menu items.  what they will be is
 a checklist corresponding to which snapping types are shown in the UI and
 all of the ones shown now will be shown except for Aspect, which will be turned off.
+
+PATH KEYS
+Moves to Path Manip. KB Layout or shows number keys as Path manip keys:
+[ ] Pick up (point), Move Edge, Split Point, Join.  Select Point.
+
+
+[ ]  Currently we will snap to midpoints in segments but in the code make this a parameter so that in the future the user 
+  can change it in a UI.  it may be an array describing the segm subdivision. [1,1] is midpoint.  another feature of 
+  this parameter is whether it is relative or absolute interval.  for absolute interval of 10pt, the distance of 10pt 
+  snapping will be available.  can combine absolute and relative 
+
+INFO SECTION OF PANEL
+[ ] if Length snapping is on, shows live length of radius or spline segment.
+
+PARAMETRIC ADAPTIVE SHAPES
+[ ] Shape will respond to live drawing information.  for radial stamp, 
+will remake or change line segments according to radius, e.g. a shape
+that has its top and bottom edges correspond to the radius. 
+Let's say there is a coffer.  The Radial Stamp can load one of these
+parametric adaptive shapes and the shape's appearance will look
+right according to the angle and radius, as it is configured.  That is,
+the parametric adaptive shape can be configured to react in
+different ways to the live drawing.
+
 
 ---
 

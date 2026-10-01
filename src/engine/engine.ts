@@ -171,12 +171,11 @@ export class NibGliderEngine {
   splineTensionDefault = 0.4;
   splineTension = 0.4;
 
-  // --- Path continuation gestures (all on by default) ---
-  // END near the active path's own start closes onto it; starting a
-  // stroke on an open path's end continues that path; END near another
-  // open path's endpoint joins the two paths.
+  // --- Path end gestures (all on by default) ---
+  // END near the active path's own start closes onto it; END near
+  // another open path's endpoint joins the two paths. Beginning a
+  // stroke always starts a new path, even over an existing endpoint.
   closeShapeOnEndNearStart = true;
-  continuePathFromEndpoint = true;
   joinPathsOnEndNearEndpoint = true;
   endpointSnapTolerance = 12;
   globalStrokeColor = '#107cff';
@@ -200,10 +199,12 @@ export class NibGliderEngine {
   gridLayer: AnyItem = null;
   gridCursor: AnyItem = null;
   pathSnapCursor: AnyItem = null;
+  pointSnapCursor: AnyItem = null;
 
   // --- Snapping flags ---
   isGridSnappingEnabled = false;
   isPathSnappingEnabled = false;
+  isPointSnappingEnabled = false;
   isAngleSnappingEnabled = false;
   isLengthSnappingEnabled = false;
   // Snap increments: angle in degrees, length in pt.
@@ -293,10 +294,6 @@ export class NibGliderEngine {
   textMetrics = new FontMetrics();
 
   // --- Drawing mode / shape state (drawingToolsAndFunctions.js) ---
-  // continuedPathBaseCount is the segment count of an adopted existing
-  // path (null while drawing a brand-new path); cancel strips only the
-  // newly added points so the original shape survives.
-  continuedPathBaseCount: number | null = null;
   isDrawingPath = false;
   isDrawingShape = false;
   isDrawingQuad = false;
@@ -1059,6 +1056,12 @@ export class NibGliderEngine {
 
   setPathSnappingEnabled(v: boolean): void {
     this.isPathSnappingEnabled = v;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setPointSnappingEnabled(v: boolean): void {
+    this.isPointSnappingEnabled = v;
     this.updateTextContent();
     this.notify();
   }
@@ -2020,6 +2023,7 @@ export class NibGliderEngine {
       this.previewRect,
       this.quadPath,
       this.pathSnapCursor,
+      this.pointSnapCursor,
       this.previewLine,
       this.previewInner,
       this.previewSplineText,
@@ -2068,6 +2072,103 @@ export class NibGliderEngine {
     }
   }
 
+  // Snap to vector-shape points: segment endpoints, segment midpoints,
+  // and closed-shape centroids. Nearest candidate wins and the indicator
+  // dot takes the winning kind's color.
+  applyPointSnapping(originalPoint: AnyItem): void {
+    const scope = this.scope;
+    if (!this.isPointSnappingEnabled || !originalPoint) {
+      if (this.pointSnapCursor) this.pointSnapCursor.visible = false;
+      return;
+    }
+    const ignoredItems = new Set([
+      this.path,
+      this.previewPath,
+      this.previewShape,
+      this.previewRect,
+      this.previewLine,
+      this.previewInner,
+      this.previewSplineText,
+      this.quadPath,
+      this.pathSnapCursor,
+      this.pointSnapCursor,
+      this.gridCursor,
+    ]);
+    type PointSnapKind = 'point' | 'midpoint' | 'centroid';
+    const SNAP_COLORS: Record<PointSnapKind, string> = {
+      point: '#ffd43b',
+      midpoint: '#4dabf7',
+      centroid: '#69db7c',
+    };
+    let bestPoint: AnyItem = null;
+    let bestKind: PointSnapKind = 'point';
+    let bestDist = Infinity;
+    const maxSnapDistance = 12;
+    const consider = (candidate: AnyItem, kind: PointSnapKind): void => {
+      if (!candidate) return;
+      const dist = candidate.getDistance(originalPoint);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestPoint = candidate;
+        bestKind = kind;
+      }
+    };
+    const collect = (item: AnyItem): void => {
+      if (!item || !item.visible || ignoredItems.has(item)) return;
+      const children = item.children;
+      if (children && children.length > 0) {
+        children.forEach(collect);
+        return;
+      }
+      const segments = item.segments;
+      if (!segments || segments.length === 0) return;
+      segments.forEach((seg: AnyItem) => consider(seg.point, 'point'));
+      const curves = item.curves;
+      if (curves) {
+        curves.forEach((curve: AnyItem) =>
+          consider(curve.getPointAt(curve.length / 2), 'midpoint'),
+        );
+      }
+      if (item.closed) {
+        consider(item.bounds.center, 'centroid');
+      }
+    };
+    const items: AnyItem[] = scope.project.getItems({
+      match: (item: AnyItem) => {
+        if (!item || !item.visible) return false;
+        if (ignoredItems.has(item)) return false;
+        return !!(
+          item.segments ||
+          item.curves ||
+          (item.children && item.children.length > 0)
+        );
+      },
+    });
+    items.forEach(collect);
+    if (bestPoint && bestDist <= maxSnapDistance) {
+      // Fresh point: never alias a live segment point of document geometry.
+      const snapped = new scope.Point(bestPoint.x, bestPoint.y);
+      this.mousePt = snapped;
+      const color = SNAP_COLORS[bestKind];
+      if (!this.pointSnapCursor) {
+        this.pointSnapCursor = new scope.Shape.Circle(snapped, 4);
+        this.pointSnapCursor.fillColor = new scope.Color(color);
+        this.pointSnapCursor.strokeColor = new scope.Color(0, 0, 0, 1.0);
+        this.pointSnapCursor.strokeWidth = 2;
+        this.pointSnapCursor.selectable = false;
+        this.pointSnapCursor.data.isUICursor = true;
+        scope.project.activeLayer.addChild(this.pointSnapCursor);
+      } else {
+        this.pointSnapCursor.position = snapped;
+        this.pointSnapCursor.fillColor = new scope.Color(color);
+        this.pointSnapCursor.visible = true;
+        this.pointSnapCursor.bringToFront();
+      }
+    } else if (this.pointSnapCursor) {
+      this.pointSnapCursor.visible = false;
+    }
+  }
+
   // Screen-space endpoint tolerance in project units.
   private endpointTolerance(): number {
     return this.endpointSnapTolerance / (this.scope.view.zoom || 1);
@@ -2084,6 +2185,7 @@ export class NibGliderEngine {
       this.previewSplineText,
       this.quadPath,
       this.pathSnapCursor,
+      this.pointSnapCursor,
       this.gridCursor,
     ]);
   }
@@ -2123,24 +2225,6 @@ export class NibGliderEngine {
     return best;
   }
 
-  // Start a stroke on an open path's drawing end: adopt that path so the
-  // new points continue the shape instead of starting a separate one.
-  // The adopting keypress adds no point; the endpoint is already current.
-  private tryContinuePath(): boolean {
-    if (!this.continuePathFromEndpoint || !this.mousePt) return false;
-    const hit = this.findOpenEndpointNear(this.mousePt);
-    if (!hit || hit.atStart) return false;
-    const segs = hit.path.segments;
-    this.path = hit.path;
-    this.continuedPathBaseCount = segs.length;
-    this.mousePt = segs[segs.length - 1].point.clone();
-    const idx = this.selectedItems.indexOf(hit.path);
-    if (idx !== -1) this.selectedItems.splice(idx, 1);
-    if (this.isDrawingPath === false) this.isDrawingPath = true;
-    this.resetLiveAdjust();
-    return true;
-  }
-
   private cloneSegmentInto(path: AnyItem, seg: AnyItem): void {
     const added = path.add(seg.point.clone());
     if (!added) return;
@@ -2171,10 +2255,14 @@ export class NibGliderEngine {
       this.applyCurrentStyles(this.path);
       if (this.fillEnabled) this.path.closed = true;
     } else {
+      const drawing = this.path;
       for (let i = 0; i < ours.length - 1; i++) {
         this.cloneSegmentInto(target, ours[i]);
       }
       this.path = target;
+      // The drawing's points now live on the target; drop the emptied
+      // stroke so no orphaned duplicate stays in the layer.
+      drawing.remove();
     }
   }
 
@@ -2895,18 +2983,9 @@ export class NibGliderEngine {
     }
     this.clearSplineTextPreview();
     if (this.isDrawingPath && this.path) {
-      if (this.continuedPathBaseCount != null) {
-        // Continuing an existing shape: strip only the newly added points
-        // (including the live preview) so the original shape survives.
-        while (this.path.segments.length > this.continuedPathBaseCount) {
-          this.path.removeSegment(this.path.segments.length - 1);
-        }
-      } else {
-        this.path.remove();
-      }
+      this.path.remove();
       this.path = null;
       this.isDrawingPath = false;
-      this.continuedPathBaseCount = null;
     }
     if (this.isDrawingShape) {
       if (this.previewShape) this.previewShape.remove();
@@ -4160,7 +4239,7 @@ export class NibGliderEngine {
       }
       // Text Mode applies to spline drawing too: derive Display/Body
       // text from the finished stroke, same as circle/rect keys. Grouping
-      // reparents a continued path out of the layer, so always add the
+      // reparents a joined path out of the layer, so always add the
       // returned group when it has no parent yet.
       const finished = this.withShapeText(this.path, false);
       finished.selected = false;
@@ -4169,7 +4248,7 @@ export class NibGliderEngine {
       const placed = this.depositWithCombine(finished);
       if (placed) {
         placed.selected = false;
-        // A continued path already lives in the layer; re-adding would
+        // A joined path already lives in the layer; re-adding would
         // only reorder it to the front.
         if (placed.parent == null) {
           scope.project.activeLayer.addChild(placed);
@@ -4178,7 +4257,6 @@ export class NibGliderEngine {
       deposited.push(finished);
       this.path = null;
       this.isDrawingPath = false;
-      this.continuedPathBaseCount = null;
       this.resetLiveAdjust();
       this.clearSplineTextPreview();
     } else if (this.isDrawingShape) {
@@ -4213,11 +4291,6 @@ export class NibGliderEngine {
     const scope = this.scope;
     if (!this.mousePt) return;
     if (!this.path) {
-      if (this.tryContinuePath()) {
-        this.updateTextContent();
-        this.notify();
-        return;
-      }
       this.path = new scope.Path({
         segments: [this.mousePt],
         strokeColor: this.globalStrokeColor,
@@ -4245,11 +4318,6 @@ export class NibGliderEngine {
     const scope = this.scope;
     if (!this.mousePt) return;
     if (!this.path) {
-      if (this.tryContinuePath()) {
-        this.updateTextContent();
-        this.notify();
-        return;
-      }
       this.path = new scope.Path({
         segments: [this.mousePt],
         strokeColor: this.globalStrokeColor,
@@ -4348,7 +4416,6 @@ export class NibGliderEngine {
     }
     this.path = null;
     this.isDrawingPath = false;
-    this.continuedPathBaseCount = null;
     this.resetLiveAdjust();
     this.clearSplineTextPreview();
     this.recordSceneCommand('Deposit shape', histBefore, histSel, [
@@ -5027,6 +5094,8 @@ export class NibGliderEngine {
       }
     }
     this.applyPathSnapping(originalPoint);
+    // Exact points take precedence over curve proximity.
+    this.applyPointSnapping(originalPoint);
     if (
       this.isAspectSnappingEnabled &&
       this.isDrawingShape &&

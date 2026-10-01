@@ -2317,6 +2317,17 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             <circle cx="1.5" cy="9" r="1.1" fill="currentColor" stroke="none" />
             <circle cx="10.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
           </SnapToggle>
+          <SnapToggle
+            id="pointSnappingToggle"
+            label="Points"
+            pressed={engine.isPointSnappingEnabled}
+            onToggle={(next) => engine.setPointSnappingEnabled(next)}
+          >
+            <path d="M2 9.5 L6 4 L10 7" />
+            <circle cx="2" cy="9.5" r="1.2" fill="currentColor" stroke="none" />
+            <circle cx="6" cy="4" r="1.2" fill="currentColor" stroke="none" />
+            <circle cx="10" cy="7" r="1.2" fill="currentColor" stroke="none" />
+          </SnapToggle>
           <span className="snap-field" title="Angle">
             <SnapToggle
               id="angleSnappingToggle"
