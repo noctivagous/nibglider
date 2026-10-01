@@ -20,6 +20,7 @@ import type {
   FillType,
   GridType,
   InnerShapeParams,
+  LengthUnit,
   NibGliderEngine,
   RectangleInnerShape,
   StrokeCap,
@@ -319,6 +320,187 @@ function PanelSection({
         children
       )}
     </section>
+  );
+}
+
+// --- Section icon menus ------------------------------------------------------
+// Each panel section title icon opens this custom menu on click. Only
+// Snapping and History have items for now; every other section gets the
+// empty-state shell until its items are defined.
+const SNAP_VISIBLE_KEY = 'nibglider.snapVisibility';
+const HISTORY_SEGS_KEY = 'nibglider.historySegments';
+const LENGTH_UNIT_KEY = 'nibglider.lengthUnit';
+
+const SNAP_DEFAULTS: Record<string, boolean> = {
+  grid: true,
+  path: true,
+  points: true,
+  angle: true,
+  length: true,
+  // Aspect stays out of the panel until the user opts in via the menu.
+  aspect: false,
+};
+
+const HISTORY_SEG_DEFAULTS: Record<string, boolean> = {
+  undoRedo: true,
+  grouping: true,
+  history: true,
+};
+
+function loadBoolRecord(
+  key: string,
+  defaults: Record<string, boolean>,
+): Record<string, boolean> {
+  const out = { ...defaults };
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return out;
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (k in out && typeof v === 'boolean') out[k] = v;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return out;
+}
+
+const SNAP_MENU_ITEMS: Array<{
+  key: string;
+  label: string;
+  isOn: (engine: NibGliderEngine) => boolean;
+}> = [
+  { key: 'grid', label: 'Grid', isOn: (e) => e.isGridSnappingEnabled },
+  { key: 'path', label: 'Path', isOn: (e) => e.isPathSnappingEnabled },
+  { key: 'points', label: 'Points', isOn: (e) => e.isPointSnappingEnabled },
+  { key: 'angle', label: 'Angle', isOn: (e) => e.isAngleSnappingEnabled },
+  { key: 'length', label: 'Length', isOn: (e) => e.isLengthSnappingEnabled },
+  { key: 'aspect', label: 'Aspect', isOn: (e) => e.isAspectSnappingEnabled },
+];
+
+const LENGTH_UNIT_OPTIONS: Array<{ value: LengthUnit; label: string }> = [
+  { value: 'pt', label: 'pt' },
+  { value: 'inch', label: 'inches' },
+  { value: 'cm', label: 'cm' },
+];
+
+function SectionIconMenu({
+  anchor,
+  label,
+  onClose,
+  children,
+}: {
+  anchor: HTMLElement;
+  label: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const place = () => {
+      const r = anchor.getBoundingClientRect();
+      const w = menu.offsetWidth;
+      const h = menu.offsetHeight;
+      let left = r.left;
+      let top = r.bottom + 6;
+      if (left + w > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - w - 8);
+      }
+      if (top + h > window.innerHeight - 8) {
+        top = Math.max(8, r.top - h - 6);
+      }
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+      menu.style.visibility = 'visible';
+    };
+    menu.style.visibility = 'hidden';
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(menu);
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [anchor]);
+
+  useEffect(() => {
+    menuRef.current?.focus();
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      // Anchor clicks fall through so the trigger toggle still works.
+      if (anchor.contains(t) || menuRef.current?.contains(t)) return;
+      onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [anchor, onClose]);
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="section-icon-menu"
+      role="menu"
+      aria-label={`${label} menu`}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onClose();
+        }
+      }}
+    >
+      <div className="im-title">{label}</div>
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
+// Clickable section title: opens the section's icon menu.
+function SectionTitleButton({
+  sectionId,
+  title,
+  menuOpen,
+  onOpen,
+  children,
+}: {
+  sectionId: string;
+  title: string;
+  menuOpen: boolean;
+  onOpen: (id: string, anchor: HTMLElement) => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className="title-seg title-seg-btn"
+      title={`${title} — open menu`}
+      aria-haspopup="menu"
+      aria-expanded={menuOpen}
+      aria-label={`${title} menu`}
+      onClick={(e) => onOpen(sectionId, e.currentTarget)}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -1664,7 +1846,17 @@ const COMBINE_OPTIONS: Array<{
   },
 ];
 
-function HistoryButtons({ engine }: { engine: NibGliderEngine }) {
+function HistoryButtons({
+  engine,
+  showUndoRedo = true,
+  showGrouping = true,
+  showHistory = true,
+}: {
+  engine: NibGliderEngine;
+  showUndoRedo?: boolean;
+  showGrouping?: boolean;
+  showHistory?: boolean;
+}) {
   const undoTitle = engine.canUndo()
     ? `Undo ${engine.undoLabel() ?? ''} (Ctrl/⌘+Z)`
     : 'Nothing to undo';
@@ -1677,8 +1869,19 @@ function HistoryButtons({ engine }: { engine: NibGliderEngine }) {
   const ungroupTitle = engine.canUngroupSelection()
     ? 'Ungroup selection (Ctrl/⌘+Shift+G)'
     : 'Select a group to ungroup';
+  const historyReadout = showHistory ? (
+    <span className="history-readout" role="status" title="Latest undo and redo entries">
+      {engine.canUndo()
+        ? `Undo ${engine.undoLabel() ?? ''}`.trim()
+        : 'Nothing to undo'}
+      {engine.canRedo()
+        ? ` · Redo ${engine.redoLabel() ?? ''}`.trim()
+        : ''}
+    </span>
+  ) : null;
   return (
     <>
+      {showUndoRedo ? (
       <div className="seg-ctrl" role="group" aria-label="Undo and redo">
         <button
           type="button"
@@ -1725,6 +1928,8 @@ function HistoryButtons({ engine }: { engine: NibGliderEngine }) {
           </svg>
         </button>
       </div>
+      ) : null}
+      {showGrouping ? (
       <div className="seg-ctrl" role="group" aria-label="Group and ungroup">
         <button
           type="button"
@@ -1771,6 +1976,8 @@ function HistoryButtons({ engine }: { engine: NibGliderEngine }) {
           </svg>
         </button>
       </div>
+      ) : null}
+      {historyReadout}
     </>
   );
 }
@@ -2063,18 +2270,76 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
       setParamsFlyout(null);
     }, 180);
   }, [cancelHoverClose]);
+  // Snapping-type visibility checklist + History segment toggles.
+  const [snapVisible, setSnapVisible] = useState<Record<string, boolean>>(() =>
+    loadBoolRecord(SNAP_VISIBLE_KEY, SNAP_DEFAULTS),
+  );
+  const [historySegs, setHistorySegs] = useState<Record<string, boolean>>(() =>
+    loadBoolRecord(HISTORY_SEGS_KEY, HISTORY_SEG_DEFAULTS),
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem(SNAP_VISIBLE_KEY, JSON.stringify(snapVisible));
+    } catch {
+      /* ignore */
+    }
+  }, [snapVisible]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(HISTORY_SEGS_KEY, JSON.stringify(historySegs));
+    } catch {
+      /* ignore */
+    }
+  }, [historySegs]);
+  // Length unit lives on the engine (conversions there); the panel only
+  // syncs it to localStorage since the engine itself never persists.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LENGTH_UNIT_KEY);
+      if (raw === 'pt' || raw === 'inch' || raw === 'cm') {
+        engine.setLengthUnit(raw);
+      }
+    } catch {
+      /* ignore */
+    }
+    // Load once: later unit changes flow through engine notifications.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(LENGTH_UNIT_KEY, engine.lengthUnit);
+    } catch {
+      /* ignore */
+    }
+  }, [engine.lengthUnit]);
   // Hover-open select menus (panel CustomSelects only) share the same
   // single-open invariant: opening one closes the params flyout, and
   // opening a flyout dismisses any hover-open select menu.
   const [selectCloseKey, setSelectCloseKey] = useState(0);
   const dismissSelects = useCallback(() => setSelectCloseKey((k) => k + 1), []);
+  // Section icon menu: which section's title menu is open and its anchor.
+  const [iconMenu, setIconMenu] = useState<{
+    id: string;
+    anchor: HTMLElement;
+  } | null>(null);
+  const closeIconMenu = useCallback(() => setIconMenu(null), []);
+  const toggleIconMenu = useCallback(
+    (id: string, anchor: HTMLElement) => {
+      dismissSelects();
+      setParamsFlyout(null);
+      setIconMenu((prev) => (prev?.id === id ? null : { id, anchor }));
+    },
+    [dismissSelects],
+  );
   const handleSelectHoverOpen = useCallback(() => {
     setParamsFlyout(null);
+    setIconMenu(null);
   }, []);
   const openFlyoutAndDismissSelects = useCallback(
     (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text') => {
       setParamsFlyout(name);
       dismissSelects();
+      setIconMenu(null);
     },
     [dismissSelects],
   );
@@ -2092,6 +2357,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
       else {
         setParamsFlyout(name);
         dismissSelects();
+        setIconMenu(null);
       }
     },
     [paramsFlyout, dismissSelects],
@@ -2340,6 +2606,117 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   const fillColor = sel ? sel.fillColor : engine.globalFillColor;
   const fillSpec = sel ? sel.fillSpec : engine.fillSpec();
 
+  // Length snap field in the current display unit.
+  const lengthField =
+    engine.lengthUnit === 'inch'
+      ? { min: 0.05, max: 10, step: 0.125, unit: 'inches' }
+      : engine.lengthUnit === 'cm'
+        ? { min: 0.5, max: 200, step: 0.5, unit: 'cm' }
+        : { min: 1, max: 500, step: 1, unit: 'pt' };
+  const lengthStepDisplay =
+    Math.round(engine.lengthSnapStepInUnit() * 1000) / 1000;
+  const toggleSnapVisible = useCallback((key: string) => {
+    setSnapVisible((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+  const toggleHistorySeg = useCallback((key: string) => {
+    setHistorySegs((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+  const iconMenuBody = (id: string): ReactNode => {
+    if (id === 'snappingControls') {
+      return (
+        <>
+          {SNAP_MENU_ITEMS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={!!snapVisible[item.key]}
+              className="im-row"
+              onClick={() => toggleSnapVisible(item.key)}
+            >
+              <span className="im-check" aria-hidden="true">
+                {snapVisible[item.key] ? (
+                  <svg viewBox="0 0 10 10" width="10" height="10">
+                    <path
+                      d="M1.5 5.5 L4 8 L8.5 2.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : null}
+              </span>
+              <span className="im-label">{item.label}</span>
+              <span className="im-state">
+                {item.isOn(engine) ? 'On' : 'Off'}
+              </span>
+            </button>
+          ))}
+          <div className="im-sep" role="separator" />
+          <div className="im-units" role="group" aria-label="Length unit">
+            {LENGTH_UNIT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={engine.lengthUnit === opt.value}
+                className={
+                  engine.lengthUnit === opt.value
+                    ? 'im-unit active'
+                    : 'im-unit'
+                }
+                onClick={() => engine.setLengthUnit(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
+      );
+    }
+    if (id === 'historyControls') {
+      return (
+        <>
+          {(
+            [
+              { key: 'undoRedo', label: 'Undo/Redo' },
+              { key: 'grouping', label: 'Grouping' },
+              { key: 'history', label: 'History' },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={!!historySegs[item.key]}
+              className="im-row"
+              onClick={() => toggleHistorySeg(item.key)}
+            >
+              <span className="im-check" aria-hidden="true">
+                {historySegs[item.key] ? (
+                  <svg viewBox="0 0 10 10" width="10" height="10">
+                    <path
+                      d="M1.5 5.5 L4 8 L8.5 2.5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : null}
+              </span>
+              <span className="im-label">{item.label}</span>
+            </button>
+          ))}
+        </>
+      );
+    }
+    return <p className="im-empty">No options yet</p>;
+  };
+
   const paintOrder = orderIn('paint', [
     'strokeControls',
     'fillControls',
@@ -2412,12 +2789,12 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
       >
         <header className="pane-titlebar titlebar-single">
           
-          <span className="title-seg" title="Stroke"><span className="pane-title">
+          <SectionTitleButton sectionId="strokeControls" title="Stroke" menuOpen={iconMenu?.id === 'strokeControls'} onOpen={toggleIconMenu}><span className="pane-title">
             <TitleIcon>
               <path d="M2 12 L14 2" />
             </TitleIcon>
             <span className="pane-title-text">Stroke</span></span> <kbd>S</kbd>
-          </span>
+          </SectionTitleButton>
 <label className="toggle-switch square-knob">
             <input
               type="checkbox"
@@ -2531,7 +2908,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
       >
         <header className="pane-titlebar titlebar-single">
           
-          <span className="title-seg" title="Fill"><span className="pane-title">
+          <SectionTitleButton sectionId="fillControls" title="Fill" menuOpen={iconMenu?.id === 'fillControls'} onOpen={toggleIconMenu}><span className="pane-title">
             <TitleIcon>
               <path
                 d="M8 1.5 C8 1.5 3.5 7.5 3.5 10 A4.5 4.5 0 0 0 12.5 10 C12.5 7.5 8 1.5 8 1.5 Z"
@@ -2540,7 +2917,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               />
             </TitleIcon>
             <span className="pane-title-text">Fill</span></span> <kbd>D</kbd>
-          </span>
+          </SectionTitleButton>
 <label className="toggle-switch square-knob">
             <input
               type="checkbox"
@@ -2609,12 +2986,12 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         {...sectionProps()}
       >
         <header className="pane-titlebar titlebar-single">
-          <span className="title-seg" title="Text"><span className="pane-title">
+          <SectionTitleButton sectionId="textControls" title="Text" menuOpen={iconMenu?.id === 'textControls'} onOpen={toggleIconMenu}><span className="pane-title">
             <TitleIcon>
               <path d="M3 3 H13 M8 3 V11" />
             </TitleIcon>
             <span className="pane-title-text">Text</span></span>
-          </span>
+          </SectionTitleButton>
           <label className="toggle-switch square-knob">
             <input
               type="checkbox"
@@ -2676,12 +3053,12 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         {...sectionProps()}
       >
         <header className="pane-titlebar titlebar-single">
-          <span className="title-seg" title="Circle Keys"><span className="pane-title">
+          <SectionTitleButton sectionId="circleFrameControls" title="Circle Keys" menuOpen={iconMenu?.id === 'circleFrameControls'} onOpen={toggleIconMenu}><span className="pane-title">
             <TitleIcon>
               <circle cx="8" cy="7" r="5" />
             </TitleIcon>
             <span className="pane-title-text">Circle Keys</span></span>
-          </span>
+          </SectionTitleButton>
         <CustomSelect
           id="circleInnerShapeSelect"
           ariaLabel="Circle Keys shape"
@@ -2761,12 +3138,12 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         {...sectionProps()}
       >
         <header className="pane-titlebar titlebar-single">
-          <span className="title-seg" title="Rect Keys"><span className="pane-title">
+          <SectionTitleButton sectionId="rectFrameControls" title="Rect Keys" menuOpen={iconMenu?.id === 'rectFrameControls'} onOpen={toggleIconMenu}><span className="pane-title">
             <TitleIcon>
               <path d="M3 2 H13 V12 H3 Z" />
             </TitleIcon>
             <span className="pane-title-text">Rect Keys</span></span>
-          </span>
+          </SectionTitleButton>
         <CustomSelect
           id="rectInnerShapeSelect"
           ariaLabel="Rect Keys shape"
@@ -2849,13 +3226,13 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         {...sectionProps()}
       >
         <header className="pane-titlebar titlebar-single">
-          <span className="title-seg" title="Combinatorics"><span className="pane-title">
+          <SectionTitleButton sectionId="combinatoricsControls" title="Combinatorics" menuOpen={iconMenu?.id === 'combinatoricsControls'} onOpen={toggleIconMenu}><span className="pane-title">
             <TitleIcon>
               <circle cx="6" cy="7" r="3.5" />
               <circle cx="10" cy="7" r="3.5" />
             </TitleIcon>
             <span className="pane-title-text">Combinatorics</span></span>
-          </span>
+          </SectionTitleButton>
           <CombinatoricsButtons engine={engine} />
         </header>
       </PanelSection>
@@ -2877,14 +3254,19 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         {...sectionProps()}
       >
         <header className="pane-titlebar titlebar-single">
-          <span className="title-seg" title="History"><span className="pane-title">
+          <SectionTitleButton sectionId="historyControls" title="History" menuOpen={iconMenu?.id === 'historyControls'} onOpen={toggleIconMenu}><span className="pane-title">
             <TitleIcon>
               <path d="M6.5 3.5 H3 A4 4 0 0 0 3 10.7 H9" />
               <path d="M5.3 1.6 L3 3.5 L5.3 5.4" />
             </TitleIcon>
             <span className="pane-title-text">History</span></span>
-          </span>
-          <HistoryButtons engine={engine} />
+          </SectionTitleButton>
+          <HistoryButtons
+            engine={engine}
+            showUndoRedo={historySegs.undoRedo !== false}
+            showGrouping={historySegs.grouping !== false}
+            showHistory={historySegs.history !== false}
+          />
         </header>
       </PanelSection>
       )}
@@ -2907,12 +3289,12 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         {...sectionProps()}
       >
         <header className="pane-titlebar titlebar-single">
-          <span className="title-seg" title="Grid"><span className="pane-title">
+          <SectionTitleButton sectionId="gridControls" title="Grid" menuOpen={iconMenu?.id === 'gridControls'} onOpen={toggleIconMenu}><span className="pane-title">
             <TitleIcon>
               <path d="M1 4 H11 M1 8 H11 M4 1 V11 M8 1 V11" />
             </TitleIcon>
             <span className="pane-title-text">Grid</span></span> <kbd>/</kbd>
-          </span>
+          </SectionTitleButton>
           <label className="toggle-switch square-knob">
             <input
               type="checkbox"
@@ -2952,15 +3334,16 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         {...sectionProps()}
       >
         <header className="pane-titlebar titlebar-single">
-          <span className="title-seg" title="Snapping"><span className="pane-title">
+          <SectionTitleButton sectionId="snappingControls" title="Snapping" menuOpen={iconMenu?.id === 'snappingControls'} onOpen={toggleIconMenu}><span className="pane-title">
             <TitleIcon>
               <circle cx="8" cy="7" r="3.5" />
               <path d="M8 0.5 V2.5 M8 11.5 V13.5 M1.5 7 H3.5 M12.5 7 H14.5" />
               <circle cx="8" cy="7" r="1" fill="currentColor" stroke="none" />
             </TitleIcon>
             <span className="pane-title-text">Snapping</span></span>
-          </span>
+          </SectionTitleButton>
           <div className="snapping-seg" role="group" aria-label="Snapping modes">
+          {snapVisible.grid !== false ? (
           <SnapToggle
             id="gridSnappingToggle"
             label="Grid"
@@ -2969,6 +3352,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           >
             <path d="M1 4 H11 M1 8 H11 M4 1 V11 M8 1 V11" />
           </SnapToggle>
+          ) : null}
+          {snapVisible.path !== false ? (
           <SnapToggle
             id="pathSnappingToggle"
             label="Path"
@@ -2979,6 +3364,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             <circle cx="1.5" cy="9" r="1.1" fill="currentColor" stroke="none" />
             <circle cx="10.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
           </SnapToggle>
+          ) : null}
+          {snapVisible.points !== false ? (
           <SnapToggle
             id="pointSnappingToggle"
             label="Points"
@@ -2990,6 +3377,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             <circle cx="6" cy="4" r="1.2" fill="currentColor" stroke="none" />
             <circle cx="10" cy="7" r="1.2" fill="currentColor" stroke="none" />
           </SnapToggle>
+          ) : null}
+          {snapVisible.angle !== false ? (
           <span className="snap-field" title="Angle">
             <SnapToggle
               id="angleSnappingToggle"
@@ -3011,6 +3400,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               onCommit={(n) => engine.setAngleSnapDegrees(n)}
             />
           </span>
+          ) : null}
+          {snapVisible.length !== false ? (
           <span className="snap-field" title="Length">
             <SnapToggle
               id="lengthSnappingToggle"
@@ -3022,15 +3413,17 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             </SnapToggle>
             <SnapNumInput
               id="lengthSnapStepInput"
-              label="Length snap step in points"
-              value={engine.lengthSnapStep}
-              min={1}
-              max={500}
-              step={1}
+              label={`Length snap step in ${lengthField.unit}`}
+              value={lengthStepDisplay}
+              min={lengthField.min}
+              max={lengthField.max}
+              step={lengthField.step}
               disabled={!engine.isLengthSnappingEnabled}
-              onCommit={(n) => engine.setLengthSnapStep(n)}
+              onCommit={(n) => engine.setLengthSnapStepFromUnit(n)}
             />
           </span>
+          ) : null}
+          {snapVisible.aspect !== false ? (
           <div className="snapping-aspect">
             <SnapToggle
               id="aspectSnappingToggle"
@@ -3051,6 +3444,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               forceCloseKey={selectCloseKey}
             />
           </div>
+          ) : null}
           </div>
         </header>
       </PanelSection>
@@ -3100,6 +3494,15 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           onCommit={commitOpDialog}
           onCancel={cancelOpDialog}
         />
+      ) : null}
+      {iconMenu ? (
+        <SectionIconMenu
+          anchor={iconMenu.anchor}
+          label={sectionLabel(iconMenu.id)}
+          onClose={closeIconMenu}
+        >
+          {iconMenuBody(iconMenu.id)}
+        </SectionIconMenu>
       ) : null}
     </div>
   );

@@ -97,6 +97,24 @@ export interface FillSpec {
 
 export type GridType = 'square' | 'diamond';
 
+/** Display unit for snapping length inputs. Stored values stay in points. */
+export type LengthUnit = 'pt' | 'inch' | 'cm';
+
+export const PT_PER_INCH = 72;
+export const PT_PER_CM = PT_PER_INCH / 2.54;
+
+export function pointsToLengthUnit(pt: number, unit: LengthUnit): number {
+  if (unit === 'inch') return pt / PT_PER_INCH;
+  if (unit === 'cm') return pt / PT_PER_CM;
+  return pt;
+}
+
+export function lengthUnitToPoints(v: number, unit: LengthUnit): number {
+  if (unit === 'inch') return v * PT_PER_INCH;
+  if (unit === 'cm') return v * PT_PER_CM;
+  return v;
+}
+
 export type RectangleInnerShape =
   | 'rectangle'
   | 'circle'
@@ -1092,6 +1110,27 @@ export class NibGliderEngine {
     this.lengthSnapStep = Math.min(500, Math.max(1, v));
     this.updateTextContent();
     this.notify();
+  }
+
+  // Display unit for length inputs in the Snapping section. The stored
+  // step stays in points; conversion happens at display/entry.
+  lengthUnit: LengthUnit = 'pt';
+
+  setLengthUnit(u: LengthUnit): void {
+    if (u !== 'pt' && u !== 'inch' && u !== 'cm') return;
+    if (this.lengthUnit === u) return;
+    this.lengthUnit = u;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  lengthSnapStepInUnit(): number {
+    return pointsToLengthUnit(this.lengthSnapStep, this.lengthUnit);
+  }
+
+  setLengthSnapStepFromUnit(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.setLengthSnapStep(lengthUnitToPoints(v, this.lengthUnit));
   }
 
   setAspectSnappingEnabled(v: boolean): void {
