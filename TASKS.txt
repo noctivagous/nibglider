@@ -112,9 +112,12 @@ geometric primitives.
 
 ----
 
+- when object groups are selected, we should provide 
+some indication.
+
 Usable for work checklist
 [ ] - undomanager.
-[ ] - can drop an image onto the canvas, including SVG. - paperjs resource
+[ ] - can drop an image onto the canvas, including SVG. - likely built into paperjs 
 [ ] - can export current drawing to SVG and PDF (jspdf) and other file types - paperjs resource
 [ ] - Page Size and Page Orientation settings for visible drawing board.
 

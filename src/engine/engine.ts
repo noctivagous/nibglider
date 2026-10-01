@@ -5,6 +5,7 @@
 // NB: `paper.*` below refers to the global namespace from paper's bundled
 // declarations (type positions only); the runtime value is never imported here.
 import { FontMetrics } from './fontMetrics';
+import { UndoManager, type UndoCommand } from './undoManager';
 
 export type ShapeType =
   | 'circle_radius'
@@ -124,6 +125,17 @@ export interface StatusSchema {
 // paper behavior (null style assignment, shape-specific fields) that the
 // bundled declarations model more narrowly.
 type AnyItem = any;
+
+// One item's positional delta for a move command.
+interface MoveEntry {
+  item: AnyItem;
+  before: AnyItem;
+  after: AnyItem;
+}
+
+interface MoveCommand extends UndoCommand {
+  entries: MoveEntry[];
+}
 
 export class NibGliderEngine {
   private scope: paper.PaperScope;
@@ -247,6 +259,9 @@ export class NibGliderEngine {
   circumferenceAngleOffset = -90;
   // Last combinatorics outcome, surfaced under the panel buttons.
   lastCombineNote = '';
+  // Last image-drop outcome, surfaced in the status overlay. Set on
+  // skipped/failed files, cleared when a new drop starts.
+  lastDropNote = '';
   // Persistent deposit-time combinatoric setting: with a selection
   // present, each deposited shape folds into it using this mode ('none'
   // deposits plainly, exactly as before).
@@ -338,7 +353,10 @@ export class NibGliderEngine {
       this.onMouseMove(event);
     scope.view.onMouseDrag = (event: paper.MouseEvent) =>
       this.onMouseDrag(event);
-    scope.view.onMouseUp = () => this.endPan();
+    scope.view.onMouseUp = () => {
+      this.endPan();
+      this.commitMoveGesture();
+    };
 
     const onKeyDown = (event: KeyboardEvent) => this.handleKeyDown(event);
     const onKeyUp = (event: KeyboardEvent) => {
@@ -366,7 +384,10 @@ export class NibGliderEngine {
     const onDragOver = (e: DragEvent) => e.preventDefault();
     const onDrop = (e: DragEvent) => this.handleImageDrop(e);
     const onWheel = (e: WheelEvent) => this.onMouseWheel(e);
-    const onDocMouseUp = () => this.endPan();
+    const onDocMouseUp = () => {
+      this.endPan();
+      this.commitMoveGesture();
+    };
     canvas.addEventListener('mousemove', onCanvasMove);
     canvas.addEventListener('click', onCanvasClick);
     canvas.addEventListener('dragover', onDragOver);
@@ -410,33 +431,232 @@ export class NibGliderEngine {
     event.preventDefault();
     const files = event.dataTransfer?.files;
     if (!files || files.length === 0) return;
-    const file = files[0];
     const scope = this.scope;
-    const dropPoint = new scope.Point(event.offsetX, event.offsetY);
-    if (/image\/svg\+xml/.test(file.type)) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result;
-        if (typeof result !== 'string') return;
-        scope.project.importSVG(result, (item: paper.Item) => {
-          item.position = dropPoint;
-        });
-      };
-      reader.readAsText(file);
-    } else if (/image.*/.test(file.type)) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result;
-        if (typeof result !== 'string') return;
-        const image = new Image();
-        image.onload = () => {
-          const raster = new scope.Raster(image);
-          raster.position = dropPoint;
-        };
-        image.src = result;
-      };
-      reader.readAsDataURL(file);
+    const view = scope.view;
+    const canvas = view.element as HTMLCanvasElement | null;
+    const rect = canvas ? canvas.getBoundingClientRect() : null;
+    // View (CSS) pixels -> project units, so the drop lands under the
+    // cursor at any zoom or pan. Falls back to the view center.
+    const base =
+      rect != null
+        ? view.viewToProject(
+            new scope.Point(
+              event.clientX - rect.left,
+              event.clientY - rect.top,
+            ),
+          )
+        : view.center.clone();
+    const cascade = 24 / (view.zoom || 1);
+    this.lastDropNote = '';
+    const selBefore = [...this.selectedItems];
+    this.clearOutSelection();
+    this.updateTextContent();
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const at = base.add(new scope.Point(cascade * i, cascade * i));
+      if (this.looksLikeSvg(file)) this.dropSvgFile(file, at, selBefore);
+      else if (this.looksLikeRaster(file))
+        this.dropRasterFile(file, at, selBefore);
+      else this.dropUnknownFile(file, at, selBefore);
     }
+    this.notify();
+  }
+
+  private looksLikeSvg(file: File): boolean {
+    if (/svg/i.test(file.type)) return true;
+    return /\.svg$/i.test(file.name);
+  }
+
+  private looksLikeRaster(file: File): boolean {
+    if (/^image\//.test(file.type)) return true;
+    return /\.(png|jpe?g|gif|webp|bmp|avif|ico)$/i.test(file.name);
+  }
+
+  // Scale down only: items larger than 75% of the visible view in
+  // either dimension fit inside it, aspect preserved, about center.
+  private fitItemToView(item: AnyItem): void {
+    try {
+      const bounds = item.bounds;
+      const vb = this.scope.view.bounds;
+      if (!bounds || !vb) return;
+      if (!(bounds.width > 0 && bounds.height > 0)) return;
+      if (!(vb.width > 0 && vb.height > 0)) return;
+      const s = Math.min(
+        1,
+        (vb.width * 0.75) / bounds.width,
+        (vb.height * 0.75) / bounds.height,
+      );
+      if (s < 1) item.scale(s, bounds.center);
+    } catch {
+      // Best effort; a drop must never throw.
+    }
+  }
+
+  private noteDropFailure(note: string): void {
+    this.lastDropNote = note;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  // One undoable entry per placed file: only that item is removed on
+  // undo, so drops interleaved with later drawing stay independent.
+  private recordDropCommand(
+    label: string,
+    item: AnyItem,
+    selBefore: AnyItem[],
+  ): void {
+    const layer = this.scope.project
+      ? this.scope.project.activeLayer
+      : null;
+    if (!layer || !item || !this.isInScene(item)) return;
+    const after = this.contentItems();
+    const i = after.indexOf(item);
+    let next: AnyItem | null = null;
+    for (let j = i + 1; j < after.length; j++) {
+      if (after[j] !== item) {
+        next = after[j];
+        break;
+      }
+    }
+    const selAfter = [...this.selectedItems];
+    this.history.push({
+      label,
+      undo: () => {
+        if (this.isInScene(item)) {
+          this.removeItemFromSelection(item);
+          try {
+            item.remove();
+          } catch {
+            // Already gone.
+          }
+        }
+        this.restoreSelection(selBefore);
+      },
+      redo: () => {
+        if (!this.isInScene(item)) this.insertContentAt(item, next);
+        this.restoreSelection(selAfter);
+      },
+    });
+  }
+
+  private placeDroppedItem(
+    label: string,
+    item: AnyItem,
+    at: AnyItem,
+    selBefore: AnyItem[],
+  ): void {
+    if (!item) {
+      this.noteDropFailure('Drop failed: could not read that file.');
+      return;
+    }
+    try {
+      item.position = at;
+    } catch {
+      // Keep the imported position.
+    }
+    this.fitItemToView(item);
+    this.addItemToSelection(item);
+    this.recordDropCommand(label, item, selBefore);
+    this.updateTextContent();
+    this.notify();
+  }
+
+  private importSvgText(
+    text: string,
+    fileName: string,
+    at: AnyItem,
+    selBefore: AnyItem[],
+  ): void {
+    try {
+      this.scope.project.importSVG(text, (imported: AnyItem) => {
+        if (!imported) {
+          this.noteDropFailure(`Drop failed: ${fileName} did not import.`);
+          return;
+        }
+        // Behave as one object in selection/move/group flows.
+        try {
+          imported.data.isUserGroup = true;
+        } catch {
+          // Optional; grouping just won't apply.
+        }
+        this.placeDroppedItem(`Deposit ${fileName}`, imported, at, selBefore);
+      });
+    } catch {
+      this.noteDropFailure(`Drop failed: ${fileName} did not import.`);
+    }
+  }
+
+  private dropSvgFile(file: File, at: AnyItem, selBefore: AnyItem[]): void {
+    const reader = new FileReader();
+    reader.onerror = () =>
+      this.noteDropFailure(`Drop failed: could not read ${file.name}.`);
+    reader.onload = (e) => {
+      const result = e.target?.result;
+      if (
+        typeof result !== 'string' ||
+        !/<svg[\s>]/i.test(result.slice(0, 4096))
+      ) {
+        this.noteDropFailure(`Drop failed: ${file.name} is not SVG.`);
+        return;
+      }
+      this.importSvgText(result, file.name, at, selBefore);
+    };
+    reader.readAsText(file);
+  }
+
+  private dropRasterFile(
+    file: File,
+    at: AnyItem,
+    selBefore: AnyItem[],
+  ): void {
+    const reader = new FileReader();
+    reader.onerror = () =>
+      this.noteDropFailure(`Drop failed: could not read ${file.name}.`);
+    reader.onload = (e) => {
+      const result = e.target?.result;
+      if (typeof result !== 'string') {
+        this.noteDropFailure(`Drop failed: could not read ${file.name}.`);
+        return;
+      }
+      const image = new Image();
+      image.onerror = () =>
+        this.noteDropFailure(`Drop failed: ${file.name} did not decode.`);
+      image.onload = () => {
+        let raster: AnyItem = null;
+        try {
+          raster = new this.scope.Raster(image);
+        } catch {
+          raster = null;
+        }
+        this.placeDroppedItem(`Deposit ${file.name}`, raster, at, selBefore);
+      };
+      image.src = result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  private dropUnknownFile(
+    file: File,
+    at: AnyItem,
+    selBefore: AnyItem[],
+  ): void {
+    const reader = new FileReader();
+    reader.onerror = () =>
+      this.noteDropFailure(
+        `Drop skipped: ${file.name} is not an image.`,
+      );
+    reader.onload = (e) => {
+      const result = e.target?.result;
+      if (
+        typeof result === 'string' &&
+        /<svg[\s>]/i.test(result.slice(0, 4096))
+      ) {
+        this.importSvgText(result, file.name, at, selBefore);
+        return;
+      }
+      this.noteDropFailure(`Drop skipped: ${file.name} is not an image.`);
+    };
+    reader.readAsText(file);
   }
 
   // --- Control-panel setters (replace registerEventListeners wiring) ---
@@ -1925,16 +2145,27 @@ export class NibGliderEngine {
   }
 
   removeAllSelectedItemsAndReset(): void {
+    this.commitMoveGesture();
+    const before = this.contentItems();
+    const selBefore = [...this.selectedItems];
     for (let i = this.selectedItems.length - 1; i >= 0; i--) {
       const item = this.selectedItems[i];
       this.removeItemFromSelection(item);
       item.remove();
     }
     this.selectedItems = [];
+    this.recordSceneCommand(
+      selBefore.length > 1 ? `Delete ${selBefore.length} items` : 'Delete',
+      before,
+      selBefore,
+      [],
+    );
     this.setIsInDragLock(false);
   }
 
   setIsInDragLock(status: boolean): void {
+    if (status && !this.isInDragLock) this.beginMoveGesture();
+    if (!status && this.isInDragLock) this.commitMoveGesture();
     this.isInDragLock = status;
     this.updateTextContent();
     this.notify();
@@ -1942,6 +2173,557 @@ export class NibGliderEngine {
 
   hasSelection(): boolean {
     return this.selectedItems.length > 0;
+  }
+
+  // --- History (undo/redo) ---
+  // Commands hold live item refs plus layer anchors (the surviving
+  // successor at record time), so undo/redo reinsert at the original
+  // z-order and degrade to append when the anchor is gone. Every op is
+  // guarded by isInScene, so a command touching items that a later
+  // non-undoable op (e.g. panel combinatorics) already consumed is a
+  // harmless no-op instead of a crash.
+  private history = new UndoManager(100, 800, () => this.notify());
+  private moveGesture: { items: AnyItem[]; points: AnyItem[] } | null =
+    null;
+
+  canUndo(): boolean {
+    return this.history.canUndo();
+  }
+
+  canRedo(): boolean {
+    return this.history.canRedo();
+  }
+
+  undoLabel(): string | null {
+    return this.history.undoLabel();
+  }
+
+  redoLabel(): string | null {
+    return this.history.redoLabel();
+  }
+
+  undo(): void {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return;
+    this.moveGesture = null;
+    this.history.undo();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  redo(): void {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return;
+    this.moveGesture = null;
+    this.history.redo();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  // Top-level active-layer artwork. Live previews, cursors, and the
+  // grid are excluded so a snapshot can never resurrect UI chrome.
+  private contentItems(): AnyItem[] {
+    const layer = this.scope.project
+      ? this.scope.project.activeLayer
+      : null;
+    if (!layer) return [];
+    const out: AnyItem[] = [];
+    for (const child of [...layer.children]) {
+      if (!this.isNonContentItem(child)) out.push(child);
+    }
+    return out;
+  }
+
+  // True while the item is reachable from the active layer.
+  private isInScene(item: AnyItem): boolean {
+    if (!item) return false;
+    const layer = this.scope.project
+      ? this.scope.project.activeLayer
+      : null;
+    let p: AnyItem = item;
+    while (p) {
+      if (p === layer) return true;
+      p = p.parent;
+    }
+    return false;
+  }
+
+  private insertContentAt(item: AnyItem, anchor: AnyItem | null): void {
+    const layer = this.scope.project
+      ? this.scope.project.activeLayer
+      : null;
+    if (!layer) return;
+    try {
+      if (anchor && anchor.parent === layer) {
+        layer.insertChild(anchor.index, item);
+      } else {
+        layer.addChild(item);
+      }
+    } catch {
+      try {
+        layer.addChild(item);
+      } catch {
+        // Detached; nothing to restore.
+      }
+    }
+  }
+
+  private restoreSelection(items: AnyItem[]): void {
+    for (const s of [...this.selectedItems]) {
+      try {
+        s.selected = false;
+      } catch {
+        // Already gone.
+      }
+    }
+    this.selectedItems = [];
+    for (const it of items) {
+      if (it && this.isInScene(it)) {
+        try {
+          it.selected = true;
+          this.selectedItems.push(it);
+        } catch {
+          // Already gone.
+        }
+      }
+    }
+  }
+
+  // Record one undoable scene mutation. `before` is the content
+  // snapshot taken before the mutation; `explicitPlaced` names items
+  // that already lived in the layer (the live stroke/quad being
+  // finished) so the add/remove diff alone would miss them. Fresh
+  // constructs, combine results, and combine victims are all derived
+  // from the diff, so armed deposit-time combinatorics is captured as
+  // one composite deposit entry. Segment-level edits of an adopted
+  // path (END-join continuation) are NOT captured — only the
+  // resulting item's placement is.
+  private recordSceneCommand(
+    label: string,
+    before: AnyItem[],
+    selBefore: AnyItem[],
+    explicitPlaced: Array<AnyItem | null>,
+  ): void {
+    const layer = this.scope.project
+      ? this.scope.project.activeLayer
+      : null;
+    if (!layer) return;
+    const after = this.contentItems();
+    const beforeSet = new Set(before);
+    const afterSet = new Set(after);
+    const placed: AnyItem[] = [];
+    for (const item of explicitPlaced) {
+      if (item && this.isInScene(item) && placed.indexOf(item) === -1)
+        placed.push(item);
+    }
+    for (const item of after) {
+      if (!beforeSet.has(item) && placed.indexOf(item) === -1)
+        placed.push(item);
+    }
+    const victims = before.filter((item) => {
+      if (afterSet.has(item)) return false;
+      // Reparented into a placed group (finished stroke + derived
+      // text): hidden inside the deposit, not gone.
+      let p = item.parent;
+      while (p) {
+        if (placed.indexOf(p) !== -1) return false;
+        p = p.parent;
+      }
+      return true;
+    });
+    if (placed.length === 0 && victims.length === 0) return;
+    // Anchors: each item reinserts before its surviving successor, or
+    // appends when the anchor is gone.
+    const placedSet = new Set(placed);
+    const anchorAfter = new Map<AnyItem, AnyItem | null>();
+    const orderAfter = new Map<AnyItem, number>();
+    after.forEach((item, i) => orderAfter.set(item, i));
+    for (const item of placed) {
+      const i = orderAfter.get(item) ?? -1;
+      let next: AnyItem | null = null;
+      for (let j = i + 1; j < after.length; j++) {
+        if (!placedSet.has(after[j])) {
+          next = after[j];
+          break;
+        }
+      }
+      anchorAfter.set(item, next);
+    }
+    const victimSet = new Set(victims);
+    const anchorBefore = new Map<AnyItem, AnyItem | null>();
+    const orderBefore = new Map<AnyItem, number>();
+    before.forEach((item, i) => orderBefore.set(item, i));
+    for (const item of victims) {
+      const i = orderBefore.get(item) ?? -1;
+      let next: AnyItem | null = null;
+      for (let j = i + 1; j < before.length; j++) {
+        if (!victimSet.has(before[j])) {
+          next = before[j];
+          break;
+        }
+      }
+      anchorBefore.set(item, next);
+    }
+    const selAfter = [...this.selectedItems];
+    // Descending insertion before each anchor restores exact order.
+    const orderedVictims = [...victims].sort(
+      (a, b) => (orderBefore.get(b) ?? 0) - (orderBefore.get(a) ?? 0),
+    );
+    const orderedPlaced = [...placed].sort(
+      (a, b) => (orderAfter.get(b) ?? 0) - (orderAfter.get(a) ?? 0),
+    );
+    this.history.push({
+      label,
+      undo: () => {
+        for (const item of placed) {
+          if (this.isInScene(item)) {
+            this.removeItemFromSelection(item);
+            try {
+              item.remove();
+            } catch {
+              // Already gone.
+            }
+          }
+        }
+        for (const item of orderedVictims) {
+          if (!this.isInScene(item))
+            this.insertContentAt(item, anchorBefore.get(item) ?? null);
+        }
+        this.restoreSelection(selBefore);
+      },
+      redo: () => {
+        for (const item of victims) {
+          if (this.isInScene(item)) {
+            this.removeItemFromSelection(item);
+            try {
+              item.remove();
+            } catch {
+              // Already gone.
+            }
+          }
+        }
+        for (const item of orderedPlaced) {
+          if (!this.isInScene(item))
+            this.insertContentAt(item, anchorAfter.get(item) ?? null);
+        }
+        this.restoreSelection(selAfter);
+      },
+    });
+  }
+
+  // --- History: moves ---
+  // A drag, drag-lock run, or nudge burst is one entry holding
+  // per-item before/after positions. Only top-level items are
+  // restored: once grouped, an item's position is group-relative and
+  // the group's own move entry owns it.
+  private makeMoveCommand(
+    entries: MoveEntry[],
+    coalesceKey?: string,
+  ): MoveCommand {
+    const activeLayerOf = (): AnyItem =>
+      this.scope.project ? this.scope.project.activeLayer : null;
+    const cmd: MoveCommand = {
+      label:
+        entries.length > 1 ? `Move ${entries.length} items` : 'Move',
+      entries,
+      undo: () => {
+        const layer = activeLayerOf();
+        for (const e of entries) {
+          if (e.item && layer && e.item.parent === layer) {
+            try {
+              e.item.position = e.before.clone();
+            } catch {
+              // Already gone.
+            }
+          }
+        }
+      },
+      redo: () => {
+        const layer = activeLayerOf();
+        for (const e of entries) {
+          if (e.item && layer && e.item.parent === layer) {
+            try {
+              e.item.position = e.after.clone();
+            } catch {
+              // Already gone.
+            }
+          }
+        }
+      },
+    };
+    if (coalesceKey !== undefined) {
+      cmd.coalesceKey = coalesceKey;
+      cmd.absorb = (next: UndoCommand): boolean => {
+        const n = next as MoveCommand;
+        if (!Array.isArray(n.entries) || n.entries.length !== entries.length)
+          return false;
+        for (let i = 0; i < entries.length; i++) {
+          if (n.entries[i].item !== entries[i].item) return false;
+        }
+        for (let i = 0; i < entries.length; i++)
+          entries[i].after = n.entries[i].after;
+        return true;
+      };
+    }
+    return cmd;
+  }
+
+  private beginMoveGesture(): void {
+    const items = [...this.selectedItems];
+    if (items.length === 0) {
+      this.moveGesture = null;
+      return;
+    }
+    this.moveGesture = {
+      items,
+      points: items.map((it) =>
+        it.position ? it.position.clone() : null,
+      ),
+    };
+  }
+
+  // Push one move entry for the in-flight gesture when anything
+  // actually moved. Safe to call with no gesture active.
+  private commitMoveGesture(coalesceKey?: string): void {
+    const g = this.moveGesture;
+    this.moveGesture = null;
+    if (!g) return;
+    const layer = this.scope.project
+      ? this.scope.project.activeLayer
+      : null;
+    const entries: MoveEntry[] = [];
+    for (let i = 0; i < g.items.length; i++) {
+      const item = g.items[i];
+      const before = g.points[i];
+      if (!item || !before || !item.position) continue;
+      if (!layer || item.parent !== layer) continue;
+      const after = item.position.clone();
+      try {
+        if (after.getDistance(before) > 1e-9)
+          entries.push({ item, before, after });
+      } catch {
+        // Unmeasurable; skip.
+      }
+    }
+    if (entries.length === 0) return;
+    this.history.push(this.makeMoveCommand(entries, coalesceKey));
+  }
+
+  // --- History: groups ---
+  // A user group (data.isUserGroup) moves and selects as one item.
+  // Shape+text groups (data.shapeTextGroup / data.isShapeText) are
+  // atomic artwork and are never treated as user groups.
+  private topUserGroupOf(item: AnyItem): AnyItem {
+    let cur = item;
+    while (
+      cur &&
+      cur.parent &&
+      cur.parent.data &&
+      cur.parent.data.isUserGroup
+    ) {
+      cur = cur.parent;
+    }
+    return cur;
+  }
+
+  private groupableMembers(): AnyItem[] {
+    const layer = this.scope.project
+      ? this.scope.project.activeLayer
+      : null;
+    const out: AnyItem[] = [];
+    const seen = new Set<AnyItem>();
+    for (const it of this.selectedItems) {
+      if (!it || !this.isInScene(it)) continue;
+      const top = this.topUserGroupOf(it);
+      if (seen.has(top)) continue;
+      seen.add(top);
+      if (top.parent === layer) out.push(top);
+    }
+    return out;
+  }
+
+  canGroupSelection(): boolean {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return false;
+    return this.groupableMembers().length >= 2;
+  }
+
+  canUngroupSelection(): boolean {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return false;
+    for (const it of this.selectedItems) {
+      if (it && it.data && it.data.isUserGroup && this.isInScene(it))
+        return true;
+    }
+    return false;
+  }
+
+  groupSelection(): void {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return;
+    const members = this.groupableMembers();
+    if (members.length < 2) return;
+    const layer = this.scope.project.activeLayer;
+    const selBefore = [...this.selectedItems];
+    let at = members[0].index;
+    for (const m of members) {
+      if (m.index < at) at = m.index;
+    }
+    const group: AnyItem = new this.scope.Group(members);
+    group.data.isUserGroup = true;
+    try {
+      layer.insertChild(Math.min(at, layer.children.length), group);
+    } catch {
+      try {
+        layer.addChild(group);
+      } catch {
+        // Detached; nothing to record.
+      }
+    }
+    group.selected = true;
+    this.selectedItems = [group];
+    const kids = [...members];
+    this.history.push({
+      label: `Group ${kids.length} items`,
+      undo: () => {
+        const idx = Math.max(0, group.index);
+        for (let i = kids.length - 1; i >= 0; i--) {
+          try {
+            layer.insertChild(
+              Math.min(idx, layer.children.length),
+              kids[i],
+            );
+          } catch {
+            try {
+              layer.addChild(kids[i]);
+            } catch {
+              // Detached; skip.
+            }
+          }
+        }
+        this.removeItemFromSelection(group);
+        try {
+          group.remove();
+        } catch {
+          // Already gone.
+        }
+        this.restoreSelection(selBefore);
+      },
+      redo: () => {
+        for (const k of kids) {
+          if (this.isInScene(k) && k.parent !== group) {
+            try {
+              group.addChild(k);
+            } catch {
+              // Gone; skip.
+            }
+          }
+        }
+        if (!this.isInScene(group)) {
+          try {
+            layer.insertChild(
+              Math.min(at, layer.children.length),
+              group,
+            );
+          } catch {
+            try {
+              layer.addChild(group);
+            } catch {
+              // Detached; skip.
+            }
+          }
+        }
+        this.restoreSelection([group]);
+      },
+    });
+    this.updateTextContent();
+    this.notify();
+  }
+
+  ungroupSelected(): void {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return;
+    const groups = this.selectedItems.filter(
+      (it) => it && it.data && it.data.isUserGroup && this.isInScene(it),
+    );
+    if (groups.length === 0) return;
+    const layer = this.scope.project.activeLayer;
+    const selBefore = [...this.selectedItems];
+    const parts = groups.map((g: AnyItem) => ({
+      group: g,
+      kids: [...g.children] as AnyItem[],
+      at: Math.max(0, g.index),
+    }));
+    const apply = (): AnyItem[] => {
+      const out: AnyItem[] = [];
+      for (const p of parts) {
+        this.removeItemFromSelection(p.group);
+        const kidsNow = [...p.group.children] as AnyItem[];
+        kidsNow.forEach((k, i) => {
+          try {
+            layer.insertChild(
+              Math.min(p.at + i, layer.children.length),
+              k,
+            );
+          } catch {
+            try {
+              layer.addChild(k);
+            } catch {
+              // Detached; skip.
+            }
+          }
+        });
+        try {
+          p.group.remove();
+        } catch {
+          // Already gone.
+        }
+        out.push(...kidsNow.filter((k) => this.isInScene(k)));
+      }
+      return out;
+    };
+    const kids = apply();
+    this.restoreSelection(kids);
+    this.history.push({
+      label:
+        groups.length > 1
+          ? `Ungroup ${groups.length} groups`
+          : 'Ungroup',
+      undo: () => {
+        for (const p of parts) {
+          for (const k of p.kids) {
+            if (this.isInScene(k) && k.parent !== p.group) {
+              try {
+                p.group.addChild(k);
+              } catch {
+                // Gone; skip.
+              }
+            }
+          }
+          if (!this.isInScene(p.group)) {
+            try {
+              layer.insertChild(
+                Math.min(p.at, layer.children.length),
+                p.group,
+              );
+            } catch {
+              try {
+                layer.addChild(p.group);
+              } catch {
+                // Detached; skip.
+              }
+            }
+          }
+        }
+        this.restoreSelection(selBefore);
+      },
+      redo: () => {
+        const redone = apply();
+        this.restoreSelection(redone);
+      },
+    });
+    this.updateTextContent();
+    this.notify();
   }
 
   private itemHexColor(c: AnyItem): string | null {
@@ -2012,11 +2794,21 @@ export class NibGliderEngine {
   // --- Drawing tools (drawingToolsAndFunctions.js) ---
   stampItems(itemsToStamp: AnyItem[] | null): void {
     if (itemsToStamp === null) return;
+    const before = this.contentItems();
+    const selBefore = [...this.selectedItems];
     for (let i = 0; i < itemsToStamp.length; i++) {
       const clone = itemsToStamp[i].clone();
       clone.selected = false;
       this.scope.project.activeLayer.addChild(clone);
     }
+    this.recordSceneCommand(
+      itemsToStamp.length > 1
+        ? `Stamp ${itemsToStamp.length} items`
+        : 'Stamp',
+      before,
+      selBefore,
+      [],
+    );
   }
 
   cancelCurrentDrawingOperation(): void {
@@ -2991,7 +3783,10 @@ export class NibGliderEngine {
   rectCenterlineKC(): void {
     const scope = this.scope;
     if (this.shapeType === 'rectangle_centerline') {
-      this.endShapeAsStroke();
+      const histBefore = this.contentItems();
+      const histSel = [...this.selectedItems];
+      const placed = this.endShapeAsStroke();
+      this.recordSceneCommand('Deposit shape', histBefore, histSel, placed);
       this.updateTextContent();
       return;
     }
@@ -3055,7 +3850,15 @@ export class NibGliderEngine {
         this.applyStrokeGeometry(this.previewRect);
         this.updateTextContent();
       } else {
-        this.endShapeAsStroke();
+        const histBefore = this.contentItems();
+        const histSel = [...this.selectedItems];
+        const placed = this.endShapeAsStroke();
+        this.recordSceneCommand(
+          'Deposit shape',
+          histBefore,
+          histSel,
+          placed,
+        );
       }
       return;
     }
@@ -3085,6 +3888,8 @@ export class NibGliderEngine {
   quadPointKC(): void {
     const scope = this.scope;
     if (!this.mousePt) return;
+    const histBefore = this.contentItems();
+    const histSel = [...this.selectedItems];
     if (!this.quadPath) {
       this.quadPath = new scope.Path({
         segments: [this.mousePt],
@@ -3110,6 +3915,9 @@ export class NibGliderEngine {
         this.quadPath = null;
         this.isDrawingQuad = false;
         this.quadPointCount = 0;
+        this.recordSceneCommand('Deposit shape', histBefore, histSel, [
+          placed,
+        ]);
         this.updateTextContent();
         this.notify();
         return;
@@ -3121,6 +3929,8 @@ export class NibGliderEngine {
 
   stampCurrentPreview(): void {
     const scope = this.scope;
+    const histBefore = this.contentItems();
+    const histSel = [...this.selectedItems];
     if (this.isDrawingPath && this.path) {
       const stampedBase = this.path.clone();
       this.applyCurrentStyles(stampedBase);
@@ -3219,11 +4029,15 @@ export class NibGliderEngine {
         scope.project.activeLayer.addChild(placedQuad);
       }
     }
+    this.recordSceneCommand('Stamp', histBefore, histSel, []);
     this.updateTextContent();
   }
 
   endPathOrShape(): void {
     const scope = this.scope;
+    const histBefore = this.contentItems();
+    const histSel = [...this.selectedItems];
+    const deposited: Array<AnyItem | null> = [];
     if (this.isDrawingPath && this.path) {
       const segs = this.path.segments;
       const first = segs.length > 0 ? segs[0].point : null;
@@ -3270,12 +4084,13 @@ export class NibGliderEngine {
           scope.project.activeLayer.addChild(placed);
         }
       }
+      deposited.push(finished);
       this.path = null;
       this.isDrawingPath = false;
       this.continuedPathBaseCount = null;
       this.clearSplineTextPreview();
     } else if (this.isDrawingShape) {
-      this.endShapeAsStroke();
+      deposited.push(...this.endShapeAsStroke());
       if (this.previewInner) {
         this.previewInner.remove();
         this.previewInner = null;
@@ -3291,10 +4106,12 @@ export class NibGliderEngine {
           scope.project.activeLayer.addChild(placedQuadEnd);
         }
       }
+      deposited.push(placedQuadEnd);
       this.quadPath = null;
       this.isDrawingQuad = false;
       this.quadPointCount = 0;
     }
+    this.recordSceneCommand('Deposit shape', histBefore, histSel, deposited);
     this.updateTextContent();
     this.notify();
   }
@@ -3395,6 +4212,8 @@ export class NibGliderEngine {
   completeShapeWithSpline(): void {
     const scope = this.scope;
     if (!this.isDrawingPath || !this.path || !this.mousePt) return;
+    const histBefore = this.contentItems();
+    const histSel = [...this.selectedItems];
     if (this.path.segments.length > 1) {
       this.path.removeSegment(this.path.segments.length - 1);
     }
@@ -3432,6 +4251,9 @@ export class NibGliderEngine {
     this.isDrawingPath = false;
     this.continuedPathBaseCount = null;
     this.clearSplineTextPreview();
+    this.recordSceneCommand('Deposit shape', histBefore, histSel, [
+      completed,
+    ]);
     this.updateTextContent();
     this.notify();
   }
@@ -3439,7 +4261,10 @@ export class NibGliderEngine {
   circleKC(mode: string): void {
     const scope = this.scope;
     if (this.shapeType != null && this.shapeType.startsWith('circle_')) {
-      this.endShapeAsStroke();
+      const histBefore = this.contentItems();
+      const histSel = [...this.selectedItems];
+      const placed = this.endShapeAsStroke();
+      this.recordSceneCommand('Deposit shape', histBefore, histSel, placed);
       this.updateTextContent();
       return;
     }
@@ -3464,7 +4289,10 @@ export class NibGliderEngine {
   rectDiagonalKC(): void {
     const scope = this.scope;
     if (this.shapeType === 'rectangle_diagonal') {
-      this.endShapeAsStroke();
+      const histBefore = this.contentItems();
+      const histSel = [...this.selectedItems];
+      const placed = this.endShapeAsStroke();
+      this.recordSceneCommand('Deposit shape', histBefore, histSel, placed);
       this.updateTextContent();
       return;
     }
@@ -3489,9 +4317,10 @@ export class NibGliderEngine {
     this.notify();
   }
 
-  endShapeAsStroke(): void {
+  endShapeAsStroke(): AnyItem[] {
     const scope = this.scope;
-    if (!this.isDrawingShape || this.shapeType === null) return;
+    if (!this.isDrawingShape || this.shapeType === null) return [];
+    const placed: AnyItem[] = [];
     let finalPath: AnyItem = null;
     const shapeType = this.shapeType;
     // Non-rectangle Rect Keys choice: the rect frame is the bounds and only
@@ -3500,7 +4329,7 @@ export class NibGliderEngine {
       shapeType.startsWith('rectangle_') &&
       this.rectangleInnerShapeType !== 'rectangle';
     if (shapeType.startsWith('circle_')) {
-      if (!this.previewShape || this.previewShape.radius === 0) return;
+      if (!this.previewShape || this.previewShape.radius === 0) return [];
       const center = this.previewShape.position;
       const radius = this.previewShape.radius;
       const strokeW = this.strokeEnabled ? this.globalStrokeWidth : 0;
@@ -3516,6 +4345,7 @@ export class NibGliderEngine {
             if (placedInner.parent == null) {
               scope.project.activeLayer.addChild(placedInner);
             }
+            placed.push(placedInner);
           }
         }
       }
@@ -3581,6 +4411,7 @@ export class NibGliderEngine {
         if (placedFinal.parent == null) {
           scope.project.activeLayer.addChild(placedFinal);
         }
+        placed.push(placedFinal);
         // Inner decoration follows the deposited (possibly combined)
         // bounds; it is never itself combined.
         if (!rectShapeOnly) this.drawInnerShape(placedFinal, 'stroke');
@@ -3608,6 +4439,7 @@ export class NibGliderEngine {
     this.previewLine = null;
     this.updateTextContent();
     this.notify();
+    return placed;
   }
 
   createRegularPolygon(
@@ -3807,6 +4639,7 @@ export class NibGliderEngine {
     const hit = this.hitTestContent(this.mousePt);
     if (!hit || !hit.item) {
       this.clearOutSelection();
+      this.moveGesture = null;
       this.isPanning = true;
       this.panAnchorCenter = this.scope.view.center.clone();
       this.panAnchorPoint = event.point.clone();
@@ -3816,6 +4649,7 @@ export class NibGliderEngine {
     }
     this.isPanning = false;
     this.applyHitSelection(hit);
+    this.beginMoveGesture();
   }
 
   hitTestUnderCursor(): void {
@@ -3824,14 +4658,18 @@ export class NibGliderEngine {
   }
 
   private applyHitSelection(hitResult: AnyItem): void {
-    if (hitResult && hitResult.item) {
-      const alreadySelected = this.selectedItems.indexOf(hitResult.item) !== -1;
+    // Clicking a grouped child selects its user group as one item.
+    let item: AnyItem =
+      hitResult && hitResult.item ? hitResult.item : null;
+    if (item) item = this.topUserGroupOf(item);
+    if (item) {
+      const alreadySelected = this.selectedItems.indexOf(item) !== -1;
       if (alreadySelected) {
-        hitResult.item.selected = false;
-        this.selectedItems.splice(this.selectedItems.indexOf(hitResult.item), 1);
+        item.selected = false;
+        this.selectedItems.splice(this.selectedItems.indexOf(item), 1);
       } else {
-        hitResult.item.selected = true;
-        this.selectedItems.push(hitResult.item);
+        item.selected = true;
+        this.selectedItems.push(item);
       }
     } else {
       this.clearOutSelection();
@@ -4177,6 +5015,23 @@ export class NibGliderEngine {
         this.stepZoom(event.key === '-' ? -1 : 1);
         return;
       }
+      const modKey = event.key.toLowerCase();
+      if (modKey === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        this.undo();
+        return;
+      }
+      if ((modKey === 'z' && event.shiftKey) || modKey === 'y') {
+        event.preventDefault();
+        this.redo();
+        return;
+      }
+      if (modKey === 'g') {
+        event.preventDefault();
+        if (event.shiftKey) this.ungroupSelected();
+        else this.groupSelection();
+        return;
+      }
     }
     if (
       event.key === 'ArrowLeft' ||
@@ -4211,12 +5066,25 @@ export class NibGliderEngine {
         else if (event.key === 'ArrowRight') dx = d;
         else if (event.key === 'ArrowUp') dy = -d;
         else dy = d;
+        this.commitMoveGesture();
+        const nudgeItems = [...this.selectedItems];
+        const nudgeBefore = nudgeItems.map((it) => it.position.clone());
         const delta = new this.scope.Point(dx, dy);
         for (let i = 0; i < this.selectedItems.length; i++) {
           this.selectedItems[i].position =
             this.selectedItems[i].position.add(delta);
         }
+        const nudgeEntries: MoveEntry[] = [];
+        for (let i = 0; i < nudgeItems.length; i++) {
+          nudgeEntries.push({
+            item: nudgeItems[i],
+            before: nudgeBefore[i],
+            after: nudgeItems[i].position.clone(),
+          });
+        }
+        this.history.push(this.makeMoveCommand(nudgeEntries, 'nudge'));
         this.updateTextContent();
+        this.notify();
       }
       return;
     }
@@ -4449,6 +5317,9 @@ export class NibGliderEngine {
         ]),
       );
     }
+    if (this.lastDropNote) {
+      state.push(L('meta', [T(this.lastDropNote)]));
+    }
     if (selectedCount) {
       state.push(L('title', [T('Selected Objects: ' + selectedCount)]));
       if (this.isInDragLock === false) {
@@ -4606,6 +5477,14 @@ export class NibGliderEngine {
           T(': cancel'),
         ]),
       );
+    }
+    if (this.history.canUndo() || this.history.canRedo()) {
+      const bits: string[] = [];
+      if (this.history.canUndo())
+        bits.push(`Undo ${this.history.undoLabel() ?? ''}`.trim());
+      if (this.history.canRedo())
+        bits.push(`Redo ${this.history.redoLabel() ?? ''}`.trim());
+      state.push(L('meta', [T(`${bits.join(' · ')} (Ctrl/⌘+Z)`)]));
     }
     this.setStatusSchema({ state, steps });
   }

@@ -1327,6 +1327,117 @@ const COMBINE_OPTIONS: Array<{
   },
 ];
 
+function HistoryButtons({ engine }: { engine: NibGliderEngine }) {
+  const undoTitle = engine.canUndo()
+    ? `Undo ${engine.undoLabel() ?? ''} (Ctrl/⌘+Z)`
+    : 'Nothing to undo';
+  const redoTitle = engine.canRedo()
+    ? `Redo ${engine.redoLabel() ?? ''} (Ctrl/⌘+Shift+Z)`
+    : 'Nothing to redo';
+  const groupTitle = engine.canGroupSelection()
+    ? 'Group selection (Ctrl/⌘+G)'
+    : 'Select 2+ shapes to group';
+  const ungroupTitle = engine.canUngroupSelection()
+    ? 'Ungroup selection (Ctrl/⌘+Shift+G)'
+    : 'Select a group to ungroup';
+  return (
+    <>
+      <div className="seg-ctrl" role="group" aria-label="Undo and redo">
+        <button
+          type="button"
+          title={undoTitle}
+          aria-label="Undo"
+          disabled={!engine.canUndo()}
+          onClick={() => engine.undo()}
+        >
+          <svg
+            viewBox="0 0 16 14"
+            width="18"
+            height="16"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6.5 3.5 H3.8 A4.2 4.2 0 0 0 3.8 10.9 H8" />
+            <path d="M6.2 1.2 L3 3.5 L6.2 5.8" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          title={redoTitle}
+          aria-label="Redo"
+          disabled={!engine.canRedo()}
+          onClick={() => engine.redo()}
+        >
+          <svg
+            viewBox="0 0 16 14"
+            width="18"
+            height="16"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M9.5 3.5 H12.2 A4.2 4.2 0 0 1 12.2 10.9 H8" />
+            <path d="M9.8 1.2 L13 3.5 L9.8 5.8" />
+          </svg>
+        </button>
+      </div>
+      <div className="seg-ctrl" role="group" aria-label="Group and ungroup">
+        <button
+          type="button"
+          title={groupTitle}
+          aria-label="Group selection"
+          disabled={!engine.canGroupSelection()}
+          onClick={() => engine.groupSelection()}
+        >
+          <svg
+            viewBox="0 0 16 14"
+            width="18"
+            height="16"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="2" y="4.5" width="6" height="6" />
+            <rect x="8" y="3.5" width="6" height="6" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          title={ungroupTitle}
+          aria-label="Ungroup selection"
+          disabled={!engine.canUngroupSelection()}
+          onClick={() => engine.ungroupSelected()}
+        >
+          <svg
+            viewBox="0 0 16 14"
+            width="18"
+            height="16"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="1.5" y="4.5" width="5" height="6" />
+            <rect x="9.5" y="4.5" width="5" height="6" />
+          </svg>
+        </button>
+      </div>
+    </>
+  );
+}
+
 function CombinatoricsButtons({ engine }: { engine: NibGliderEngine }) {
   const mode = engine.combineMode;
   // One control, two jobs: arming a button sets the deposit mode, and
@@ -2047,6 +2158,19 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             <span className="pane-title-text">Combinatorics</span></span>
           </span>
           <CombinatoricsButtons engine={engine} />
+        </header>
+      </section>
+
+      <section id="historyControls" className="panel-card" aria-label="History">
+        <header className="pane-titlebar titlebar-single">
+          <span className="title-seg" title="History"><span className="pane-title">
+            <TitleIcon>
+              <path d="M6.5 3.5 H3.8 A4.2 4.2 0 0 0 3.8 10.9 H8" />
+              <path d="M6.2 1.2 L3 3.5 L6.2 5.8" />
+            </TitleIcon>
+            <span className="pane-title-text">History</span></span>
+          </span>
+          <HistoryButtons engine={engine} />
         </header>
       </section>
       </div>
