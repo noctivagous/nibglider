@@ -217,6 +217,8 @@ export class NibGliderEngine {
   gridType: GridType = 'square';
   gridSpacing = 20;
   gridLayer: AnyItem = null;
+  // Snap indicators live here, not on the artwork layer. See ensureGuideLayer.
+  guideLayer: AnyItem = null;
   gridCursor: AnyItem = null;
   pathSnapCursor: AnyItem = null;
   pointSnapCursor: AnyItem = null;
@@ -452,12 +454,16 @@ export class NibGliderEngine {
     canvas.addEventListener('drop', onDrop);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     document.addEventListener('mouseup', onDocMouseUp);
+    window.addEventListener('beforeprint', this.onBeforePrint);
+    window.addEventListener('afterprint', this.onAfterPrint);
 
     this.detachFns.push(() => {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keydown', onHighlightDown);
       document.removeEventListener('keyup', onKeyUp);
       document.removeEventListener('mouseup', onDocMouseUp);
+      window.removeEventListener('beforeprint', this.onBeforePrint);
+      window.removeEventListener('afterprint', this.onAfterPrint);
       canvas.removeEventListener('mousemove', onCanvasMove);
       canvas.removeEventListener('click', onCanvasClick);
       canvas.removeEventListener('dragover', onDragOver);
@@ -1869,9 +1875,12 @@ export class NibGliderEngine {
     if (!this.gridLayer) {
       this.gridLayer = new scope.Layer();
       this.gridLayer.name = 'gridLayer';
-      this.gridLayer.locked = true;
       scope.project.addLayer(this.gridLayer);
     }
+    // Lattice dots are drawing aids. guide skips hit-testing; locked
+    // disables mouse interaction for the whole layer.
+    this.gridLayer.guide = true;
+    this.gridLayer.locked = true;
     this.gridLayer.activate();
     this.gridLayer.removeChildren();
     const viewBounds = scope.view.bounds;
@@ -1882,8 +1891,8 @@ export class NibGliderEngine {
       const dot: AnyItem = new scope.Shape.Circle(new scope.Point(x, y), radius);
       dot.fillColor = dotColor;
       dot.strokeColor = null;
+      dot.guide = true;
       dot.locked = true;
-      dot.selectable = false;
       this.gridLayer.addChild(dot);
     };
     if (this.gridType === 'diamond') {
@@ -1955,15 +1964,10 @@ export class NibGliderEngine {
       this.gridCursor.fillColor = new scope.Color(1, 0, 0, 0.9);
       this.gridCursor.strokeColor = new scope.Color(0, 0, 0, 1.0);
       this.gridCursor.strokeWidth = 2;
-      this.gridCursor.selectable = false;
-      this.gridCursor.data.isUICursor = true;
-      scope.project.activeLayer.addChild(this.gridCursor);
-      this.gridCursor.bringToFront();
-    } else {
-      this.gridCursor.position = this.mousePt;
-      this.gridCursor.visible = true;
-      this.gridCursor.bringToFront();
     }
+    this.gridCursor.position = this.mousePt;
+    this.gridCursor.visible = true;
+    this.mountSnapIndicator(this.gridCursor);
   }
 
   applyAngleSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
@@ -2077,7 +2081,7 @@ export class NibGliderEngine {
     const maxSnapDistance = 12;
     const items: AnyItem[] = scope.project.getItems({
       match: (item: AnyItem) => {
-        if (!item || !item.visible) return false;
+        if (!item || !item.visible || this.isGuideItem(item)) return false;
         if (ignoredItems.has(item)) return false;
         return (
           typeof item.getNearestPoint === 'function' || item.segments || item.curves
@@ -2103,14 +2107,10 @@ export class NibGliderEngine {
         this.pathSnapCursor.fillColor = new scope.Color(1, 0, 0, 0.9);
         this.pathSnapCursor.strokeColor = new scope.Color(0, 0, 0, 1.0);
         this.pathSnapCursor.strokeWidth = 2;
-        this.pathSnapCursor.selectable = false;
-        this.pathSnapCursor.data.isUICursor = true;
-        scope.project.activeLayer.addChild(this.pathSnapCursor);
-      } else {
-        this.pathSnapCursor.position = bestPoint;
-        this.pathSnapCursor.visible = true;
-        this.pathSnapCursor.bringToFront();
       }
+      this.pathSnapCursor.position = bestPoint;
+      this.pathSnapCursor.visible = true;
+      this.mountSnapIndicator(this.pathSnapCursor);
     } else if (this.pathSnapCursor) {
       this.pathSnapCursor.visible = false;
     }
@@ -2179,7 +2179,7 @@ export class NibGliderEngine {
     };
     const items: AnyItem[] = scope.project.getItems({
       match: (item: AnyItem) => {
-        if (!item || !item.visible) return false;
+        if (!item || !item.visible || this.isGuideItem(item)) return false;
         if (ignoredItems.has(item)) return false;
         return !!(
           item.segments ||
@@ -2196,18 +2196,13 @@ export class NibGliderEngine {
       const color = SNAP_COLORS[bestKind];
       if (!this.pointSnapCursor) {
         this.pointSnapCursor = new scope.Shape.Circle(snapped, 4);
-        this.pointSnapCursor.fillColor = new scope.Color(color);
         this.pointSnapCursor.strokeColor = new scope.Color(0, 0, 0, 1.0);
         this.pointSnapCursor.strokeWidth = 2;
-        this.pointSnapCursor.selectable = false;
-        this.pointSnapCursor.data.isUICursor = true;
-        scope.project.activeLayer.addChild(this.pointSnapCursor);
-      } else {
-        this.pointSnapCursor.position = snapped;
-        this.pointSnapCursor.fillColor = new scope.Color(color);
-        this.pointSnapCursor.visible = true;
-        this.pointSnapCursor.bringToFront();
       }
+      this.pointSnapCursor.position = snapped;
+      this.pointSnapCursor.fillColor = new scope.Color(color);
+      this.pointSnapCursor.visible = true;
+      this.mountSnapIndicator(this.pointSnapCursor);
     } else if (this.pointSnapCursor) {
       this.pointSnapCursor.visible = false;
     }
@@ -2247,7 +2242,7 @@ export class NibGliderEngine {
     let bestDist = tol;
     const items: AnyItem[] = scope.project.getItems({
       match: (item: AnyItem) => {
-        if (!item || ignored.has(item)) return false;
+        if (!item || ignored.has(item) || this.isGuideItem(item)) return false;
         if (!item.segments || item.segments.length === 0) return false;
         if (item.closed) return false;
         return true;
@@ -2343,7 +2338,7 @@ export class NibGliderEngine {
 
   // --- Selection (selectionFunctions.js + NibGliderApp.js) ---
   addItemToSelection(item: AnyItem): void {
-    if (item === this.pathSnapCursor || item === this.gridCursor) return;
+    if (this.isNonContentItem(item)) return;
     item.selected = true;
     this.selectedItems.push(item);
   }
@@ -2375,6 +2370,7 @@ export class NibGliderEngine {
 
   clearOutSelection(): void {
     if (this.pathSnapCursor) this.pathSnapCursor.selected = false;
+    if (this.pointSnapCursor) this.pointSnapCursor.selected = false;
     if (this.gridCursor) this.gridCursor.selected = false;
     for (let i = 0; i < this.selectedItems.length; i++) {
       this.selectedItems[i].selected = false;
@@ -5208,10 +5204,81 @@ export class NibGliderEngine {
     return path;
   }
 
+  // --- Guides (snap indicators and the grid) ---
+  // Paper.js Item#guide is skipped by hitTest unless options.guides is
+  // set (paper.js 0.12 Item#_hitTest). Item#locked disables mouse
+  // interaction for that item and, on a layer, for everything in it.
+  // Neither flag is omitted by project.exportSVG, so beforeprint hides
+  // guide layers before the canvas bitmap is captured.
+  private ensureGuideLayer(): AnyItem {
+    const scope = this.scope;
+    const project = scope.project;
+    const active = project.activeLayer;
+    let layer = this.guideLayer;
+    if (!layer || layer.project !== project) {
+      layer = new scope.Layer();
+      layer.name = 'guideLayer';
+      this.guideLayer = layer;
+    }
+    layer.guide = true;
+    layer.locked = true;
+    if (active && active !== layer) active.activate();
+    return layer;
+  }
+
+  private mountSnapIndicator(item: AnyItem): void {
+    if (!item) return;
+    item.guide = true;
+    item.locked = true;
+    if (!item.data) item.data = {};
+    item.data.isUICursor = true;
+    const layer = this.ensureGuideLayer();
+    if (item.layer !== layer) layer.addChild(item);
+    const layers = this.scope.project.layers;
+    if (layers && layer.index !== layers.length - 1) layer.bringToFront();
+  }
+
+  private isGuideItem(item: AnyItem): boolean {
+    if (!item) return false;
+    if (item.guide) return true;
+    const layer = item.layer;
+    return !!(layer && layer !== item && layer.guide);
+  }
+
+  private setGuideLayersVisible(visible: boolean): void {
+    const project = this.scope.project;
+    if (!project || !project.layers) return;
+    for (const layer of project.layers as AnyItem[]) {
+      if (layer && layer.guide) layer.visible = visible;
+    }
+    if (this.scope.view) this.scope.view.update();
+  }
+
+  private onBeforePrint = (): void => {
+    this.setGuideLayersVisible(false);
+  };
+
+  private onAfterPrint = (): void => {
+    this.setGuideLayersVisible(true);
+  };
+
   // --- Mouse (NibGliderApp.js) ---
   private isNonContentItem(item: AnyItem): boolean {
     if (!item) return true;
-    if (item === this.pathSnapCursor || item === this.gridCursor) return true;
+    // project.hitTest's match callback receives a HitResult, not the item.
+    // HitResult has getClassName(), not a className bean.
+    if (typeof item.getClassName === 'function' && item.getClassName() === 'HitResult') {
+      item = item.item;
+    }
+    if (!item) return true;
+    if (this.isGuideItem(item)) return true;
+    if (
+      item === this.pathSnapCursor ||
+      item === this.pointSnapCursor ||
+      item === this.gridCursor
+    ) {
+      return true;
+    }
     if (item.data && item.data.isUICursor) return true;
     if (this.gridLayer && (item === this.gridLayer || item.layer === this.gridLayer)) {
       return true;
@@ -5238,7 +5305,7 @@ export class NibGliderEngine {
       stroke: true,
       fill: true,
       tolerance: 5,
-      match: (item: AnyItem) => !self.isNonContentItem(item),
+      match: (hit: AnyItem) => !self.isNonContentItem(hit),
     });
   }
 

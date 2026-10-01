@@ -6,7 +6,7 @@
 
 [ ] Regular Polygon : concavity settings.
 
-[ ] issue: in the code the snapping points that are drawn are made out of PaperJS canvas vector objects but
+[x] issue: in the code the snapping points that are drawn are made out of PaperJS canvas vector objects but
 they can be clicked by the user, might be printed.
 
 [ ] in the code we want to set the data foundation for measurement and page units, whether the user
@@ -113,6 +113,10 @@ or selected shape that follows cursor and stamp (W) will stamp it.
 A polygon's points will snap to any shape's as the Radial Stamp is on.
 Related: Moving-Point-Snap, Moving-Edge-Snap: as user moves shape, its points will snap
 to other edges or points.
+
+
+ROTATE AND SCALE KEYS
+[ ] If snapping to Points, will rotate around the hovered point.
 
 
 [ ] Rect By Diagonal: setting on key: [full rect | half rect | quarter rect]
