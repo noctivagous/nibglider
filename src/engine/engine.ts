@@ -171,12 +171,14 @@ export class NibGliderEngine {
   splineTensionDefault = 0.4;
   splineTension = 0.4;
 
-  // --- Path end gestures (all on by default) ---
-  // END near the active path's own start closes onto it; END near
-  // another open path's endpoint joins the two paths. Beginning a
-  // stroke always starts a new path, even over an existing endpoint.
-  closeShapeOnEndNearStart = true;
-  joinPathsOnEndNearEndpoint = true;
+  // --- Deposit-time point handling (internal for now; a UI feature later).
+  // 0 deposits strokes exactly as drawn (no action); 1 is Auto-Join
+  // Drawn Points: a stroke ending near its own start closes onto it, a
+  // stroke ending near another open path's endpoint joins into it, and
+  // a stroke begun on an open path's endpoint welds its start into it.
+  // Beginning a stroke always starts a new path object, even over an
+  // existing endpoint; the welding happens at deposit time.
+  depositPointMode = 1;
   endpointSnapTolerance = 12;
   globalStrokeColor = '#107cff';
   globalFillColor = '#000000';
@@ -2232,6 +2234,37 @@ export class NibGliderEngine {
     if (seg.handleOut) added.handleOut = seg.handleOut.clone();
   }
 
+  // Weld a stroke's start onto another open path's endpoint at deposit:
+  // the joint snaps onto the target endpoint and the stroke's own points
+  // join the target (appended past its end, or prepended before its
+  // start), so an open stroke begun on an endpoint becomes part of that
+  // path. The surviving target keeps its own styles.
+  private joinDrawingStartInto(target: AnyItem, atStart: boolean): void {
+    const drawing = this.path;
+    const ours = drawing.segments;
+    const tsegs = target.segments;
+    const joint = atStart ? tsegs[0].point : tsegs[tsegs.length - 1].point;
+    ours[0].point = joint.clone();
+    if (atStart) {
+      // Prepending reverses point order, so each joint's handles swap
+      // sides to preserve the drawn curvature.
+      for (let i = 1; i < ours.length; i++) {
+        const seg = ours[i];
+        const inserted = target.insertSegment(0, seg.point.clone());
+        if (inserted) {
+          if (seg.handleOut) inserted.handleIn = seg.handleOut.clone();
+          if (seg.handleIn) inserted.handleOut = seg.handleIn.clone();
+        }
+      }
+    } else {
+      for (let i = 1; i < ours.length; i++) {
+        this.cloneSegmentInto(target, ours[i]);
+      }
+    }
+    this.path = target;
+    drawing.remove();
+  }
+
   // END on another open path's endpoint: connect the drawing to it. The
   // cursor point snaps onto the target endpoint for a clean joint, and
   // the duplicate joint point is skipped so no zero-length segment forms.
@@ -4212,8 +4245,9 @@ export class NibGliderEngine {
       const segs = this.path.segments;
       const first = segs.length > 0 ? segs[0].point : null;
       const tol = this.endpointTolerance();
+      const autoJoin = this.depositPointMode === 1;
       if (
-        this.closeShapeOnEndNearStart &&
+        autoJoin &&
         first &&
         segs.length >= 3 &&
         this.mousePt &&
@@ -4225,13 +4259,23 @@ export class NibGliderEngine {
         this.path.add(first.clone());
         this.applyCurrentStyles(this.path);
         this.path.closed = true;
-      } else if (this.joinPathsOnEndNearEndpoint && this.mousePt) {
+      } else if (autoJoin && this.mousePt) {
         const hit = this.findOpenEndpointNear(this.mousePt);
         if (hit) {
           this.joinDrawingInto(hit.path, hit.atStart);
         } else {
-          this.applyCurrentStyles(this.path);
-          if (this.fillEnabled) this.path.closed = true;
+          // No end join: weld a start begun on an open endpoint so an
+          // open stroke still joins into the path it started from.
+          const startHit =
+            first && segs.length >= 2
+              ? this.findOpenEndpointNear(first)
+              : null;
+          if (startHit) {
+            this.joinDrawingStartInto(startHit.path, startHit.atStart);
+          } else {
+            this.applyCurrentStyles(this.path);
+            if (this.fillEnabled) this.path.closed = true;
+          }
         }
       } else {
         this.applyCurrentStyles(this.path);

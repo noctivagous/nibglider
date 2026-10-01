@@ -1,5 +1,7 @@
-[ ] we want to set the data foundation for measurement and page units, whether the user
-is using SI Units or English Unit.  ISO page sizes vs. US page sizes.
+[ ] in the code we want to set the data foundation for measurement and page units, whether the user
+is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app should
+be aware of pt, inch, pica, cm.  users will stay within mm to m for SI
+and inches to feet for English Units.
 
 [ ] add different grid presentation variations.  for example, it may
 still snap to a 10x10 pt grid.  We may want inch intervals emphasized
@@ -15,6 +17,9 @@ SECTIONS IN PANELS
 user clicks it.  for now only Snapping will have menu items.  what they will be is
 a checklist corresponding to which snapping types are shown in the UI and
 all of the ones shown now will be shown except for Aspect, which will be turned off.
+For the panel section that has Redo and Undo, it will show: Undo/Redo, Grouping,
+and History as segments of the section to turn on and off.  For the Snapping
+icon, it will also show inches/pt/cm with the default being pt.
 
 PATH KEYS
 Moves to Path Manip. KB Layout or shows number keys as Path manip keys:
@@ -38,6 +43,26 @@ parametric adaptive shapes and the shape's appearance will look
 right according to the angle and radius, as it is configured.  That is,
 the parametric adaptive shape can be configured to react in
 different ways to the live drawing.
+
+---
+
+[ ] We should have internal to the code for now,
+different modes for handling points and open paths
+as they are deposited.  The base would be 0 - no action.
+Whatever the user draws just gets deposited as is.
+users will not want this most of the time but
+sometimes they will in complex drawings, so later it will be a UI feature.
+Right now, even with Points Snapping disabled,
+we have as the default that we 
+automatically connect the points to path points close to the cursor.
+We should have a name for this, Auto-Join Drawn Points.
+Secondly, right now it is the case that if the user draws on a point at
+the end of a segment of an open shape and then connects
+it to the other end, it will join what the user made into the
+shape and close it.  but if the user just starts drawing on the end
+of a segment and then leaves the shape open, it won't
+join those segments of what the user made into the path.
+
 
 
 ---
