@@ -150,6 +150,11 @@ const GLYPH = {
       dot(12, 12, 1.65) +
       dot(19.1, 8.2)
   ),
+  circleTangent: bg(
+    `<circle cx="10.4" cy="12" r="7"/>` +
+      `<path d="M17.4 4.5 V19.5"/>` +
+      dot(17.4, 12)
+  ),
   dragLock: bg(
     `<path d="M12 3.2 V7.4 M12 16.6 V20.8 M3.2 12 H7.4 M16.6 12 H20.8"/>` +
       `<path d="M12 3.2 L10.2 5.4 M12 3.2 L13.8 5.4"/>` +
@@ -203,7 +208,7 @@ const ROW4: KeyDef[] = [
   { id: 'KeyB', dataKey: 'b', className: 'keyboardkey bKey ', transform: 'translate(38%, 0%)', html: '' },
   { id: 'KeyN', dataKey: 'n', className: 'keyboardkey nKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', html: 'CIRCLE<br/>BY DIAMETER', bg: GLYPH.circleDiameter, badge: 'circle' },
   { id: 'KeyM', dataKey: 'm', className: 'keyboardkey mKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', html: 'CIRCLE<br/>BY RADIUS', bg: GLYPH.circleRadius, badge: 'circle' },
-  { id: 'Comma', dataKey: ',', className: 'keyboardkey commaKey ', transform: 'translate(38%, 0%)', html: '' },
+  { id: 'Comma', dataKey: ',', className: 'keyboardkey commaKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', html: 'RADIAL<br/>STAMP', bg: GLYPH.circleTangent, badge: 'circle' },
   { id: 'Period', dataKey: '.', className: 'keyboardkey periodKey ', transform: 'translate(38%, 0%)', html: '' },
   { id: 'Slash', dataKey: '/', className: 'keyboardkey forwardSlashKey OtherKey enabledButton', transform: 'translate(38%, 0%)', html: 'GRID<br/>TOGGLE', bg: GLYPH.grid },
   { id: 'ShiftRight', dataKey: 'shift', className: 'keyboardkey shiftKeyRight OtherKey hidden', transform: 'translate(15%, 0%)', html: '' },

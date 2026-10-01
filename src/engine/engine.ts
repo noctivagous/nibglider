@@ -10,9 +10,29 @@ import { UndoManager, type UndoCommand } from './undoManager';
 export type ShapeType =
   | 'circle_radius'
   | 'circle_diameter'
+  | 'circle_radial_stamp'
   | 'rectangle_diagonal'
   | 'rectangle_two_edges'
   | 'rectangle_centerline';
+
+// A key remap that applies while a live drawing preview is active. The
+// engine checks registered bindings before the idle (selection) handlers,
+// so the same physical key can adjust the live preview instead. Future
+// components (e.g. a repeat-circle counter) register here without touching
+// handleKeyDown. Digit0..Digit9 codes are reserved as slots for such
+// future bindings.
+export interface LiveKeyBinding {
+  /** Stable id, e.g. 'live-scale-down'. */
+  id: string;
+  /** Keycap labels shown in the Status Box, e.g. ['[']. */
+  keys: string[];
+  /** Short status description, e.g. 'scale'. */
+  label: string;
+  match: (event: KeyboardEvent) => boolean;
+  /** Whether this binding applies right now. */
+  applies: () => boolean;
+  apply: (event: KeyboardEvent) => void;
+}
 
 export type CircleInnerShape =
   | 'circle'
@@ -285,6 +305,20 @@ export class NibGliderEngine {
   quadPath: AnyItem = null;
   quadPointCount = 0;
   shapeGuideAngle = 0;
+  // Live-drawing adjustments: multiplicative preview scale and additive
+  // preview rotation (degrees) applied to circle-mode previews. Reset on
+  // every session start/end/cancel; W stamps keep them (drawing continues).
+  liveScale = 1;
+  liveRotateOffset = 0;
+  // Base circumradius of the Radial Stamp shape at 1x magnification,
+  // independent of the placement-circle radius (a future radius-relative
+  // mode may scale from a reference radius instead).
+  radialStampBaseRadius = 45;
+  private liveKeyBindings: LiveKeyBinding[] = [];
+  /** Unified live-drawing state across path, shape, and quad sessions. */
+  get isLiveDrawing(): boolean {
+    return this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad;
+  }
   previewInner: AnyItem = null;
   previewSplineText: AnyItem = null;
   previewShape: AnyItem = null;
@@ -319,6 +353,7 @@ export class NibGliderEngine {
   constructor(scope: paper.PaperScope, onKeyActivity: (a: KeyActivity) => void) {
     this.scope = scope;
     this.onKeyActivity = onKeyActivity;
+    this.registerBuiltInLiveKeys();
   }
 
   // --- React bridge: version counter + subscription ---
@@ -2061,6 +2096,7 @@ export class NibGliderEngine {
     const idx = this.selectedItems.indexOf(hit.path);
     if (idx !== -1) this.selectedItems.splice(idx, 1);
     if (this.isDrawingPath === false) this.isDrawingPath = true;
+    this.resetLiveAdjust();
     return true;
   }
 
@@ -2859,6 +2895,7 @@ export class NibGliderEngine {
       this.isDrawingQuad = false;
       this.quadPointCount = 0;
     }
+    this.resetLiveAdjust();
     this.notify();
   }
 
@@ -3792,6 +3829,7 @@ export class NibGliderEngine {
     }
     if (this.isDrawingShape) this.cancelCurrentDrawingOperation();
     if (!this.mousePt) return;
+    this.resetLiveAdjust();
     this.shapeStartPoint = this.mousePt.clone();
     this.shapeType = 'rectangle_centerline';
     this.shapeWidth = this.lastCenterlineWidth;
@@ -3863,6 +3901,7 @@ export class NibGliderEngine {
       return;
     }
     if (this.isDrawingShape || !this.mousePt) return;
+    this.resetLiveAdjust();
     this.shapeStartPoint = this.mousePt.clone();
     this.shapeType = 'rectangle_two_edges';
     this.shapePt2 = null;
@@ -3900,6 +3939,7 @@ export class NibGliderEngine {
       this.applyStrokeGeometry(this.quadPath);
       this.quadPointCount = 1;
       this.isDrawingQuad = true;
+      this.resetLiveAdjust();
     } else {
       this.quadPath.add(this.mousePt);
       this.quadPointCount++;
@@ -3915,6 +3955,7 @@ export class NibGliderEngine {
         this.quadPath = null;
         this.isDrawingQuad = false;
         this.quadPointCount = 0;
+        this.resetLiveAdjust();
         this.recordSceneCommand('Deposit shape', histBefore, histSel, [
           placed,
         ]);
@@ -3950,12 +3991,21 @@ export class NibGliderEngine {
         this.previewShape &&
         this.previewShape.radius > 0
       ) {
-        const center = this.previewShape.position;
+        const isRadial = this.shapeType === 'circle_radial_stamp';
+        const center =
+          isRadial && this.mousePt
+            ? this.mousePt.clone()
+            : this.previewShape.position;
         const radius = this.previewShape.radius;
         const strokeW = this.strokeEnabled ? this.globalStrokeWidth : 0;
-        const iradius = Math.max(0, radius - strokeW / 2);
-        if (iradius > 0) {
-          const stampedInner = this.createInnerShape(center, iradius, 'stroke', this.shapeGuideAngle);
+        const iradius = isRadial
+          ? this.radialStampBaseRadius * this.liveScale
+          : Math.max(0, radius - strokeW / 2) * this.liveScale;
+        const rotation = isRadial
+          ? this.radialStampRotation()
+          : this.shapeGuideAngle + this.liveRotateOffset;
+        if (center && iradius > 0) {
+          const stampedInner = this.createInnerShape(center, iradius, 'stroke', rotation);
           if (stampedInner) {
             this.applyCurrentStyles(this.shapePartOf(stampedInner));
             stampedInner.selected = false;
@@ -4088,6 +4138,7 @@ export class NibGliderEngine {
       this.path = null;
       this.isDrawingPath = false;
       this.continuedPathBaseCount = null;
+      this.resetLiveAdjust();
       this.clearSplineTextPreview();
     } else if (this.isDrawingShape) {
       deposited.push(...this.endShapeAsStroke());
@@ -4110,6 +4161,7 @@ export class NibGliderEngine {
       this.quadPath = null;
       this.isDrawingQuad = false;
       this.quadPointCount = 0;
+      this.resetLiveAdjust();
     }
     this.recordSceneCommand('Deposit shape', histBefore, histSel, deposited);
     this.updateTextContent();
@@ -4140,7 +4192,10 @@ export class NibGliderEngine {
         newSegment.handleOut = new scope.Point(0, 0);
       }
     }
-    if (this.isDrawingPath === false) this.isDrawingPath = true;
+    if (this.isDrawingPath === false) {
+      this.isDrawingPath = true;
+      this.resetLiveAdjust();
+    }
     this.updateTextContent();
     this.notify();
   }
@@ -4166,7 +4221,10 @@ export class NibGliderEngine {
       const newSegment = this.path.add(this.mousePt);
       this.smoothLastSplineJoint(newSegment);
     }
-    if (this.isDrawingPath === false) this.isDrawingPath = true;
+    if (this.isDrawingPath === false) {
+      this.isDrawingPath = true;
+      this.resetLiveAdjust();
+    }
     this.updateTextContent();
     this.notify();
   }
@@ -4250,12 +4308,162 @@ export class NibGliderEngine {
     this.path = null;
     this.isDrawingPath = false;
     this.continuedPathBaseCount = null;
+    this.resetLiveAdjust();
     this.clearSplineTextPreview();
     this.recordSceneCommand('Deposit shape', histBefore, histSel, [
       completed,
     ]);
     this.updateTextContent();
     this.notify();
+  }
+
+  // --- Live-drawing key remaps ---
+  // Reserved number-key slots for future live bindings (repeat counts,
+  // radius-reference keys, parametric modes). Unbound for now.
+  readonly reservedLiveKeySlots = [
+    'Digit1',
+    'Digit2',
+    'Digit3',
+    'Digit4',
+    'Digit5',
+    'Digit6',
+    'Digit7',
+    'Digit8',
+    'Digit9',
+    'Digit0',
+  ];
+
+  registerLiveKeyBinding(binding: LiveKeyBinding): void {
+    if (!this.liveKeyBindings.some((b) => b.id === binding.id)) {
+      this.liveKeyBindings.push(binding);
+    }
+  }
+
+  private resetLiveAdjust(): void {
+    this.liveScale = 1;
+    this.liveRotateOffset = 0;
+  }
+
+  // Live scale/rotate apply to in-progress paths/quads (transformed about
+  // the first point) and to circle-mode previews (folded into the fitted
+  // shape). Rect Keys modes keep their existing behavior for now.
+  private liveAdjustApplies(): boolean {
+    if (this.isDrawingPath || this.isDrawingQuad) return true;
+    return (
+      this.isDrawingShape &&
+      this.shapeType != null &&
+      this.shapeType.startsWith('circle_')
+    );
+  }
+
+  // Rotation baked into Radial Stamp geometry: tangent to the placement
+  // circle (guide angle + 90deg) plus the live rotation offset.
+  private radialStampRotation(): number {
+    return this.shapeGuideAngle + 90 + this.liveRotateOffset;
+  }
+
+  private liveScaleFactor(event: KeyboardEvent, dir: -1 | 1): number {
+    if (event.shiftKey) return dir < 0 ? 0.8 : 1.25;
+    if (event.altKey) return dir < 0 ? 0.98 : 1.02;
+    return dir < 0 ? 0.9 : 1.1;
+  }
+
+  private applyLiveScale(event: KeyboardEvent, dir: -1 | 1): void {
+    const f = this.liveScaleFactor(event, dir);
+    if (this.isDrawingPath && this.path && this.path.segments.length > 0) {
+      this.path.scale(f, this.path.segments[0].point);
+      this.refreshSplineTextPreview();
+    } else if (
+      this.isDrawingQuad &&
+      this.quadPath &&
+      this.quadPath.segments.length > 0
+    ) {
+      this.quadPath.scale(f, this.quadPath.segments[0].point);
+    } else {
+      this.liveScale = Math.min(20, Math.max(0.05, this.liveScale * f));
+      this.updateShapePreview();
+    }
+    this.updateTextContent();
+    this.notify();
+  }
+
+  private liveRotateStep(event: KeyboardEvent): number {
+    if (event.shiftKey) return 45;
+    if (event.altKey) return 5;
+    return 10;
+  }
+
+  private applyLiveRotate(event: KeyboardEvent, dir: -1 | 1): void {
+    const angle = dir * this.liveRotateStep(event);
+    if (this.isDrawingPath && this.path && this.path.segments.length > 0) {
+      this.path.rotate(angle, this.path.segments[0].point);
+      this.refreshSplineTextPreview();
+    } else if (
+      this.isDrawingQuad &&
+      this.quadPath &&
+      this.quadPath.segments.length > 0
+    ) {
+      this.quadPath.rotate(angle, this.quadPath.segments[0].point);
+    } else {
+      this.liveRotateOffset += angle;
+      this.updateShapePreview();
+    }
+    this.updateTextContent();
+    this.notify();
+  }
+
+  private registerBuiltInLiveKeys(): void {
+    // Match by physical code: with Shift/Alt held, event.key reports the
+    // shifted character ('{', ':', ...) instead of '[', ';', etc.
+    this.registerLiveKeyBinding({
+      id: 'live-scale-down',
+      keys: ['['],
+      label: 'scale',
+      match: (event) =>
+        event.code === 'BracketLeft' || event.key === '[',
+      applies: () => this.liveAdjustApplies(),
+      apply: (event) => this.applyLiveScale(event, -1),
+    });
+    this.registerLiveKeyBinding({
+      id: 'live-scale-up',
+      keys: [']'],
+      label: 'scale',
+      match: (event) =>
+        event.code === 'BracketRight' || event.key === ']',
+      applies: () => this.liveAdjustApplies(),
+      apply: (event) => this.applyLiveScale(event, 1),
+    });
+    this.registerLiveKeyBinding({
+      id: 'live-rotate-down',
+      keys: [';'],
+      label: 'rotate',
+      match: (event) =>
+        event.code === 'Semicolon' || event.key === ';',
+      applies: () => this.liveAdjustApplies(),
+      apply: (event) => this.applyLiveRotate(event, -1),
+    });
+    this.registerLiveKeyBinding({
+      id: 'live-rotate-up',
+      keys: ["'"],
+      label: 'rotate',
+      match: (event) =>
+        event.code === 'Quote' || event.key === "'",
+      applies: () => this.liveAdjustApplies(),
+      apply: (event) => this.applyLiveRotate(event, 1),
+    });
+  }
+
+  // First matching + applicable live binding wins. Returns true when a
+  // binding consumed the event.
+  private runLiveKeyBindings(event: KeyboardEvent): boolean {
+    if (!this.isLiveDrawing) return false;
+    for (const b of this.liveKeyBindings) {
+      if (b.match(event) && b.applies()) {
+        b.apply(event);
+        return true;
+      }
+    }
+    return false;
   }
 
   circleKC(mode: string): void {
@@ -4269,6 +4477,7 @@ export class NibGliderEngine {
       return;
     }
     if (this.isDrawingShape || !this.mousePt) return;
+    this.resetLiveAdjust();
     this.shapeStartPoint = this.mousePt.clone();
     this.shapeType = ('circle_' + mode) as ShapeType;
     this.isDrawingShape = true;
@@ -4286,6 +4495,54 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  // Radial Stamp (, key): the first press fixes the placement-circle
+  // origin; every later press stamps the riding shape (tangent point,
+  // tangent-rotated) and stays in the session until END/Complete/Cancel.
+  radialStampKC(): void {
+    const scope = this.scope;
+    if (this.shapeType === 'circle_radial_stamp') {
+      this.stampCurrentPreview();
+      return;
+    }
+    if (this.shapeType != null && this.shapeType.startsWith('circle_')) {
+      const histBefore = this.contentItems();
+      const histSel = [...this.selectedItems];
+      const placed = this.endShapeAsStroke();
+      this.recordSceneCommand('Deposit shape', histBefore, histSel, placed);
+      this.updateTextContent();
+      return;
+    }
+    if (this.isDrawingShape || !this.mousePt) return;
+    this.resetLiveAdjust();
+    this.shapeStartPoint = this.mousePt.clone();
+    this.shapeType = 'circle_radial_stamp';
+    this.isDrawingShape = true;
+    this.previewShape = new scope.Shape.Circle(this.shapeStartPoint, 0);
+    this.stylePreviewFrame(this.previewShape);
+    scope.project.activeLayer.addChild(this.previewShape);
+    this.previewLine = new scope.Path({
+      segments: [this.shapeStartPoint, this.shapeStartPoint],
+      strokeColor: new scope.Color(0.5),
+      strokeWidth: 1,
+      strokeDashArray: [4, 4],
+    });
+    scope.project.activeLayer.addChild(this.previewLine);
+    this.updateTextContent();
+    this.notify();
+  }
+
+  // END / Complete Shape in Radial Stamp: deposit the live riding shape
+  // at the tangent point, then dismiss the placement guide. Stamped copies
+  // are already committed scene items.
+  finishRadialStamp(): void {
+    if (this.shapeType !== 'circle_radial_stamp') return;
+    const histBefore = this.contentItems();
+    const histSel = [...this.selectedItems];
+    const placed = this.endShapeAsStroke();
+    this.recordSceneCommand('Deposit shape', histBefore, histSel, placed);
+    this.updateTextContent();
+  }
+
   rectDiagonalKC(): void {
     const scope = this.scope;
     if (this.shapeType === 'rectangle_diagonal') {
@@ -4297,6 +4554,7 @@ export class NibGliderEngine {
       return;
     }
     if (this.isDrawingShape || !this.mousePt) return;
+    this.resetLiveAdjust();
     this.shapeStartPoint = this.mousePt.clone();
     this.shapeType = 'rectangle_diagonal';
     this.isDrawingShape = true;
@@ -4330,12 +4588,24 @@ export class NibGliderEngine {
       this.rectangleInnerShapeType !== 'rectangle';
     if (shapeType.startsWith('circle_')) {
       if (!this.previewShape || this.previewShape.radius === 0) return [];
-      const center = this.previewShape.position;
+      // Radial Stamp deposits the riding shape at the tangent point (the
+      // cursor), not the inscribed guide circle.
+      const isRadial = shapeType === 'circle_radial_stamp';
+      const center =
+        isRadial && this.mousePt
+          ? this.mousePt.clone()
+          : this.previewShape.position;
+      if (!center) return [];
       const radius = this.previewShape.radius;
       const strokeW = this.strokeEnabled ? this.globalStrokeWidth : 0;
-      const iradius = Math.max(0, radius - strokeW / 2);
+      const iradius = isRadial
+        ? this.radialStampBaseRadius * this.liveScale
+        : Math.max(0, radius - strokeW / 2) * this.liveScale;
+      const rotation = isRadial
+        ? this.radialStampRotation()
+        : this.shapeGuideAngle + this.liveRotateOffset;
       if (iradius > 0) {
-        const innerPath = this.createInnerShape(center, iradius, 'stroke', this.shapeGuideAngle);
+        const innerPath = this.createInnerShape(center, iradius, 'stroke', rotation);
         if (innerPath) {
           this.applyCurrentStyles(this.shapePartOf(innerPath));
           innerPath.selected = false;
@@ -4437,6 +4707,7 @@ export class NibGliderEngine {
     this.shapePt2 = null;
     this.previewShape = null;
     this.previewLine = null;
+    this.resetLiveAdjust();
     this.updateTextContent();
     this.notify();
     return placed;
@@ -4567,7 +4838,7 @@ export class NibGliderEngine {
   // the group color; no paper items involved.
   statusKeyGroup(key: string): StatusKeyGroup {
     const k = key.toLowerCase();
-    if (k === 'n' || k === 'm') return 'circle';
+    if (k === 'n' || k === 'm' || k === ',') return 'circle';
     if (k === 'i' || k === 'u' || k === 'y') return 'rect';
     if (k === 'o') return 'quad';
     if (k === 'w' || k === '[' || k === ']' || k === ';' || k === "'")
@@ -4871,6 +5142,14 @@ export class NibGliderEngine {
       this.previewShape.position = this.shapeStartPoint;
       this.previewShape.radius = this.shapeStartPoint.getDistance(endPt);
       this.shapeGuideAngle = this.mousePt.subtract(this.previewShape.position).angle;
+    } else if (this.shapeType === 'circle_radial_stamp') {
+      // Placement guide: origin fixed at the start point, radius follows
+      // the cursor. The shape itself rides the tangent point; see below.
+      this.previewShape.position = this.shapeStartPoint;
+      this.previewShape.radius = this.shapeStartPoint.getDistance(endPt);
+      if (this.previewShape.radius > 0) {
+        this.shapeGuideAngle = this.mousePt.subtract(this.shapeStartPoint).angle;
+      }
     } else if (this.shapeType === 'circle_diameter') {
       this.previewShape.position = this.shapeStartPoint.add(endPt).divide(2);
       this.previewShape.radius = this.shapeStartPoint.getDistance(endPt) / 2;
@@ -4893,6 +5172,10 @@ export class NibGliderEngine {
       this.previewInner.remove();
       this.previewInner = null;
     }
+    if (this.shapeType === 'circle_radial_stamp') {
+      this.refreshRadialStampPreview();
+      return;
+    }
     if (this.isDrawingShape && this.innerShapeType !== 'none') {
       let framePreview: AnyItem = null;
       if (
@@ -4901,13 +5184,15 @@ export class NibGliderEngine {
         this.previewShape &&
         this.previewShape.radius > 0
       ) {
-        const pradius = this.previewShape.radius - this.previewShape.strokeWidth / 2;
+        const pradius =
+          (this.previewShape.radius - this.previewShape.strokeWidth / 2) *
+          this.liveScale;
         if (pradius > 0) {
           this.previewInner = this.createInnerShape(
             this.previewShape.position,
             pradius,
             'preview',
-            this.shapeGuideAngle,
+            this.shapeGuideAngle + this.liveRotateOffset,
           );
           if (this.previewInner) {
             this.addPreviewShadow(this.previewInner);
@@ -4947,6 +5232,35 @@ export class NibGliderEngine {
           }
         }
       }
+    }
+  }
+
+  // Radial Stamp live preview: the selected Circle Keys shape rides the
+  // tangent point (the cursor) on the placement circle, rotated tangent to
+  // it. Size is the fixed base radius times the live scale factor.
+  private refreshRadialStampPreview(): void {
+    const scope = this.scope;
+    if (
+      !this.isDrawingShape ||
+      this.shapeType !== 'circle_radial_stamp' ||
+      !this.mousePt
+    ) {
+      return;
+    }
+    if (this.innerShapeType === 'none') return;
+    if (!this.previewShape || !(this.previewShape.radius > 0)) return;
+    const tangentPoint = this.mousePt.clone();
+    const radius = this.radialStampBaseRadius * this.liveScale;
+    if (!(radius > 0)) return;
+    this.previewInner = this.createInnerShape(
+      tangentPoint,
+      radius,
+      'preview',
+      this.radialStampRotation(),
+    );
+    if (this.previewInner) {
+      this.addPreviewShadow(this.previewInner);
+      scope.project.activeLayer.addChild(this.previewInner);
     }
   }
 
@@ -5106,7 +5420,10 @@ export class NibGliderEngine {
         this.updateShapePreview();
         this.notify();
         return;
-      } else if (this.selectedItems.length > 0) {
+      }
+      // Live drawing takes precedence over idle selection scaling.
+      if (this.runLiveKeyBindings(event)) return;
+      if (this.selectedItems.length > 0) {
         const center = this.collectiveCenter(this.selectedItems);
         // Shift = bigger step, Alt = finer step.
         const down = event.shiftKey ? 0.8 : event.altKey ? 0.98 : 0.9;
@@ -5126,6 +5443,8 @@ export class NibGliderEngine {
     const isRotateUp =
       event.code === 'Quote' || event.key === "'";
     if (isRotateDown || isRotateUp) {
+      // Live drawing takes precedence over idle selection rotation.
+      if (this.runLiveKeyBindings(event)) return;
       if (this.selectedItems.length > 0) {
         const center = this.collectiveCenter(this.selectedItems);
         // Shift = 45°, Alt = 5°, otherwise 10°.
@@ -5183,6 +5502,10 @@ export class NibGliderEngine {
     }
     if (keyLower === 'm') {
       this.circleKC('radius');
+      return;
+    }
+    if (event.code === 'Comma' || event.key === ',') {
+      this.radialStampKC();
       return;
     }
     if (keyLower === 'o') {
@@ -5247,7 +5570,11 @@ export class NibGliderEngine {
     }
     if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad) {
       if (keyLower === 'r' || keyLower === 'e' || keyLower === 's' || keyLower === 'a') {
-        if (keyLower === 'r' && this.isDrawingPath) {
+        // In Radial Stamp, END and Complete Shape both deposit the live
+        // shape and finish the stamping session.
+        if (this.shapeType === 'circle_radial_stamp') {
+          this.finishRadialStamp();
+        } else if (keyLower === 'r' && this.isDrawingPath) {
           this.completeShapeWithSpline();
         } else {
           this.endPathOrShape();
@@ -5389,6 +5716,8 @@ export class NibGliderEngine {
       ) {
         const mode = this.shapeType === 'circle_radius' ? 'radius' : 'diameter';
         state.push(L('title', [T('Circle by (' + mode + ')')]));
+      } else if (this.shapeType === 'circle_radial_stamp') {
+        state.push(L('title', [T('Circle Radial Stamp')]));
       } else if (this.shapeType === 'rectangle_diagonal') {
         state.push(L('title', [T('Rectangle by Diagonal')]));
       } else if (this.shapeType === 'rectangle_two_edges') {
@@ -5400,16 +5729,38 @@ export class NibGliderEngine {
       const aspectLabel = this.liveRectAspectLabel();
       if (aspectLabel) state.push(L('meta', [T('Aspect ' + aspectLabel)]));
       if (this.shapeType != null && this.shapeType.startsWith('circle_')) {
-        const finishKey = this.shapeType === 'circle_diameter' ? 'N' : 'M';
-        steps.push(
-          L('hint', [
-            T('Press '),
-            K(finishKey),
-            T(' to finish or '),
-            K('W'),
-            T(' to stamp.'),
-          ]),
-        );
+        if (this.shapeType === 'circle_radial_stamp') {
+          steps.push(
+            L('hint', [
+              T('Press '),
+              K(','),
+              T(' or '),
+              K('W'),
+              T(' to stamp. Move mouse to orbit the origin.'),
+            ]),
+          );
+          steps.push(
+            L('hint', [
+              K('A'),
+              T(' / '),
+              K('R'),
+              T(' to deposit + finish, '),
+              K('Q'),
+              T(' to cancel.'),
+            ]),
+          );
+        } else {
+          const finishKey = this.shapeType === 'circle_diameter' ? 'N' : 'M';
+          steps.push(
+            L('hint', [
+              T('Press '),
+              K(finishKey),
+              T(' to finish or '),
+              K('W'),
+              T(' to stamp.'),
+            ]),
+          );
+        }
       } else if (this.shapeType === 'rectangle_diagonal') {
         steps.push(
           L('hint', [
@@ -5477,6 +5828,28 @@ export class NibGliderEngine {
           T(': cancel'),
         ]),
       );
+    }
+    // Live key remaps, driven by the binding registry so future bindings
+    // (repeat counts, radius reference) appear here automatically.
+    if (this.isLiveDrawing) {
+      const liveByLabel = new Map<string, string[]>();
+      for (const b of this.liveKeyBindings) {
+        if (!b.applies()) continue;
+        const keys = liveByLabel.get(b.label) ?? [];
+        for (const k of b.keys) {
+          if (!keys.includes(k)) keys.push(k);
+        }
+        liveByLabel.set(b.label, keys);
+      }
+      for (const [label, keys] of liveByLabel) {
+        const runs: StatusRun[] = [];
+        keys.forEach((k, i) => {
+          if (i > 0) runs.push(T(' / '));
+          runs.push(K(k));
+        });
+        runs.push(T(` ${label}`));
+        steps.push(L('hint', runs));
+      }
     }
     if (this.history.canUndo() || this.history.canRedo()) {
       const bits: string[] = [];
