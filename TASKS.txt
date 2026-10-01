@@ -1,18 +1,42 @@
-[ ] application menus have two views, stack (current), grid
+[ ] application menus, currently to the left of drawing control sections in the Panel should have two views, 
+stack (current), and grid.  still hover to show.  top left is File (icon), top right is Document and Settings,
+  bottom left: Operations, bottom right:Layers and Obj.
+  File - New, Save, Export, Import, Walkthrough (future)
+  Document and Settings - for configuring the document (canvas size, m), the application.
+  Layers and Objects  operations like Bring To Front, Group selection, Duplicate Selection
+  Operations and Modes - operations.
+  make sure keyboard shortcuts can be listed next to the items.
+  [ ] in the code we want to set the data foundation for measurement and page units, whether the user
+is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app should
+be aware of pt, inch, pica, cm.  users will stay within mm to m for SI
+and inches to feet for English Units.
+
+
+  [x] the menu that appears when clicking on the icon for any panel section should have
+  at the bottom collapse/expand, providing another place for the user to collapse and
+  expand panel sections.  
+  
+[ ]  Make it so that the Panel rows wrap and if there aren't enough rows it will make new ones.
+we will do this in place of the current scheme where if the viewport shrinks horizontally
+the panel sections abridge.
+[ ] improve dragging of panel sections such that dragging it takes the entire section with
+the cursor during drag, not just the drag handle, and placing it in different areas will
+push the different sections around. 
 
 [ ] Text shape mode, Sign Text: [Display Text | Body Text | Sign Text]
    Sign Text - Text is placed inside the shape
-   and made to fit it.
+   and made to fit it.  Common for traditional sign work.
+   Likely implementation is taking the provided vector shape as a mesh 
+   that transforms the type glyphs.
 
 [ ] Regular Polygon : concavity settings.
+
+
 
 [x] issue: in the code the snapping points that are drawn are made out of PaperJS canvas vector objects but
 they can be clicked by the user, might be printed.
 
-[ ] in the code we want to set the data foundation for measurement and page units, whether the user
-is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app should
-be aware of pt, inch, pica, cm.  users will stay within mm to m for SI
-and inches to feet for English Units.
+
 
 [ ] add different grid presentation variations.  for example, it may
 still snap to a 10x10 pt grid.  We may want inch intervals emphasized
@@ -61,7 +85,7 @@ STATUS OVERLAY
 
 COMBINATORICS
 
-[ ] blobularity and live combinatorics - blobularity
+[ ] blobularity and live combinatorics - blobularity (factor)
 resembles metaballs, smooths out the effects
 of an addition or subtraction operation. additional
 factor will possibly add blob around the shapes.
@@ -92,6 +116,13 @@ loaded objects.
 
 [ ] Rect Keys > capsule.  params: cap shape  [semicircle | triangle], cap length
 [ ] Circle Keys > annulus shape.
+
+
+REPEAT SECTION IN PANEL
+[ ] Repeat section in panel.  has toggle switch.
+affects live drawing.  path repeat mode will
+repeat object(s) along, outside, or inside
+the path/object being drawn.
 
 
 [ ] Rect Keys > Baseline Grid (Typography).  Shows baselines for type.  Default: lorem ipsum filled based on Text settings,

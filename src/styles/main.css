@@ -384,7 +384,7 @@ article {
   gap: 8px;
   align-items: stretch;
   max-height: calc(100% - 20px);
-  overflow: hidden;
+  overflow: visible;
   z-index: 600;
   pointer-events: none;
 }
@@ -407,6 +407,7 @@ article {
    the freed space. The bar already clips overflow when fixed. */
 #canvasContainer #topOverlayStack #controlPanel.control-panel-fixed.panel-hidden {
   max-height: 0 !important;
+  overflow: hidden !important;
   opacity: 0;
   transform: translateY(-8px);
   pointer-events: none;
@@ -730,8 +731,7 @@ html, body {
   width: 100vw !important;
 }
 
-/* Two-row top bar: main cards on row one, snapping full-width on row two.
-   Every card is titlebar-only (no content area). */
+/* Sections stay full size and wrap onto new rows when the bar is narrow. */
 #controlPanel.control-panel-fixed {
   flex-shrink: 0 !important;
   margin: 0 !important;
@@ -742,8 +742,7 @@ html, body {
   flex-direction: column !important;
   align-items: stretch !important;
   gap: 0 !important;
-  overflow-x: hidden !important;
-  overflow-y: hidden !important;
+  overflow: visible !important;
   border-bottom: 1px solid var(--dp-border-soft) !important;
   border-right: none !important;
 }
@@ -752,30 +751,29 @@ html, body {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  flex-wrap: nowrap;
-  gap: 0;
+  flex-wrap: wrap;
+  gap: 6px;
   width: 100%;
+  max-width: 100%;
+  flex: 1 0 auto;
   min-width: 0;
   padding: 0;
   border: none;
   border-radius: 0;
   background: none;
   box-shadow: none;
-  white-space: nowrap;
 }
 
 #controlPanel .panel-group,
 #controlPanel .panel-card,
 #controlPanel .pane-titlebar.titlebar-single {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   white-space: nowrap;
 }
 
 #controlPanel .panel-row-main {
-  overflow-x: hidden;
-  overflow-y: hidden;
+  overflow: visible;
   padding: 0;
-  border-bottom: 1px solid var(--dp-border-soft);
   gap: 6px;
 }
 
@@ -791,8 +789,10 @@ html, body {
   background: rgba(255, 255, 255, 0.015);
   box-shadow: none;
   flex: 0 1 auto;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 #controlPanel .panel-group-keys {
@@ -804,17 +804,13 @@ html, body {
 }
 
 #controlPanel .panel-row-snap {
-  overflow-x: hidden;
-  overflow-y: hidden;
+  overflow: visible;
   gap: 6px;
 }
 
-#controlPanel .panel-row-snap #snappingControls {
-  flex: 0 0 auto;
-}
-
+#controlPanel .panel-row-snap #snappingControls,
 #controlPanel .panel-row-snap #gridControls {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
 }
 
 /* Fill runs a lot darker than the Stroke bevel. */
@@ -921,8 +917,7 @@ body {
   font-family: var(--font-tech-label);
   flex-wrap: nowrap;
   flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: hidden;
+  overflow: visible;
   container-type: inline-size;
   container-name: cpanel;
   scrollbar-width: thin;
@@ -961,9 +956,10 @@ body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  overflow: hidden;
+  overflow: visible;
   flex: 0 1 auto;
-  min-width: 0;
+  min-width: min(100%, max-content);
+  max-width: 100%;
 }
 
 #controlPanel .panel-row .panel-card + .panel-card {
@@ -977,12 +973,9 @@ body {
   width: auto;
 }
 
-#controlPanel #fillControls {
-  flex: 0 0 auto;
-}
-
+#controlPanel #fillControls,
 #controlPanel #strokeControls {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
 }
 
 #controlPanel .title-seg,
@@ -1052,14 +1045,14 @@ body {
   row-gap: 6px;
 }
 
-/* Single-row titlebar cards: everything lives in the legend bar,
-   no content area below. One row, horizontal scroll when narrow. */
+/* Titlebar controls wrap onto extra lines instead of being clipped. */
 #controlPanel .pane-titlebar.titlebar-single {
-  flex-wrap: nowrap;
-  overflow: hidden;
-  row-gap: 0;
+  flex-wrap: wrap;
+  overflow: visible;
+  row-gap: 4px;
   min-height: 34px;
   min-width: 0;
+  max-width: 100%;
 }
 
 #controlPanel .titlebar-single .panelParameters,
@@ -2860,191 +2853,6 @@ kbd,
   font-family: var(--font-tech-mono);
 }
 
-/* Progressive abridgement: hide secondary chrome, then shrink remaining
-   controls, as the panel narrows. Sections stay on one row. */
-@container cpanel (max-width: 1480px) {
-  #controlPanel .title-seg kbd {
-    display: none;
-  }
-
-  #controlPanel .pane-titlebar {
-    gap: 6px;
-  }
-}
-
-@container cpanel (max-width: 1360px) {
-  #controlPanel .snapping-seg .check-row > span,
-  #controlPanel .snapping-seg .snap-toggle > span,
-  #controlPanel .snapping-aspect .check-row > span {
-    display: none;
-  }
-
-  #controlPanel .snapping-seg > .check-row,
-  #controlPanel .snapping-seg > .snap-toggle,
-  #controlPanel .snapping-seg > .snap-field,
-  #controlPanel .snapping-seg > .snapping-aspect {
-    padding: 3px 6px;
-  }
-
-  #circleFrameControls .pane-title-text,
-  #rectFrameControls .pane-title-text {
-    display: none;
-  }
-
-  #circleFrameControls .title-seg,
-  #rectFrameControls .title-seg {
-    padding: 2px 6px;
-  }
-}
-
-@container cpanel (max-width: 1180px) {
-  #controlPanel .pane-title-text {
-    display: none;
-  }
-
-  #controlPanel .title-seg {
-    padding: 2px 6px;
-  }
-}
-
-@container cpanel (max-width: 980px) {
-  #controlPanel .titlebar-single #shapePreviewContainer,
-  #controlPanel .titlebar-single #rectShapePreviewContainer,
-  #controlPanel .titlebar-single #shapePreview,
-  #controlPanel .titlebar-single #rectShapePreview {
-    width: 44px;
-    height: 28px;
-  }
-
-  #controlPanel .snapping-aspect select {
-    min-width: 3.5rem;
-  }
-
-  #controlPanel .snapping-aspect .custom-select {
-    min-width: 3.5rem;
-  }
-}
-
-@container cpanel (max-width: 760px) {
-  #controlPanel .title-seg {
-    padding: 0 5px;
-  }
-
-  #controlPanel .pane-titlebar {
-    gap: 4px;
-    padding: 2px 4px;
-  }
-
-  #controlPanel .titlebar-single #shapePreviewContainer,
-  #controlPanel .titlebar-single #rectShapePreviewContainer,
-  #controlPanel .titlebar-single #shapePreview,
-  #controlPanel .titlebar-single #rectShapePreview {
-    width: 30px;
-    height: 26px;
-  }
-
-  #controlPanel .snapping-seg > .check-row,
-  #controlPanel .snapping-seg > .snap-toggle,
-  #controlPanel .snapping-seg > .snap-field,
-  #controlPanel .snapping-seg > .snapping-aspect {
-    padding: 2px 4px;
-  }
-
-  #controlPanel .check-row {
-    gap: 3px;
-  }
-
-  #controlPanel .num-stepper-compact .num-stepper-input {
-    width: 2rem;
-  }
-
-  #controlPanel .pane-titlebar .titlebar-well {
-    width: 24px;
-    height: 20px;
-  }
-}
-
-@container cpanel (max-width: 520px) {
-  #controlPanel .title-seg {
-    display: none;
-  }
-
-  #controlPanel .titlebar-single #shapePreviewContainer,
-  #controlPanel .titlebar-single #rectShapePreviewContainer,
-  #controlPanel .titlebar-single #shapePreview,
-  #controlPanel .titlebar-single #rectShapePreview {
-    width: 24px;
-    height: 24px;
-  }
-
-  #controlPanel #circleInnerShapeSelect,
-  #controlPanel #rectInnerShapeSelect {
-    flex-basis: 4rem;
-    min-width: 3.25rem;
-    padding: 3px 4px;
-  }
-
-  #controlPanel #circleInnerShapeSelect .custom-select-trigger,
-  #controlPanel #rectInnerShapeSelect .custom-select-trigger {
-    padding: 3px 4px;
-  }
-
-  #controlPanel .pane-titlebar .toggle-switch {
-    width: 28px;
-    height: 16px;
-  }
-
-  #controlPanel .pane-titlebar {
-    gap: 3px;
-    padding: 2px 3px;
-  }
-
-  #controlPanel .stroke-preview-trigger,
-  #controlPanel .stroke-preview-trigger .stroke-preview,
-  #controlPanel .fill-preview-trigger,
-  #controlPanel .fill-preview-trigger .fill-preview {
-    width: 32px;
-    height: 22px;
-  }
-
-  #controlPanel .snapping-seg > .check-row,
-  #controlPanel .snapping-seg > .snapping-aspect {
-    padding: 2px 2px;
-  }
-
-  #controlPanel .titlebar-single .snapping-aspect {
-    gap: 4px;
-  }
-
-  #controlPanel .snapping-aspect select {
-    min-width: 2.2rem;
-    width: 2.4rem;
-    padding: 2px 2px;
-  }
-
-  #controlPanel .snapping-aspect .custom-select {
-    min-width: 2.2rem;
-    width: 2.4rem;
-  }
-
-  #controlPanel .snapping-aspect .custom-select-trigger {
-    padding: 2px 2px;
-  }
-
-  #controlPanel .seg-ctrl button {
-    padding: 2px 2px;
-  }
-
-  #controlPanel .seg-ctrl button svg {
-    width: 14px;
-    height: 12px;
-  }
-
-  #controlPanel .panel-group {
-    padding: 0;
-  }
-}
-
 /* ============ Panel section chrome: rail, drag bars, collapse ============
    The rail sits left of the panel and spans both rows: one column with
    the Operations and Sections boxes, both CustomSelects in the panel
@@ -3068,6 +2876,7 @@ kbd,
 #controlPanel .panel-rows {
   display: flex;
   flex-direction: column;
+  flex-wrap: nowrap;
   align-items: stretch;
   flex: 1 1 auto;
   min-width: 0;
@@ -3076,7 +2885,11 @@ kbd,
   border-radius: 0;
   box-shadow: none;
   padding: 0;
-  gap: 0;
+  gap: 6px;
+}
+
+#controlPanel .panel-group:not(:has(section)) {
+  display: none;
 }
 
 #controlPanel .panel-rail {
@@ -3137,6 +2950,22 @@ kbd,
 #controlPanel .section-drag:focus-visible {
   outline: 2px solid var(--dp-accent);
   outline-offset: -2px;
+}
+
+/* The dragged section leaves the row so the others can close up.
+   The drag image, taken before this class applies, is the whole section. */
+#controlPanel section.section-dragging {
+  position: absolute !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  border: 0 !important;
 }
 
 /* Collapsed: drag bar plus the section icon only. */
