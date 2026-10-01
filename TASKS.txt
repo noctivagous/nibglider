@@ -16,7 +16,8 @@ go from mm to m and inch to feet in our measurements.
 PANEL SECTION POPOVERS
 [ ] Panel Sections will have two views.  The first is the current where they
 exist in a panel bar.
-[ ] for the preview boxes
+[ ] for the preview boxes' popovers, we want them to be detachable, so we
+will have that as a button in the upper right of the titlebar.
 
 SECTIONS IN PANELS
 [x] Panel sections should have drag bar on the left that stays when the section collapses to icon and left bar only.  They should be able to be removed with right click menu and restored from a new menu, one that sits to the left of the panel, spans both rows, make of a grid of boxes within the same design style as the panel.  to begin with it will have only one column with two boxes (we will allow more later and may turn it into horizontal arrangement later).   the two boxes inherit from CustomSelect, which should have the param. that it opens on hover.  One of the menu items is Operations and its items operate on selections of objects.  Some of them will show a modal dialog entry to ask for input (with preview on the page) before doing the thing.  Others just do the thing.
@@ -52,9 +53,12 @@ right according to the angle and radius, as it is configured.  That is,
 the parametric adaptive shape can be configured to react in
 different ways to the live drawing.
 
+COMMAND BAR
+Alt+Space - command bar
+
 ---
 
-[ ] We should have internal to the code for now,
+[x] We should have internal to the code for now,
 different modes for handling points and open paths
 as they are deposited.  The base would be 0 - no action.
 Whatever the user draws just gets deposited as is.
@@ -81,12 +85,14 @@ join those segments of what the user made into the path.
 
 ---
 
-[ ] Radial Stamp: 0 key locks and unlocks the current radius
+
+[x] Radial Stamp: 0 key locks and unlocks the current radius
 [ ] Radial Stamp setting (Accessed by clicking Radial Stamp key): snap to points.
 A polygon's points will snap to any shape's as the Radial Stamp is on.
 Related: Moving-Point-Snap, Moving-Edge-Snap: as user moves shape, its points will snap
 to other edges or points.
 
+TRANSFORMS ON OBJECTS
 [ ] Control/Command + T - makes conventional transform controls show on obj. selection,
 with multiple avail. operations: rotate, scale.  shift + drag will constraint scale or interval the 
 rotation.

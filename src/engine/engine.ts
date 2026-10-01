@@ -334,6 +334,9 @@ export class NibGliderEngine {
   // independent of the placement-circle radius (a future radius-relative
   // mode may scale from a reference radius instead).
   radialStampBaseRadius = 45;
+  // Locked placement-circle radius for Radial Stamp, toggled by the 0 key.
+  // Null means unlocked: the radius follows the cursor.
+  radialStampLockedRadius: number | null = null;
   private liveKeyBindings: LiveKeyBinding[] = [];
   /** Unified live-drawing state across path, shape, and quad sessions. */
   get isLiveDrawing(): boolean {
@@ -4369,10 +4372,9 @@ export class NibGliderEngine {
         this.previewShape.radius > 0
       ) {
         const isRadial = this.shapeType === 'circle_radial_stamp';
-        const center =
-          isRadial && this.mousePt
-            ? this.mousePt.clone()
-            : this.previewShape.position;
+        const center = isRadial
+          ? this.radialStampTangentPoint()
+          : this.previewShape.position;
         const radius = this.previewShape.radius;
         const strokeW = this.strokeEnabled ? this.globalStrokeWidth : 0;
         const iradius = isRadial
@@ -4695,7 +4697,7 @@ export class NibGliderEngine {
 
   // --- Live-drawing key remaps ---
   // Reserved number-key slots for future live bindings (repeat counts,
-  // radius-reference keys, parametric modes). Unbound for now.
+  // parametric modes). Digit0 is bound: the Radial Stamp radius lock.
   readonly reservedLiveKeySlots = [
     'Digit1',
     'Digit2',
@@ -4706,7 +4708,6 @@ export class NibGliderEngine {
     'Digit7',
     'Digit8',
     'Digit9',
-    'Digit0',
   ];
 
   registerLiveKeyBinding(binding: LiveKeyBinding): void {
@@ -4718,6 +4719,7 @@ export class NibGliderEngine {
   private resetLiveAdjust(): void {
     this.liveScale = 1;
     this.liveRotateOffset = 0;
+    this.radialStampLockedRadius = null;
   }
 
   // Live scale/rotate apply to in-progress paths/quads (transformed about
@@ -4736,6 +4738,41 @@ export class NibGliderEngine {
   // circle (guide angle + 90deg) plus the live rotation offset.
   private radialStampRotation(): number {
     return this.shapeGuideAngle + 90 + this.liveRotateOffset;
+  }
+
+  // Tangent point of the riding shape: projected onto the locked circle
+  // while the 0-key radius lock is on, otherwise the cursor itself.
+  private radialStampTangentPoint(): AnyItem {
+    if (
+      this.radialStampLockedRadius == null ||
+      !this.shapeStartPoint ||
+      !this.mousePt
+    ) {
+      return this.mousePt ? this.mousePt.clone() : null;
+    }
+    const vec = this.mousePt.subtract(this.shapeStartPoint);
+    if (!(vec.length > 0)) return this.shapeStartPoint.clone();
+    return this.shapeStartPoint.add(
+      vec.normalize().multiply(this.radialStampLockedRadius),
+    );
+  }
+
+  // 0 key: lock the placement radius at its current value, or unlock it
+  // so it follows the cursor again. Only meaningful mid-session.
+  toggleRadialStampRadiusLock(): void {
+    if (!this.isDrawingShape || this.shapeType !== 'circle_radial_stamp') {
+      return;
+    }
+    if (this.radialStampLockedRadius != null) {
+      this.radialStampLockedRadius = null;
+    } else {
+      this.radialStampLockedRadius = this.previewShape
+        ? this.previewShape.radius
+        : 0;
+    }
+    this.updateShapePreview();
+    this.updateTextContent();
+    this.notify();
   }
 
   private liveScaleFactor(event: KeyboardEvent, dir: -1 | 1): number {
@@ -4826,6 +4863,15 @@ export class NibGliderEngine {
         event.code === 'Quote' || event.key === "'",
       applies: () => this.liveAdjustApplies(),
       apply: (event) => this.applyLiveRotate(event, 1),
+    });
+    this.registerLiveKeyBinding({
+      id: 'radial-stamp-radius-lock',
+      keys: ['0'],
+      label: 'lock/unlock radius',
+      match: (event) => event.code === 'Digit0' || event.key === '0',
+      applies: () =>
+        this.isDrawingShape && this.shapeType === 'circle_radial_stamp',
+      apply: () => this.toggleRadialStampRadiusLock(),
     });
   }
 
@@ -4967,10 +5013,9 @@ export class NibGliderEngine {
       // Radial Stamp deposits the riding shape at the tangent point (the
       // cursor), not the inscribed guide circle.
       const isRadial = shapeType === 'circle_radial_stamp';
-      const center =
-        isRadial && this.mousePt
-          ? this.mousePt.clone()
-          : this.previewShape.position;
+      const center = isRadial
+        ? this.radialStampTangentPoint()
+        : this.previewShape.position;
       if (!center) return [];
       const radius = this.previewShape.radius;
       const strokeW = this.strokeEnabled ? this.globalStrokeWidth : 0;
@@ -5526,11 +5571,16 @@ export class NibGliderEngine {
       this.previewShape.radius = this.shapeStartPoint.getDistance(endPt);
       this.shapeGuideAngle = this.mousePt.subtract(this.previewShape.position).angle;
     } else if (this.shapeType === 'circle_radial_stamp') {
-      // Placement guide: origin fixed at the start point, radius follows
-      // the cursor. The shape itself rides the tangent point; see below.
+      // Placement guide: origin fixed at the start point. Unlocked, the
+      // radius follows the cursor; locked (0 key), it holds while the
+      // cursor orbits the origin and steers the tangent point.
       this.previewShape.position = this.shapeStartPoint;
-      this.previewShape.radius = this.shapeStartPoint.getDistance(endPt);
-      if (this.previewShape.radius > 0) {
+      if (this.radialStampLockedRadius == null) {
+        this.previewShape.radius = this.shapeStartPoint.getDistance(endPt);
+      } else {
+        this.previewShape.radius = this.radialStampLockedRadius;
+      }
+      if (this.shapeStartPoint.getDistance(this.mousePt) > 0) {
         this.shapeGuideAngle = this.mousePt.subtract(this.shapeStartPoint).angle;
       }
     } else if (this.shapeType === 'circle_diameter') {
@@ -5545,7 +5595,10 @@ export class NibGliderEngine {
     }
     if (this.previewLine) {
       this.previewLine.firstSegment.point = this.shapeStartPoint;
-      this.previewLine.lastSegment.point = endPt;
+      this.previewLine.lastSegment.point =
+        this.shapeType === 'circle_radial_stamp'
+          ? this.radialStampTangentPoint()
+          : endPt;
     }
     if (this.shapeType === 'rectangle_diagonal') {
       this.refreshRectPreview(null, this.previewShape);
@@ -5632,7 +5685,7 @@ export class NibGliderEngine {
     }
     if (this.innerShapeType === 'none') return;
     if (!this.previewShape || !(this.previewShape.radius > 0)) return;
-    const tangentPoint = this.mousePt.clone();
+    const tangentPoint = this.radialStampTangentPoint();
     const radius = this.radialStampBaseRadius * this.liveScale;
     if (!(radius > 0)) return;
     this.previewInner = this.createInnerShape(
@@ -5838,6 +5891,12 @@ export class NibGliderEngine {
         }
         return;
       }
+    }
+    // 0 key: lock/unlock the Radial Stamp placement radius mid-session.
+    // Other number keys stay reserved for future live bindings.
+    if (event.code === 'Digit0' || event.key === '0') {
+      this.runLiveKeyBindings(event);
+      return;
     }
     if (event.key === ' ' && this.selectedItems.length > 0) {
       this.setIsInDragLock(!this.isInDragLock);
@@ -6101,6 +6160,15 @@ export class NibGliderEngine {
         state.push(L('title', [T('Circle by (' + mode + ')')]));
       } else if (this.shapeType === 'circle_radial_stamp') {
         state.push(L('title', [T('Circle Radial Stamp')]));
+        if (this.radialStampLockedRadius != null) {
+          state.push(
+            L('meta', [
+              T(
+                `Radius locked at ${Math.round(this.radialStampLockedRadius)}pt (0 to unlock)`,
+              ),
+            ]),
+          );
+        }
       } else if (this.shapeType === 'rectangle_diagonal') {
         state.push(L('title', [T('Rectangle by Diagonal')]));
       } else if (this.shapeType === 'rectangle_two_edges') {
