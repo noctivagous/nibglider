@@ -3044,3 +3044,266 @@ kbd,
     padding: 0;
   }
 }
+
+/* ============ Panel section chrome: rail, drag bars, collapse ============
+   The rail sits left of the panel and spans both rows: one column with
+   the Operations and Sections boxes, both CustomSelects in the panel
+   idiom. Each section carries a drag bar on its left edge that stays
+   visible when the section collapses to icon plus bar only. */
+#controlPanel .panel-shell {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  gap: 0;
+  flex-wrap: nowrap;
+}
+
+#controlPanel .panel-rows {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  gap: 0;
+}
+
+#controlPanel .panel-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: none;
+  align-self: stretch;
+  padding: 4px;
+  background: linear-gradient(to bottom, #0d1218, #141b24);
+  border-right: 1px solid #0b0e12;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.65);
+}
+
+#controlPanel .rail-box {
+  min-width: 7.5rem;
+}
+
+#controlPanel .rail-box .custom-select {
+  width: 100%;
+}
+
+/* Drag bar: left edge of every section, persistent through collapse. */
+#controlPanel section[data-panel-group] {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+
+#controlPanel section[data-panel-group] > .pane-titlebar {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#controlPanel .section-drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  align-self: stretch;
+  width: 14px;
+  color: var(--dp-text-3);
+  background: linear-gradient(to bottom, #0d1218, #141b24);
+  border-right: 1px solid #0b0e12;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.65);
+  cursor: grab;
+  white-space: nowrap;
+}
+
+#controlPanel .section-drag:hover {
+  color: var(--dp-text-1);
+}
+
+#controlPanel .section-drag:active {
+  cursor: grabbing;
+}
+
+#controlPanel .section-drag:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: -2px;
+}
+
+/* Collapsed: drag bar plus the section icon only. */
+#controlPanel .panel-card.section-collapsed {
+  flex: 0 0 auto;
+}
+
+#controlPanel .section-collapsed-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 32px;
+  padding: 2px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--dp-text-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#controlPanel .section-collapsed-icon:hover {
+  color: var(--dp-text-1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+#controlPanel .section-collapsed-icon:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: -2px;
+}
+
+/* Right-click section menu. */
+.section-ctx-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 11rem;
+  padding: 4px;
+  background: linear-gradient(to bottom, #242e3a, #161c24);
+  border: 1px solid var(--dp-border);
+  border-radius: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 24px rgba(0, 0, 0, 0.6);
+  font-family: var(--font-tech-label);
+  font-size: 0.8125rem;
+  color: var(--dp-text-1);
+}
+
+.section-ctx-title {
+  padding: 4px 8px;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dp-text-3);
+}
+
+.section-ctx-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--dp-text-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.section-ctx-menu button:hover {
+  background: var(--dp-accent-soft);
+}
+
+/* Operations modal dialog (scale / rotate with live page preview). */
+.op-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.op-modal {
+  width: min(22.5rem, calc(100vw - 2rem));
+  padding: 12px 14px;
+  background: linear-gradient(to bottom, #242e3a, #161c24);
+  border: 1px solid var(--dp-border);
+  border-radius: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 16px 48px rgba(0, 0, 0, 0.6);
+  font-family: var(--font-tech-label);
+  font-size: 0.875rem;
+  color: var(--dp-text-1);
+}
+
+.op-modal-title {
+  margin-bottom: 8px;
+  font-weight: 800;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.op-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.op-modal-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.op-modal-row input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.op-modal-num {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--dp-text-2);
+}
+
+.op-modal-num input[type="number"] {
+  width: 4.5rem;
+  padding: 4px 6px;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 0;
+  color: var(--dp-text-1);
+  font: inherit;
+}
+
+.op-modal-hint {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: var(--dp-text-3);
+}
+
+.op-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.op-modal-actions button {
+  padding: 6px 12px;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 0;
+  color: var(--dp-text-1);
+  font: inherit;
+  cursor: pointer;
+}
+
+.op-modal-actions button.primary {
+  background: var(--dp-accent-strong);
+  border-color: var(--dp-accent-strong);
+  color: #fff;
+}
+
+.op-modal-actions button:hover {
+  border-color: #3d4a59;
+}

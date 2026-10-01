@@ -2838,6 +2838,191 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  // --- Selection operations (Operations menu) ---
+  // Top-level layer items backing the current selection: each selected
+  // item maps up through its user group so transforms, duplicates, and
+  // z-order moves act on whole groups, never on children directly.
+  private topLevelSelected(): AnyItem[] {
+    const out: AnyItem[] = [];
+    const seen = new Set<AnyItem>();
+    for (const it of this.selectedItems) {
+      if (!it || !this.isInScene(it)) continue;
+      const top = this.topUserGroupOf(it);
+      if (seen.has(top)) continue;
+      seen.add(top);
+      if (top.parent === this.scope.project?.activeLayer) out.push(top);
+    }
+    return out;
+  }
+
+  canDuplicateSelection(): boolean {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return false;
+    return this.topLevelSelected().length > 0;
+  }
+
+  duplicateSelection(): void {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return;
+    const src = this.topLevelSelected();
+    if (src.length === 0) return;
+    const selBefore = [...this.selectedItems];
+    const clones: AnyItem[] = [];
+    const step = new this.scope.Point(20, 20);
+    for (const item of src) {
+      let copy: AnyItem = null;
+      try {
+        copy = item.clone();
+        copy.translate(step);
+      } catch {
+        copy = null;
+      }
+      if (copy && this.isInScene(copy)) clones.push(copy);
+    }
+    if (clones.length === 0) return;
+    this.restoreSelection(clones);
+    const placed = [...clones];
+    const selAfter = [...clones];
+    this.history.push({
+      label: clones.length > 1 ? `Duplicate ${clones.length} items` : 'Duplicate',
+      undo: () => {
+        for (const c of placed) {
+          if (this.isInScene(c)) {
+            this.removeItemFromSelection(c);
+            try {
+              c.remove();
+            } catch {
+              // Already gone.
+            }
+          }
+        }
+        this.restoreSelection(selBefore);
+      },
+      redo: () => {
+        for (const c of placed) {
+          if (!this.isInScene(c)) this.insertContentAt(c, null);
+        }
+        this.restoreSelection(selAfter.filter((c) => this.isInScene(c)));
+      },
+    });
+    this.updateTextContent();
+    this.notify();
+  }
+
+  canReorderSelection(): boolean {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return false;
+    return this.topLevelSelected().length > 0;
+  }
+
+  private reorderSelection(place: 'front' | 'back', label: string): void {
+    const layer = this.scope.project?.activeLayer;
+    if (!layer) return;
+    const targets = this.topLevelSelected();
+    if (targets.length === 0) return;
+    const beforeOrder = [...layer.children] as AnyItem[];
+    const set = new Set(targets);
+    const rest = beforeOrder.filter((c) => !set.has(c));
+    const afterOrder =
+      place === 'front' ? [...rest, ...targets] : [...targets, ...rest];
+    const applyOrder = (order: AnyItem[]): void => {
+      for (const child of order) {
+        try {
+          layer.addChild(child);
+        } catch {
+          // Detached; skip.
+        }
+      }
+    };
+    applyOrder(afterOrder);
+    const selAfter = [...this.selectedItems];
+    this.history.push({
+      label,
+      undo: () => {
+        applyOrder(beforeOrder.filter((c) => this.isInScene(c)));
+        this.restoreSelection(selAfter.filter((c) => this.isInScene(c)));
+      },
+      redo: () => {
+        applyOrder(afterOrder.filter((c) => this.isInScene(c)));
+        this.restoreSelection(selAfter.filter((c) => this.isInScene(c)));
+      },
+    });
+    this.updateTextContent();
+    this.notify();
+  }
+
+  bringSelectionToFront(): void {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return;
+    this.reorderSelection('front', 'Bring to Front');
+  }
+
+  sendSelectionToBack(): void {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return;
+    this.reorderSelection('back', 'Send to Back');
+  }
+
+  canTransformSelection(): boolean {
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
+      return false;
+    return this.topLevelSelected().length > 0;
+  }
+
+  selectionCenter(): { x: number; y: number } | null {
+    const items = this.topLevelSelected();
+    if (items.length === 0) return null;
+    try {
+      const c = this.collectiveCenter(items);
+      return { x: c.x, y: c.y };
+    } catch {
+      return null;
+    }
+  }
+
+  // Live preview mutators: applied incrementally by the Operations modal
+  // as its numeric field changes. No history here — the modal records one
+  // undo entry for the net delta when the user commits.
+  scaleSelectionPreview(factor: number): void {
+    if (!Number.isFinite(factor) || factor <= 0) return;
+    const items = this.topLevelSelected();
+    if (items.length === 0) return;
+    const center = this.collectiveCenter(items);
+    for (const it of items) {
+      try {
+        it.scale(factor, center);
+      } catch {
+        // Gone; skip.
+      }
+    }
+    this.updateTextContent();
+    this.notify();
+  }
+
+  rotateSelectionPreview(degrees: number): void {
+    if (!Number.isFinite(degrees) || degrees === 0) return;
+    const items = this.topLevelSelected();
+    if (items.length === 0) return;
+    const center = this.collectiveCenter(items);
+    for (const it of items) {
+      try {
+        it.rotate(degrees, center);
+      } catch {
+        // Gone; skip.
+      }
+    }
+    this.updateTextContent();
+    this.notify();
+  }
+
+  // Generic undo entry for a net selection transform the caller already
+  // applied (used by the Operations modal on commit).
+  pushUndoCommand(label: string, undo: () => void, redo: () => void): void {
+    this.history.push({ label, undo, redo });
+    this.updateTextContent();
+    this.notify();
+  }
+
   ungroupSelected(): void {
     if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
       return;

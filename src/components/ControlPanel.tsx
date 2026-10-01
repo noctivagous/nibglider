@@ -151,6 +151,261 @@ function CheckIcon({ children }: { children: ReactNode }) {
   );
 }
 
+// --- Panel section chrome: drag bar, collapse, remove/restore ---------------
+// Every panel section is wrapped in a PanelSection. The drag bar sits on
+// the left edge and stays visible when the section collapses to icon plus
+// bar only; clicking it (or the icon) toggles the collapse. Right-click
+// removes the section; removed sections are restored from the rail's
+// Sections box. Collapsed/removed/order state persists in localStorage.
+const PANEL_COLLAPSED_KEY = 'nibglider.panelCollapsed';
+const PANEL_REMOVED_KEY = 'nibglider.panelRemoved';
+const PANEL_ORDER_KEY = 'nibglider.panelOrder';
+
+function loadStringRecord(key: string): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, boolean> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (v === true) out[k] = true;
+      }
+      return out;
+    }
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+function loadStringList(key: string): string[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) return parsed.filter((v) => typeof v === 'string');
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+function loadOrderRecord(key: string): Record<string, string[]> {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, string[]> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (Array.isArray(v)) out[k] = v.filter((s) => typeof s === 'string');
+      }
+      return out;
+    }
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+const PANEL_SECTIONS: Array<{ id: string; label: string }> = [
+  { id: 'strokeControls', label: 'Stroke' },
+  { id: 'fillControls', label: 'Fill' },
+  { id: 'textControls', label: 'Text' },
+  { id: 'circleFrameControls', label: 'Circle Keys' },
+  { id: 'rectFrameControls', label: 'Rect Keys' },
+  { id: 'combinatoricsControls', label: 'Combinatorics' },
+  { id: 'historyControls', label: 'History' },
+  { id: 'gridControls', label: 'Grid' },
+  { id: 'snappingControls', label: 'Snapping' },
+];
+
+function sectionLabel(id: string): string {
+  return PANEL_SECTIONS.find((s) => s.id === id)?.label ?? id;
+}
+
+function PanelSection({
+  id,
+  label,
+  icon,
+  group,
+  collapsed,
+  className,
+  order,
+  onToggleCollapse,
+  onRemoveRequest,
+  onMove,
+  children,
+}: {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  group: string;
+  collapsed: boolean;
+  className?: string;
+  order?: number;
+  onToggleCollapse: (id: string) => void;
+  onRemoveRequest: (id: string, x: number, y: number) => void;
+  onMove: (group: string, fromId: string, toId: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      id={id}
+      aria-label={label}
+      data-panel-group={group}
+      style={order !== undefined ? { order } : undefined}
+      className={
+        (className ?? 'panel-card') + (collapsed ? ' section-collapsed' : '')
+      }
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onRemoveRequest(id, e.clientX, e.clientY);
+      }}
+      onDragOver={(e) => {
+        if (e.dataTransfer?.types.includes('text/panel-section')) {
+          e.preventDefault();
+        }
+      }}
+      onDrop={(e) => {
+        const fromId = e.dataTransfer?.getData('text/panel-section');
+        if (fromId && fromId !== id) {
+          e.preventDefault();
+          onMove(group, fromId, id);
+        }
+      }}
+    >
+      <span
+        className="section-drag"
+        role="button"
+        tabIndex={0}
+        title={`${label}: drag to reorder, click to ${collapsed ? 'expand' : 'collapse'}`}
+        aria-label={`${label}: drag to reorder, click to ${collapsed ? 'expand' : 'collapse'}`}
+        draggable
+        onClick={() => onToggleCollapse(id)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggleCollapse(id);
+          }
+        }}
+        onDragStart={(e) => {
+          e.dataTransfer?.setData('text/panel-section', id);
+          e.dataTransfer?.setDragImage?.(e.currentTarget as Element, 8, 12);
+        }}
+      >
+        <svg viewBox="0 0 8 16" width="8" height="16" aria-hidden="true">
+          <circle cx="2.5" cy="3" r="1.1" fill="currentColor" />
+          <circle cx="5.5" cy="3" r="1.1" fill="currentColor" />
+          <circle cx="2.5" cy="8" r="1.1" fill="currentColor" />
+          <circle cx="5.5" cy="8" r="1.1" fill="currentColor" />
+          <circle cx="2.5" cy="13" r="1.1" fill="currentColor" />
+          <circle cx="5.5" cy="13" r="1.1" fill="currentColor" />
+        </svg>
+      </span>
+      {collapsed ? (
+        <button
+          type="button"
+          className="section-collapsed-icon"
+          title={`${label} (collapsed) — click to expand, right-click to remove`}
+          aria-label={`${label} (collapsed)`}
+          onClick={() => onToggleCollapse(id)}
+        >
+          {icon}
+        </button>
+      ) : (
+        children
+      )}
+    </section>
+  );
+}
+
+// Modal dialog for the Operations entries that need input (scale, rotate).
+// The transform previews live on the page as the field changes; OK commits
+// one undo entry for the net delta, Cancel inverts the applied preview.
+function OperationDialog({
+  kind,
+  draft,
+  onDraft,
+  onCommit,
+  onCancel,
+}: {
+  kind: 'scale' | 'rotate';
+  draft: number;
+  onDraft: (n: number) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+}) {
+  const title = kind === 'scale' ? 'Scale Selection' : 'Rotate Selection';
+  const unit = kind === 'scale' ? '%' : '°';
+  return createPortal(
+    <div
+      className="op-modal-backdrop"
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <div
+        className="op-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+          } else if (e.key === 'Enter') {
+            e.preventDefault();
+            onCommit();
+          }
+        }}
+      >
+        <div className="op-modal-title">{title}</div>
+        <label className="op-modal-field">
+          <span>{kind === 'scale' ? 'Scale' : 'Angle'}</span>
+          <span className="op-modal-row">
+            <input
+              type="range"
+              aria-label={kind === 'scale' ? 'Scale percent' : 'Angle degrees'}
+              min={kind === 'scale' ? 10 : -180}
+              max={kind === 'scale' ? 400 : 180}
+              step={kind === 'scale' ? 1 : 1}
+              value={draft}
+              autoFocus
+              onChange={(e) => onDraft(parseFloat(e.target.value))}
+            />
+            <span className="op-modal-num">
+              <input
+                type="number"
+                aria-label={kind === 'scale' ? 'Scale percent' : 'Angle degrees'}
+                value={draft}
+                onChange={(e) => {
+                  const n = parseFloat(e.target.value);
+                  if (Number.isFinite(n)) onDraft(n);
+                }}
+              />
+              <span aria-hidden="true">{unit}</span>
+            </span>
+          </span>
+        </label>
+        <p className="op-modal-hint">Previewing live on the page.</p>
+        <div className="op-modal-actions">
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="primary" onClick={onCommit}>
+            Apply
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function ParamSlider({
   id,
   label,
@@ -1841,6 +2096,235 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     },
     [paramsFlyout, dismissSelects],
   );
+  // Panel section chrome: collapse, remove/restore, and drag-reorder.
+  // Persisted so the layout survives reloads.
+  const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>(
+    () => loadStringRecord(PANEL_COLLAPSED_KEY),
+  );
+  const [removedList, setRemovedList] = useState<string[]>(() =>
+    loadStringList(PANEL_REMOVED_KEY),
+  );
+  const [orderMap, setOrderMap] = useState<Record<string, string[]>>(() =>
+    loadOrderRecord(PANEL_ORDER_KEY),
+  );
+  const [ctxMenu, setCtxMenu] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANEL_COLLAPSED_KEY, JSON.stringify(collapsedMap));
+    } catch {
+      /* ignore */
+    }
+  }, [collapsedMap]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANEL_REMOVED_KEY, JSON.stringify(removedList));
+    } catch {
+      /* ignore */
+    }
+  }, [removedList]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(orderMap));
+    } catch {
+      /* ignore */
+    }
+  }, [orderMap]);
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [ctxMenu]);
+  const toggleCollapse = useCallback((id: string) => {
+    setCollapsedMap((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+  const removeSection = useCallback((id: string) => {
+    setRemovedList((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setCtxMenu(null);
+  }, []);
+  const restoreSection = useCallback((id: string) => {
+    setRemovedList((prev) => prev.filter((s) => s !== id));
+  }, []);
+  const moveSection = useCallback(
+    (group: string, fromId: string, toId: string) => {
+      setOrderMap((prev) => {
+        const current = [...(prev[group] ?? [])];
+        const without = current.filter((s) => s !== fromId);
+        const at = without.indexOf(toId);
+        if (at < 0) without.push(fromId);
+        else without.splice(at, 0, fromId);
+        return { ...prev, [group]: without };
+      });
+    },
+    [],
+  );
+  const isRemoved = useCallback((id: string) => removedList.includes(id), [removedList]);
+  const orderIn = useCallback(
+    (group: string, ids: string[]) => {
+      const order = orderMap[group];
+      if (!order || order.length === 0) return ids;
+      const rank = new Map(order.map((id, i) => [id, i]));
+      return [...ids].sort(
+        (a, b) => (rank.get(a) ?? 999) - (rank.get(b) ?? 999),
+      );
+    },
+    [orderMap],
+  );
+  // Operations rail box: immediate entries act on the selection at once;
+  // scale/rotate open the modal dialog with a live on-page preview.
+  const [opValue, setOpValue] = useState('ops-none');
+  const [opDialog, setOpDialog] = useState<
+    | { kind: 'scale'; draft: number; applied: number }
+    | { kind: 'rotate'; draft: number; applied: number }
+    | null
+  >(null);
+  const [sectionsValue, setSectionsValue] = useState('sections-none');
+  const openOpDialog = useCallback(
+    (kind: 'scale' | 'rotate') => {
+      if (!engine.canTransformSelection()) return;
+      dismissSelects();
+      setOpDialog(
+        kind === 'scale'
+          ? { kind, draft: 100, applied: 1 }
+          : { kind, draft: 0, applied: 0 },
+      );
+    },
+    [engine, dismissSelects],
+  );
+  const handleOperation = useCallback(
+    (v: string) => {
+      if (v === 'ops-none') return;
+      dismissSelects();
+      switch (v) {
+        case 'op-delete':
+          engine.removeAllSelectedItemsAndReset();
+          break;
+        case 'op-duplicate':
+          engine.duplicateSelection();
+          break;
+        case 'op-group':
+          engine.groupSelection();
+          break;
+        case 'op-ungroup':
+          engine.ungroupSelected();
+          break;
+        case 'op-front':
+          engine.bringSelectionToFront();
+          break;
+        case 'op-back':
+          engine.sendSelectionToBack();
+          break;
+        case 'op-scale':
+          openOpDialog('scale');
+          break;
+        case 'op-rotate':
+          openOpDialog('rotate');
+          break;
+        default:
+          break;
+      }
+      // Reset to the placeholder label after acting.
+      setOpValue('ops-none');
+    },
+    [engine, dismissSelects, openOpDialog],
+  );
+  const handleOpDraft = useCallback(
+    (n: number) => {
+      if (!opDialog || !Number.isFinite(n)) return;
+      if (opDialog.kind === 'scale') {
+        const clamped = Math.min(1000, Math.max(1, n));
+        const target = clamped / 100;
+        const delta = target / opDialog.applied;
+        if (delta !== 1) engine.scaleSelectionPreview(delta);
+        setOpDialog({ ...opDialog, draft: clamped, applied: target });
+        return;
+      }
+      const clamped = Math.min(360, Math.max(-360, n));
+      const delta = clamped - opDialog.applied;
+      if (delta !== 0) engine.rotateSelectionPreview(delta);
+      setOpDialog({ ...opDialog, draft: clamped, applied: clamped });
+    },
+    [engine, opDialog],
+  );
+  const cancelOpDialog = useCallback(() => {
+    if (!opDialog) return;
+    if (opDialog.kind === 'scale') {
+      if (opDialog.applied !== 1)
+        engine.scaleSelectionPreview(1 / opDialog.applied);
+    } else if (opDialog.applied !== 0) {
+      engine.rotateSelectionPreview(-opDialog.applied);
+    }
+    setOpDialog(null);
+  }, [engine, opDialog]);
+  const commitOpDialog = useCallback(() => {
+    if (!opDialog) return;
+    if (opDialog.kind === 'scale') {
+      const net = opDialog.applied;
+      if (net !== 1) {
+        engine.pushUndoCommand(
+          `Scale ${Math.round(net * 100)}%`,
+          () => engine.scaleSelectionPreview(1 / net),
+          () => engine.scaleSelectionPreview(net),
+        );
+      }
+    } else {
+      const net = opDialog.applied;
+      if (net !== 0) {
+        engine.pushUndoCommand(
+          `Rotate ${Math.round(net)}°`,
+          () => engine.rotateSelectionPreview(-net),
+          () => engine.rotateSelectionPreview(net),
+        );
+      }
+    }
+    setOpDialog(null);
+  }, [engine, opDialog]);
+  const OPERATIONS_OPTIONS: CustomSelectOption[] = [
+    { value: 'ops-none', label: 'Operations' },
+    {
+      value: 'grp-immediate',
+      label: 'Immediate',
+      children: [
+        { value: 'op-delete', label: 'Delete selection' },
+        { value: 'op-duplicate', label: 'Duplicate selection' },
+        { value: 'op-group', label: 'Group selection' },
+        { value: 'op-ungroup', label: 'Ungroup selection' },
+        { value: 'op-front', label: 'Bring to front' },
+        { value: 'op-back', label: 'Send to back' },
+      ],
+    },
+    {
+      value: 'grp-dialog',
+      label: 'With dialog',
+      children: [
+        { value: 'op-scale', label: 'Scale…' },
+        { value: 'op-rotate', label: 'Rotate…' },
+      ],
+    },
+  ];
+  const removedOptions: CustomSelectOption[] = [
+    { value: 'sections-none', label: 'Sections' },
+    ...(removedList.length > 0
+      ? [
+          {
+            value: 'grp-removed',
+            label: 'Restore',
+            children: removedList.map((id) => ({
+              value: `restore:${id}`,
+              label: sectionLabel(id),
+            })),
+          },
+        ]
+      : []),
+  ];
   // Selection state: when items are selected the Stroke/Fill panels
   // reflect the selection (first selected item) instead of the globals.
   const sel = engine.selectionPaint();
@@ -1856,14 +2340,75 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   const fillColor = sel ? sel.fillColor : engine.globalFillColor;
   const fillSpec = sel ? sel.fillSpec : engine.fillSpec();
 
+  const paintOrder = orderIn('paint', [
+    'strokeControls',
+    'fillControls',
+    'textControls',
+  ]);
+  const keysOrder = orderIn('keys', [
+    'circleFrameControls',
+    'rectFrameControls',
+    'combinatoricsControls',
+    'historyControls',
+  ]);
+  const snapOrder = orderIn('snap', ['gridControls', 'snappingControls']);
+  const sectionOrder = (group: string[], id: string): number =>
+    group.indexOf(id);
+  const sectionProps = () => ({
+    onToggleCollapse: toggleCollapse,
+    onRemoveRequest: (rid: string, x: number, y: number) =>
+      setCtxMenu({ id: rid, x, y }),
+    onMove: moveSection,
+  });
+
   return (
-    <>
+    <div className="panel-shell">
+      <div className="panel-rail" role="group" aria-label="Panel tools">
+        <div className="rail-box" title="Operations on the selection">
+          <CustomSelect
+            id="panelOperationsSelect"
+            ariaLabel="Operations on the selection"
+            value={opValue}
+            options={OPERATIONS_OPTIONS}
+            onChange={handleOperation}
+            openOnHover
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
+          />
+        </div>
+        <div className="rail-box" title="Panel sections">
+          <CustomSelect
+            id="panelSectionsSelect"
+            ariaLabel="Panel sections"
+            value={sectionsValue}
+            options={removedOptions}
+            onChange={(v) => {
+              if (v.startsWith('restore:')) restoreSection(v.slice(8));
+              setSectionsValue('sections-none');
+            }}
+            openOnHover
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
+          />
+        </div>
+      </div>
+      <div className="panel-rows">
       <div className="panel-row panel-row-main">
       <div className="panel-group panel-group-paint" role="group" aria-label="Paint">
-      <section
+      {isRemoved('strokeControls') ? null : (
+      <PanelSection
         id="strokeControls"
+        label="Stroke"
+        icon={
+          <TitleIcon>
+            <path d="M2 12 L14 2" />
+          </TitleIcon>
+        }
+        group="paint"
+        collapsed={!!collapsedMap['strokeControls']}
         className={sel ? 'panel-card reflecting-selection' : 'panel-card'}
-        aria-label="Stroke"
+        order={sectionOrder(paintOrder, 'strokeControls')}
+        {...sectionProps()}
       >
         <header className="pane-titlebar titlebar-single">
           
@@ -1962,12 +2507,27 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             />
           </ShapeParamsFlyout>
         </header>
-      </section>
+      </PanelSection>
+      )}
 
-      <section
+      {isRemoved('fillControls') ? null : (
+      <PanelSection
         id="fillControls"
+        label="Fill"
+        icon={
+          <TitleIcon>
+            <path
+              d="M8 1.5 C8 1.5 3.5 7.5 3.5 10 A4.5 4.5 0 0 0 12.5 10 C12.5 7.5 8 1.5 8 1.5 Z"
+              fill="currentColor"
+              stroke="none"
+            />
+          </TitleIcon>
+        }
+        group="paint"
+        collapsed={!!collapsedMap['fillControls']}
         className={sel ? 'panel-card reflecting-selection' : 'panel-card'}
-        aria-label="Fill"
+        order={sectionOrder(paintOrder, 'fillControls')}
+        {...sectionProps()}
       >
         <header className="pane-titlebar titlebar-single">
           
@@ -2031,9 +2591,23 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             <FillParams engine={engine} spec={fillSpec} />
           </ShapeParamsFlyout>
         </header>
-      </section>
+      </PanelSection>
+      )}
 
-      <section id="textControls" className="panel-card" aria-label="Text">
+      {isRemoved('textControls') ? null : (
+      <PanelSection
+        id="textControls"
+        label="Text"
+        icon={
+          <TitleIcon>
+            <path d="M3 3 H13 M8 3 V11" />
+          </TitleIcon>
+        }
+        group="paint"
+        collapsed={!!collapsedMap['textControls']}
+        order={sectionOrder(paintOrder, 'textControls')}
+        {...sectionProps()}
+      >
         <header className="pane-titlebar titlebar-single">
           <span className="title-seg" title="Text"><span className="pane-title">
             <TitleIcon>
@@ -2082,11 +2656,25 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             <TextParams engine={engine} spec={engine.globalText} />
           </ShapeParamsFlyout>
         </header>
-      </section>
+      </PanelSection>
+      )}
       </div>
       <div className="panel-group panel-group-keys" role="group" aria-label="Shape keys">
 
-      <section id="circleFrameControls" className="panel-card" aria-label="Circle Keys">
+      {isRemoved('circleFrameControls') ? null : (
+      <PanelSection
+        id="circleFrameControls"
+        label="Circle Keys"
+        icon={
+          <TitleIcon>
+            <circle cx="8" cy="7" r="5" />
+          </TitleIcon>
+        }
+        group="keys"
+        collapsed={!!collapsedMap['circleFrameControls']}
+        order={sectionOrder(keysOrder, 'circleFrameControls')}
+        {...sectionProps()}
+      >
         <header className="pane-titlebar titlebar-single">
           <span className="title-seg" title="Circle Keys"><span className="pane-title">
             <TitleIcon>
@@ -2155,9 +2743,23 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           <CircleShapeParams engine={engine} />
         </ShapeParamsFlyout>
         </header>
-      </section>
+      </PanelSection>
+      )}
 
-      <section id="rectFrameControls" className="panel-card" aria-label="Rect Keys">
+      {isRemoved('rectFrameControls') ? null : (
+      <PanelSection
+        id="rectFrameControls"
+        label="Rect Keys"
+        icon={
+          <TitleIcon>
+            <path d="M3 2 H13 V12 H3 Z" />
+          </TitleIcon>
+        }
+        group="keys"
+        collapsed={!!collapsedMap['rectFrameControls']}
+        order={sectionOrder(keysOrder, 'rectFrameControls')}
+        {...sectionProps()}
+      >
         <header className="pane-titlebar titlebar-single">
           <span className="title-seg" title="Rect Keys"><span className="pane-title">
             <TitleIcon>
@@ -2228,9 +2830,24 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           <RectShapeParams engine={engine} />
         </ShapeParamsFlyout>
         </header>
-      </section>
+      </PanelSection>
+      )}
 
-      <section id="combinatoricsControls" className="panel-card" aria-label="Combinatorics">
+      {isRemoved('combinatoricsControls') ? null : (
+      <PanelSection
+        id="combinatoricsControls"
+        label="Combinatorics"
+        icon={
+          <TitleIcon>
+            <circle cx="6" cy="7" r="3.5" />
+            <circle cx="10" cy="7" r="3.5" />
+          </TitleIcon>
+        }
+        group="keys"
+        collapsed={!!collapsedMap['combinatoricsControls']}
+        order={sectionOrder(keysOrder, 'combinatoricsControls')}
+        {...sectionProps()}
+      >
         <header className="pane-titlebar titlebar-single">
           <span className="title-seg" title="Combinatorics"><span className="pane-title">
             <TitleIcon>
@@ -2241,9 +2858,24 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           </span>
           <CombinatoricsButtons engine={engine} />
         </header>
-      </section>
+      </PanelSection>
+      )}
 
-      <section id="historyControls" className="panel-card" aria-label="History">
+      {isRemoved('historyControls') ? null : (
+      <PanelSection
+        id="historyControls"
+        label="History"
+        icon={
+          <TitleIcon>
+            <path d="M6.5 3.5 H3 A4 4 0 0 0 3 10.7 H9" />
+            <path d="M5.3 1.6 L3 3.5 L5.3 5.4" />
+          </TitleIcon>
+        }
+        group="keys"
+        collapsed={!!collapsedMap['historyControls']}
+        order={sectionOrder(keysOrder, 'historyControls')}
+        {...sectionProps()}
+      >
         <header className="pane-titlebar titlebar-single">
           <span className="title-seg" title="History"><span className="pane-title">
             <TitleIcon>
@@ -2254,12 +2886,26 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           </span>
           <HistoryButtons engine={engine} />
         </header>
-      </section>
+      </PanelSection>
+      )}
       </div>
       </div>
       <div className="panel-row panel-row-snap">
       <div className="panel-group panel-group-snapping" role="group" aria-label="Snapping">
-      <section id="gridControls" className="panel-card" aria-label="Grid">
+      {isRemoved('gridControls') ? null : (
+      <PanelSection
+        id="gridControls"
+        label="Grid"
+        icon={
+          <TitleIcon>
+            <path d="M1 4 H11 M1 8 H11 M4 1 V11 M8 1 V11" />
+          </TitleIcon>
+        }
+        group="snap"
+        collapsed={!!collapsedMap['gridControls']}
+        order={sectionOrder(snapOrder, 'gridControls')}
+        {...sectionProps()}
+      >
         <header className="pane-titlebar titlebar-single">
           <span className="title-seg" title="Grid"><span className="pane-title">
             <TitleIcon>
@@ -2287,8 +2933,24 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             forceCloseKey={selectCloseKey}
           />
         </header>
-      </section>
-      <section id="snappingControls" className="panel-card" aria-label="Snapping">
+      </PanelSection>
+      )}
+      {isRemoved('snappingControls') ? null : (
+      <PanelSection
+        id="snappingControls"
+        label="Snapping"
+        icon={
+          <TitleIcon>
+            <circle cx="8" cy="7" r="3.5" />
+            <path d="M8 0.5 V2.5 M8 11.5 V13.5 M1.5 7 H3.5 M12.5 7 H14.5" />
+            <circle cx="8" cy="7" r="1" fill="currentColor" stroke="none" />
+          </TitleIcon>
+        }
+        group="snap"
+        collapsed={!!collapsedMap['snappingControls']}
+        order={sectionOrder(snapOrder, 'snappingControls')}
+        {...sectionProps()}
+      >
         <header className="pane-titlebar titlebar-single">
           <span className="title-seg" title="Snapping"><span className="pane-title">
             <TitleIcon>
@@ -2391,9 +3053,54 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           </div>
           </div>
         </header>
-      </section>
+      </PanelSection>
+      )}
       </div>
       </div>
-    </>
+      </div>
+      {ctxMenu
+        ? createPortal(
+            <div
+              className="section-ctx-menu"
+              role="menu"
+              aria-label={`${sectionLabel(ctxMenu.id)} section menu`}
+              style={{
+                left: Math.min(ctxMenu.x, window.innerWidth - 200),
+                top: Math.min(ctxMenu.y, window.innerHeight - 120),
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="section-ctx-title">{sectionLabel(ctxMenu.id)}</div>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  toggleCollapse(ctxMenu.id);
+                  setCtxMenu(null);
+                }}
+              >
+                {collapsedMap[ctxMenu.id] ? 'Expand section' : 'Collapse to icon'}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => removeSection(ctxMenu.id)}
+              >
+                Remove section
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
+      {opDialog ? (
+        <OperationDialog
+          kind={opDialog.kind}
+          draft={opDialog.draft}
+          onDraft={handleOpDraft}
+          onCommit={commitOpDialog}
+          onCancel={cancelOpDialog}
+        />
+      ) : null}
+    </div>
   );
 }
