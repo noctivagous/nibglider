@@ -1,5 +1,7 @@
 # Engine Refactor and Restructure Plan
 
+
+
 ## Goal
 
 Reduce `src/engine/engine.ts` from an all-purpose implementation into a
@@ -66,6 +68,15 @@ src/engine/
     GridRenderer.ts         # Grid and snap-cursor rendering
 
   ui/
+    PanelsManager.ts        # Panel-section state, commands, and view models
+    panels/
+      PanelSection.tsx      # Shared section shell, menus, collapse behavior
+      StrokePanel.tsx       # Stroke and fill controls
+      ShapePanel.tsx        # Circle Keys and Rect Keys configuration
+      OperationsPanel.tsx   # Selection, transform, and combinatorics controls
+      TextPanel.tsx         # Text-mode configuration
+    OnscreenKeyboard.tsx    # Visual keyboard, key layout, and key actions
+    KeyboardViewModel.ts    # Maps keymap/status state to keycap presentation
     StatusPresenter.ts      # StatusSchema and status content
     PreviewBoxPresenter.ts  # Shape preview SVG updates
 ```
@@ -74,18 +85,74 @@ This is a target structure, not a requirement to create every file
 immediately. Closely related helpers can remain together until their
 boundaries are clear.
 
+`PanelsManager` is intentionally an application/UI coordinator, not an
+imperative DOM owner. It should produce panel state and route panel commands
+to the engine facade; React components remain responsible for rendering.
+Likewise, `KeyboardController` handles physical keyboard events while
+`OnscreenKeyboard.tsx` handles the visible, clickable keyboard. Both use the
+same declarative keymap so the two input paths cannot drift apart.
+
+## Future UI constraints to preserve
+
+The panel architecture needs to support these future requirements without
+moving them into drawing tools or duplicating command logic:
+
+### Application-menu layouts
+
+The application menu area must support both stacked and grid layouts while
+keeping the same menu definitions and hover behavior. The intended grid is:
+
+```text
+File                  Document and Settings
+Operations and Modes  Layers and Objects
+```
+
+Each menu item should carry its optional keyboard shortcut as command metadata,
+not as presentation-only text. This lets the stacked menu, grid menu, visible
+keyboard, command bar, and status hints display one authoritative shortcut.
+
+`PanelsManager` should therefore own a serializable `menuLayout` preference
+such as `'stack' | 'grid'`, plus menu/view-model definitions. Individual menu
+components should render those definitions without embedding drawing commands.
+
+### Transform controls
+
+When the user invokes Control/Command + T for a selection, the application
+will eventually display conventional transform controls with rotate and scale
+operations. Shift-drag should support constrained scale or interval rotation.
+
+Keep this as a separate `TransformControls` UI feature:
+
+- `TransformManager` owns selection geometry, preview transforms, constraints,
+  commit/cancel behavior, and undoable commands.
+- `PointerController` routes pointer gestures to active transform controls
+  before ordinary selection drag behavior.
+- `KeyboardController` maps Control/Command + T to a transform-control
+  command.
+- `PanelsManager` or a dedicated overlay controller owns whether the controls
+  are shown and their current UI mode.
+- A future `TransformControls.tsx` renders handles and operation affordances;
+  it must not implement geometry or history itself.
+
+This separation allows transform handles to be added without making the
+Control Panel, keyboard routing, pointer routing, and undo system each invent
+their own transform state.
+
 ## Suggested extraction order
 
-### Phase 0: Baseline and inventory
+[x] ### Phase 0: Baseline and inventory
 
 - Record the current `engine.ts` public methods and public state consumed by
   React components.
+- Inventory `ControlPanel.tsx`, `Keyboard.tsx`, and `StatusOverlay.tsx`:
+  their section state, command handlers, keyboard layouts, and direct reads
+  from the engine.
 - Run `npm run build` and `npm run lint`.
 - Add or update a short manual smoke-test checklist for drawing, selection,
   keyboard shortcuts, snapping, text, combinatorics, import, and undo/redo.
 - Do not change behavior or rename the public facade yet.
 
-### Phase 1: Extract shared types
+[x] ### Phase 1: Extract shared types
 
 Create `src/engine/types.ts` and move:
 
@@ -102,7 +169,7 @@ Create `src/engine/types.ts` and move:
 Re-export these types from `engine.ts` temporarily so existing imports do not
 break.
 
-### Phase 2: Extract input lifecycle
+[x] ### Phase 2: Extract input lifecycle
 
 Create `InputManager.ts` first because `attach()` and `detach()` currently
 mix several unrelated concerns.
@@ -121,17 +188,35 @@ Move:
 `InputManager` should only translate events into callbacks. It should not
 decide whether a key means “draw a circle” or “undo”.
 
-### Phase 3: Extract keyboard and pointer controllers
+[ ] - ### Phase 3: Extract keyboard and pointer controllers
 
 Create:
 
 - `KeyboardController.ts` for `handleKeyDown`, live-key bindings, shortcut
-  dispatch, text-entry filtering, and key activity reporting.
+  dispatch, text-entry filtering, and key activity reporting. It handles
+  physical keyboard input only.
 - `PointerController.ts` for mouse down/move/drag/up, hit testing, pan,
   selection, and drag-lock decisions.
 
 Keep the current key behavior unchanged. This phase should make input
 behavior independently traceable without moving drawing algorithms yet.
+
+### Phase 3b: Establish one declarative keymap
+
+Before separating the visible keyboard, introduce a shared keymap definition
+that describes each command once:
+
+- physical key matching (`KeyboardEvent.code` and modifiers)
+- displayed keycap label and keyboard group
+- command identifier
+- availability predicate (for example, a live-drawing-only command)
+- status/help text
+
+`KeyboardController` dispatches browser events through this map.
+`OnscreenKeyboard.tsx` renders the same map and invokes its command IDs.
+The status overlay reads the same labels and availability data. This prevents
+the physical keyboard, visible keyboard, and status hints from maintaining
+three inconsistent copies of shortcut logic.
 
 ### Phase 4: Extract scene and selection services
 
@@ -232,6 +317,15 @@ Create:
 - `CombinatoricsManager.ts` for selection and deposit-time boolean operations.
 - `DropController.ts` for reading files, importing SVG, decoding rasters, and
   recording placed items.
+- `PanelsManager.ts` to own panel-section state such as layout, collapsed or
+  expanded state, active popovers, and panel view models. It translates panel
+  interactions into facade commands but does not own Paper.js drawing state.
+- Include menu definitions and the `'stack' | 'grid'` application-menu layout
+  preference in the panel model from the outset, even if the first extraction
+  renders only today’s stacked layout.
+- `OnscreenKeyboard.tsx` and `KeyboardViewModel.ts` to render and operate the
+  visible keyboard from the shared keymap established in Phase 3b. The
+  onscreen keyboard should call command IDs, never duplicate drawing logic.
 - `StatusPresenter.ts` for `StatusSchema`, status text, and key activity
   presentation.
 - `PreviewBoxPresenter.ts` for DOM/SVG preview updates.
@@ -271,7 +365,10 @@ Preferred dependencies:
 - Geometry and validation code depends on types, not React.
 - Input adapters depend on callbacks/interfaces, not drawing implementations.
 - Scene and history services depend on a Paper.js context.
-- UI presenters depend on view data and narrow callbacks.
+- `PanelsManager` and `KeyboardViewModel` depend on facade-level commands and
+  view data, not on Paper.js items or private drawing state.
+- React panel and keyboard components render view data and emit narrow
+  callbacks; they do not implement drawing behavior.
 - React components depend on the facade, not internal managers.
 
 Avoid:
@@ -280,6 +377,8 @@ Avoid:
 - services mutating DOM directly except dedicated presenters
 - multiple services independently owning `selectedItems`
 - keyboard handlers calling arbitrary private methods across modules
+- the visible keyboard and physical keyboard maintaining separate command
+  definitions
 - circular dependencies between drawing tools and input controllers
 
 ## Agent-oriented module contracts
@@ -296,6 +395,8 @@ Each extracted module should document:
 Examples:
 
 - Add a shortcut: `KeyboardController.ts`
+- Change an onscreen key layout or keycap: `OnscreenKeyboard.tsx`
+- Change a panel section’s state or command wiring: `PanelsManager.ts`
 - Add a snap mode: `SnappingManager.ts`
 - Fix undo for grouping: `HistoryManager.ts`
 - Add a geometric primitive: `ShapeFactory.ts`
