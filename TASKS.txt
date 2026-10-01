@@ -1,3 +1,11 @@
+[ ] application menus have two views, stack (current), grid
+
+[ ] Text shape mode, Sign Text: [Display Text | Body Text | Sign Text]
+   Sign Text - Text is placed inside the shape
+   and made to fit it.
+
+[ ] Regular Polygon : concavity settings.
+
 [ ] issue: in the code the snapping points that are drawn are made out of PaperJS canvas vector objects but
 they can be clicked by the user, might be printed.
 
@@ -42,22 +50,23 @@ right according to the angle and radius, as it is configured.  That is,
 the parametric adaptive shape can be configured to react in
 different ways to the live drawing.
 
+
 COMMAND BAR
 Alt+Space - command bar
 
----
 
-[ ] annulus shape for Circle Keys. 
-
+STATUS OVERLAY
 [ ] make sure that Status box will wrap to multiple lines.
 
----
+
+COMBINATORICS
+
+[ ] blobularity and live combinatorics - blobularity
+resembles metaballs, smooths out the effects
+of an addition or subtraction operation. additional
+factor will possibly add blob around the shapes.
 
 
-[ ] Radial Stamp setting (Accessed by clicking Radial Stamp key): snap to points.
-A polygon's points will snap to any shape's as the Radial Stamp is on.
-Related: Moving-Point-Snap, Moving-Edge-Snap: as user moves shape, its points will snap
-to other edges or points.
 
 TRANSFORMS ON OBJECTS
 [ ] Control/Command + T - makes conventional transform controls show on obj. selection,
@@ -72,13 +81,18 @@ selected or no selection (all intersecting).
 loaded object 1 and 2.  section has tabs if user adds
 loaded objects.
 
+
 [ ] repeat grid - select shape > loaded object  
-    1 and 2 keys will adjust row count
-    3 and 4 keys will adjust col. count
+   live drawing keys: 1 and 2 keys will adjust row count
+   live drawing keys: 3 and 4 keys will adjust col. count
 
 [ ] repeat circle - select shape > loaded object
 
 [ ] Repeat Lines - spacing, angle
+
+[ ] Rect Keys > capsule.  params: cap shape  [semicircle | triangle], cap length
+[ ] Circle Keys > annulus shape.
+
 
 [ ] Rect Keys > Baseline Grid (Typography).  Shows baselines for type.  Default: lorem ipsum filled based on Text settings,
 until type is entered by user.
@@ -87,15 +101,49 @@ until type is entered by user.
 
 [ ] Rect Keys > Interactive Obj. > Pane Stacks (configurable).
 
-[ ] Imbricate: Radial Stamp : two underneath on either side.
+ONSCREEN KEYBOARD
+[ ] Clicking a key will show its settings.  requires setting up
+a settings system.
+  --- RADIAL STAMP
+[ ] Repeat, Imbricate: Radial Stamp : two underneath on either side.
 relates to Live Mod. Mode: switch on: allows repeating Loaded Object
 or selected shape that follows cursor and stamp (W) will stamp it.
+. and / keys during Live drawing should increasing count of repeat.
+[ ] Radial Stamp setting (Accessed by clicking Radial Stamp key): snap to points.
+A polygon's points will snap to any shape's as the Radial Stamp is on.
+Related: Moving-Point-Snap, Moving-Edge-Snap: as user moves shape, its points will snap
+to other edges or points.
+
+
+[ ] Rect By Diagonal: setting on key: [full rect | half rect | quarter rect]
+   full rect - diagonal is of the full rectangle (current)
+   half rect - diagonal is for half the rect
+   quarter rect - diagonal is for quarter of the rect
+
+[ ] Triangle
+    Half Bracket
+
+[ ] Rect Keys shape: Half Bracket  ⸢, ⸣, ⸤, ⸥
+    cap
+    	- Flat (Butt)
+    	- Miter-Cut
+    Thickness 
+
+[ ] Circle Keys shape: Half Bracket
+	cap
+    	- Flat (Butt)
+    	- Miter-Cut
+	Thickness 
 
 [ ] Rect By Two Lines: setting on key: [edges | centerline+edge | edge + centerline | centerline + centerline]
   edges: current: two edges of the rectangle.
   centerline+half-edge: A centerline of the rectangle is the first line, the second line is half the edge at the end of the centerline.
   half-edge + centerline: the first line is for half an edge, the second line sets the centerline
  half-centerline + half-centerline:  first line:the half of one centerline, secondline:the half of the other centerline.
+
+ONSCREEN KEYBOARD
+[ ] handle to the left of the keyboard so that the user can drag it to different
+positions.
 
 Text mode popver:
 [ ] Put Flow and Orientation on same row
