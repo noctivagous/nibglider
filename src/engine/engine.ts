@@ -280,6 +280,13 @@ export class NibGliderEngine {
   mousePt: AnyItem = null;
   lastMousePt: AnyItem = null;
   isPanning = false;
+  // Pan anchor: view center + pointer point at pan start. Paper's
+  // event.delta is a project-space delta computed across the center
+  // change applied by the previous drag, which stutters; re-deriving
+  // the pointer offset from this fixed anchor every drag stays
+  // frame-consistent.
+  panAnchorCenter: AnyItem = null;
+  panAnchorPoint: AnyItem = null;
   minZoom = 0.1;
   maxZoom = 16;
 
@@ -3719,6 +3726,8 @@ export class NibGliderEngine {
   private endPan(): void {
     if (!this.isPanning) return;
     this.isPanning = false;
+    this.panAnchorCenter = null;
+    this.panAnchorPoint = null;
     this.setCanvasCursor('');
   }
 
@@ -3799,6 +3808,8 @@ export class NibGliderEngine {
     if (!hit || !hit.item) {
       this.clearOutSelection();
       this.isPanning = true;
+      this.panAnchorCenter = this.scope.view.center.clone();
+      this.panAnchorPoint = event.point.clone();
       this.setCanvasCursor('grabbing');
       this.updateTextContent();
       return;
@@ -4116,7 +4127,19 @@ export class NibGliderEngine {
 
   private onMouseDrag(event: paper.MouseEvent): void {
     if (this.isPanning) {
-      this.scope.view.center = this.scope.view.center.subtract(event.delta);
+      const view = this.scope.view;
+      if (this.panAnchorCenter !== null && this.panAnchorPoint !== null) {
+        // Pointer travel since pan start, in project units. Subtracting
+        // the center out of each point cancels the view translation, so
+        // this measures pure pointer travel regardless of how center has
+        // moved between events (unlike event.delta, which mixes frames).
+        const offset = event.point
+          .subtract(view.center)
+          .subtract(this.panAnchorPoint.subtract(this.panAnchorCenter));
+        view.center = this.panAnchorCenter.subtract(offset);
+      } else {
+        view.center = view.center.subtract(event.delta);
+      }
       this.afterViewChange();
       return;
     }
