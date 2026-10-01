@@ -1,8 +1,58 @@
-[ ] annulus shape for Circle Keys. 
+
+SECTIONS IN PANELS
+[ ] Panel sections should have left draggable bar where they collapse to icon and left bar only.  They should be able to be removed with right click menu and restored from a new menu, one that sits to the left of the panel, spans both rows, make of a grid of boxes within the same design style as the panel.  to begin with it will have only one column with two boxes (we will allow more later and may turn it into horizontal arrangement later).   the two boxes inherit from CustomSelect, which should have the param. that it opens on hover.
+[ ] section icons in the panel will be a custom kind of menu that opens when the
+user clicks it.  for now only Snapping will have menu items.  what they will be is
+a checklist corresponding to which snapping types are shown in the UI and
+all of the ones shown now will be shown except for Aspect, which will be turned off.
 
 ---
 
-we want to add another circle key, this one on the , (comma) key. It will be called Radial Stamp. After the user  
+[ ] annulus shape for Circle Keys. 
+
+[ ] make sure that Status box will wrap to multiple lines.
+
+---
+
+[ ] Radial Stamp: 0 key locks and unlocks the current radius
+[ ] Radial Stamp setting (Accessed by clicking Radial Stamp key): snap to points.
+A polygon's points will snap to any shape's as the Radial Stamp is on.
+Related: Moving-Point-Snap, Moving-Edge-Snap: as user moves shape, its points will snap
+to other edges or points.
+
+[ ] Control/Command + T - makes conventional transform controls show on obj. selection,
+with multiple avail. operations: rotate, scale.  shift + drag will constraint scale or interval the 
+rotation.
+
+[ ] select image, select shape(s) - right click : Place Image into interior.  If a group of shapes, 
+will place in each object at the group level (attaches to group).  We will call these Interior. 
+The vector shape clips its.  Shading Shapes mode lets the user deposit  into the shapes,
+selected or no selection (all intersecting).
+
+loaded object 1 and 2.  section has tabs if user adds
+loaded objects.
+
+[ ] repeat grid - select shape > loaded object  
+    1 and 2 keys will adjust row count
+    3 and 4 keys will adjust col. count
+
+[ ] repeat circle - select shape > loaded object
+
+[ ] Repeat Lines - spacing, angle
+
+[ ] Rect Keys > Baseline Grid (Typography).  Shows baselines for type.  Default: lorem ipsum filled based on Text settings,
+until type is entered by user.
+
+[ ] Rect Keys > Interactive Obj. > Grid Paint (configurable).
+
+[ ] Rect Keys > Interactive Obj. > Pane Stacks (configurable).
+
+[ ] Imbricate: Radial Stamp : two underneath on either side.
+relates to Live Mod. Mode: switch on: allows repeating Loaded Object
+or selected shape that follows cursor and stamp (W) will stamp it.
+
+
+[x] we want to add another circle key, this one on the , (comma) key. It will be called Radial Stamp. After the user  
   presses Radial Stamp the origin of the circle is established. Then the shape, still the same one selected in the Circle 
   Keys section of the panel, will move and be rotated with the tangent point on the circle. then this relates to a        
   different feature which is is that when we are drawing live, the keyboard keys can take on different functions for the  

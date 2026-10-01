@@ -206,6 +206,9 @@ export class NibGliderEngine {
   isPathSnappingEnabled = false;
   isAngleSnappingEnabled = false;
   isLengthSnappingEnabled = false;
+  // Snap increments: angle in degrees, length in pt.
+  angleSnapDegrees = 15;
+  lengthSnapStep = 10;
   isAspectSnappingEnabled = false;
   aspectRatioA = 3;
   aspectRatioB = 4;
@@ -1066,8 +1069,22 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  setAngleSnapDegrees(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.angleSnapDegrees = Math.min(90, Math.max(1, v));
+    this.updateTextContent();
+    this.notify();
+  }
+
   setLengthSnappingEnabled(v: boolean): void {
     this.isLengthSnappingEnabled = v;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setLengthSnapStep(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.lengthSnapStep = Math.min(500, Math.max(1, v));
     this.updateTextContent();
     this.notify();
   }
@@ -1912,11 +1929,35 @@ export class NibGliderEngine {
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len === 0) return targetPoint;
     const angleRad = Math.atan2(dy, dx);
-    const stepRad = (15 * Math.PI) / 180;
+    const stepDeg =
+      Number.isFinite(this.angleSnapDegrees) && this.angleSnapDegrees > 0
+        ? this.angleSnapDegrees
+        : 15;
+    const stepRad = (stepDeg * Math.PI) / 180;
     const snappedAngle = Math.round(angleRad / stepRad) * stepRad;
     return new scope.Point(
       basePoint.x + Math.cos(snappedAngle) * len,
       basePoint.y + Math.sin(snappedAngle) * len,
+    );
+  }
+
+  applyLengthSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
+    const scope = this.scope;
+    if (!this.isLengthSnappingEnabled || !basePoint || !targetPoint) {
+      return targetPoint;
+    }
+    const step =
+      Number.isFinite(this.lengthSnapStep) && this.lengthSnapStep > 0
+        ? this.lengthSnapStep
+        : 10;
+    const dx = targetPoint.x - basePoint.x;
+    const dy = targetPoint.y - basePoint.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return targetPoint;
+    const snappedLen = Math.max(step, Math.round(len / step) * step);
+    return new scope.Point(
+      basePoint.x + (dx / len) * snappedLen,
+      basePoint.y + (dy / len) * snappedLen,
     );
   }
 
@@ -4952,32 +4993,37 @@ export class NibGliderEngine {
   private onMouseMove(event: paper.MouseEvent): void {
     const originalPoint = event.point;
     this.mousePt = this.snapToGrid(event.point);
-    if (this.isAngleSnappingEnabled) {
+    if (this.isAngleSnappingEnabled || this.isLengthSnappingEnabled) {
+      let snapBase: AnyItem = null;
       if (this.isDrawingPath && this.path && this.path.segments.length > 0) {
         const baseIndex =
           this.path.segments.length === 1 ? 0 : this.path.segments.length - 2;
-        this.mousePt = this.applyAngleSnapping(
-          this.path.segments[baseIndex].point,
-          this.mousePt,
-        );
+        snapBase = this.path.segments[baseIndex].point;
       } else if (
         this.isDrawingShape &&
         this.shapeType != null &&
         this.shapeType.startsWith('circle_') &&
         this.shapeStartPoint
       ) {
-        this.mousePt = this.applyAngleSnapping(this.shapeStartPoint, this.mousePt);
+        snapBase = this.shapeStartPoint;
       } else if (
         this.isDrawingShape &&
         this.shapeType != null &&
         this.shapeType.startsWith('rectangle_') &&
         this.shapeStartPoint
       ) {
-        let rectBasePt = this.shapeStartPoint;
+        snapBase = this.shapeStartPoint;
         if (this.shapeType === 'rectangle_two_edges' && this.shapePt2) {
-          rectBasePt = this.shapePt2;
+          snapBase = this.shapePt2;
         }
-        this.mousePt = this.applyAngleSnapping(rectBasePt, this.mousePt);
+      }
+      if (snapBase) {
+        if (this.isAngleSnappingEnabled) {
+          this.mousePt = this.applyAngleSnapping(snapBase, this.mousePt);
+        }
+        if (this.isLengthSnappingEnabled) {
+          this.mousePt = this.applyLengthSnapping(snapBase, this.mousePt);
+        }
       }
     }
     this.applyPathSnapping(originalPoint);

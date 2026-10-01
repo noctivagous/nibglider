@@ -50,7 +50,89 @@ function TitleIcon({ children }: { children: ReactNode }) {
   );
 }
 
-// Tiny glyph marking each snapping mode in its check-row label.
+// Tiny glyph marking each snapping mode in its toggle button.
+function SnapToggle({
+  id,
+  label,
+  pressed,
+  onToggle,
+  children,
+}: {
+  id?: string;
+  label: string;
+  pressed: boolean;
+  onToggle: (next: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      id={id}
+      title={label}
+      aria-label={label}
+      aria-pressed={pressed}
+      className={pressed ? 'snap-toggle active' : 'snap-toggle'}
+      onClick={() => onToggle(!pressed)}
+    >
+      <CheckIcon>{children}</CheckIcon>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+// Plain numeric field (no steppers) for a snap increment. Typing tolerates
+// intermediate text: the draft shows verbatim while every finite prefix
+// still commits live; blur or Escape discards the draft.
+function SnapNumInput({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step,
+  disabled,
+  onCommit,
+}: {
+  id?: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  disabled?: boolean;
+  onCommit: (n: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      type="number"
+      id={id}
+      className="snap-num"
+      aria-label={label}
+      title={label}
+      min={min}
+      max={max}
+      step={step}
+      value={draft ?? String(value)}
+      disabled={disabled}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const n = parseFloat(e.target.value);
+        if (Number.isFinite(n)) onCommit(n);
+      }}
+      onBlur={() => setDraft(null)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.currentTarget.blur();
+        } else if (e.key === 'Escape') {
+          setDraft(null);
+          e.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 function CheckIcon({ children }: { children: ReactNode }) {
   return (
     <svg
@@ -2217,70 +2299,74 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             <span className="pane-title-text">Snapping</span></span>
           </span>
           <div className="snapping-seg" role="group" aria-label="Snapping modes">
-          <label className="check-row" title="Grid">
-            <input
-              type="checkbox"
-              id="gridSnappingCheckbox"
-              checked={engine.isGridSnappingEnabled}
-              onChange={(e) => engine.setGridSnappingEnabled(e.target.checked)}
-            />
-            <CheckIcon>
-              <path d="M1 4 H11 M1 8 H11 M4 1 V11 M8 1 V11" />
-            </CheckIcon>
-            <span>Grid</span>
-          </label>
-          <label className="check-row" title="Path">
-            <input
-              type="checkbox"
-              id="pathSnappingCheckbox"
-              checked={engine.isPathSnappingEnabled}
-              onChange={(e) => engine.setPathSnappingEnabled(e.target.checked)}
-            />
-            <CheckIcon>
-              <path d="M1.5 9 C4 9 4 3.5 6.5 3.5 S9.5 6 10.5 6" />
-              <circle cx="1.5" cy="9" r="1.1" fill="currentColor" stroke="none" />
-              <circle cx="10.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
-            </CheckIcon>
-            <span>Path</span>
-          </label>
-          <label className="check-row" title="Angle">
-            <input
-              type="checkbox"
-              id="angleSnappingCheckbox"
-              checked={engine.isAngleSnappingEnabled}
-              onChange={(e) => engine.setAngleSnappingEnabled(e.target.checked)}
-            />
-            <CheckIcon>
+          <SnapToggle
+            id="gridSnappingToggle"
+            label="Grid"
+            pressed={engine.isGridSnappingEnabled}
+            onToggle={(next) => engine.setGridSnappingEnabled(next)}
+          >
+            <path d="M1 4 H11 M1 8 H11 M4 1 V11 M8 1 V11" />
+          </SnapToggle>
+          <SnapToggle
+            id="pathSnappingToggle"
+            label="Path"
+            pressed={engine.isPathSnappingEnabled}
+            onToggle={(next) => engine.setPathSnappingEnabled(next)}
+          >
+            <path d="M1.5 9 C4 9 4 3.5 6.5 3.5 S9.5 6 10.5 6" />
+            <circle cx="1.5" cy="9" r="1.1" fill="currentColor" stroke="none" />
+            <circle cx="10.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
+          </SnapToggle>
+          <span className="snap-field" title="Angle">
+            <SnapToggle
+              id="angleSnappingToggle"
+              label="Angle"
+              pressed={engine.isAngleSnappingEnabled}
+              onToggle={(next) => engine.setAngleSnappingEnabled(next)}
+            >
               <path d="M1.5 10.5 H10.5 M1.5 10.5 L8.5 2" />
               <path d="M4.8 10.5 A3.4 3.4 0 0 0 4.2 7.6" />
-            </CheckIcon>
-            <span>Angle</span>
-          </label>
-          <label className="check-row" title="Length">
-            <input
-              type="checkbox"
-              id="lengthSnappingCheckbox"
-              checked={engine.isLengthSnappingEnabled}
-              onChange={(e) => engine.setLengthSnappingEnabled(e.target.checked)}
+            </SnapToggle>
+            <SnapNumInput
+              id="angleSnapStepInput"
+              label="Angle snap step in degrees"
+              value={engine.angleSnapDegrees}
+              min={1}
+              max={90}
+              step={1}
+              disabled={!engine.isAngleSnappingEnabled}
+              onCommit={(n) => engine.setAngleSnapDegrees(n)}
             />
-            <CheckIcon>
+          </span>
+          <span className="snap-field" title="Length">
+            <SnapToggle
+              id="lengthSnappingToggle"
+              label="Length"
+              pressed={engine.isLengthSnappingEnabled}
+              onToggle={(next) => engine.setLengthSnappingEnabled(next)}
+            >
               <path d="M2 6 H10 M2 6 L4 4 M2 6 L4 8 M10 6 L8 4 M10 6 L8 8" />
-            </CheckIcon>
-            <span>Length</span>
-          </label>
+            </SnapToggle>
+            <SnapNumInput
+              id="lengthSnapStepInput"
+              label="Length snap step in points"
+              value={engine.lengthSnapStep}
+              min={1}
+              max={500}
+              step={1}
+              disabled={!engine.isLengthSnappingEnabled}
+              onCommit={(n) => engine.setLengthSnapStep(n)}
+            />
+          </span>
           <div className="snapping-aspect">
-            <label className="check-row" title="Aspect">
-              <input
-                type="checkbox"
-                id="aspectSnappingCheckbox"
-                checked={engine.isAspectSnappingEnabled}
-                onChange={(e) => engine.setAspectSnappingEnabled(e.target.checked)}
-              />
-              <CheckIcon>
-                <path d="M1 2.5 H11 V9.5 H1 Z M6 2.5 V9.5" />
-              </CheckIcon>
-              <span>Aspect</span>
-            </label>
+            <SnapToggle
+              id="aspectSnappingToggle"
+              label="Aspect"
+              pressed={engine.isAspectSnappingEnabled}
+              onToggle={(next) => engine.setAspectSnappingEnabled(next)}
+            >
+              <path d="M1 2.5 H11 V9.5 H1 Z M6 2.5 V9.5" />
+            </SnapToggle>
             <CustomSelect
               id="aspectRatioSelect"
               ariaLabel="Aspect ratio"

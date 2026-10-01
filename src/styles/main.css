@@ -1238,6 +1238,8 @@ body {
 }
 
 #controlPanel .snapping-seg > .check-row,
+#controlPanel .snapping-seg > .snap-toggle,
+#controlPanel .snapping-seg > .snap-field,
 #controlPanel .snapping-seg > .snapping-aspect {
   padding: 3px 8px;
   border-right: 1px solid var(--dp-border);
@@ -1247,13 +1249,90 @@ body {
   border-right: none;
 }
 
-#controlPanel .snapping-seg > .check-row:has(input:checked) {
+#controlPanel .snapping-seg > .check-row:has(input:checked),
+#controlPanel .snapping-seg > .snap-toggle.active,
+#controlPanel .snapping-seg > .snap-field:has(.snap-toggle.active) {
   background: linear-gradient(to bottom, #7a5c22, #5e471a);
   color: #ffedd0;
 }
 
-#controlPanel .snapping-seg > .check-row:has(input:checked) svg {
+#controlPanel .snapping-seg > .check-row:has(input:checked) svg,
+#controlPanel .snapping-seg > .snap-toggle.active svg {
   color: #ffedd0;
+}
+
+/* Snapping toggle buttons: press-and-stay segments, no checkbox. */
+#controlPanel .snap-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--dp-text-1);
+  font-family: var(--font-tech-label);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#controlPanel .snap-toggle:hover {
+  color: #ffedd0;
+}
+
+#controlPanel .snap-toggle:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: -2px;
+}
+
+#controlPanel .snap-toggle svg {
+  flex: none;
+}
+
+/* Angle/Length increment: plain numeric field, no steppers. */
+#controlPanel .snap-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#controlPanel .snap-field .snap-toggle {
+  padding: 0;
+  border-right: none;
+}
+
+#controlPanel .snap-num {
+  /* 3 digits wide: 3ch of digits + horizontal padding/border (border-box). */
+  width: calc(3ch + 14px);
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  box-shadow: none;
+  color: var(--dp-text-1);
+  padding: 2px 6px;
+  font-size: 0.8125rem;
+  font-family: var(--font-tech-mono);
+}
+
+/* No spinner steppers on the snap increment fields. */
+#controlPanel .snap-num::-webkit-outer-spin-button,
+#controlPanel .snap-num::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+#controlPanel .snap-num[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+#controlPanel .snap-num:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#controlPanel .snap-num:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 1px;
 }
 
 /* Inputs on dark */
@@ -2710,12 +2789,18 @@ kbd {
 }
 
 #controlPanel #snappingControls .check-row,
+#controlPanel #snappingControls .snap-toggle,
+#controlPanel #snappingControls .snap-field,
 #controlPanel #snappingControls select {
   color: #e6d3a8;
 }
 
 #controlPanel #snappingControls .snapping-seg > .check-row:has(input:checked),
-#controlPanel #snappingControls .snapping-seg > .check-row:has(input:checked) svg {
+#controlPanel #snappingControls .snapping-seg > .check-row:has(input:checked) svg,
+#controlPanel #snappingControls .snapping-seg > .snap-toggle.active,
+#controlPanel #snappingControls .snapping-seg > .snap-toggle.active svg,
+#controlPanel #snappingControls .snapping-seg > .snap-field:has(.snap-toggle.active),
+#controlPanel #snappingControls .snapping-seg > .snap-field:has(.snap-toggle.active) svg {
   color: #ffedd0;
 }
 
@@ -2789,11 +2874,14 @@ kbd,
 
 @container cpanel (max-width: 1360px) {
   #controlPanel .snapping-seg .check-row > span,
+  #controlPanel .snapping-seg .snap-toggle > span,
   #controlPanel .snapping-aspect .check-row > span {
     display: none;
   }
 
   #controlPanel .snapping-seg > .check-row,
+  #controlPanel .snapping-seg > .snap-toggle,
+  #controlPanel .snapping-seg > .snap-field,
   #controlPanel .snapping-seg > .snapping-aspect {
     padding: 3px 6px;
   }
@@ -2856,6 +2944,8 @@ kbd,
   }
 
   #controlPanel .snapping-seg > .check-row,
+  #controlPanel .snapping-seg > .snap-toggle,
+  #controlPanel .snapping-seg > .snap-field,
   #controlPanel .snapping-seg > .snapping-aspect {
     padding: 2px 4px;
   }
