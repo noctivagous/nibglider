@@ -136,6 +136,7 @@ export class KeyboardController {
       isLiveDrawing: host.isLiveDrawing(),
       shapeType: host.shapeType(),
       selectedCount: host.selectedItems().length,
+      isInDragLock: host.isInDragLock(),
       liveAdjustApplies: host.liveAdjustApplies(),
     };
   }
@@ -372,6 +373,8 @@ export class KeyboardController {
     const host = this.host;
     const key = event.key.toLowerCase();
     if (!(host.isDrawingPath() || host.isDrawingShape() || host.isDrawingQuad())) {
+      // Idle with drag-lock on, END releases the lock instead of drawing.
+      if (host.isInDragLock()) host.setIsInDragLock(false);
       return;
     }
     if (key !== 'r' && key !== 'e' && key !== 's' && key !== 'a') return;

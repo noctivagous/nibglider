@@ -3266,6 +3266,8 @@ export class NibGliderEngine {
   }
 
   cancelCurrentDrawingOperation(): void {
+    // Cancel (Q / Escape) also releases drag-lock, like Space does.
+    this.setIsInDragLock(false);
     if (this.previewInner) {
       this.previewInner.remove();
       this.previewInner = null;

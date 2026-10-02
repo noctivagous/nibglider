@@ -21,6 +21,7 @@ export interface KeyState {
   isLiveDrawing: boolean;
   shapeType: string | null;
   selectedCount: number;
+  isInDragLock: boolean;
   /** Live scale/rotate applies to paths, quads, and circle previews. */
   liveAdjustApplies: boolean;
 }
@@ -471,7 +472,8 @@ export const KEY_COMMANDS: KeyCommand[] = [
     group: 'end',
     help: 'End the drawing',
     match: letter('a'),
-    available: drawing,
+    // Idle with drag-lock on, END releases the lock instead of drawing.
+    available: (s) => drawing(s) || s.isInDragLock,
     exclusive: false,
   },
   {
@@ -659,6 +661,7 @@ export function matchAppCommand(
     isLiveDrawing: state.isDrawingPath,
     shapeType: null,
     selectedCount: 0,
+    isInDragLock: false,
     liveAdjustApplies: false,
   };
   for (const cmd of KEY_COMMANDS) {
@@ -683,6 +686,7 @@ export function isCommandAvailable(
     isLiveDrawing: state.isDrawingPath,
     shapeType: null,
     selectedCount: 0,
+    isInDragLock: false,
     liveAdjustApplies: false,
   });
 }

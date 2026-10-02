@@ -287,6 +287,7 @@ function keyStateOf(engine: NibGliderEngine): KeyState {
     isLiveDrawing: engine.isLiveDrawing,
     shapeType: engine.shapeType,
     selectedCount: engine.selectedItems.length,
+    isInDragLock: engine.isInDragLock,
     liveAdjustApplies: engine.isDrawingPath || engine.isDrawingQuad,
   };
 }

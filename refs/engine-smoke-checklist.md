@@ -35,7 +35,7 @@ the expected result, and Undo then Redo restores both directions.
 - [ ] Click or Tab selects an item. Drag moves it. Escape clears the
       selection. Backspace deletes it.
 - [ ] Space toggles drag-lock. Moving the mouse moves every selected item.
-      Space releases the lock.
+      Space releases the lock, as do Cancel (Q) and End (A).
 - [ ] Arrow keys nudge the selection. Shift nudges farther. Alt nudges
       less. Undo restores the original place.
 - [ ] [ ] scale a selection. ; ' rotate it. Shift and Alt change the step.
