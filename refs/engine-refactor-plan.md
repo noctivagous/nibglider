@@ -95,6 +95,7 @@ src/engine/
   document/
     DocumentManager.ts      # Document lifecycle, page metadata, active page
     LayerManager.ts         # Semantic layers mapped to Paper.js layers
+    CoordinateManager.ts    # Canonical units and page/view/SVG conversion
     ViewportManager.ts      # Zoom, pan, and view/project conversion
     PersistenceManager.ts   # New/open/save/import/export and serialization
 
@@ -372,13 +373,16 @@ items.
 
 ### Phase 4d: Establish the document boundary
 
-Create `DocumentManager.ts`, `LayerManager.ts`, and `ViewportManager.ts` with
-the current single-page, active-layer behavior represented explicitly. Do not
-add multi-page support, file formats, or a new layer UI yet.
+Create `DocumentManager.ts`, `LayerManager.ts`, `CoordinateManager.ts`, and
+`ViewportManager.ts` with the current single-page, active-layer behavior
+represented explicitly. Do not add multi-page support, file formats, or a new
+layer UI yet.
 
 Move or wrap:
 
 - active Paper.js layer lookup behind `LayerManager`
+- canonical document coordinates, physical units, SVG-unit conversion, and
+  precision/rounding rules behind `CoordinateManager`
 - zoom and pan state behind `ViewportManager`
 - current/future page dimensions, orientation, and units behind
   `DocumentManager`
@@ -617,3 +621,153 @@ Critical regression checks:
 - Extracted modules have focused tests or documented manual checks.
 - An agent can implement a feature by locating one primary module and its
   declared dependencies.
+
+## Open architectural decisions before implementation
+
+The refactor direction is coherent, but the following contracts should be
+written before the relevant feature is implemented. Resolve them incrementally;
+they are not a reason to block the early extraction phases.
+
+### 1. Document format and persistence
+
+Define a versioned native document schema before implementing save/open:
+
+- store document metadata, pages, layers, `NGDrawable` source data, styles,
+  and asset references independently of Paper.js;
+- include a schema version and migration pipeline from the first saved format;
+- decide whether images are embedded, linked, or both, and define missing-asset
+  behavior;
+- make save/open/import failures return structured errors without leaving a
+  partially modified document.
+
+`PersistenceManager` owns file boundaries and migrations. `DocumentManager`
+owns the in-memory document; neither owns undo/redo history.
+
+### 2. Operation and conversion policy
+
+Write an operation matrix for each drawable source kind—path, semantic shape,
+text, raster image, SVG image, group, and mask—for:
+
+- transform and direct-node editing;
+- union, subtraction, and intersection;
+- grouping, clipping, and masking;
+- import, export, duplication, and conversion.
+
+Each cell must state whether the operation preserves source semantics, lowers
+to `NGPathDrawable`/compound geometry, creates a mask, flattens children, or
+is unavailable. `booleanResolver.ts` should implement this policy rather than
+scattering special cases through tools and panels.
+
+### 3. Scene synchronization and caches
+
+Define the one-way rendering contract:
+
+```text
+NGDrawable model change -> invalidate derived geometry -> render Paper.js item(s)
+```
+
+Assign every derived Paper.js item a `drawableId`, centralize creation/removal
+in `DrawableRenderer`, and define cache invalidation for geometry, bounds,
+text outlines, hit regions, and live previews. Rebuild derived scene items
+from the document model after load, undo/redo, or renderer changes.
+
+### 4. History transactions and asynchronous work
+
+Commands must operate on document-model changes first and then re-render their
+scene effects. Define transactions for multi-item actions such as group,
+boolean operation, import, and transform.
+
+For asynchronous import or expensive path finalization:
+
+- keep a pending operation cancellable;
+- commit exactly one undoable command only after success;
+- restore the previous model state on failure;
+- use explicit coalescing rules for pointer drags and repeated nudges.
+
+`HistoryManager` owns transaction boundaries; importers and renderers report
+results but do not push partial history entries.
+
+### 5. Coordinate systems, units, and precision
+
+Make `CoordinateManager` a dedicated document-level service. It should define
+one canonical internal coordinate unit—points are the natural current
+choice—and explicitly convert among:
+
+- document/page coordinates;
+- physical units such as pt, inch, cm, pica, and future SI/US display units;
+- viewport/CSS pixels and Paper.js project coordinates;
+- SVG/PDF export units;
+- snapping and numeric-input precision.
+
+`ViewportManager` owns pan and zoom, but it delegates conversion rules to
+`CoordinateManager`. Rounding should occur only at display/input/export
+boundaries, not in stored geometry.
+
+### 6. Composite-path semantics
+
+Before enabling `ngComposite` by default, choose and specify:
+
+- B-spline versus centripetal Catmull-Rom interpolation;
+- endpoint, closure, and repeated-control-point behavior;
+- hard-corner and rounded-corner expansion rules;
+- arc and bowed-segment staging rules;
+- live-preview versus final-output sampling tolerance;
+- Bezier fitting/export policy.
+
+Prototype these as pure geometry functions with fixtures before coupling them
+to Paper.js or keyboard behavior.
+
+### 7. Text lifecycle
+
+Define when text remains live and when it becomes outlines:
+
+- layout and font fallback/availability;
+- display text, body text, and text-on-path;
+- style changes before and after outline conversion;
+- boolean operations and direct-node edits;
+- native document persistence and plain-SVG export.
+
+`NGTextDrawable` should remain editable until a destructive geometry operation
+requires a lowered `NGPathDrawable` result.
+
+### 8. Image and SVG lifecycle
+
+Specify image policies separately for raster and vector assets:
+
+- raster boundary selection, crop, clipping, and mask compositing;
+- vector SVG import, retained source versus flattened geometry, and boolean
+  eligibility;
+- asset embedding/linking, dimensions, color behavior, and export;
+- whether an operation is vector geometry, raster compositing, or unsupported.
+
+`NGImageDrawable` must not claim that a raster boolean result is vector data
+unless tracing/vectorization was explicitly requested.
+
+### 9. Parametric components and generators
+
+Decide whether a component such as a repeat grid, split rectangle, or
+construction widget is:
+
+- one `NGDrawable` that resolves to multiple geometries;
+- a group of ordinary child drawables;
+- a modifier/generator attached to another drawable; or
+- an interactive, uncommitted drawing session.
+
+Define its editable parameters, source dependencies, serialization, bounds,
+selection behavior, and the explicit “expand/vectorize” conversion that
+lowers it to ordinary paths.
+
+### 10. Test strategy
+
+Use layers of verification rather than relying only on manual canvas testing:
+
+- unit tests for coordinate conversion, path expansion, interpolation, shape
+  invariants, and boolean policies;
+- model/document tests for serialization, migrations, and history
+  transactions;
+- Paper.js integration tests for renderer/selection mapping and scene rebuild;
+- browser interaction checks for keys, pointer gestures, snapping, panel
+  commands, and drag/drop.
+
+Every new semantic geometry or conversion policy should add fixtures that
+state both the retained source data and expected resolved geometry.
