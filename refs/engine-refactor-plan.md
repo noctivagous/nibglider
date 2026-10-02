@@ -383,6 +383,17 @@ Initial acceptance checks:
 - the same setting opened from a panel, command bar, or keycap has one shared
   value and validation rule.
 
+#### Phase 3c follow-up: per-tool popovers
+
+Key popovers edit how a tool draws, not what the panel sections draw. The
+panel Circle/Rect sections keep deciding the inner shape; each key's popover
+holds that tool's own setting. Only Circle by Radius (`circle-radius-tool`:
+start from origin or circumference) and Rect by Diagonal
+(`rect-diagonal-tool`: full, half, or quarter rect) have popovers; keys
+without a schema show no popover. A gear badge in the key's lower-right
+corner marks keys with settings. Values stay on the engine per the Phase 3c
+rule above until the owning services exist.
+
 ### Phase 4: Establish page-item and geometry models
 
 Before moving drawing tools onto new behaviors, introduce the serializable
