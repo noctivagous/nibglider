@@ -27,6 +27,11 @@ export type CircleRadiusAnchor = 'origin' | 'circumference';
  * diagonal (current), half of it (final = 2x), or a quarter (final = 4x). */
 export type RectDiagonalMode = 'full' | 'half' | 'quarter';
 
+/** How a Regular Polygon inner shape fits its circle frame. Inradius puts
+ * an edge midpoint on the frame circle toward the cursor (edge forward);
+ * circumradius puts a vertex on the frame circle toward the cursor. */
+export type PolygonRadiusMode = 'inradius' | 'circumradius';
+
 // A key remap that applies while a live drawing preview is active. The
 // engine checks registered bindings before the idle (selection) handlers,
 // so the same physical key can adjust the live preview instead. Future

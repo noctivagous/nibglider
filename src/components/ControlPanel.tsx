@@ -857,6 +857,7 @@ function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
     );
   }
   if (type === 'polygon') {
+    const align = engine.polygonRadiusMode === 'circumradius' ? 'circumradius' : 'inradius';
     return (
       <span id="regularPolygonParametersForPanel" className="panelParameters">
         <ParamSlider
@@ -868,6 +869,29 @@ function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
           formatValue={(v) => String(Math.round(v))}
           onChange={(n) => engine.setCircleSides(Math.round(n))}
         />
+        <span className="param-item">
+          <label>Align</label>
+          <div className="seg-ctrl seg-text" role="group" aria-label="Polygon alignment">
+            <button
+              type="button"
+              title="A vertex points toward the cursor"
+              aria-label="Vertex toward cursor"
+              className={align === 'circumradius' ? 'active' : undefined}
+              onClick={() => engine.setPolygonRadiusMode('circumradius')}
+            >
+              Vertex
+            </button>
+            <button
+              type="button"
+              title="An edge midpoint faces the cursor"
+              aria-label="Edge toward cursor"
+              className={align === 'inradius' ? 'active' : undefined}
+              onClick={() => engine.setPolygonRadiusMode('inradius')}
+            >
+              Edge
+            </button>
+          </div>
+        </span>
       </span>
     );
   }

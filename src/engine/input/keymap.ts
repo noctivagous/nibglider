@@ -564,9 +564,10 @@ export const KEY_COMMANDS: KeyCommand[] = [
 
 // Settings metadata attached to the command that owns the behavior.
 // Each popover edits how its tool draws (not what the panel sections
-// draw). Only Circle by Radius and Rect by Diagonal have popovers for
-// now; keys without a link show no popover and no gear badge.
+// draw). Circle by Diameter, Circle by Radius, and Rect by Diagonal have
+// popovers; keys without a link show no popover and no gear badge.
 const KEY_SETTINGS_LINKS: Record<string, { settingsId: string; settingsSummary: string }> = {
+  'circle-diameter': { settingsId: 'circle-diameter-tool', settingsSummary: 'Circle polygon fit' },
   'circle-radius': { settingsId: 'circle-radius-tool', settingsSummary: 'Circle radius start' },
   'rect-diagonal': { settingsId: 'rect-diagonal-tool', settingsSummary: 'Rect diagonal extent' },
 };

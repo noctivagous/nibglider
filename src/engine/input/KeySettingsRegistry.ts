@@ -22,7 +22,7 @@
 // The schema for a command is `schemaById(command.settingsId)`. That is
 //   the settingsSchema metadata on the key definition.
 
-import type { CircleRadiusAnchor, RectDiagonalMode } from '../types';
+import type { CircleRadiusAnchor, PolygonRadiusMode, RectDiagonalMode } from '../types';
 
 export type SettingsOwner = 'path' | 'circle' | 'rect' | 'stroke' | 'fill';
 
@@ -30,8 +30,10 @@ export type SettingsOwner = 'path' | 'circle' | 'rect' | 'stroke' | 'fill';
 export interface SettingsTarget {
   circleRadiusAnchor: CircleRadiusAnchor;
   rectDiagonalMode: RectDiagonalMode;
+  polygonRadiusMode: PolygonRadiusMode;
   setCircleRadiusAnchor(anchor: CircleRadiusAnchor): void;
   setRectDiagonalMode(mode: RectDiagonalMode): void;
+  setPolygonRadiusMode(mode: PolygonRadiusMode): void;
 }
 
 export interface SettingsOption {
@@ -167,10 +169,36 @@ const RECT_DIAGONAL_MODE_OPTIONS: SettingsOption[] = [
   { value: 'quarter', label: 'Quarter rect' },
 ];
 
+const POLYGON_RADIUS_MODE_OPTIONS: SettingsOption[] = [
+  { value: 'circumradius', label: 'Circumradius' },
+  { value: 'inradius', label: 'Inradius' },
+];
+
+function polygonRadiusModeField(): SelectSetting {
+  return {
+    id: 'polygon-radius-mode',
+    kind: 'select',
+    label: 'Polygon radius',
+    help: 'Regular Polygon fit: vertices reach the frame circle (circumradius), or edge midpoints do (inradius).',
+    default: 'inradius',
+    options: POLYGON_RADIUS_MODE_OPTIONS,
+    read: (t) => t.polygonRadiusMode,
+    write: (t, value) => t.setPolygonRadiusMode(value as PolygonRadiusMode),
+    validate: oneOf(POLYGON_RADIUS_MODE_OPTIONS, 'inradius'),
+  };
+}
+
 // Key popovers edit how a tool draws, not what the panel sections draw.
-// Only Circle by Radius and Rect by Diagonal have popovers for now; a key
-// without a schema here shows no popover at all.
+// Circle by Diameter, Circle by Radius, and Rect by Diagonal have popovers;
+// a key without a schema here shows no popover at all.
 const SCHEMAS: KeySettingsSchema[] = [
+  {
+    id: 'circle-diameter-tool',
+    title: 'Circle by Diameter',
+    help: 'How the tool draws: the Regular Polygon inner shape fits the circle frame by circumradius or inradius.',
+    owner: 'circle',
+    fields: [polygonRadiusModeField()],
+  },
   {
     id: 'circle-radius-tool',
     title: 'Circle by Radius',
@@ -187,6 +215,7 @@ const SCHEMAS: KeySettingsSchema[] = [
         write: (t, value) => t.setCircleRadiusAnchor(value as CircleRadiusAnchor),
         validate: oneOf(CIRCLE_RADIUS_ANCHOR_OPTIONS, 'origin'),
       },
+      polygonRadiusModeField(),
     ],
   },
   {

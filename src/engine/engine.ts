@@ -41,6 +41,7 @@ import type {
   KeyActivity,
   LengthUnit,
   LiveKeyBinding,
+  PolygonRadiusMode,
   RectDiagonalMode,
   RectangleInnerShape,
   ShapeType,
@@ -72,6 +73,7 @@ export type {
   KeyActivity,
   LengthUnit,
   LiveKeyBinding,
+  PolygonRadiusMode,
   RectDiagonalMode,
   RectangleInnerShape,
   ShapeType,
@@ -207,9 +209,9 @@ export class NibGliderEngine {
     angle: 60,
     sector: 90,
   };
-  polygonRadiusMode = 'inradius';
-  // Per-tool "how it draws" settings, edited from the M and I key popovers.
-  // Defaults preserve the long-standing behavior.
+  polygonRadiusMode: PolygonRadiusMode = 'inradius';
+  // Per-tool "how it draws" settings, edited from the N, M, and I key
+  // popovers. Defaults preserve the long-standing behavior.
   circleRadiusAnchor: CircleRadiusAnchor = 'origin';
   rectDiagonalMode: RectDiagonalMode = 'full';
 
@@ -1712,7 +1714,10 @@ export class NibGliderEngine {
   }
 
   setPolygonRadiusMode(mode: string): void {
-    this.polygonRadiusMode = mode === 'inradius' ? 'inradius' : 'circumradius';
+    if (mode !== 'inradius' && mode !== 'circumradius') return;
+    this.polygonRadiusMode = mode;
+    this.updateTextContent();
+    this.notify();
   }
 
   togglePolygonRadiusMode(): void {
@@ -1836,9 +1841,12 @@ export class NibGliderEngine {
     if (type === 'polygon') {
       const sides = params.sides || 6;
       const angleStep = (Math.PI * 2) / sides;
+      // Mirror the canvas draw: edge-forward (inradius) turns a half step
+      // so an edge midpoint faces 0°, vertex-forward puts a vertex there.
+      const alignOffset = this.polygonRadiusMode === 'inradius' ? angleStep / 2 : 0;
       let d = 'M ';
       for (let i = 0; i < sides; i++) {
-        const angle = angleStep * i;
+        const angle = angleStep * i + alignOffset;
         const [rx, ry] =
           previewFrame === 'rect'
             ? this.rotWell(Math.cos(angle), Math.sin(angle))
