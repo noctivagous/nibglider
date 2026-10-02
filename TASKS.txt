@@ -20,6 +20,42 @@ description.  NGPath > Polygon > Quadrilateral > Parallelogram,  Polygon > Quadr
 Polygon > Regular Polygon.  when object changes, like has union, subtraction, intersection
 operations, path change, then it moves to regular Path.
 
+IN-DRAWING WIDGETS
+
+	[ ] REPLICATOR PORTALS
+	Placed on page with Rect Key (for rect repeats) or Circle Keys. 
+	As the person moves objects over the replicator portal
+	object, it replicates them according to the configured pattern,
+	stopping at the clip boundaries of the circle.
+	
+
+	[ ] FILTER COVERS
+	 Made from the outline of a shape or closed path, configured to 
+	 apply an image filter to what is underneath the shape.
+	 Examples include blend operations and image
+	 filters like blurs. Can be dragged around like 
+	 a regular shape.
+
+	[ ] PROPERTY-ACTOR COVERS  
+	Instead of acting on the image, will change configured properties,
+	especially effect properties, of objects on the page, like giving
+	the objects underneath it a drop shadow within its clipped bounds.
+	Can be dragged around like a regular shape.
+
+ACTIVE OBJECTS
+	[ ] VOID SHAPES AND VOID MASKS FOR NEGATIVE AREA SURROUND OBJECTS  (NON-DESTRUCTIVE)
+	 If a shape has void-shape property on it will make
+	 objects underneath it disappear non-destructively 
+	 and so it can be dragged. unlike live combinatoric shapes,
+	 does not act on the paths' on the page, just removes the
+	 pixels corresponding to the shape's outline.
+   [ ] LIVE COMBINATORIC SHAPES (NON-DESTRUCTIVE)
+	 live-combinatoric property is turned on the object
+	 and dragging it around will do the same as
+	 applying that combinatoric operation but non-destructively
+	 and so the shape can be dragged.
+	
+
 
   [x] the menu that appears when clicking on the icon for any panel section should have
   at the bottom collapse/expand, providing another place for the user to collapse and

@@ -119,7 +119,7 @@ src/engine/
     SnappingManager.ts      # Grid, angle, length, aspect, path, point snap
     CombinatoricsManager.ts # Union, subtract, intersect
 
-  appearance/
+  obj-characteristics/
     StyleManager.ts         # Stroke, fill, dash, cap, join
     TextLayout.ts           # Display, body, and circumference text
     GridRenderer.ts         # Grid and snap-cursor rendering
