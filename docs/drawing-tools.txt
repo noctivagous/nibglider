@@ -1,0 +1,15 @@
+
+Rectangle Keys
+    Rectangle by Two Edges
+    Rectangle by Centerline
+    Rectangle by Diagonal
+
+Circle Keys
+    Circle by Diameter
+    Circle by Radius
+
+Stamp Keys
+    Radial Stamp
+
+Quadrilateral by Four Points
+

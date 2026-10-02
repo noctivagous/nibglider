@@ -1,0 +1,32 @@
+Introduction
+
+Nibglider is a vector-drawing program in which
+mouse clicks are replaced by keyboard key
+presses (called "key-clicks" here). 
+The mouse continues to steer the cursor 
+but its buttons are left unused by the program except
+when the user reflexively uses them.
+When key-clicks are implemented comprehensively, 
+with the whole of a vector-drawing program's
+interactions and tools redesigned, 
+an altogether elevated form of interaction with 
+desktop software drawing occurs.
+
+We have also in @external-proj/Floating Marker 
+a composite path we call FMStroke and it greatly assists 
+laying down accurate paths in real time by making composite 
+conventions on top of Apple's PencilKit PKStroke so that a 
+point is not just a curve or straight point but indicates 
+what kind of corner and path will follow the point. 
+Using the mathematical spline function produces a relatively 
+raw experience but this composite set of conventions that 
+sits on top makes splines fast to use in combination with the key-clicks.
+The points laid down indicate both what they are effecting as corners 
+and what they produce in the line segment, with for example
+an arc point producing a hard corner and then an arc according
+to the current parameters given to that segment point (ranging from a small
+arc to a large one is stored in the point.  hardCorner produces
+line segments: the corner is hard because it deposits 3 bspline points
+at that point and the b-spline algorithm turns that into a hard corner. 
+roundCorner produces line segments but deposits 2 b-spline points 
+at that point so that. A regular bSpline is flexible for drawing like a bSpline.

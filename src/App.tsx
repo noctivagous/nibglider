@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import paper from 'paper';
 import { NibGliderEngine, type KeyActivity } from './engine/engine';
+import { isCommandAvailable, matchAppCommand } from './engine/input/keymap';
 import ControlPanel from './components/ControlPanel';
 import Keyboard from './components/Keyboard';
 import StatusOverlay from './components/StatusOverlay';
@@ -100,17 +101,7 @@ export default function App() {
   // inside panel text fields, where "k" is typed content.
   useEffect(() => {
     const onToggleKeyboard = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey) return;
-      if (event.key.toLowerCase() !== 'k') return;
-      if (engine.isDrawingPath) return;
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'SELECT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable)
-      ) {
+      if (matchAppCommand(event, { isDrawingPath: engine.isDrawingPath }) !== 'toggle-keyboard') {
         return;
       }
       setKeyboardVisible((v) => !v);
@@ -138,17 +129,7 @@ export default function App() {
   // inside panel text fields, where "j" is typed content.
   useEffect(() => {
     const onToggleControls = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey) return;
-      if (event.key.toLowerCase() !== 'j') return;
-      if (engine.isDrawingPath) return;
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'SELECT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable)
-      ) {
+      if (matchAppCommand(event, { isDrawingPath: engine.isDrawingPath }) !== 'toggle-panel') {
         return;
       }
       setControlsVisible((v) => !v);
@@ -176,17 +157,7 @@ export default function App() {
   // the J/K listeners.
   useEffect(() => {
     const onToggleStatus = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey) return;
-      if (event.key.toLowerCase() !== 'l') return;
-      if (engine.isDrawingPath) return;
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'SELECT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable)
-      ) {
+      if (matchAppCommand(event, { isDrawingPath: engine.isDrawingPath }) !== 'toggle-status') {
         return;
       }
       setStatusVisible((v) => !v);
@@ -265,10 +236,15 @@ export default function App() {
               showSpacebar={showSpacebar}
               width={keyboardWidth}
               onWidthChange={setKeyboardWidth}
-              onStatusToggle={() => {
-                // Same guard as the physical L key: no toggling mid-path.
-                if (engine.isDrawingPath) return;
-                setStatusVisible((v) => !v);
+              onCommand={(id) => {
+                if (
+                  id === 'toggle-status' &&
+                  isCommandAvailable('toggle-status', {
+                    isDrawingPath: engine.isDrawingPath,
+                  })
+                ) {
+                  setStatusVisible((v) => !v);
+                }
               }}
             />
           </div>

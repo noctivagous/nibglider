@@ -2,7 +2,19 @@
 
 A key-click based vector editor.
 
+## Introduction
 
+Nibglider is a vector-drawing program in which
+mouse clicks are replaced by keyboard key
+presses (called "key-clicks" here). 
+The mouse continues to steer the cursor 
+but its buttons are left unused by the program except
+when the user reflexively uses them.
+When key-clicks are implemented comprehensively, 
+with the whole of a vector-drawing program's
+interactions and tools redesigned, 
+an altogether elevated form of interaction with 
+desktop software drawing occurs.
 
 
 # React + TypeScript + Vite

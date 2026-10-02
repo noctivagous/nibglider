@@ -28,6 +28,40 @@ extraction.
 7. Give each module a narrow public interface and explicit dependencies.
 8. Avoid circular imports between managers.
 
+## Geometry and page-item foundations
+
+The detailed design references for this plan are:
+
+- `refs/ngpath-fmstroke-composite-path-study.md` — semantic `NGPath` modes,
+  composite spline/corner conventions, live-path sessions, and derived Bezier
+  output.
+- `refs/ngdrawable-page-item-architecture.md` — `NGDrawable` as the common
+  document/page-item model for paths, semantic shapes, text, images, and
+  groups.
+
+Adopt these boundaries before extending path tools or adding document
+persistence:
+
+```text
+Document -> Layer -> NGDrawable -> source model -> resolved geometry -> Paper.js item
+```
+
+`NGDrawable` owns common page-item identity, layer membership, transform,
+visibility, locking, selection identity, style reference, and serialization.
+It has source kinds for path, semantic shape, text, image, and group.
+
+`NGPath` is the semantic vector-path source model, with modes such as Bezier,
+B-spline, composite path, and smoothed polyline. Semantic shapes derive an
+`NGPath`; text and images resolve geometry only when an operation needs it.
+Paper.js items are derived scene/render objects, not the authoritative
+document model.
+
+Boolean operations are a deliberate conversion boundary: a result that no
+longer satisfies a rectangle, polygon, live-text, or composite-path invariant
+becomes an ordinary `NGPathDrawable` or compound path. Raster-image operations
+use a boundary or clipping-mask policy instead of pretending pixels are vector
+geometry.
+
 ## Target structure
 
 ```text
@@ -36,6 +70,15 @@ src/engine/
   types.ts                  # Shared types and unit conversion helpers
   EngineContext.ts          # Shared state, PaperScope, notify(), services
 
+  model/
+    NGDrawable.ts           # Shared page-item metadata and source-kind union
+    NGPath.ts               # Bezier, bSpline, ngComposite, smooth-path model
+    NGShape.ts              # Parametric semantic shapes and invariants
+    NGText.ts               # Live text source and outline resolution
+    NGImage.ts              # Image asset, boundary, and masking source
+    NGGroup.ts              # Ordered child references
+    geometryResolution.ts   # Path, compound-path, and mask result types
+
   input/
     InputManager.ts         # Register/unregister browser and Paper events
     KeyboardController.ts   # Keymap, live-key bindings, keyboard routing
@@ -43,14 +86,23 @@ src/engine/
     DropController.ts       # SVG/raster drag-and-drop
 
   scene/
+    DrawableRenderer.ts     # NGDrawable -> derived Paper.js item(s)
     SceneRepository.ts      # Content items, scene membership, item ordering
     SelectionManager.ts     # Selection, groups, duplicate, reorder
     TransformManager.ts     # Move, scale, rotate, drag gestures
     HistoryManager.ts       # Scene-aware undo/redo commands
 
+  document/
+    DocumentManager.ts      # Document lifecycle, page metadata, active page
+    LayerManager.ts         # Semantic layers mapped to Paper.js layers
+    ViewportManager.ts      # Zoom, pan, and view/project conversion
+    PersistenceManager.ts   # New/open/save/import/export and serialization
+
   drawing/
     DrawingSession.ts       # Active path/shape/quad state and lifecycle
-    PathTool.ts             # Polyline, spline, joins, completion
+    PathDrawingSession.ts   # In-progress NGPath and rubber-band point state
+    PathTool.ts             # Polyline, spline, composite-path commands
+    PathRenderer.ts         # Live/final NGPath -> Paper.js path construction
     CircleTool.ts           # Circle and radial-stamp tools
     RectangleTool.ts        # Rectangle drawing modes
     QuadTool.ts             # Four-point tool
@@ -59,6 +111,10 @@ src/engine/
   geometry/
     ShapeFactory.ts         # Polygon, supershape, sector, inner-shape paths
     RectangleGeometry.ts    # Rectangle frame basis and fitted geometry
+    compositeExpansion.ts   # Composite points -> segment/control conventions
+    splineInterpolation.ts  # Pure B-spline/Catmull-Rom sampling
+    pathResolver.ts         # NGPath / NGShape -> resolved geometry
+    booleanResolver.ts      # Boolean operand resolution and result lowering
     SnappingManager.ts      # Grid, angle, length, aspect, path, point snap
     CombinatoricsManager.ts # Union, subtract, intersect
 
@@ -67,7 +123,8 @@ src/engine/
     TextLayout.ts           # Display, body, and circumference text
     GridRenderer.ts         # Grid and snap-cursor rendering
 
-  ui/
+src/ui/
+    GUIManager.ts           # App-wide UI state and view-model coordination
     PanelsManager.ts        # Panel-section state, commands, and view models
     panels/
       PanelSection.tsx      # Shared section shell, menus, collapse behavior
@@ -85,12 +142,18 @@ This is a target structure, not a requirement to create every file
 immediately. Closely related helpers can remain together until their
 boundaries are clear.
 
-`PanelsManager` is intentionally an application/UI coordinator, not an
-imperative DOM owner. It should produce panel state and route panel commands
-to the engine facade; React components remain responsible for rendering.
-Likewise, `KeyboardController` handles physical keyboard events while
-`OnscreenKeyboard.tsx` handles the visible, clickable keyboard. Both use the
-same declarative keymap so the two input paths cannot drift apart.
+`GUIManager` is intentionally a small application/UI coordinator, not a
+replacement for React or a second engine. It owns app-wide UI preferences and
+view-model composition: panel, keyboard, and status visibility; keyboard
+width; menu layout; popovers; modal and overlay state. It persists those
+preferences and routes UI commands to the engine facade.
+
+`PanelsManager` remains focused on panel sections and does not become a
+catch-all UI service. Neither manager imperatively owns the DOM; React
+components remain responsible for rendering. Likewise, `KeyboardController`
+handles physical keyboard events while `OnscreenKeyboard.tsx` handles the
+visible, clickable keyboard. Both use the same declarative keymap so the two
+input paths cannot drift apart.
 
 ## Future UI constraints to preserve
 
@@ -137,6 +200,34 @@ Keep this as a separate `TransformControls` UI feature:
 This separation allows transform handles to be added without making the
 Control Panel, keyboard routing, pointer routing, and undo system each invent
 their own transform state.
+
+## Document and layer architecture
+
+The drawing must be modeled as a user document rather than only as the current
+Paper.js project. Add a document subsystem before adding save/export, named
+layers, pages, or document settings.
+
+- `DocumentManager` owns document lifecycle and metadata: document ID/title,
+  dirty state, page size, orientation, units, active page, and requests to
+  create/open/close a document.
+- `LayerManager` owns the semantic layer list: name, order, active layer,
+  visibility, lock state, and layer operations. It maps those records to
+  Paper.js layers but does not expose Paper.js details to panels.
+- `ViewportManager` owns zoom, pan, and project/view coordinate conversion.
+  These are document-view concerns, not input-routing concerns.
+- `PersistenceManager` owns serialization and file boundaries: new/open/save,
+  import, export, format versions, and migration. SVG/raster drop remains an
+  input adapter that delegates placement/import work to document services.
+- `SceneRepository` remains the low-level adapter for artwork within the
+  active semantic layer.
+- `HistoryManager` remains separate. It records undoable document mutations,
+  including layer operations and artwork changes; it is not owned by a
+  persistence service.
+
+The **Document and Settings** menu reads and updates `DocumentManager`.
+The **Layers and Objects** menu reads and updates `LayerManager` and
+selection/scene commands. `GUIManager` and `PanelsManager` only present their
+view models and invoke their public commands.
 
 ## Suggested extraction order
 
@@ -188,7 +279,7 @@ Move:
 `InputManager` should only translate events into callbacks. It should not
 decide whether a key means “draw a circle” or “undo”.
 
-[ ] - ### Phase 3: Extract keyboard and pointer controllers
+[x] ### Phase 3: Extract keyboard and pointer controllers
 
 Create:
 
@@ -201,7 +292,7 @@ Create:
 Keep the current key behavior unchanged. This phase should make input
 behavior independently traceable without moving drawing algorithms yet.
 
-### Phase 3b: Establish one declarative keymap
+[x] ### Phase 3b: Establish one declarative keymap
 
 Before separating the visible keyboard, introduce a shared keymap definition
 that describes each command once:
@@ -218,7 +309,46 @@ The status overlay reads the same labels and availability data. This prevents
 the physical keyboard, visible keyboard, and status hints from maintaining
 three inconsistent copies of shortcut logic.
 
-### Phase 4: Extract scene and selection services
+### Phase 4: Establish page-item and geometry models
+
+Before moving drawing tools onto new behaviors, introduce the serializable
+document model described in the two geometry references:
+
+- `NGDrawableBase` for shared page-item identity, layer membership, transform,
+  visibility, locking, and style references.
+- `NGDrawable` source-kind union for path, semantic shape, text, image, and
+  group items.
+- `NGPath` with existing-compatible Bezier/path behavior first, followed by
+  B-spline, `ngComposite`, and smoothed-polyline modes.
+- `NGShape` records for parameter-preserving shapes such as circle, polygon,
+  quadrilateral, trapezoid, parallelogram, and supershape.
+- `ResolvedGeometry` as the common result for paths, compound paths, holes,
+  and image-mask boundaries.
+
+Do not immediately migrate all existing Paper.js objects. First prove that a
+new `NGPathDrawable` can render to a Paper.js item, map back by
+`drawableId`, and serialize without retaining a Paper.js object as document
+truth. Then introduce one semantic shape type and one composite-path fixture.
+
+### Phase 4b: Establish composite NGPath behavior
+
+Implement the initial composite path model from
+`ngpath-fmstroke-composite-path-study.md` as an opt-in path mode:
+
+1. Store semantic points and a trailing rubber-band point in
+   `PathDrawingSession`.
+2. Support B-spline, hard-corner, and rounded-corner commands.
+3. Expand semantic points into low-level segment/control conventions in pure
+   functions.
+4. Sample B-spline runs in a pure interpolation module and render a derived
+   Paper.js preview once per animation frame.
+5. Finalize into a regular resolved path while retaining semantic `NGPath`
+   data for native-document editing.
+
+Keep the existing Paper.js path tool as the fallback until the composite tool
+passes the same drawing, cancel, snap, and undo/redo checks.
+
+### Phase 4c: Extract scene and selection services
 
 Create `SceneRepository.ts` and `SelectionManager.ts`.
 
@@ -232,10 +362,31 @@ Move:
 - grouping and ungrouping
 - duplicate and z-order operations
 - non-content-item filtering
+- `drawableId` mapping between derived Paper.js items and `NGDrawable` records
 
 The selection service should expose intent-level methods such as
 `clear()`, `group()`, `duplicate()`, and `bringToFront()`, rather than expose
-Paper.js collection details to every other module.
+Paper.js collection details to every other module. `DrawableRenderer` should
+be the only service that turns durable `NGDrawable` records into Paper.js
+items.
+
+### Phase 4d: Establish the document boundary
+
+Create `DocumentManager.ts`, `LayerManager.ts`, and `ViewportManager.ts` with
+the current single-page, active-layer behavior represented explicitly. Do not
+add multi-page support, file formats, or a new layer UI yet.
+
+Move or wrap:
+
+- active Paper.js layer lookup behind `LayerManager`
+- zoom and pan state behind `ViewportManager`
+- current/future page dimensions, orientation, and units behind
+  `DocumentManager`
+- document dirty-state notifications after scene mutations
+
+This makes future document settings and layers UI additive rather than a
+cross-cutting Paper.js refactor. Add `PersistenceManager.ts` only when a
+defined save/open/export format is ready to implement.
 
 ### Phase 5: Extract history and transforms
 
@@ -248,6 +399,8 @@ Move:
 - move gesture begin/commit
 - group/duplicate/delete/reorder history commands
 - undo/redo facade methods
+- model-first commands that restore `NGDrawable` state before derived Paper.js
+  scene items
 
 Create `TransformManager.ts` for selection movement, scaling, rotation, and
 drag gestures. History should record completed intent-level operations, not
@@ -289,13 +442,18 @@ Then extract tools in this order:
 
 Each tool should own starting, updating, completing, stamping, and cancelling
 its own drawing mode. Shared deposit and history behavior should be delegated
-to scene/history services instead of duplicated across tools.
+to scene/history services instead of duplicated across tools. `PathTool`
+delegates composite-path semantics, interpolation, and live/final rendering to
+`PathDrawingSession`, the path resolver, and `PathRenderer`; it does not
+persist raw Paper.js segments as the only source of path truth.
 
 ### Phase 8: Extract geometry and appearance
 
-Create `ShapeFactory.ts` and `RectangleGeometry.ts` for shape construction,
-unit-point calculations, supershapes, sectors, polygons, and rectangle-frame
-fitting.
+Create `ShapeFactory.ts`, `RectangleGeometry.ts`, and `pathResolver.ts` for
+semantic shape construction, unit-point calculations, supershapes, sectors,
+polygons, rectangle-frame fitting, and conversion of `NGShape`/`NGPath` data
+to resolved geometry. Preserve a shape's semantic parameters until an edit or
+operation violates its invariants.
 
 Create `StyleManager.ts` for:
 
@@ -314,9 +472,16 @@ than reading unrelated engine fields.
 
 Create:
 
-- `CombinatoricsManager.ts` for selection and deposit-time boolean operations.
+- `CombinatoricsManager.ts` and `booleanResolver.ts` for selection and
+  deposit-time boolean operations. Resolve operands from `NGDrawable` source
+  data and deliberately lower non-preservable results to an ordinary
+  `NGPathDrawable` or compound path.
 - `DropController.ts` for reading files, importing SVG, decoding rasters, and
   recording placed items.
+- `GUIManager.ts` to consolidate app-wide React UI state now held by `App.tsx`:
+  panel, keyboard, and status visibility; keyboard dimensions; menu layout;
+  popovers; and overlays. It is a UI-state/view-model coordinator, not a DOM
+  factory and not a Paper.js manager.
 - `PanelsManager.ts` to own panel-section state such as layout, collapsed or
   expanded state, active popovers, and panel view models. It translates panel
   interactions into facade commands but does not own Paper.js drawing state.
@@ -352,9 +517,9 @@ should remain thin and predictable.
 ```text
 React components
         |
-NibGliderEngine facade
+GUIManager / UI view models ---- NibGliderEngine facade
         |
-EngineContext + services
+EngineContext + document, scene, and drawing services
         |
 Paper.js / browser adapters
 ```
@@ -364,9 +529,10 @@ Preferred dependencies:
 - `types.ts` depends on nothing.
 - Geometry and validation code depends on types, not React.
 - Input adapters depend on callbacks/interfaces, not drawing implementations.
-- Scene and history services depend on a Paper.js context.
-- `PanelsManager` and `KeyboardViewModel` depend on facade-level commands and
-  view data, not on Paper.js items or private drawing state.
+- Document, scene, and history services depend on a Paper.js context.
+- `GUIManager`, `PanelsManager`, and `KeyboardViewModel` depend on
+  facade-level commands and view data, not on Paper.js items or private
+  drawing state.
 - React panel and keyboard components render view data and emit narrow
   callbacks; they do not implement drawing behavior.
 - React components depend on the facade, not internal managers.
@@ -376,6 +542,8 @@ Avoid:
 - managers importing `App.tsx` or React components
 - services mutating DOM directly except dedicated presenters
 - multiple services independently owning `selectedItems`
+- UI managers directly reading or mutating Paper.js layers/items
+- persistence owning undo/redo history
 - keyboard handlers calling arbitrary private methods across modules
 - the visible keyboard and physical keyboard maintaining separate command
   definitions
@@ -396,7 +564,10 @@ Examples:
 
 - Add a shortcut: `KeyboardController.ts`
 - Change an onscreen key layout or keycap: `OnscreenKeyboard.tsx`
+- Change app-wide UI preferences or overlays: `GUIManager.ts`
 - Change a panel section’s state or command wiring: `PanelsManager.ts`
+- Add layer metadata or operations: `LayerManager.ts`
+- Add page/document settings: `DocumentManager.ts`
 - Add a snap mode: `SnappingManager.ts`
 - Fix undo for grouping: `HistoryManager.ts`
 - Add a geometric primitive: `ShapeFactory.ts`
@@ -435,8 +606,13 @@ Critical regression checks:
 
 - `engine.ts` is primarily a facade and composition root.
 - No feature requires understanding the entire engine file.
-- Input, scene, history, snapping, geometry, text, and appearance have
-  explicit boundaries.
+- Input, document, model, scene, history, snapping, geometry, text, and
+  appearance have explicit boundaries.
+- Document-authoritative `NGDrawable`/`NGPath` data can rebuild derived
+  Paper.js scene items.
+- Semantic shapes and composite paths retain their editable meaning only while
+  their invariants remain true; boolean and arbitrary-geometry results lower
+  cleanly to regular/compound paths.
 - Public React-facing behavior remains compatible.
 - Extracted modules have focused tests or documented manual checks.
 - An agent can implement a feature by locating one primary module and its

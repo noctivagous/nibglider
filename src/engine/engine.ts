@@ -7,6 +7,15 @@
 import { FontMetrics } from './fontMetrics';
 import { InputManager } from './input/InputManager';
 import {
+  KeyboardController,
+  type KeyboardHost,
+} from './input/KeyboardController';
+import {
+  PointerController,
+  type PointerHost,
+} from './input/PointerController';
+import { commandKeycap, keyGroupForLabel } from './input/keymap';
+import {
   lengthUnitToPoints,
   pointsToLengthUnit,
 } from './types';
@@ -251,7 +260,8 @@ export class NibGliderEngine {
   // Locked placement-circle radius for Radial Stamp, toggled by the 0 key.
   // Null means unlocked: the radius follows the cursor.
   radialStampLockedRadius: number | null = null;
-  private liveKeyBindings: LiveKeyBinding[] = [];
+  private pointer = new PointerController(this.pointerApi());
+  private keyboard = new KeyboardController(this.keyboardApi());
   /** Unified live-drawing state across path, shape, and quad sessions. */
   get isLiveDrawing(): boolean {
     return this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad;
@@ -290,7 +300,135 @@ export class NibGliderEngine {
   constructor(scope: paper.PaperScope, onKeyActivity: (a: KeyActivity) => void) {
     this.scope = scope;
     this.onKeyActivity = onKeyActivity;
-    this.registerBuiltInLiveKeys();
+  }
+
+  private pointerApi(): PointerHost {
+    return {
+      scope: () => this.scope,
+      isDrawingPath: () => this.isDrawingPath,
+      isDrawingShape: () => this.isDrawingShape,
+      isDrawingQuad: () => this.isDrawingQuad,
+      shapeType: () => this.shapeType,
+      shapeStartPoint: () => this.shapeStartPoint,
+      shapePt2: () => this.shapePt2,
+      isAngleSnappingEnabled: () => this.isAngleSnappingEnabled,
+      isLengthSnappingEnabled: () => this.isLengthSnappingEnabled,
+      isAspectSnappingEnabled: () => this.isAspectSnappingEnabled,
+      path: () => this.path,
+      quadPath: () => this.quadPath,
+      selectedItems: () => this.selectedItems,
+      isInDragLock: () => this.isInDragLock,
+      mousePt: () => this.mousePt,
+      setMousePt: (v) => {
+        this.mousePt = v;
+      },
+      lastMousePt: () => this.lastMousePt,
+      setLastMousePt: (v) => {
+        this.lastMousePt = v;
+      },
+      isPanning: () => this.isPanning,
+      setIsPanning: (v) => {
+        this.isPanning = v;
+      },
+      panAnchorCenter: () => this.panAnchorCenter,
+      setPanAnchorCenter: (v) => {
+        this.panAnchorCenter = v;
+      },
+      panAnchorPoint: () => this.panAnchorPoint,
+      setPanAnchorPoint: (v) => {
+        this.panAnchorPoint = v;
+      },
+      snapToGrid: (point) => this.snapToGrid(point),
+      applyAngleSnapping: (base, target) => this.applyAngleSnapping(base, target),
+      applyLengthSnapping: (base, target) => this.applyLengthSnapping(base, target),
+      applyPathSnapping: (original) => this.applyPathSnapping(original),
+      applyPointSnapping: (original) => this.applyPointSnapping(original),
+      applyAspectSnapping: (base, target) => this.applyAspectSnapping(base, target),
+      snapAspectSecond: (first, second) => this.snapAspectSecond(first, second),
+      updateGridCursor: () => this.updateGridCursor(),
+      refreshSplineTextPreview: () => this.refreshSplineTextPreview(),
+      updateShapePreview: () => this.updateShapePreview(),
+      updateTextContent: () => this.updateTextContent(),
+      notify: () => this.notify(),
+      clearOutSelection: () => this.clearOutSelection(),
+      beginMoveGesture: () => this.beginMoveGesture(),
+      commitMoveGesture: () => this.commitMoveGesture(),
+      clearMoveGesture: () => {
+        this.moveGesture = null;
+      },
+      topUserGroupOf: (item) => this.topUserGroupOf(item),
+      isNonContentItem: (item) => this.isNonContentItem(item),
+      afterViewChange: () => this.afterViewChange(),
+    };
+  }
+
+  private keyboardApi(): KeyboardHost {
+    return {
+      isDrawingPath: () => this.isDrawingPath,
+      isDrawingShape: () => this.isDrawingShape,
+      isDrawingQuad: () => this.isDrawingQuad,
+      isLiveDrawing: () => this.isLiveDrawing,
+      shapeType: () => this.shapeType,
+      selectedItems: () => this.selectedItems,
+      globalStrokeWidth: () => this.globalStrokeWidth,
+      maxShapeWidth: () => this.maxShapeWidth,
+      maxStrokeWidth: () => this.maxStrokeWidth,
+      splineTensionDefault: () => this.splineTensionDefault,
+      strokeEnabled: () => this.strokeEnabled,
+      fillEnabled: () => this.fillEnabled,
+      isInDragLock: () => this.isInDragLock,
+      shapeWidth: () => this.shapeWidth,
+      setShapeWidth: (v) => {
+        this.shapeWidth = v;
+      },
+      splineTension: () => this.splineTension,
+      setSplineTension: (v) => {
+        this.splineTension = v;
+      },
+      setSelectedItems: (items) => {
+        this.selectedItems = items;
+      },
+      liveAdjustApplies: () => this.liveAdjustApplies(),
+      resetZoom: () => this.resetZoom(),
+      stepZoom: (dir) => this.stepZoom(dir),
+      undo: () => this.undo(),
+      redo: () => this.redo(),
+      groupSelection: () => this.groupSelection(),
+      ungroupSelected: () => this.ungroupSelected(),
+      nudgeSelection: (dx, dy) => this.nudgeSelection(dx, dy),
+      scaleSelection: (factor) => this.scaleSelection(factor),
+      rotateSelection: (degrees) => this.rotateSelection(degrees),
+      updateTextContent: () => this.updateTextContent(),
+      updateShapePreview: () => this.updateShapePreview(),
+      notify: () => this.notify(),
+      setIsInDragLock: (on) => this.setIsInDragLock(on),
+      removeAllSelectedItemsAndReset: () => this.removeAllSelectedItemsAndReset(),
+      stampCurrentPreview: () => this.stampCurrentPreview(),
+      stampItems: (items) => this.stampItems(items),
+      rectCenterlineKC: () => this.rectCenterlineKC(),
+      rectDiagonalKC: () => this.rectDiagonalKC(),
+      rectTwoEdgesKC: () => this.rectTwoEdgesKC(),
+      polyLineKC: () => this.polyLineKC(),
+      splinePointKC: () => this.splinePointKC(),
+      circleKC: (mode) => this.circleKC(mode),
+      radialStampKC: () => this.radialStampKC(),
+      quadPointKC: () => this.quadPointKC(),
+      toggleGrid: () => this.toggleGrid(),
+      thinStrokeWidth: () => this.thinStrokeWidth(),
+      thickenStrokeWidth: () => this.thickenStrokeWidth(),
+      finishRadialStamp: () => this.finishRadialStamp(),
+      completeShapeWithSpline: () => this.completeShapeWithSpline(),
+      endPathOrShape: () => this.endPathOrShape(),
+      selectionPaint: () => this.selectionPaint(),
+      setStrokeEnabled: (on) => this.setStrokeEnabled(on),
+      setFillEnabled: (on) => this.setFillEnabled(on),
+      cancelCurrentDrawingOperation: () => this.cancelCurrentDrawingOperation(),
+      hitTestUnderCursor: () => this.pointer.hitTestUnderCursor(),
+      applyLiveScale: (event, dir) => this.applyLiveScale(event, dir),
+      applyLiveRotate: (event, dir) => this.applyLiveRotate(event, dir),
+      toggleRadialStampRadiusLock: () => this.toggleRadialStampRadiusLock(),
+      onKeyActivity: (activity) => this.onKeyActivity(activity),
+    };
   }
 
   // --- React bridge: version counter + subscription ---
@@ -320,18 +458,16 @@ export class NibGliderEngine {
     this.updateTextContent();
 
     this.input.attach(scope, canvas, {
-      onMouseDown: (event) => this.onMouseDown(event),
-      onMouseMove: (event) => this.onMouseMove(event),
-      onMouseDrag: (event) => this.onMouseDrag(event),
-      onMouseUp: () => this.releasePointer(),
-      onKeyDown: (event) => this.handleKeyDown(event),
-      onKeyHighlight: (event) => this.reportKeyHighlight(event),
-      onKeyUp: (event) => {
-        if (event.code) this.onKeyActivity({ code: event.code, active: false });
-      },
+      onMouseDown: (event) => this.pointer.onMouseDown(event),
+      onMouseMove: (event) => this.pointer.onMouseMove(event),
+      onMouseDrag: (event) => this.pointer.onMouseDrag(event),
+      onMouseUp: () => this.pointer.releasePointer(),
+      onKeyDown: (event) => this.keyboard.handleKeyDown(event),
+      onKeyHighlight: (event) => this.keyboard.reportKeyHighlight(event),
+      onKeyUp: (event) => this.keyboard.reportKeyUp(event),
       onDrop: (event) => this.handleImageDrop(event),
       onWheel: (event) => this.onMouseWheel(event),
-      onDocumentMouseUp: () => this.releasePointer(),
+      onDocumentMouseUp: () => this.pointer.releasePointer(),
       onBeforePrint: this.onBeforePrint,
       onAfterPrint: this.onAfterPrint,
     });
@@ -348,21 +484,6 @@ export class NibGliderEngine {
 
   detach(): void {
     this.input.detach();
-  }
-
-  private releasePointer(): void {
-    this.endPan();
-    this.commitMoveGesture();
-  }
-
-  /** Second keydown listener: highlights the on-screen keycap. */
-  private reportKeyHighlight(event: KeyboardEvent): void {
-    if (this.isTextEntryTarget(event)) return;
-    const keyLower = event.key.toLowerCase();
-    if (keyLower === '/') return;
-    if (event.code && event.metaKey === false) {
-      this.onKeyActivity({ code: event.code, active: true });
-    }
   }
 
   private handleImageDrop(event: DragEvent): void {
@@ -4581,9 +4702,7 @@ export class NibGliderEngine {
   ];
 
   registerLiveKeyBinding(binding: LiveKeyBinding): void {
-    if (!this.liveKeyBindings.some((b) => b.id === binding.id)) {
-      this.liveKeyBindings.push(binding);
-    }
+    this.keyboard.register(binding);
   }
 
   private resetLiveAdjust(): void {
@@ -4693,69 +4812,6 @@ export class NibGliderEngine {
     }
     this.updateTextContent();
     this.notify();
-  }
-
-  private registerBuiltInLiveKeys(): void {
-    // Match by physical code: with Shift/Alt held, event.key reports the
-    // shifted character ('{', ':', ...) instead of '[', ';', etc.
-    this.registerLiveKeyBinding({
-      id: 'live-scale-down',
-      keys: ['['],
-      label: 'scale',
-      match: (event) =>
-        event.code === 'BracketLeft' || event.key === '[',
-      applies: () => this.liveAdjustApplies(),
-      apply: (event) => this.applyLiveScale(event, -1),
-    });
-    this.registerLiveKeyBinding({
-      id: 'live-scale-up',
-      keys: [']'],
-      label: 'scale',
-      match: (event) =>
-        event.code === 'BracketRight' || event.key === ']',
-      applies: () => this.liveAdjustApplies(),
-      apply: (event) => this.applyLiveScale(event, 1),
-    });
-    this.registerLiveKeyBinding({
-      id: 'live-rotate-down',
-      keys: [';'],
-      label: 'rotate',
-      match: (event) =>
-        event.code === 'Semicolon' || event.key === ';',
-      applies: () => this.liveAdjustApplies(),
-      apply: (event) => this.applyLiveRotate(event, -1),
-    });
-    this.registerLiveKeyBinding({
-      id: 'live-rotate-up',
-      keys: ["'"],
-      label: 'rotate',
-      match: (event) =>
-        event.code === 'Quote' || event.key === "'",
-      applies: () => this.liveAdjustApplies(),
-      apply: (event) => this.applyLiveRotate(event, 1),
-    });
-    this.registerLiveKeyBinding({
-      id: 'radial-stamp-radius-lock',
-      keys: ['0'],
-      label: 'lock/unlock radius',
-      match: (event) => event.code === 'Digit0' || event.key === '0',
-      applies: () =>
-        this.isDrawingShape && this.shapeType === 'circle_radial_stamp',
-      apply: () => this.toggleRadialStampRadiusLock(),
-    });
-  }
-
-  // First matching + applicable live binding wins. Returns true when a
-  // binding consumed the event.
-  private runLiveKeyBindings(event: KeyboardEvent): boolean {
-    if (!this.isLiveDrawing) return false;
-    for (const b of this.liveKeyBindings) {
-      if (b.match(event) && b.applies()) {
-        b.apply(event);
-        return true;
-      }
-    }
-    return false;
   }
 
   circleKC(mode: string): void {
@@ -5170,43 +5226,9 @@ export class NibGliderEngine {
     return false;
   }
 
-  private hitTestContent(point: AnyItem): AnyItem {
-    const scope = this.scope;
-    if (!point) return null;
-    const self = this;
-    return scope.project.hitTest(point, {
-      segments: true,
-      stroke: true,
-      fill: true,
-      tolerance: 5,
-      match: (hit: AnyItem) => !self.isNonContentItem(hit),
-    });
-  }
-
-  private setCanvasCursor(cursor: string): void {
-    const el = this.scope.view && this.scope.view.element;
-    if (el) el.style.cursor = cursor;
-  }
-
-  private endPan(): void {
-    if (!this.isPanning) return;
-    this.isPanning = false;
-    this.panAnchorCenter = null;
-    this.panAnchorPoint = null;
-    this.setCanvasCursor('');
-  }
-
-  // Keyboard group per key, mirroring keyboard.css. The overlay renders
-  // the group color; no paper items involved.
+  // Keyboard group per keycap, from the shared keymap.
   statusKeyGroup(key: string): StatusKeyGroup {
-    const k = key.toLowerCase();
-    if (k === 'n' || k === 'm' || k === ',') return 'circle';
-    if (k === 'i' || k === 'u' || k === 'y') return 'rect';
-    if (k === 'o') return 'quad';
-    if (k === 'w' || k === '[' || k === ']' || k === ';' || k === "'")
-      return 'op';
-    if (k === 'q' || k === 'a' || k === 'r' || k === 'escape') return 'end';
-    return 'neutral';
+    return keyGroupForLabel(key);
   }
 
   // Publish only when the schema changes (this runs on hot paths like
@@ -5266,143 +5288,9 @@ export class NibGliderEngine {
     this.afterViewChange();
   }
 
-  private onMouseDown(event: paper.MouseEvent): void {
-    this.mousePt = event.point;
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad) return;
-    const hit = this.hitTestContent(this.mousePt);
-    if (!hit || !hit.item) {
-      this.clearOutSelection();
-      this.moveGesture = null;
-      this.isPanning = true;
-      this.panAnchorCenter = this.scope.view.center.clone();
-      this.panAnchorPoint = event.point.clone();
-      this.setCanvasCursor('grabbing');
-      this.updateTextContent();
-      return;
-    }
-    this.isPanning = false;
-    this.applyHitSelection(hit);
-    this.beginMoveGesture();
-  }
-
+  /** Select the content item under the cursor. */
   hitTestUnderCursor(): void {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad) return;
-    this.applyHitSelection(this.hitTestContent(this.mousePt));
-  }
-
-  private applyHitSelection(hitResult: AnyItem): void {
-    // Clicking a grouped child selects its user group as one item.
-    let item: AnyItem =
-      hitResult && hitResult.item ? hitResult.item : null;
-    if (item) item = this.topUserGroupOf(item);
-    if (item) {
-      const alreadySelected = this.selectedItems.indexOf(item) !== -1;
-      if (alreadySelected) {
-        item.selected = false;
-        this.selectedItems.splice(this.selectedItems.indexOf(item), 1);
-      } else {
-        item.selected = true;
-        this.selectedItems.push(item);
-      }
-    } else {
-      this.clearOutSelection();
-    }
-    this.updateTextContent();
-    this.notify();
-  }
-
-  private onMouseMove(event: paper.MouseEvent): void {
-    const originalPoint = event.point;
-    this.mousePt = this.snapToGrid(event.point);
-    if (this.isAngleSnappingEnabled || this.isLengthSnappingEnabled) {
-      let snapBase: AnyItem = null;
-      if (this.isDrawingPath && this.path && this.path.segments.length > 0) {
-        const baseIndex =
-          this.path.segments.length === 1 ? 0 : this.path.segments.length - 2;
-        snapBase = this.path.segments[baseIndex].point;
-      } else if (
-        this.isDrawingShape &&
-        this.shapeType != null &&
-        this.shapeType.startsWith('circle_') &&
-        this.shapeStartPoint
-      ) {
-        snapBase = this.shapeStartPoint;
-      } else if (
-        this.isDrawingShape &&
-        this.shapeType != null &&
-        this.shapeType.startsWith('rectangle_') &&
-        this.shapeStartPoint
-      ) {
-        snapBase = this.shapeStartPoint;
-        if (this.shapeType === 'rectangle_two_edges' && this.shapePt2) {
-          snapBase = this.shapePt2;
-        }
-      }
-      if (snapBase) {
-        if (this.isAngleSnappingEnabled) {
-          this.mousePt = this.applyAngleSnapping(snapBase, this.mousePt);
-        }
-        if (this.isLengthSnappingEnabled) {
-          this.mousePt = this.applyLengthSnapping(snapBase, this.mousePt);
-        }
-      }
-    }
-    this.applyPathSnapping(originalPoint);
-    // Exact points take precedence over curve proximity.
-    this.applyPointSnapping(originalPoint);
-    if (
-      this.isAspectSnappingEnabled &&
-      this.isDrawingShape &&
-      this.shapeType != null &&
-      this.shapeType.startsWith('rectangle_') &&
-      this.shapeStartPoint
-    ) {
-      if (this.shapeType === 'rectangle_diagonal') {
-        this.mousePt = this.applyAspectSnapping(this.shapeStartPoint, this.mousePt);
-      } else if (this.shapeType === 'rectangle_two_edges' && this.shapePt2) {
-        const edge = this.shapePt2.subtract(this.shapeStartPoint);
-        if (edge.length > 0) {
-          const dir1 = edge.normalize();
-          const v2 = this.mousePt.subtract(this.shapePt2);
-          const perpVec = v2.subtract(dir1.multiply(v2.dot(dir1)));
-          if (perpVec.length > 0) {
-            const snapped = this.snapAspectSecond(edge.length, perpVec.length);
-            this.mousePt = this.shapePt2.add(perpVec.normalize().multiply(snapped));
-          }
-        }
-      }
-    }
-    this.updateGridCursor();
-    this.handleDragLock();
-    if (this.isDrawingPath && this.path) {
-      if (this.path.segments.length === 1) {
-        this.path.add(this.mousePt);
-      }
-      if (this.path.segments.length > 1) {
-        this.path.removeSegment(this.path.segments.length - 1);
-        this.path.add(this.mousePt);
-      }
-      this.refreshSplineTextPreview();
-    }
-    if (this.isDrawingShape) {
-      this.updateShapePreview();
-      if (
-        this.isAspectSnappingEnabled &&
-        this.shapeType != null &&
-        this.shapeType.startsWith('rectangle_')
-      ) {
-        this.updateTextContent();
-      }
-    }
-    if (this.isDrawingQuad && this.quadPath) {
-      if (this.quadPath.segments.length === 1) {
-        this.quadPath.add(this.mousePt);
-      }
-      if (this.quadPath.segments.length > 1) {
-        this.quadPath.removeSegment(this.quadPath.segments.length - 1);
-        this.quadPath.add(this.mousePt);
-      }
-    }
+    this.pointer.hitTestUnderCursor();
   }
 
   // Preview style convention for the drawing keys (circle keys, rect
@@ -5641,376 +5529,53 @@ export class NibGliderEngine {
     }
   }
 
-  private handleDragLock(): void {
-    if (this.isInDragLock) {
-      if (this.lastMousePt === null) this.lastMousePt = this.mousePt;
-      const delta = this.mousePt.subtract(this.lastMousePt);
-      for (let i = 0; i < this.selectedItems.length; i++) {
-        this.selectedItems[i].position = this.selectedItems[i].position.add(delta);
-      }
-      this.lastMousePt = this.mousePt;
-    } else {
-      this.lastMousePt = null;
-    }
+  /** Physical keyboard entry. Decisions live in KeyboardController. */
+  handleKeyDown(event: KeyboardEvent): void {
+    this.keyboard.handleKeyDown(event);
   }
 
-  private onMouseDrag(event: paper.MouseEvent): void {
-    if (this.isPanning) {
-      const view = this.scope.view;
-      if (this.panAnchorCenter !== null && this.panAnchorPoint !== null) {
-        // Pointer travel since pan start, in project units. Subtracting
-        // the center out of each point cancels the view translation, so
-        // this measures pure pointer travel regardless of how center has
-        // moved between events (unlike event.delta, which mixes frames).
-        const offset = event.point
-          .subtract(view.center)
-          .subtract(this.panAnchorPoint.subtract(this.panAnchorCenter));
-        view.center = this.panAnchorCenter.subtract(offset);
-      } else {
-        view.center = view.center.subtract(event.delta);
-      }
-      this.afterViewChange();
-      return;
-    }
-    this.mousePt = this.snapToGrid(event.point);
-    if (this.lastMousePt === null) this.lastMousePt = this.mousePt;
-    const delta = this.mousePt.subtract(this.lastMousePt);
+  private nudgeSelection(dx: number, dy: number): void {
+    this.commitMoveGesture();
+    const nudgeItems = [...this.selectedItems];
+    const nudgeBefore = nudgeItems.map((it) => it.position.clone());
+    const delta = new this.scope.Point(dx, dy);
     for (let i = 0; i < this.selectedItems.length; i++) {
       this.selectedItems[i].position = this.selectedItems[i].position.add(delta);
     }
-    this.lastMousePt = this.mousePt;
-  }
-
-  // --- Keyboard: the document keydown listener (NibGliderApp.js) ---
-  // The legacy window.onKeyDown duplicate was never invoked (no InputManager),
-  // so only this handler defines behavior.
-  /** Typing in panel fields must never arm canvas functions. */
-  private isTextEntryTarget(event: KeyboardEvent): boolean {
-    const t = event.target as HTMLElement | null;
-    if (!t) return false;
-    if (t.isContentEditable) return true;
-    const tag = t.tagName;
-    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-  }
-
-  handleKeyDown(event: KeyboardEvent): void {
-    if (this.isTextEntryTarget(event)) return;
-    if (event.metaKey || event.ctrlKey) {
-      if (event.key === '0') {
-        event.preventDefault();
-        this.resetZoom();
-        return;
-      }
-      if (event.key === '-' || event.key === '=' || event.key === '+') {
-        event.preventDefault();
-        this.stepZoom(event.key === '-' ? -1 : 1);
-        return;
-      }
-      const modKey = event.key.toLowerCase();
-      if (modKey === 'z' && !event.shiftKey) {
-        event.preventDefault();
-        this.undo();
-        return;
-      }
-      if ((modKey === 'z' && event.shiftKey) || modKey === 'y') {
-        event.preventDefault();
-        this.redo();
-        return;
-      }
-      if (modKey === 'g') {
-        event.preventDefault();
-        if (event.shiftKey) this.ungroupSelected();
-        else this.groupSelection();
-        return;
-      }
+    const nudgeEntries: MoveEntry[] = [];
+    for (let i = 0; i < nudgeItems.length; i++) {
+      nudgeEntries.push({
+        item: nudgeItems[i],
+        before: nudgeBefore[i],
+        after: nudgeItems[i].position.clone(),
+      });
     }
-    if (
-      event.key === 'ArrowLeft' ||
-      event.key === 'ArrowRight' ||
-      event.key === 'ArrowUp' ||
-      event.key === 'ArrowDown'
-    ) {
-      // Let focused panel controls keep native arrow behavior (sliders etc.).
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'SELECT' ||
-          target.tagName === 'TEXTAREA')
-      ) {
-        return;
-      }
-      event.preventDefault();
-      if (
-        !this.isDrawingPath &&
-        !this.isDrawingShape &&
-        !this.isDrawingQuad &&
-        this.selectedItems.length > 0
-      ) {
-        // Base nudge 1 unit; Shift = longer, Alt = shorter.
-        let d = 1;
-        if (event.shiftKey) d *= 10;
-        if (event.altKey) d *= 0.2;
-        let dx = 0;
-        let dy = 0;
-        if (event.key === 'ArrowLeft') dx = -d;
-        else if (event.key === 'ArrowRight') dx = d;
-        else if (event.key === 'ArrowUp') dy = -d;
-        else dy = d;
-        this.commitMoveGesture();
-        const nudgeItems = [...this.selectedItems];
-        const nudgeBefore = nudgeItems.map((it) => it.position.clone());
-        const delta = new this.scope.Point(dx, dy);
-        for (let i = 0; i < this.selectedItems.length; i++) {
-          this.selectedItems[i].position =
-            this.selectedItems[i].position.add(delta);
-        }
-        const nudgeEntries: MoveEntry[] = [];
-        for (let i = 0; i < nudgeItems.length; i++) {
-          nudgeEntries.push({
-            item: nudgeItems[i],
-            before: nudgeBefore[i],
-            after: nudgeItems[i].position.clone(),
-          });
-        }
-        this.history.push(this.makeMoveCommand(nudgeEntries, 'nudge'));
-        this.updateTextContent();
-        this.notify();
-      }
-      return;
-    }
-    const keyLower = event.key.toLowerCase();
-    // Match by physical code: with Shift/Alt held, event.key reports the
-    // shifted character ('{', ':', ...) instead of '[', ';', etc.
-    const isBracketDown =
-      event.code === 'BracketLeft' || event.key === '[';
-    const isBracketUp =
-      event.code === 'BracketRight' || event.key === ']';
-    if (isBracketDown || isBracketUp) {
-      if (this.isDrawingShape && this.shapeType === 'rectangle_centerline') {
-        if (isBracketDown) {
-          this.shapeWidth = Math.max(1, (this.shapeWidth || this.globalStrokeWidth * 2) - 2);
-        } else {
-          this.shapeWidth = Math.min(this.maxShapeWidth, (this.shapeWidth || this.globalStrokeWidth * 2) + 2);
-        }
-        this.updateTextContent();
-        this.updateShapePreview();
-        this.notify();
-        return;
-      }
-      // Live drawing takes precedence over idle selection scaling.
-      if (this.runLiveKeyBindings(event)) return;
-      if (this.selectedItems.length > 0) {
-        const center = this.collectiveCenter(this.selectedItems);
-        // Shift = bigger step, Alt = finer step.
-        const down = event.shiftKey ? 0.8 : event.altKey ? 0.98 : 0.9;
-        const up = event.shiftKey ? 1.25 : event.altKey ? 1.02 : 1.1;
-        for (let i = 0; i < this.selectedItems.length; i++) {
-          if (isBracketDown) {
-            this.selectedItems[i].scale(down, center);
-          } else {
-            this.selectedItems[i].scale(up, center);
-          }
-        }
-        return;
-      }
-    }
-    const isRotateDown =
-      event.code === 'Semicolon' || event.key === ';';
-    const isRotateUp =
-      event.code === 'Quote' || event.key === "'";
-    if (isRotateDown || isRotateUp) {
-      // Live drawing takes precedence over idle selection rotation.
-      if (this.runLiveKeyBindings(event)) return;
-      if (this.selectedItems.length > 0) {
-        const center = this.collectiveCenter(this.selectedItems);
-        // Shift = 45°, Alt = 5°, otherwise 10°.
-        const step = event.shiftKey ? 45 : event.altKey ? 5 : 10;
-        const angle = isRotateDown ? -step : step;
-        for (let i = 0; i < this.selectedItems.length; i++) {
-          this.selectedItems[i].rotate(angle, center);
-        }
-        return;
-      }
-    }
-    // 0 key: lock/unlock the Radial Stamp placement radius mid-session.
-    // Other number keys stay reserved for future live bindings.
-    if (event.code === 'Digit0' || event.key === '0') {
-      this.runLiveKeyBindings(event);
-      return;
-    }
-    if (event.key === ' ' && this.selectedItems.length > 0) {
-      this.setIsInDragLock(!this.isInDragLock);
-    }
-    if (event.key === 'Backspace') {
-      this.removeAllSelectedItemsAndReset();
-    }
-    if (event.key === 'Escape') {
-      for (let i = 0; i < this.selectedItems.length; i++) {
-        this.selectedItems[i].selected = false;
-      }
-      this.selectedItems = [];
-      this.setIsInDragLock(false);
-    }
-    if (keyLower === 'w') {
-      if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad) {
-        this.stampCurrentPreview();
-      } else {
-        this.stampItems(this.selectedItems);
-      }
-    }
-    if (keyLower === 'y') {
-      this.rectCenterlineKC();
-      return;
-    }
-    if (keyLower === 'i') {
-      this.rectDiagonalKC();
-      return;
-    }
-    if (keyLower === 'u') {
-      this.rectTwoEdgesKC();
-      return;
-    }
-    if (keyLower === 'f') {
-      this.polyLineKC();
-      return;
-    }
-    if (keyLower === 'g') {
-      this.splinePointKC();
-      return;
-    }
-    if (keyLower === 'n') {
-      this.circleKC('diameter');
-      return;
-    }
-    if (keyLower === 'm') {
-      this.circleKC('radius');
-      return;
-    }
-    if (event.code === 'Comma' || event.key === ',') {
-      this.radialStampKC();
-      return;
-    }
-    if (keyLower === 'o') {
-      this.quadPointKC();
-      return;
-    }
-    if (this.isDrawingPath) {
-      if (keyLower === 'j') {
-        this.splineTension = Math.max(0.1, this.splineTension - 0.1);
-        this.updateTextContent();
-        this.notify();
-        return;
-      }
-      if (keyLower === 'k') {
-        this.splineTension = Math.min(1.0, this.splineTension + 0.1);
-        this.updateTextContent();
-        this.notify();
-        return;
-      }
-      if (keyLower === '/') {
-        this.splineTension = this.splineTensionDefault;
-        this.updateTextContent();
-        this.notify();
-        return;
-      }
-    }
-    if (!this.isDrawingPath && keyLower === '/') {
-      this.toggleGrid();
-      return;
-    }
-    // NB: J toggles the controls bar overlay and L the status box,
-    // both via App's own keydown listeners. While drawing a path J
-    // trims spline tension instead (handled above).
-    // NB: K toggles the on-screen keyboard (KB toggle) via App's own
-    // keydown listener. While drawing a path K adjusts spline tension
-    // instead (handled above), mirroring how / resets tension mid-path
-    // and toggles the grid otherwise.
-    if (keyLower === 'c') {
-      this.thinStrokeWidth();
-      if (this.selectedItems.length > 0) {
-        for (let i = 0; i < this.selectedItems.length; i++) {
-          if (this.selectedItems[i].strokeWidth !== undefined) {
-            this.selectedItems[i].strokeWidth = Math.max(1, this.selectedItems[i].strokeWidth - 1);
-          }
-        }
-      }
-      return;
-    }
-    if (keyLower === 'v') {
-      this.thickenStrokeWidth();
-      if (this.selectedItems.length > 0) {
-        for (let i = 0; i < this.selectedItems.length; i++) {
-          if (this.selectedItems[i].strokeWidth !== undefined) {
-            this.selectedItems[i].strokeWidth = Math.min(
-              this.maxStrokeWidth,
-              this.selectedItems[i].strokeWidth + 1,
-            );
-          }
-        }
-      }
-      return;
-    }
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad) {
-      if (keyLower === 'r' || keyLower === 'e' || keyLower === 's' || keyLower === 'a') {
-        // In Radial Stamp, END and Complete Shape both deposit the live
-        // shape and finish the stamping session.
-        if (this.shapeType === 'circle_radial_stamp') {
-          this.finishRadialStamp();
-        } else if (keyLower === 'r' && this.isDrawingPath) {
-          this.completeShapeWithSpline();
-        } else {
-          this.endPathOrShape();
-        }
-      }
-    }
-    if (!this.isDrawingPath && !this.isDrawingShape && !this.isDrawingQuad) {
-      if (keyLower === 's') {
-        const sel = this.selectionPaint();
-        this.setStrokeEnabled(sel ? !sel.strokeOn : !this.strokeEnabled);
-        this.updateTextContent();
-        return;
-      }
-      if (keyLower === 'd') {
-        const sel = this.selectionPaint();
-        this.setFillEnabled(sel ? !sel.fillOn : !this.fillEnabled);
-        this.updateTextContent();
-        return;
-      }
-    }
-    if (event.key === 'q') {
-      this.cancelCurrentDrawingOperation();
-    }
-    if (event.key === 'Escape') {
-      this.cancelCurrentDrawingOperation();
-    }
-    if (event.key === 'Tab') {
-      // Native tab order wins inside panel fields; everywhere else Tab
-      // selects under the cursor and must not leave the page for the
-      // Omnibox.
-      const target = event.target as HTMLElement | null;
-      const inField =
-        !!target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'SELECT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'BUTTON');
-      if (!inField) {
-        event.preventDefault();
-        this.hitTestUnderCursor();
-      }
-    }
+    this.history.push(this.makeMoveCommand(nudgeEntries, 'nudge'));
     this.updateTextContent();
+    this.notify();
+  }
+
+  private scaleSelection(factor: number): void {
+    const center = this.collectiveCenter(this.selectedItems);
+    for (let i = 0; i < this.selectedItems.length; i++) {
+      this.selectedItems[i].scale(factor, center);
+    }
+  }
+
+  private rotateSelection(degrees: number): void {
+    const center = this.collectiveCenter(this.selectedItems);
+    for (let i = 0; i < this.selectedItems.length; i++) {
+      this.selectedItems[i].rotate(degrees, center);
+    }
   }
 
   // --- Canvas status overlay (NibGliderApp.js updateTextContent) ---
   updateTextContent(): void {
     const T = (s: string): StatusRun => ({ t: 'text', s });
-    const K = (s: string): StatusRun => ({
-      t: 'key',
-      s,
-      g: this.statusKeyGroup(s),
-    });
+    const K = (id: string): StatusRun => {
+      const s = commandKeycap(id);
+      return { t: 'key', s, g: keyGroupForLabel(s) };
+    };
     const state: StatusLine[] = [];
     const steps: StatusLine[] = [];
     const L = (kind: StatusLine['kind'], runs: StatusRun[]): StatusLine => ({
@@ -6022,7 +5587,7 @@ export class NibGliderEngine {
       state.push(
         L('meta', [
           T(`Grid: ON · ${this.gridType === 'diamond' ? 'Diamond' : 'Square'} (`),
-          K('L'),
+          K('toggle-status'),
           T(' to toggle)'),
         ]),
       );
@@ -6033,16 +5598,16 @@ export class NibGliderEngine {
     if (selectedCount) {
       state.push(L('title', [T('Selected Objects: ' + selectedCount)]));
       if (this.isInDragLock === false) {
-        steps.push(L('hint', [K('Space'), T(' to begin Drag-Lock')]));
+        steps.push(L('hint', [K('drag-lock'), T(' to begin Drag-Lock')]));
         steps.push(
           L('hint', [
-            K('['),
+            K('scale-down'),
             T(' and '),
-            K(']'),
+            K('scale-up'),
             T(' to Scale, '),
-            K(';'),
+            K('rotate-ccw'),
             T(' and '),
-            K("'"),
+            K('rotate-cw'),
             T(' to Rotate'),
           ]),
         );
@@ -6053,21 +5618,21 @@ export class NibGliderEngine {
       steps.push(
         L('hint', [
           T('Move mouse to drag all selected.  '),
-          K('Space'),
+          K('drag-lock'),
           T(' to release.'),
         ]),
       );
       steps.push(
         L('hint', [
-          K('W'),
+          K('stamp'),
           T(' to Stamp, '),
-          K('['),
+          K('scale-down'),
           T(' and '),
-          K(']'),
+          K('scale-up'),
           T(' to Scale, '),
-          K(';'),
+          K('rotate-ccw'),
           T(' and '),
-          K("'"),
+          K('rotate-cw'),
           T(' to Rotate'),
         ]),
       );
@@ -6077,16 +5642,16 @@ export class NibGliderEngine {
       steps.push(L('hint', [T('Move mouse to adjust path.')]));
       steps.push(
         L('hint', [
-          K('F'),
+          K('sharp-point'),
           T(' = sharp point, '),
-          K('G'),
+          K('spline-point'),
           T(' = spline (tension:' + this.splineTension.toFixed(1) + '), '),
-          K('R'),
+          K('finish-r'),
           T(' = complete shape'),
         ]),
       );
       steps.push(
-        L('hint', [K('A'), T(' = end, '), K('J'), T('/'), K('K'), T('/'), K('/'), T(' = adjust tension')]),
+        L('hint', [K('finish-a'), T(' = end, '), K('tension-down'), T('/'), K('tension-up'), T('/'), K('tension-reset'), T(' = adjust tension')]),
       );
       steps.push(
         L('hint', [T('A near own start closes · A near a path end joins it')]),
@@ -6125,30 +5690,30 @@ export class NibGliderEngine {
           steps.push(
             L('hint', [
               T('Press '),
-              K(','),
+              K('radial-stamp'),
               T(' or '),
-              K('W'),
+              K('stamp'),
               T(' to stamp. Move mouse to orbit the origin.'),
             ]),
           );
           steps.push(
             L('hint', [
-              K('A'),
+              K('finish-a'),
               T(' / '),
-              K('R'),
+              K('finish-r'),
               T(' to deposit + finish, '),
-              K('Q'),
+              K('cancel'),
               T(' to cancel.'),
             ]),
           );
         } else {
-          const finishKey = this.shapeType === 'circle_diameter' ? 'N' : 'M';
+          const finishKey = this.shapeType === 'circle_diameter' ? 'circle-diameter' : 'circle-radius';
           steps.push(
             L('hint', [
               T('Press '),
               K(finishKey),
               T(' to finish or '),
-              K('W'),
+              K('stamp'),
               T(' to stamp.'),
             ]),
           );
@@ -6157,9 +5722,9 @@ export class NibGliderEngine {
         steps.push(
           L('hint', [
             T('Press '),
-            K('I'),
+            K('rect-diagonal'),
             T(' to finish or '),
-            K('W'),
+            K('stamp'),
             T(' to stamp.'),
           ]),
         );
@@ -6169,7 +5734,7 @@ export class NibGliderEngine {
           steps.push(
             L('hint', [
               T('2. Press '),
-              K('U'),
+              K('rect-two-edges'),
               T(' again to start the second edge'),
             ]),
           );
@@ -6178,9 +5743,9 @@ export class NibGliderEngine {
           steps.push(
             L('hint', [
               T('2. Press '),
-              K('U'),
+              K('rect-two-edges'),
               T(' to finish or '),
-              K('W'),
+              K('stamp'),
               T(' to stamp.'),
             ]),
           );
@@ -6189,19 +5754,19 @@ export class NibGliderEngine {
         steps.push(L('hint', [T('1. Move mouse to adjust the rectangle.')]));
         steps.push(
           L('hint', [
-            K('['),
+            K('scale-down'),
             T(': thin width, '),
-            K(']'),
+            K('scale-up'),
             T(': thicken width,'),
           ]),
         );
         steps.push(
           L('hint', [
-            K('Y'),
+            K('rect-centerline'),
             T(': finish, '),
-            K('W'),
+            K('stamp'),
             T(': stamp, '),
-            K('Q'),
+            K('cancel'),
             T(': cancel'),
           ]),
         );
@@ -6214,9 +5779,9 @@ export class NibGliderEngine {
       steps.push(
         L('hint', [
           T('Press '),
-          K('O'),
+          K('quad'),
           T(' to add next point. '),
-          K('Q'),
+          K('cancel'),
           T(': cancel'),
         ]),
       );
@@ -6225,7 +5790,7 @@ export class NibGliderEngine {
     // (repeat counts, radius reference) appear here automatically.
     if (this.isLiveDrawing) {
       const liveByLabel = new Map<string, string[]>();
-      for (const b of this.liveKeyBindings) {
+      for (const b of this.keyboard.liveBindings()) {
         if (!b.applies()) continue;
         const keys = liveByLabel.get(b.label) ?? [];
         for (const k of b.keys) {

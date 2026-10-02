@@ -1,16 +1,9 @@
 import { useLayoutEffect, useState } from 'react';
+import { KEY_CAPS, type KeyCap } from '../engine/input/keymap';
 
-// On-screen keyboard: display-only key indicators (no click behavior,
-// mirroring the original). Highlight follows physical key activity.
-interface KeyDef {
-  id: string;
-  dataKey: string;
-  className: string;
-  transform?: string;
-  html: string;
-  bg?: string;
-  badge?: 'circle' | 'rect';
-}
+// On-screen keyboard renders KEY_CAPS. Highlight follows physical key
+// activity. Only the status keycap is clickable; the rest fall through
+// so drawing still tracks the cursor.
 
 // Corner badges echoing the panel section icons (TitleIcon in
 // ControlPanel): same 16x14 viewBox, stroke styling, and geometry —
@@ -166,53 +159,34 @@ const GLYPH = {
   ),
 };
 
-const ROW2: KeyDef[] = [
-  { id: 'Tab', dataKey: 'tab', className: 'keyboardkey tabKey OtherKey enabledButton', html: 'SELECT OBJECTS', bg: GLYPH.select },
-  { id: 'KeyQ', dataKey: 'q', className: 'keyboardkey KeyQ operationButton enabledButton cancelButton', transform: 'translate(-45%, 0%)', html: 'CANCEL', bg: GLYPH.cancel },
-  { id: 'KeyW', dataKey: 'w', className: 'keyboardkey wKey operationButton enabledButton', html: 'STAMP', bg: GLYPH.stamp },
-  { id: 'KeyE', dataKey: 'e', className: 'keyboardkey eKey ', html: '' },
-  { id: 'KeyR', dataKey: 'r', className: 'keyboardkey rKey endButton enabledButton', transform: 'translate(-45%, 0%)', html: 'COMPLETE<br/>SHAPE', bg: GLYPH.complete },
-  { id: 'KeyT', dataKey: 't', className: 'keyboardkey tKey ', transform: 'translate(-45%, 0%)', html: '' },
-  { id: 'KeyY', dataKey: 'y', className: 'keyboardkey yKey drawingButton enabledButton rectangleButton', transform: 'translate(-45%, 0%)', html: 'RECT.<br/>BY CENTERLINE', bg: GLYPH.rectCenterline, badge: 'rect' },
-  { id: 'KeyU', dataKey: 'u', className: 'keyboardkey uKey drawingButton enabledButton rectangleButton', transform: 'translate(-45%, 0%)', html: 'RECT.<br/>BY 2 EDGES', bg: GLYPH.rectTwoEdges, badge: 'rect' },
-  { id: 'KeyI', dataKey: 'i', className: 'keyboardkey iKey drawingButton enabledButton rectangleButton', transform: 'translate(-47%, 0%)', html: 'RECT.<br/>BY DIAG.', bg: GLYPH.rectDiag, badge: 'rect' },
-  { id: 'KeyO', dataKey: 'o', className: 'keyboardkey oKey drawingButton enabledButton quadButton', transform: 'translate(-45%, 0%)', html: 'QUAD<br/>4 PTS', bg: GLYPH.quad },
-  { id: 'KeyP', dataKey: 'p', className: 'keyboardkey pKey ', html: '' },
-  { id: 'BracketLeft', dataKey: '[', className: 'keyboardkey  bracketLeftKey operationButton enabledButton', html: 'SCALE -', bg: GLYPH.scaleDown },
-  { id: 'BracketRight', dataKey: ']', className: 'keyboardkey  bracketRightKey operationButton enabledButton', html: 'SCALE +', bg: GLYPH.scaleUp },
-  { id: 'Backslash', dataKey: '\\', className: 'keyboardkey  backslashKey', html: '' },
-];
-
-const ROW3: KeyDef[] = [
-  { id: 'CapsLock', dataKey: 'capslock', className: 'keyboardkey capsLockKey OtherKey hidden', html: '' },
-  { id: 'KeyA', dataKey: 'a', className: 'keyboardkey KeyA endButton', transform: 'translate(-27%, 0%)', html: '<b>END</b><br />', bg: GLYPH.end },
-  { id: 'KeyS', dataKey: 's', className: 'keyboardkey sKey toggleButton enabledButton', transform: 'translate(-27%, 0%)', html: 'TOGGLE<br/>STROKE', bg: GLYPH.stroke },
-  { id: 'KeyD', dataKey: 'd', className: 'keyboardkey dKey toggleButton enabledButton', transform: 'translate(-27%, 0%)', html: 'TOGGLE<br/>FILL', bg: GLYPH.fill },
-  { id: 'KeyF', dataKey: 'f', className: 'keyboardkey fKey drawingButton', transform: 'translate(-27%, 0%)', html: 'SHARP</br>POINT', bg: GLYPH.sharp },
-  { id: 'KeyG', dataKey: 'g', className: 'keyboardkey gKey drawingButton enabledButton', transform: 'translate(-27%, 0%)', html: 'SPLINE<br/>POINT', bg: GLYPH.spline },
-  { id: 'KeyH', dataKey: 'h', className: 'keyboardkey hKey ', transform: 'translate(-27%, 0%)', html: '' },
-  { id: 'KeyJ', dataKey: 'j', className: 'keyboardkey jKey toggleButton enabledButton overlayToggle', transform: 'translate(-27%, 0%)', html: 'PANEL<br/>TOGGLE' },
-  { id: 'KeyK', dataKey: 'k', className: 'keyboardkey kKey toggleButton enabledButton overlayToggle', transform: 'translate(-27%, 0%)', html: 'KB<br/>TOGGLE' },
-  { id: 'KeyL', dataKey: 'l', className: 'keyboardkey lKey toggleButton enabledButton overlayToggle statusToggle', transform: 'translate(-27%, 0%)', html: 'STATUS<br/>TOGGLE', bg: GLYPH.status },
-  { id: 'Semicolon', dataKey: ';', className: 'keyboardkey semicolonKey operationButton enabledButton', transform: 'translate(-27%, 0%)', html: 'ROTATE -', bg: GLYPH.rotateCcw },
-  { id: 'Quote', dataKey: "'", className: 'keyboardkey  singleQuoteKey operationButton enabledButton', transform: 'translate(-27%, 0%)', html: 'ROTATE +', bg: GLYPH.rotateCw },
-  { id: 'Enter', dataKey: 'return', className: 'keyboardkey returnKey OtherKey hidden', transform: 'translate(-5%, 0%)', html: 'RETURN' },
-];
-
-const ROW4: KeyDef[] = [
-  { id: 'ShiftLeft', dataKey: 'shift', className: 'keyboardkey shiftKeyLeft OtherKey hidden', html: '' },
-  { id: 'KeyZ', dataKey: 'z', className: 'keyboardkey KeyZ ', transform: 'translate(38%, 0%)', html: '' },
-  { id: 'KeyX', dataKey: 'x', className: 'keyboardkey xKey ', transform: 'translate(38%, 0%)', html: '' },
-  { id: 'KeyC', dataKey: 'c', className: 'keyboardkey cKey stepper1Decrement enabledButton', transform: 'translate(38%, 0%)', html: '-<br />STROKE<br />WIDTH', bg: GLYPH.strokeMinus },
-  { id: 'KeyV', dataKey: 'v', className: 'keyboardkey vKey stepper1Increment enabledButton', transform: 'translate(38%, 0%)', html: '+<br />STROKE<br />WIDTH', bg: GLYPH.strokePlus },
-  { id: 'KeyB', dataKey: 'b', className: 'keyboardkey bKey ', transform: 'translate(38%, 0%)', html: '' },
-  { id: 'KeyN', dataKey: 'n', className: 'keyboardkey nKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', html: 'CIRCLE<br/>BY DIAMETER', bg: GLYPH.circleDiameter, badge: 'circle' },
-  { id: 'KeyM', dataKey: 'm', className: 'keyboardkey mKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', html: 'CIRCLE<br/>BY RADIUS', bg: GLYPH.circleRadius, badge: 'circle' },
-  { id: 'Comma', dataKey: ',', className: 'keyboardkey commaKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', html: 'RADIAL<br/>STAMP', bg: GLYPH.circleTangent, badge: 'circle' },
-  { id: 'Period', dataKey: '.', className: 'keyboardkey periodKey ', transform: 'translate(38%, 0%)', html: '' },
-  { id: 'Slash', dataKey: '/', className: 'keyboardkey forwardSlashKey OtherKey enabledButton', transform: 'translate(38%, 0%)', html: 'GRID<br/>TOGGLE', bg: GLYPH.grid },
-  { id: 'ShiftRight', dataKey: 'shift', className: 'keyboardkey shiftKeyRight OtherKey hidden', transform: 'translate(15%, 0%)', html: '' },
-];
+/** Ghost glyphs keyed by command id so the board and the keymap stay aligned. */
+const GLYPH_BY_COMMAND: Record<string, string> = {
+  select: GLYPH.select,
+  cancel: GLYPH.cancel,
+  stamp: GLYPH.stamp,
+  'finish-r': GLYPH.complete,
+  'rect-centerline': GLYPH.rectCenterline,
+  'rect-two-edges': GLYPH.rectTwoEdges,
+  'rect-diagonal': GLYPH.rectDiag,
+  quad: GLYPH.quad,
+  'scale-down': GLYPH.scaleDown,
+  'scale-up': GLYPH.scaleUp,
+  'finish-a': GLYPH.end,
+  'toggle-stroke': GLYPH.stroke,
+  'toggle-fill': GLYPH.fill,
+  'sharp-point': GLYPH.sharp,
+  'spline-point': GLYPH.spline,
+  'toggle-status': GLYPH.status,
+  'rotate-ccw': GLYPH.rotateCcw,
+  'rotate-cw': GLYPH.rotateCw,
+  'stroke-thinner': GLYPH.strokeMinus,
+  'stroke-thicker': GLYPH.strokePlus,
+  'circle-diameter': GLYPH.circleDiameter,
+  'circle-radius': GLYPH.circleRadius,
+  'radial-stamp': GLYPH.circleTangent,
+  'grid-toggle': GLYPH.grid,
+  'drag-lock': GLYPH.dragLock,
+};
 
 const KEYBOARD_WIDTH_MIN = 480;
 const KEYBOARD_WIDTH_MAX = 1600;
@@ -303,10 +277,11 @@ function KeyButton({
   active,
   onClick,
 }: {
-  def: KeyDef;
+  def: KeyCap;
   active: boolean;
   onClick?: () => void;
 }) {
+  const bg = def.commandId ? GLYPH_BY_COMMAND[def.commandId] : undefined;
   return (
     <button
       tabIndex={-1}
@@ -316,11 +291,11 @@ function KeyButton({
       style={def.transform ? { transform: def.transform } : undefined}
       onClick={onClick}
     >
-      {def.bg && (
+      {bg && (
         <span
           className="key-bg"
           aria-hidden="true"
-          dangerouslySetInnerHTML={{ __html: def.bg }}
+          dangerouslySetInnerHTML={{ __html: bg }}
         />
       )}
       {def.badge && (
@@ -334,7 +309,7 @@ function KeyButton({
       )}
       <span
         className="key-label"
-        dangerouslySetInnerHTML={{ __html: def.html }}
+        dangerouslySetInnerHTML={{ __html: def.legend }}
       />
     </button>
   );
@@ -345,48 +320,36 @@ export default function Keyboard({
   showSpacebar,
   width,
   onWidthChange,
-  onStatusToggle,
+  onCommand,
 }: {
   activeCode: string | null;
   showSpacebar: boolean;
   width: number;
   onWidthChange: (w: number) => void;
-  onStatusToggle?: () => void;
+  /** Invoked only for keycaps marked clickable, with that cap's command id. */
+  onCommand?: (commandId: string) => void;
 }) {
-  // The on-screen STATUS TOGGLE keycap (KeyL) is clickable and fires the
-  // same toggle as the physical L key. Every other keycap stays
-  // display-only, falling through to the canvas.
-  const clickFor = (def: KeyDef) =>
-    def.id === 'KeyL' ? onStatusToggle : undefined;
+  const clickFor = (def: KeyCap) =>
+    def.clickable && def.commandId && onCommand
+      ? () => onCommand(def.commandId as string)
+      : undefined;
+  const row = (name: KeyCap['row']) => KEY_CAPS.filter((cap) => cap.row === name);
   return (
     <>
     <div id="keyboardKeysContainer">
-      {ROW2.map((def) => (
+      {row('q').map((def) => (
         <KeyButton key={def.id} def={def} active={activeCode === def.id} onClick={clickFor(def)} />
       ))}
-      {ROW3.map((def) => (
+      {row('a').map((def) => (
         <KeyButton key={def.id} def={def} active={activeCode === def.id} onClick={clickFor(def)} />
       ))}
-      {ROW4.map((def) => (
+      {row('z').map((def) => (
         <KeyButton key={def.id} def={def} active={activeCode === def.id} onClick={clickFor(def)} />
       ))}
-      {showSpacebar && (
-        <button
-          tabIndex={-1}
-          data-key="spacebar"
-          id="Space"
-          className="keyboardkey spacebarKey OtherKey enabledButton selectionButton"
-        >
-          <span
-            className="key-bg"
-            aria-hidden="true"
-            dangerouslySetInnerHTML={{
-              __html: GLYPH.dragLock,
-            }}
-          />
-          <span className="key-label">DRAG LOCK</span>
-        </button>
-      )}
+      {showSpacebar &&
+        row('space').map((def) => (
+          <KeyButton key={def.id} def={def} active={activeCode === def.id} onClick={clickFor(def)} />
+        ))}
     </div>
     <ResizeHandle width={width} onWidthChange={onWidthChange} />
     </>

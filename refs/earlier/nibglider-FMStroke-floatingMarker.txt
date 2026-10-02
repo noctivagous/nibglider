@@ -1,0 +1,83 @@
+
+We have also in @external-proj/Floating Marker 
+a composite path we call FMStroke and it greatly assists 
+laying down accurate paths in real time by making composite 
+conventions on top of Apple's PencilKit PKStroke so that a 
+point is not just a curve or straight point but indicates 
+what kind of corner and path will follow the point. 
+Using the mathematical spline function produces a relatively 
+raw experience but this composite set of conventions that 
+sits on top makes splines fast to use in combination with the key-clicks.
+The points laid down indicate both what they are effecting as corners 
+and what they produce in the line segment, with for example
+an arc point producing a hard corner and then an arc according
+to the current parameters given to that segment point (ranging from a small
+arc to a large one is stored in the point.  hardCorner produces
+line segments: the corner is hard because it deposits 3 bspline points
+at that point and the b-spline algorithm turns that into a hard corner. 
+roundCorner produces line segments but deposits 2 b-spline points 
+at that point so that. A regular bSpline is flexible for drawing like a bSpline.
+
+
+GEOMETRIC SEMANTIC HIERARCHY
+
+NGPath should be the general editable path representation.  It may be a
+regular Bezier path, b-spline, composite path, or smoothed polyline.  Shape
+objects should be a semantic geometric layer above NGPath, with parameters
+that preserve what the user intended rather than only the resulting points.
+
+    NGPath
+        > Shape
+            > Polygon
+                > RegularPolygon
+                > Quadrilateral
+                    > Rectangle
+                    > Parallelogram
+                    > Trapezoid
+                    > Rhombus
+                    > Kite
+                > Triangle
+                    > RightTriangle
+                    > RegularTriangle
+                    > Trigon
+            > Circle / Ellipse
+            > Supershape
+            > Arc
+
+The hierarchy is for editable geometric meaning, not necessarily for the
+rendering objects.  For example, a Rectangle stores its origin, dimensions,
+rotation, and aspect-ratio constraint; a RegularPolygon stores side count,
+radius convention, and rotation; a Trapezoid stores its frame and angle.
+These values generate a derived NGPath/Paper.js path for display and export.
+
+The program should preserve the semantic shape while its defining invariants
+remain true.  Direct edits can either update the relevant parameters or,
+when they no longer describe the resulting geometry, explicitly convert the
+item to a regular NGPath.
+
+Boolean operations are a required conversion boundary:
+
+    semantic shape + union / subtraction / intersection
+        -> evaluate derived geometry
+        -> resulting regular NGPath or compound path
+
+The boolean result ordinarily cannot remain a Rectangle, Polygon,
+Parallelogram, or other constrained shape because its geometry may no longer
+satisfy that type's invariants.  The result should therefore retain ordinary
+editable path geometry, but not falsely retain the original semantic shape
+identity or parameters.  The user can later use a "recognize / convert to
+shape" operation if the resulting path happens to satisfy a known geometry.
+
+NGPath composite stroke semantics follow the same rule.  An NGPath in
+`ngComposite` mode stores meaningful point/corner and outgoing-segment
+conventions; it derives Bezier geometry for display/export.  Operations that
+destroy a one-to-one relationship with those conventions should convert it to
+a regular Bezier NGPath unless an operation has an explicitly defined
+semantic-preservation rule.
+
+In TypeScript this does not require a deep runtime class inheritance tree.
+A discriminated semantic geometry model with a common `toNGPath()` /
+`toRenderablePath()` interface gives the same geometric hierarchy while
+remaining serializable, testable, and compatible with Paper.js.  Paper.js
+items remain derived scene/render objects, not the authoritative geometric
+model.

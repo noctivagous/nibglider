@@ -11,6 +11,15 @@ is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app s
 be aware of pt, inch, pica, cm.  users will stay within mm to m for SI
 and inches to feet for English Units.
 
+[ ] Selection Rectangle key for Caps Lock.  Pressing it starts selection rectangle
+pressing it a second time finalizes the selection.  selects what is contained
+by or intersects rectangle.  Esc will cancel.  Same mechanism as Rect By Diagonal.
+
+[ ] Geometry base class inheritance for objects that naturally contain geometric
+description.  NGPath > Polygon > Quadrilateral > Parallelogram,  Polygon > Quadrilateral > Trapezoid,
+Polygon > Regular Polygon.  when object changes, like has union, subtraction, intersection
+operations, path change, then it moves to regular Path.
+
 
   [x] the menu that appears when clicking on the icon for any panel section should have
   at the bottom collapse/expand, providing another place for the user to collapse and
@@ -36,6 +45,10 @@ push the different sections around.
 [x] issue: in the code the snapping points that are drawn are made out of PaperJS canvas vector objects but
 they can be clicked by the user, might be printed.
 
+
+[ ] - Type At Cursor / Type Text - P key.  press and if no selection of objects, starts typing
+on single line that follows cursor.  Begins capturing keyboard input for type. 
+Press Return/Enter to finalize.  Follows Text mode settings.
 
 
 [ ] add different grid presentation variations.  for example, it may
