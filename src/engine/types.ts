@@ -19,6 +19,14 @@ export type ShapeType =
   | 'rectangle_two_edges'
   | 'rectangle_centerline';
 
+/** How the Circle by Radius tool anchors its preview: press point is the
+ * center (origin), or a fixed circumference point with the cursor as center. */
+export type CircleRadiusAnchor = 'origin' | 'circumference';
+
+/** Which portion of the final rect the drawn diagonal covers: the full
+ * diagonal (current), half of it (final = 2x), or a quarter (final = 4x). */
+export type RectDiagonalMode = 'full' | 'half' | 'quarter';
+
 // A key remap that applies while a live drawing preview is active. The
 // engine checks registered bindings before the idle (selection) handlers,
 // so the same physical key can adjust the live preview instead. Future

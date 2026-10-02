@@ -416,6 +416,65 @@ color:rgb(210, 115, 115) !important;
     grid-area: mKey;
 }
 
+.commaKey {
+    grid-area: commaKey;
+}
+
+#keyboardKeysContainer button.key-has-settings {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+#keyboardKeysContainer button.key-has-settings[aria-expanded='true'] {
+    border-color: #8fb4ff !important;
+}
+
+#keyboardContainer.kb-hidden #keyboardKeysContainer button.key-has-settings {
+    pointer-events: none;
+}
+
+.key-settings-popover {
+    z-index: 10050;
+    width: 260px;
+    visibility: visible;
+}
+
+.key-settings-title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.key-settings-help {
+    margin: 0;
+    color: var(--dp-text-2, #b7c2cf);
+    font-size: 0.75rem;
+    line-height: 1.35;
+}
+
+.key-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.key-settings-row > span {
+    flex: 1 1 auto;
+}
+
+.key-settings-row select,
+.key-settings-row input[type='color'] {
+    background: #121820;
+    color: inherit;
+    border: 1px solid #3a4654;
+    border-radius: 4px;
+}
+
+.key-settings-check {
+    justify-content: flex-start;
+}
+
 .commKeyA {
     grid-area: commKeyA;
 }
@@ -630,9 +689,8 @@ color:rgb(210, 115, 115) !important;
     pointer-events: none;
 }
 
-/* The STATUS TOGGLE keycap is the one clickable exception: it fires the
-   same toggle as the physical L key. Cut it again while the board itself
-   is slid out of view so a hidden keycap can't be hit. */
+/* Clickable exceptions: Key L toggles status, and a configurable cap opens
+   its settings. Both are cut while the board is slid out of view. */
 #keyboardKeysContainer button.statusToggle {
     pointer-events: auto;
 }
@@ -799,6 +857,26 @@ color:rgb(210, 115, 115) !important;
 
 #keyboardKeysContainer button.rectangleButton .key-badge {
     color: #2dd4bf;
+}
+
+/* Gear badge marking keys with a settings popover. Lower right, under
+   the hover veil; decorative only, the whole cap stays the hit target. */
+#keyboardKeysContainer .key-gear {
+    position: absolute;
+    bottom: calc(2px * var(--kb-scale, 1));
+    right: calc(2px * var(--kb-scale, 1));
+    width: calc(11px * var(--kb-scale, 1));
+    z-index: 1;
+    line-height: 0;
+    pointer-events: none;
+    opacity: 0.85;
+}
+
+#keyboardKeysContainer .key-gear svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
 }
 
 #keyboardKeysContainer .key-label {

@@ -232,6 +232,7 @@ export default function App() {
             }
           >
             <Keyboard
+              engine={engine}
               activeCode={activeCode}
               showSpacebar={showSpacebar}
               width={keyboardWidth}

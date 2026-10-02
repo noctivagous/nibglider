@@ -47,6 +47,15 @@ export interface KeyCommand {
   alias?: boolean;
   /** Slash is not mirrored onto the on-screen keycap. */
   highlight?: boolean;
+  /**
+   * Optional settings surface for this command. The schema itself lives in
+   * KeySettingsRegistry under settingsId, so the key definition and the
+   * popover cannot drift. Clicking the whole on-screen cap opens that
+   * surface and does not run the command. The physical key still does.
+   */
+  settingsId?: string;
+  settingsAvailability?: (state: KeyState) => boolean;
+  settingsSummary?: string;
 }
 
 export interface KeyCap {
@@ -550,6 +559,23 @@ export const KEY_COMMANDS: KeyCommand[] = [
     owner: 'app',
   },
 ];
+
+// Settings metadata attached to the command that owns the behavior.
+// Each popover edits how its tool draws (not what the panel sections
+// draw). Only Circle by Radius and Rect by Diagonal have popovers for
+// now; keys without a link show no popover and no gear badge.
+const KEY_SETTINGS_LINKS: Record<string, { settingsId: string; settingsSummary: string }> = {
+  'circle-radius': { settingsId: 'circle-radius-tool', settingsSummary: 'Circle radius start' },
+  'rect-diagonal': { settingsId: 'rect-diagonal-tool', settingsSummary: 'Rect diagonal extent' },
+};
+
+for (const cmd of KEY_COMMANDS) {
+  const link = KEY_SETTINGS_LINKS[cmd.id];
+  if (!link) continue;
+  cmd.settingsId = link.settingsId;
+  cmd.settingsSummary = link.settingsSummary;
+  cmd.settingsAvailability = always;
+}
 
 export const KEY_CAPS: KeyCap[] = [
   { id: 'Tab', dataKey: 'tab', commandId: 'select', row: 'q', className: 'keyboardkey tabKey OtherKey enabledButton', legend: 'SELECT OBJECTS' },

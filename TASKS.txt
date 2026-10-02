@@ -20,7 +20,12 @@ description.  NGPath > Polygon > Quadrilateral > Parallelogram,  Polygon > Quadr
 Polygon > Regular Polygon.  when object changes, like has union, subtraction, intersection
 operations, path change, then it moves to regular Path.
 
-IN-DRAWING WIDGETS
+CURSOR STATES 
+
+[ ] When the cursor hovers over a snapping point, it should change to indicate this.
+
+
+IN-DRAWING WIDGETS AND ACTOR OBJECTS
 
 	[ ] REPLICATOR PORTALS
 	Placed on page with Rect Key (for rect repeats) or Circle Keys. 
@@ -67,6 +72,14 @@ the panel sections abridge.
 [ ] improve dragging of panel sections such that dragging it takes the entire section with
 the cursor during drag, not just the drag handle, and placing it in different areas will
 push the different sections around. 
+
+SHAPE SCHEMA
+[ ] A shape like a circle segment was drawn with a circle origin.
+If Point Snapping is on, we want to be able to get to that circle origin.
+
+TEXT
+
+[ ] Text: Editable Text vs. Vector Shapes
 
 [ ] Text shape mode, Sign Text: [Display Text | Body Text | Sign Text]
    Sign Text - Text is placed inside the shape
@@ -184,11 +197,17 @@ until type is entered by user.
 ONSCREEN KEYBOARD
 [ ] Clicking a key will show its settings.  requires setting up
 a settings system.
-  --- RADIAL STAMP
+
+ --- RADIAL STAMP
 [ ] Repeat, Imbricate: Radial Stamp : two underneath on either side.
 relates to Live Mod. Mode: switch on: allows repeating Loaded Object
 or selected shape that follows cursor and stamp (W) will stamp it.
 . and / keys during Live drawing should increasing count of repeat.
+[ ] Repeat options for Radial Stamp: 1. interval: [count | angle] count implies angle distance and vice-versa.
+ 2. absolute distance.  3. relative to radius: longer radius means more repeats according to
+ provided ratio.
+ [ ] Scale options for Radial stamp.
+  
 [ ] Radial Stamp setting (Accessed by clicking Radial Stamp key): snap to points.
 A polygon's points will snap to any shape's as the Radial Stamp is on.
 Related: Moving-Point-Snap, Moving-Edge-Snap: as user moves shape, its points will snap
@@ -198,6 +217,11 @@ to other edges or points.
 ROTATE AND SCALE KEYS
 [ ] If snapping to Points, will rotate around the hovered point.
 
+
+The settings in the keys' popover when they are clicked should not be the same as the sections in the panels.  
+The settings in the panel sections decide what the circle keys draw whereas what shows up in the keys' 
+popover is how the tool makes what it draws.  So, for example, for circle by radius this can be flipped 
+to start from either the circle origin or the circumference. 
 
 [ ] Rect By Diagonal: setting on key: [full rect | half rect | quarter rect]
    full rect - diagonal is of the full rectangle (current)

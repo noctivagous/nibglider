@@ -119,7 +119,7 @@ src/engine/
     SnappingManager.ts      # Grid, angle, length, aspect, path, point snap
     CombinatoricsManager.ts # Union, subtract, intersect
 
-  obj-characteristics/
+  properties-characteristics/
     StyleManager.ts         # Stroke, fill, dash, cap, join
     TextLayout.ts           # Display, body, and circumference text
     GridRenderer.ts         # Grid and snap-cursor rendering
@@ -309,6 +309,79 @@ that describes each command once:
 The status overlay reads the same labels and availability data. This prevents
 the physical keyboard, visible keyboard, and status hints from maintaining
 three inconsistent copies of shortcut logic.
+
+[x] ### Phase 3c: Onscreen-key settings popovers
+
+Implement configurable onscreen keys at the same time as the shared keymap.
+Clicking a configurable key opens an anchored tooltip/popover above that key
+with the settings that govern its drawing or operation behavior.
+
+Add:
+
+- `KeySettingsRegistry.ts` — maps a command/key ID to an optional typed
+  settings schema, defaults, validation, help text, and command-facing
+  read/write accessors.
+- `KeySettingsPopover.tsx` — renders a React-managed, keyboard-accessible
+  popover anchored to the clicked keycap; it owns focus management, escape,
+  outside-click dismissal, and viewport-edge positioning.
+- `KeySettingsViewModel.ts` — converts a schema and current engine/document
+  state into controls such as toggles, numeric steppers, selects, color
+  controls, and linked help/status text.
+
+Settings belong to the domain service that uses them, not to the visual key:
+
+- path/spline keys -> `PathTool` or `PathDrawingSession`;
+- circle and rectangle keys -> their tool/shape parameter models;
+- snapping keys -> `SnappingManager`;
+- transform keys -> `TransformManager`;
+- document/layer keys -> `DocumentManager` or `LayerManager`.
+
+The registry provides one stable UI-facing contract while the owning service
+remains the authoritative source of each setting. Persist document-affecting
+settings in the document model and user-preference settings through
+`GUIManager`; do not store either solely in component state.
+
+Phase 3c keeps those values on the engine. The services named above are not
+in the tree yet, so each registry accessor calls the engine setter the panel
+already uses. A later phase can move a field onto its service without
+changing `settingsId`. `settingsSchema` is `schemaById(settingsId)` in
+`KeySettingsRegistry.ts`, not a copy stored on the command.
+
+Each key definition gains optional metadata:
+
+```text
+settingsId, settingsAvailability, settingsSummary, settingsSchema
+```
+
+The visible keyboard, status overlay, panel controls, and future command bar
+can then open the same settings surface by `settingsId`.
+
+Interaction rule to decide and document before implementation: a visual key
+cannot simultaneously use an unmodified click as both “run command” and
+“open settings.” For configurable keys, choose one consistent behavior:
+
+1. click opens settings; the physical key remains the immediate command; or
+2. the main keycap runs the command and a visible settings affordance opens
+   the popover.
+
+Decision: option 1. Clicking the whole configurable cap opens the popover and
+does not run the command. The physical key remains the command. There is no
+separate settings button. Those caps set `pointer-events: auto`. Caps without
+settings, and the rest of the board, stay `pointer-events: none`. Key L still
+toggles status on click.
+
+Do not overload right-click as the only settings access path, since the
+onscreen keyboard must work on touch devices and remain discoverable.
+
+Initial acceptance checks:
+
+- opening a key popover does not trigger an unrelated drawing command;
+- changing a setting validates, updates its owning service, and refreshes the
+  live preview/status when applicable;
+- Escape and outside click dismiss without leaking listeners or focus;
+- the popover remains attached and visible near viewport edges;
+- the same setting opened from a panel, command bar, or keycap has one shared
+  value and validation rule.
 
 ### Phase 4: Establish page-item and geometry models
 

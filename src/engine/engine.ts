@@ -16,11 +16,21 @@ import {
 } from './input/PointerController';
 import { commandKeycap, keyGroupForLabel } from './input/keymap';
 import {
+  clampPolygonSides,
+  clampSectorAngle as clampSectorAngleValue,
+  clampShapeAngle as clampShapeAngleValue,
+  clampSplineTension,
+  clampStrokeWidth,
+  clampSupershapeParam,
+  snapShapeAngle as snapShapeAngleValue,
+} from './input/KeySettingsRegistry';
+import {
   lengthUnitToPoints,
   pointsToLengthUnit,
 } from './types';
 import type {
   CircleInnerShape,
+  CircleRadiusAnchor,
   CombineMode,
   DisplayFlow,
   FillSpec,
@@ -31,6 +41,7 @@ import type {
   KeyActivity,
   LengthUnit,
   LiveKeyBinding,
+  RectDiagonalMode,
   RectangleInnerShape,
   ShapeType,
   SplineTextPlacement,
@@ -50,6 +61,7 @@ import { UndoManager, type UndoCommand } from './undoManager';
 // from engine.ts. New code should import from ./types.
 export type {
   CircleInnerShape,
+  CircleRadiusAnchor,
   CombineMode,
   DisplayFlow,
   FillSpec,
@@ -60,6 +72,7 @@ export type {
   KeyActivity,
   LengthUnit,
   LiveKeyBinding,
+  RectDiagonalMode,
   RectangleInnerShape,
   ShapeType,
   SplineTextPlacement,
@@ -195,6 +208,10 @@ export class NibGliderEngine {
     sector: 90,
   };
   polygonRadiusMode = 'inradius';
+  // Per-tool "how it draws" settings, edited from the M and I key popovers.
+  // Defaults preserve the long-standing behavior.
+  circleRadiusAnchor: CircleRadiusAnchor = 'origin';
+  rectDiagonalMode: RectDiagonalMode = 'full';
 
   // --- Text config (Text panel + Display/Body/Circumference text) ---
   globalText: TextSpec = {
@@ -383,7 +400,7 @@ export class NibGliderEngine {
       },
       splineTension: () => this.splineTension,
       setSplineTension: (v) => {
-        this.splineTension = v;
+        this.setSplineTension(v);
       },
       setSelectedItems: (items) => {
         this.selectedItems = items;
@@ -729,9 +746,7 @@ export class NibGliderEngine {
   }
 
   setStrokeWidth(strokeVal: number): void {
-    let v = strokeVal;
-    if (v < 1) v = 1;
-    if (v > this.maxStrokeWidth) v = this.maxStrokeWidth;
+    const v = clampStrokeWidth(strokeVal, this.maxStrokeWidth);
     if (this.hasSelection()) {
       this.applyToSelection((item) => {
         item.strokeWidth = v;
@@ -1166,14 +1181,14 @@ export class NibGliderEngine {
   }
 
   setCircleSides(sides: number): void {
-    this.circleInnerShapeParams.sides = sides;
+    this.circleInnerShapeParams.sides = clampPolygonSides(sides);
     this.updatePreviewBox();
     this.updateTextContent();
     this.notify();
   }
 
   setSupershapeParam(key: keyof InnerShapeParams, val: number): void {
-    this.circleInnerShapeParams[key] = val;
+    this.circleInnerShapeParams[key] = clampSupershapeParam(key, val);
     this.updatePreviewBox();
     this.updateTextContent();
     this.notify();
@@ -1195,14 +1210,14 @@ export class NibGliderEngine {
   }
 
   setRectangleSides(sides: number): void {
-    this.rectangleInnerShapeParams.sides = sides;
+    this.rectangleInnerShapeParams.sides = clampPolygonSides(sides);
     this.updatePreviewBox();
     this.updateTextContent();
     this.notify();
   }
 
   setRectangleSupershapeParam(key: keyof InnerShapeParams, val: number): void {
-    this.rectangleInnerShapeParams[key] = val;
+    this.rectangleInnerShapeParams[key] = clampSupershapeParam(key, val);
     this.updatePreviewBox();
     this.updateTextContent();
     this.notify();
@@ -1574,20 +1589,17 @@ export class NibGliderEngine {
   // Parallelogram / trapezoid interior angle. 180° is a line; keep a
   // usable wedge on either side of 90°.
   clampShapeAngle(deg: number): number {
-    if (!Number.isFinite(deg)) return 60;
-    return Math.max(10, Math.min(170, deg));
+    return clampShapeAngleValue(deg);
   }
 
   // Slider grid for the trapezoid / parallelogram angle: 15° steps from
   // 15°. Typed entries snap onto the same grid as the slider.
   snapShapeAngle(deg: number): number {
-    const c = this.clampShapeAngle(deg);
-    return Math.max(15, Math.min(165, Math.round(c / 15) * 15));
+    return snapShapeAngleValue(deg);
   }
 
   clampSectorAngle(deg: number): number {
-    if (!Number.isFinite(deg)) return 90;
-    return Math.max(10, Math.min(350, deg));
+    return clampSectorAngleValue(deg);
   }
 
   // Horizontal shear (as a fraction of the bottom edge) that makes the
@@ -1654,7 +1666,33 @@ export class NibGliderEngine {
   }
 
   setSplineTension(val: number): void {
-    this.splineTension = Math.max(0.1, Math.min(1.0, val));
+    this.splineTension = clampSplineTension(val);
+    if (this.isDrawingPath) this.refreshSplineTextPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setCircleRadiusAnchor(anchor: CircleRadiusAnchor): void {
+    if (anchor !== 'origin' && anchor !== 'circumference') return;
+    this.circleRadiusAnchor = anchor;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRectDiagonalMode(mode: RectDiagonalMode): void {
+    if (mode !== 'full' && mode !== 'half' && mode !== 'quarter') return;
+    this.rectDiagonalMode = mode;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** Scale applied to the drawn diagonal vector for the Rect by Diagonal
+   * mode: the drawn diagonal covers the full / half / quarter of the final
+   * rect, so the final extent is 1x / 2x / 4x the drawn vector. */
+  rectDiagonalScale(): number {
+    if (this.rectDiagonalMode === 'half') return 2;
+    if (this.rectDiagonalMode === 'quarter') return 4;
+    return 1;
   }
 
   decreaseSplineTension(): void {
@@ -3999,9 +4037,11 @@ export class NibGliderEngine {
     if (shapeType === 'rectangle_diagonal') {
       // Origin at the drag start corner; u/v follow the mouse so the
       // inner shape mirrors when the diagonal crosses into another quadrant.
+      // Scaled by the diagonal mode, matching the preview frame.
       if (!this.shapeStartPoint || !this.mousePt) return null;
-      const dx = this.mousePt.x - this.shapeStartPoint.x;
-      const dy = this.mousePt.y - this.shapeStartPoint.y;
+      const k = this.rectDiagonalScale();
+      const dx = (this.mousePt.x - this.shapeStartPoint.x) * k;
+      const dy = (this.mousePt.y - this.shapeStartPoint.y) * k;
       if (dx === 0 || dy === 0) return null;
       return {
         o: this.shapeStartPoint,
@@ -5396,8 +5436,14 @@ export class NibGliderEngine {
     }
     const endPt = this.mousePt;
     if (this.shapeType === 'circle_radius') {
-      this.previewShape.position = this.shapeStartPoint;
-      this.previewShape.radius = this.shapeStartPoint.getDistance(endPt);
+      if (this.circleRadiusAnchor === 'circumference') {
+        // Press point is a fixed circumference point; the cursor is the center.
+        this.previewShape.position = endPt;
+        this.previewShape.radius = this.shapeStartPoint.getDistance(endPt);
+      } else {
+        this.previewShape.position = this.shapeStartPoint;
+        this.previewShape.radius = this.shapeStartPoint.getDistance(endPt);
+      }
       this.shapeGuideAngle = this.mousePt.subtract(this.previewShape.position).angle;
     } else if (this.shapeType === 'circle_radial_stamp') {
       // Placement guide: origin fixed at the start point. Unlocked, the
@@ -5417,9 +5463,11 @@ export class NibGliderEngine {
       this.previewShape.radius = this.shapeStartPoint.getDistance(endPt) / 2;
       this.shapeGuideAngle = this.mousePt.subtract(this.previewShape.position).angle;
     } else if (this.shapeType === 'rectangle_diagonal') {
-      const dx = endPt.x - this.shapeStartPoint.x;
-      const dy = endPt.y - this.shapeStartPoint.y;
-      this.previewShape.position = this.shapeStartPoint.add(endPt).divide(2);
+      const k = this.rectDiagonalScale();
+      const dx = (endPt.x - this.shapeStartPoint.x) * k;
+      const dy = (endPt.y - this.shapeStartPoint.y) * k;
+      const farPt = this.shapeStartPoint.add(new scope.Point(dx, dy));
+      this.previewShape.position = this.shapeStartPoint.add(farPt).divide(2);
       this.previewShape.size = new scope.Size(Math.abs(dx), Math.abs(dy));
     }
     if (this.previewLine) {
@@ -5664,6 +5712,9 @@ export class NibGliderEngine {
       ) {
         const mode = this.shapeType === 'circle_radius' ? 'radius' : 'diameter';
         state.push(L('title', [T('Circle by (' + mode + ')')]));
+        if (this.shapeType === 'circle_radius' && this.circleRadiusAnchor !== 'origin') {
+          state.push(L('meta', [T('Start: circumference')]));
+        }
       } else if (this.shapeType === 'circle_radial_stamp') {
         state.push(L('title', [T('Circle Radial Stamp')]));
         if (this.radialStampLockedRadius != null) {
@@ -5677,6 +5728,9 @@ export class NibGliderEngine {
         }
       } else if (this.shapeType === 'rectangle_diagonal') {
         state.push(L('title', [T('Rectangle by Diagonal')]));
+        if (this.rectDiagonalMode !== 'full') {
+          state.push(L('meta', [T(`Diagonal: ${this.rectDiagonalMode} rect`)]));
+        }
       } else if (this.shapeType === 'rectangle_two_edges') {
         state.push(L('title', [T('Rectangle by Two Edges')]));
       } else if (this.shapeType === 'rectangle_centerline') {

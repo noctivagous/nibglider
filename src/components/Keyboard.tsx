@@ -1,17 +1,24 @@
-import { useLayoutEffect, useState } from 'react';
-import { KEY_CAPS, type KeyCap } from '../engine/input/keymap';
+import { useCallback, useLayoutEffect, useState, useSyncExternalStore } from 'react';
+import { KEY_CAPS, commandById, type KeyCap, type KeyState } from '../engine/input/keymap';
+import { schemaById } from '../engine/input/KeySettingsRegistry';
+import type { NibGliderEngine } from '../engine/engine';
+import KeySettingsPopover from './KeySettingsPopover';
 
 // On-screen keyboard renders KEY_CAPS. Highlight follows physical key
-// activity. Only the status keycap is clickable; the rest fall through
-// so drawing still tracks the cursor.
+// activity. A configurable key opens its settings when the whole cap is
+// clicked, and that click does not run the command. Key L toggles status.
+// Every other cap falls through so drawing still tracks the cursor.
 
 // Corner badges echoing the panel section icons (TitleIcon in
 // ControlPanel): same 16x14 viewBox, stroke styling, and geometry —
 // circle outline for Circle Keys, rect outline for Rect Keys.
+// A gear badge in the lower right marks keys with a settings popover.
 const BADGE_ATTRS =
   'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"';
 const BADGE_CIRCLE = `<svg ${BADGE_ATTRS}><circle cx="8" cy="7" r="5"/></svg>`;
 const BADGE_RECT = `<svg ${BADGE_ATTRS}><path d="M3 2 H13 V12 H3 Z"/></svg>`;
+const GEAR_ICON =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"/></svg>';
 
 // Ghost construction glyphs behind the legend: 24x24, currentColor.
 const BG_ATTRS =
@@ -272,24 +279,59 @@ function ResizeHandle({
   );
 }
 
+function keyStateOf(engine: NibGliderEngine): KeyState {
+  return {
+    isDrawingPath: engine.isDrawingPath,
+    isDrawingShape: engine.isDrawingShape,
+    isDrawingQuad: engine.isDrawingQuad,
+    isLiveDrawing: engine.isLiveDrawing,
+    shapeType: engine.shapeType,
+    selectedCount: engine.selectedItems.length,
+    liveAdjustApplies: engine.isDrawingPath || engine.isDrawingQuad,
+  };
+}
+
 function KeyButton({
   def,
   active,
   onClick,
+  settingsLabel,
+  settingsOpen,
+  onToggleSettings,
 }: {
   def: KeyCap;
   active: boolean;
   onClick?: () => void;
+  settingsLabel?: string;
+  settingsOpen?: boolean;
+  onToggleSettings?: (anchor: HTMLButtonElement) => void;
 }) {
   const bg = def.commandId ? GLYPH_BY_COMMAND[def.commandId] : undefined;
+  const opensSettings = Boolean(settingsLabel && onToggleSettings);
   return (
     <button
+      type="button"
       tabIndex={-1}
       data-key={def.dataKey}
       id={def.id}
-      className={def.className + (active ? ' active' : '')}
+      className={
+        def.className +
+        (active ? ' active' : '') +
+        (opensSettings ? ' key-has-settings' : '')
+      }
       style={def.transform ? { transform: def.transform } : undefined}
-      onClick={onClick}
+      aria-label={opensSettings ? settingsLabel : undefined}
+      aria-haspopup={opensSettings ? 'dialog' : undefined}
+      aria-expanded={opensSettings ? settingsOpen === true : undefined}
+      onClick={
+        opensSettings
+          ? (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleSettings?.(event.currentTarget);
+            }
+          : onClick
+      }
     >
       {bg && (
         <span
@@ -307,6 +349,13 @@ function KeyButton({
           }}
         />
       )}
+      {opensSettings && (
+        <span
+          className="key-gear"
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: GEAR_ICON }}
+        />
+      )}
       <span
         className="key-label"
         dangerouslySetInnerHTML={{ __html: def.legend }}
@@ -316,12 +365,14 @@ function KeyButton({
 }
 
 export default function Keyboard({
+  engine,
   activeCode,
   showSpacebar,
   width,
   onWidthChange,
   onCommand,
 }: {
+  engine: NibGliderEngine;
   activeCode: string | null;
   showSpacebar: boolean;
   width: number;
@@ -329,29 +380,69 @@ export default function Keyboard({
   /** Invoked only for keycaps marked clickable, with that cap's command id. */
   onCommand?: (commandId: string) => void;
 }) {
+  useSyncExternalStore(engine.subscribe, engine.getVersion);
+  const [open, setOpen] = useState<{ id: string; anchor: HTMLButtonElement } | null>(null);
+  const closeSettings = useCallback((reason: 'escape' | 'outside') => {
+    setOpen((current) => {
+      if (reason === 'escape' && current) {
+        const anchor = current.anchor;
+        queueMicrotask(() => anchor.focus());
+      }
+      return null;
+    });
+  }, []);
   const clickFor = (def: KeyCap) =>
     def.clickable && def.commandId && onCommand
       ? () => onCommand(def.commandId as string)
       : undefined;
+  const settingsFor = (def: KeyCap) => {
+    if (!def.commandId) return null;
+    const cmd = commandById(def.commandId);
+    if (!cmd?.settingsId || !cmd.settingsSummary) return null;
+    if (cmd.settingsAvailability && !cmd.settingsAvailability(keyStateOf(engine))) return null;
+    if (!schemaById(cmd.settingsId)) return null;
+    return { id: cmd.settingsId, summary: cmd.settingsSummary };
+  };
+  const toggleSettings = (def: KeyCap, anchor: HTMLButtonElement) => {
+    setOpen((current) => (current?.id === def.id ? null : { id: def.id, anchor }));
+  };
+  const openCap = open ? KEY_CAPS.find((cap) => cap.id === open.id) : undefined;
+  const openSettings = openCap ? settingsFor(openCap) : null;
+  const openSchema = openSettings ? schemaById(openSettings.id) : null;
   const row = (name: KeyCap['row']) => KEY_CAPS.filter((cap) => cap.row === name);
+  const renderCap = (def: KeyCap) => {
+    const settings = settingsFor(def);
+    return (
+      <KeyButton
+        key={def.id}
+        def={def}
+        active={activeCode === def.id}
+        onClick={clickFor(def)}
+        settingsLabel={settings ? `Settings: ${settings.summary}` : undefined}
+        settingsOpen={open?.id === def.id}
+        onToggleSettings={
+          settings ? (anchor) => toggleSettings(def, anchor) : undefined
+        }
+      />
+    );
+  };
   return (
     <>
     <div id="keyboardKeysContainer">
-      {row('q').map((def) => (
-        <KeyButton key={def.id} def={def} active={activeCode === def.id} onClick={clickFor(def)} />
-      ))}
-      {row('a').map((def) => (
-        <KeyButton key={def.id} def={def} active={activeCode === def.id} onClick={clickFor(def)} />
-      ))}
-      {row('z').map((def) => (
-        <KeyButton key={def.id} def={def} active={activeCode === def.id} onClick={clickFor(def)} />
-      ))}
-      {showSpacebar &&
-        row('space').map((def) => (
-          <KeyButton key={def.id} def={def} active={activeCode === def.id} onClick={clickFor(def)} />
-        ))}
+      {row('q').map(renderCap)}
+      {row('a').map(renderCap)}
+      {row('z').map(renderCap)}
+      {showSpacebar && row('space').map(renderCap)}
     </div>
     <ResizeHandle width={width} onWidthChange={onWidthChange} />
+    {open && openSchema ? (
+      <KeySettingsPopover
+        schema={openSchema}
+        target={engine}
+        anchor={open.anchor}
+        onClose={closeSettings}
+      />
+    ) : null}
     </>
   );
 }
