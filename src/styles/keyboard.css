@@ -437,16 +437,18 @@ color:rgb(210, 115, 115) !important;
     z-index: 10050;
     width: 260px;
     visibility: visible;
+    justify-content: flex-start;
+    text-align: left;
 }
 
 .key-settings-title {
-    margin: 0;
+    margin: 0 0 2px;
     font-size: 0.95rem;
     font-weight: 600;
 }
 
 .key-settings-help {
-    margin: 0;
+    margin: 0 0 4px;
     color: var(--dp-text-2, #b7c2cf);
     font-size: 0.75rem;
     line-height: 1.35;
@@ -457,18 +459,76 @@ color:rgb(210, 115, 115) !important;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    margin: 0;
+    padding: 2px 0;
 }
 
 .key-settings-row > span {
     flex: 1 1 auto;
 }
 
-.key-settings-row select,
 .key-settings-row input[type='color'] {
     background: #121820;
     color: inherit;
     border: 1px solid #3a4654;
     border-radius: 4px;
+}
+
+/* Owner-drawn dropdown trigger inside key popovers: same idiom as the
+   panel CustomSelect triggers (those rules are scoped to #controlPanel,
+   which the portal is not inside). */
+.key-settings-popover .custom-select {
+    display: inline-flex;
+    min-width: 0;
+    max-width: 62%;
+    margin-left: auto;
+}
+
+.key-settings-popover .custom-select-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    background: #121820;
+    border: 1px solid #3a4654;
+    border-radius: 4px;
+    box-shadow: none;
+    color: inherit;
+    padding: 4px 8px;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.key-settings-popover .custom-select-trigger:hover,
+.key-settings-popover .custom-select-trigger.open {
+    border-color: #8fb4ff;
+}
+
+.key-settings-popover .custom-select-trigger:focus-visible {
+    outline: 2px solid #8fb4ff;
+    outline-offset: 1px;
+}
+
+.key-settings-popover .custom-select-trigger .cs-trigger-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.key-settings-popover .custom-select-trigger .cs-caret {
+    flex: none;
+    width: 0;
+    height: 0;
+    margin-left: auto;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid currentColor;
+    opacity: 0.7;
+}
+
+.key-settings-popover .custom-select-trigger .cs-caret.open {
+    transform: rotate(180deg);
 }
 
 .key-settings-check {
@@ -859,12 +919,13 @@ color:rgb(210, 115, 115) !important;
     color: #2dd4bf;
 }
 
-/* Gear badge marking keys with a settings popover. Lower right, under
-   the hover veil; decorative only, the whole cap stays the hit target. */
+/* Gear badge marking keys with a settings popover. Lower left (the
+   lower right would cover the key's char label), under the hover veil;
+   decorative only, the whole cap stays the hit target. */
 #keyboardKeysContainer .key-gear {
     position: absolute;
     bottom: calc(2px * var(--kb-scale, 1));
-    right: calc(2px * var(--kb-scale, 1));
+    left: calc(2px * var(--kb-scale, 1));
     width: calc(11px * var(--kb-scale, 1));
     z-index: 1;
     line-height: 0;

@@ -12,7 +12,7 @@ import KeySettingsPopover from './KeySettingsPopover';
 // Corner badges echoing the panel section icons (TitleIcon in
 // ControlPanel): same 16x14 viewBox, stroke styling, and geometry —
 // circle outline for Circle Keys, rect outline for Rect Keys.
-// A gear badge in the lower right marks keys with a settings popover.
+// A gear badge in the lower left marks keys with a settings popover.
 const BADGE_ATTRS =
   'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"';
 const BADGE_CIRCLE = `<svg ${BADGE_ATTRS}><circle cx="8" cy="7" r="5"/></svg>`;

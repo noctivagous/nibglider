@@ -1,10 +1,18 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import CustomSelect from './CustomSelect';
 import NumericStepper from './NumericStepper';
 import type { KeySettingsSchema, SettingsTarget } from '../engine/input/KeySettingsRegistry';
 import { settingsView } from '../engine/input/KeySettingsViewModel';
 
 const MARGIN = 8;
+
+/** An owner-drawn dropdown menu from inside the popover portals to
+ * document.body, outside the dialog — so it needs the same treatment as
+ * the dialog itself in the dismissal handlers below. */
+function selectMenuOpen(): boolean {
+  return document.querySelector('.custom-select-menu') !== null;
+}
 
 function focusableIn(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>('button, input, select, textarea')].filter(
@@ -67,6 +75,9 @@ export default function KeySettingsPopover({
     const dialog = dialogRef.current;
     if (!dialog) return;
     const onKey = (event: KeyboardEvent) => {
+      // While the row's dropdown menu is open it owns Escape (close menu,
+      // refocus trigger) and Tab (close menu); the popover trap stays out.
+      if (selectMenuOpen()) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -94,6 +105,7 @@ export default function KeySettingsPopover({
       const node = event.target;
       if (!(node instanceof Node)) return;
       if (dialog.contains(node) || anchor.contains(node)) return;
+      if (node instanceof Element && node.closest('.custom-select-menu')) return;
       onClose('outside');
     };
     document.addEventListener('keydown', onKey, true);
@@ -154,17 +166,13 @@ export default function KeySettingsPopover({
           return (
             <label key={control.id} className="key-settings-row">
               <span>{control.label}</span>
-              <select
-                aria-label={control.label}
+              <CustomSelect
+                id={`key-settings-${control.id}`}
+                ariaLabel={control.label}
                 value={control.value}
-                onChange={(event) => control.commit(event.target.value)}
-              >
-                {control.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                options={control.options}
+                onChange={control.commit}
+              />
             </label>
           );
         }
