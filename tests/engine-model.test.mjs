@@ -210,6 +210,26 @@ test('composite validation rejects duplicate point IDs, invalid radius, and dang
   }
 });
 
+test('supershape resolution keeps finite samples and does not change the source', () => {
+  const base = fixture('circle');
+  const source = {
+    type: 'supershape', center: { x: 0, y: 0 }, scale: { x: 10, y: 20 }, rotation: 0,
+    m: 4, n1: 1, n2: 1, n3: 1, a: 1, b: 1,
+  };
+  const model = roundTrip({ ...base, source });
+  const before = structuredClone(model.source);
+  const geometry = resolveDrawableGeometry(model);
+  assert.equal(geometry.kind, 'path');
+  assert.equal(geometry.closed, true);
+  assert.ok(geometry.segments.length > 8);
+  for (const segment of geometry.segments) {
+    assert.ok(Number.isFinite(segment.point.x) && Number.isFinite(segment.point.y));
+  }
+  assert.equal(geometry.segments[0].point.x, 10);
+  assert.equal(geometry.segments[0].point.y, 0);
+  assert.deepEqual(model.source, before);
+});
+
 test('parametric shape records retain constraints and derived polygon vertices', () => {
   const base = fixture('circle');
   const sources = [

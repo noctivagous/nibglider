@@ -220,6 +220,10 @@ until type is entered by user.
 
 [ ] Rect Keys > Interactive Obj. > Pane Stacks (configurable).
 
+PANEL SECTION: PALETTE 
+[ ] Palette section has library of palettes, by default has 5 corresponding
+to the keyboard number row.
+
 ONSCREEN KEYBOARD
 [ ] Clicking a key will show its settings.  requires setting up
 a settings system.

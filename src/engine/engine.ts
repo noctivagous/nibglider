@@ -5,6 +5,18 @@
 // NB: `paper.*` below refers to the global namespace from paper's bundled
 // declarations (type positions only); the runtime value is never imported here.
 import { FontMetrics } from './fontMetrics';
+import { StyleManager, type StyleState } from './appearance/StyleManager';
+import { TextLayout, type TextLayoutConfig } from './appearance/TextLayout';
+import {
+  ShapeFactory,
+  sectorPreviewPath as sectorPreviewD,
+  segmentPreviewPath as segmentPreviewD,
+} from './geometry/ShapeFactory';
+import {
+  circleInnerShapeUnitPoints as circleUnitPoints,
+  type RectFrameInput,
+} from './geometry/RectangleGeometry';
+import { supershapeRadius as supershapeRadiusValue } from './geometry/pathResolver';
 import { InputManager } from './input/InputManager';
 import {
   KeyboardController,
@@ -39,7 +51,6 @@ import {
   clampSectorAngle as clampSectorAngleValue,
   clampShapeAngle as clampShapeAngleValue,
   clampSplineTension,
-  clampStrokeWidth,
   clampSupershapeParam,
   snapShapeAngle as snapShapeAngleValue,
 } from './input/KeySettingsRegistry';
@@ -114,22 +125,65 @@ export {
 // bundled declarations model more narrowly.
 type AnyItem = any;
 
-interface StraightBoundaryEdge {
-  /** Arc-length offset of the edge's first vertex. */
-  start: number;
-  length: number;
-}
-
 export class NibGliderEngine {
   private scope: paper.PaperScope;
+  private styles!: StyleManager;
+  private textLayout!: TextLayout;
+  private shapes!: ShapeFactory;
   private input = new InputManager();
   private listeners = new Set<() => void>();
   private version = 0;
   private onKeyActivity: (a: KeyActivity) => void;
 
   // --- Stroke / style config (drawingProperties.js) ---
-  globalStrokeWidth = 4.0;
-  maxStrokeWidth = 200.0;
+  // StyleManager mutates this object. The getters below are the public facade.
+  private readonly paint: StyleState = {
+    globalStrokeWidth: 4,
+    maxStrokeWidth: 200,
+    globalStrokeColor: '#107cff',
+    globalFillColor: '#000000',
+    globalFillType: 'solid',
+    globalFillEndColor: '#ffffff',
+    globalFillAngle: 0,
+    globalFillInner: 0,
+    globalStrokeCap: 'butt',
+    globalStrokeJoin: 'miter',
+    globalMiterLimit: 10,
+    globalDashLength: 0,
+    globalGapLength: 0,
+    strokeEnabled: true,
+    fillEnabled: false,
+  };
+  get globalStrokeWidth(): number { return this.paint.globalStrokeWidth; }
+  set globalStrokeWidth(v: number) { this.paint.globalStrokeWidth = v; }
+  get maxStrokeWidth(): number { return this.paint.maxStrokeWidth; }
+  set maxStrokeWidth(v: number) { this.paint.maxStrokeWidth = v; }
+  get globalStrokeColor(): string { return this.paint.globalStrokeColor; }
+  set globalStrokeColor(v: string) { this.paint.globalStrokeColor = v; }
+  get globalFillColor(): string { return this.paint.globalFillColor; }
+  set globalFillColor(v: string) { this.paint.globalFillColor = v; }
+  get globalFillType(): FillType { return this.paint.globalFillType; }
+  set globalFillType(v: FillType) { this.paint.globalFillType = v; }
+  get globalFillEndColor(): string { return this.paint.globalFillEndColor; }
+  set globalFillEndColor(v: string) { this.paint.globalFillEndColor = v; }
+  get globalFillAngle(): number { return this.paint.globalFillAngle; }
+  set globalFillAngle(v: number) { this.paint.globalFillAngle = v; }
+  get globalFillInner(): number { return this.paint.globalFillInner; }
+  set globalFillInner(v: number) { this.paint.globalFillInner = v; }
+  get globalStrokeCap(): StrokeCap { return this.paint.globalStrokeCap; }
+  set globalStrokeCap(v: StrokeCap) { this.paint.globalStrokeCap = v; }
+  get globalStrokeJoin(): StrokeJoin { return this.paint.globalStrokeJoin; }
+  set globalStrokeJoin(v: StrokeJoin) { this.paint.globalStrokeJoin = v; }
+  get globalMiterLimit(): number { return this.paint.globalMiterLimit; }
+  set globalMiterLimit(v: number) { this.paint.globalMiterLimit = v; }
+  get globalDashLength(): number { return this.paint.globalDashLength; }
+  set globalDashLength(v: number) { this.paint.globalDashLength = v; }
+  get globalGapLength(): number { return this.paint.globalGapLength; }
+  set globalGapLength(v: number) { this.paint.globalGapLength = v; }
+  get strokeEnabled(): boolean { return this.paint.strokeEnabled; }
+  set strokeEnabled(v: boolean) { this.paint.strokeEnabled = v; }
+  get fillEnabled(): boolean { return this.paint.fillEnabled; }
+  set fillEnabled(v: boolean) { this.paint.fillEnabled = v; }
   lastCenterlineWidth = 80;
   splineTensionDefault = 0.4;
   splineTension = 0.4;
@@ -143,20 +197,6 @@ export class NibGliderEngine {
   // existing endpoint; the welding happens at deposit time.
   depositPointMode = 1;
   endpointSnapTolerance = 12;
-  globalStrokeColor = '#107cff';
-  globalFillColor = '#000000';
-  globalFillType: FillType = 'solid';
-  globalFillEndColor = '#ffffff';
-  globalFillAngle = 0;
-  globalFillInner = 0;
-  globalStrokeCap: StrokeCap = 'butt';
-  globalStrokeJoin: StrokeJoin = 'miter';
-  globalMiterLimit = 10;
-  globalDashLength = 0;
-  globalGapLength = 0;
-  strokeEnabled = true;
-  fillEnabled = false;
-
   // --- Grid / cursors ---
   isGridEnabled = false;
   gridType: GridType = 'square';
@@ -355,6 +395,26 @@ export class NibGliderEngine {
   constructor(scope: paper.PaperScope, onKeyActivity: (a: KeyActivity) => void) {
     this.scope = scope;
     this.onKeyActivity = onKeyActivity;
+    this.styles = new StyleManager(scope, {
+      state: () => this.paint,
+      hasSelection: () => this.hasSelection(),
+      applyToSelection: (fn) => this.applyToSelection(fn),
+      liveItems: () => [this.path, this.previewShape, this.quadPath, this.previewPath, this.previewRect, this.previewInner],
+      livePath: () => this.path,
+      isDrawingShape: () => this.isDrawingShape,
+      updateShapePreview: () => this.updateShapePreview(),
+    });
+    this.textLayout = new TextLayout(scope, () => this.textLayoutConfig(), this.textMetrics);
+    this.shapes = new ShapeFactory(scope, {
+      applyStrokeGeometry: (item) => this.styles.applyStrokeGeometry(item),
+      applyStrokeDash: (item) => this.styles.applyStrokeDash(item),
+      applyFill: (item) => this.styles.applyFillSpec(item),
+      withShapeText: (item, isPreview, rotation, center) => this.textLayout.withShapeText(item, isPreview, rotation, center),
+      textForBoundary: (boundary, isPreview) => this.textLayout.textForBoundary(boundary, isPreview),
+      globalStrokeColor: () => this.globalStrokeColor,
+      globalStrokeWidth: () => this.globalStrokeWidth,
+      textModeEnabled: () => this.textModeEnabled,
+    });
     this.layers = new LayerManager(scope);
     this.viewport = new ViewportManager(scope, () => this.afterViewChange());
     this.documentManager.subscribe(() => this.notify());
@@ -894,16 +954,39 @@ export class NibGliderEngine {
     this.documentManager.markEdited('scene');
   }
 
+  private textLayoutConfig(): TextLayoutConfig {
+    return {
+      spec: this.globalText,
+      textModeEnabled: this.textModeEnabled,
+      textMode: this.textMode,
+      displayFlow: this.displayFlow,
+      glyphOrientation: this.glyphOrientation,
+      splineTextPlacement: this.splineTextPlacement,
+      displayOffset: this.displayOffset,
+      circumferenceGap: this.circumferenceGap,
+      circumferenceAngleOffset: this.circumferenceAngleOffset,
+      fillEnabled: this.fillEnabled,
+      fillColor: this.globalFillColor,
+      strokeColor: this.globalStrokeColor,
+    };
+  }
+
+  private rectFrameInput(): RectFrameInput {
+    const start = xy(this.shapeStartPoint);
+    const mouse = xy(this.mousePt);
+    const length = start && mouse ? Math.hypot(mouse.x - start.x, mouse.y - start.y) : 0;
+    return {
+      shapeType: this.shapeType,
+      start,
+      second: xy(this.shapePt2),
+      mouse,
+      diagonalScale: this.rectDiagonalScale(),
+      centerlineWidth: this.centerlineWidthForLength(length),
+    };
+  }
+
   setStrokeWidth(strokeVal: number): void {
-    const v = clampStrokeWidth(strokeVal, this.maxStrokeWidth);
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        item.strokeWidth = v;
-      });
-    } else {
-      this.globalStrokeWidth = v;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setStrokeWidth(strokeVal);
     this.updateTextContent();
     this.notify();
   }
@@ -917,301 +1000,89 @@ export class NibGliderEngine {
   }
 
   setStrokeColor(colorVal: string): void {
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        item.strokeColor = colorVal;
-        if (!(item.strokeWidth > 0)) item.strokeWidth = this.globalStrokeWidth;
-      });
-    } else {
-      this.globalStrokeColor = colorVal;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setStrokeColor(colorVal);
     this.updateTextContent();
     this.notify();
   }
 
   setStrokeCap(cap: StrokeCap): void {
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        item.strokeCap = cap;
-      });
-    } else {
-      this.globalStrokeCap = cap;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setStrokeCap(cap);
     this.notify();
   }
 
   setStrokeJoin(join: StrokeJoin): void {
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        item.strokeJoin = join;
-      });
-    } else {
-      this.globalStrokeJoin = join;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setStrokeJoin(join);
     this.notify();
   }
 
   setMiterLimit(limit: number): void {
-    let v = limit;
-    if (!(v >= 1)) v = 1;
-    if (v > 40) v = 40;
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        item.miterLimit = v;
-      });
-    } else {
-      this.globalMiterLimit = v;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setMiterLimit(limit);
     this.notify();
   }
 
-  private clampDash(n: number): number {
-    if (!Number.isFinite(n) || n < 0) return 0;
-    if (n > 80) return 80;
-    return n;
-  }
-
-  strokeDashArrayValue(dash = this.globalDashLength, gap = this.globalGapLength): number[] | null {
-    const d = this.clampDash(dash);
-    const g = this.clampDash(gap);
-    if (d <= 0 && g <= 0) return null;
-    return [d, g];
+  strokeDashArrayValue(dash?: number, gap?: number): number[] | null {
+    return this.styles.strokeDashArrayValue(dash, gap);
   }
 
   applyStrokeDash(item: AnyItem, dash?: number, gap?: number): void {
-    if (!item) return;
-    const arr = this.strokeDashArrayValue(
-      dash ?? this.globalDashLength,
-      gap ?? this.globalGapLength,
-    );
-    item.dashArray = arr ? arr.slice() : [];
-    item.strokeDashArray = arr;
-    item.strokeDasharray = arr;
+    this.styles.applyStrokeDash(item, dash, gap);
   }
 
   setStrokeDash(dash: number, gap: number): void {
-    const d = this.clampDash(dash);
-    const g = this.clampDash(gap);
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        this.applyStrokeDash(item, d, g);
-      });
-    } else {
-      this.globalDashLength = d;
-      this.globalGapLength = g;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setStrokeDash(dash, gap);
     this.notify();
   }
 
   setFillColor(colorVal: string): void {
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        // Preserve a gradient fill, retinting its start stop.
-        const spec = this.fillSpecOf(item) ?? this.fillSpec();
-        spec.color = colorVal;
-        this.applyFillSpec(item, spec);
-      });
-    } else {
-      this.globalFillColor = colorVal;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setFillColor(colorVal);
     this.updateTextContent();
     this.notify();
   }
 
   /** Snapshot of the global fill settings for subsequently drawn shapes. */
   fillSpec(): FillSpec {
-    return {
-      type: this.globalFillType,
-      color: this.globalFillColor,
-      endColor: this.globalFillEndColor,
-      angle: this.globalFillAngle,
-      inner: this.globalFillInner,
-    };
-  }
-
-  private clampFillInner(f: number): number {
-    if (!Number.isFinite(f)) return 0;
-    return Math.max(0, Math.min(0.95, f));
+    return this.styles.fillSpec();
   }
 
   setFillType(t: FillType): void {
-    if (t !== 'solid' && t !== 'linear' && t !== 'radial') return;
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        if (!item.fillColor) return;
-        const spec = this.fillSpecOf(item) ?? this.fillSpec();
-        spec.type = t;
-        this.applyFillSpec(item, spec);
-      });
-    } else {
-      this.globalFillType = t;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setFillType(t);
     this.updateTextContent();
     this.notify();
   }
 
   setFillEndColor(colorVal: string): void {
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        if (!item.fillColor) return;
-        const spec = this.fillSpecOf(item) ?? this.fillSpec();
-        spec.endColor = colorVal;
-        if (spec.type === 'solid') spec.type = 'linear';
-        this.applyFillSpec(item, spec);
-      });
-    } else {
-      this.globalFillEndColor = colorVal;
-      if (this.globalFillType === 'solid') this.globalFillType = 'linear';
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setFillEndColor(colorVal);
     this.updateTextContent();
     this.notify();
   }
 
   setFillAngle(deg: number): void {
-    const a = Number.isFinite(deg) ? deg : 0;
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        if (!item.fillColor) return;
-        const spec = this.fillSpecOf(item) ?? this.fillSpec();
-        spec.angle = a;
-        if (spec.type === 'solid') spec.type = 'linear';
-        this.applyFillSpec(item, spec);
-      });
-    } else {
-      this.globalFillAngle = a;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setFillAngle(deg);
     this.updateTextContent();
     this.notify();
   }
 
   setFillInner(f: number): void {
-    const v = this.clampFillInner(f);
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        if (!item.fillColor) return;
-        const spec = this.fillSpecOf(item) ?? this.fillSpec();
-        spec.inner = v;
-        if (spec.type === 'solid') spec.type = 'radial';
-        this.applyFillSpec(item, spec);
-      });
-    } else {
-      this.globalFillInner = v;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setFillInner(f);
     this.updateTextContent();
     this.notify();
   }
 
-  // Read an item's fill back into a spec. Gradient geometry derives from
-  // the stops (and origin/destination for linear angle); anything
-  // unreadable falls back to a solid of the item's flat color.
   fillSpecOf(item: AnyItem): FillSpec | null {
-    const fc = item?.fillColor;
-    if (!fc) return null;
-    const g = fc.gradient;
-    const fallback: FillSpec = {
-      type: 'solid',
-      color: this.itemHexColor(fc) ?? this.globalFillColor,
-      endColor: this.globalFillEndColor,
-      angle: this.globalFillAngle,
-      inner: this.globalFillInner,
-    };
-    if (!g) return fallback;
-    const stops = g.stops ?? [];
-    const c0 = stops.length > 0 ? this.itemHexColor(stops[0].color) : null;
-    const c1 =
-      stops.length > 1
-        ? this.itemHexColor(stops[stops.length - 1].color)
-        : null;
-    const spec: FillSpec = {
-      type: g.radial ? 'radial' : 'linear',
-      color: c0 ?? fallback.color,
-      endColor: c1 ?? fallback.endColor,
-      angle: fallback.angle,
-      inner: stops.length > 0 ? this.clampFillInner(Number(stops[0].offset) || 0) : 0,
-    };
-    const o = fc.origin;
-    const d = fc.destination;
-    if (o && d && typeof o.subtract === 'function') {
-      const v = d.subtract(o);
-      if (v.length > 0) {
-        spec.angle = (Math.atan2(v.y, v.x) * 180) / Math.PI;
-      }
-    }
-    return spec;
+    return this.styles.fillSpecOf(item);
   }
 
-  // Paint an item from a spec. Gradients derive from the item's bounds at
-  // apply time, so each shape carries its own geometry.
-  applyFillSpec(item: AnyItem, spec: FillSpec = this.fillSpec()): void {
-    const scope = this.scope;
-    if (!item) return;
-    if (spec.type === 'solid' || !item.bounds) {
-      item.fillColor = spec.color;
-      return;
-    }
-    const b = item.bounds;
-    const c = b.center;
-    const r = Math.max(1, Math.hypot(b.width, b.height) / 2);
-    const gradient = new scope.Gradient();
-    gradient.radial = spec.type === 'radial';
-    const inner = spec.type === 'radial' ? this.clampFillInner(spec.inner) : 0;
-    gradient.stops = [
-      new scope.GradientStop(new scope.Color(spec.color), inner),
-      new scope.GradientStop(new scope.Color(spec.endColor), 1),
-    ];
-    let origin: AnyItem = c;
-    let destination: AnyItem = c.add(new scope.Point(r, 0));
-    if (spec.type === 'linear') {
-      const a = ((spec.angle || 0) * Math.PI) / 180;
-      const dir = new scope.Point(Math.cos(a), Math.sin(a));
-      origin = c.subtract(dir.multiply(r));
-      destination = c.add(dir.multiply(r));
-    }
-    item.fillColor = { gradient, origin, destination };
+  applyFillSpec(item: AnyItem, spec?: FillSpec): void {
+    this.styles.applyFillSpec(item, spec);
   }
 
   setStrokeEnabled(enabled: boolean): void {
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        if (enabled) {
-          if (!item.strokeColor) item.strokeColor = this.globalStrokeColor;
-          if (!(item.strokeWidth > 0)) item.strokeWidth = this.globalStrokeWidth;
-        } else {
-          item.strokeColor = null;
-        }
-      });
-    } else {
-      this.strokeEnabled = enabled;
-      if (!this.strokeEnabled && !this.fillEnabled) this.fillEnabled = true;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setStrokeEnabled(enabled);
     this.notify();
   }
 
   setFillEnabled(enabled: boolean): void {
-    if (this.hasSelection()) {
-      this.applyToSelection((item) => {
-        if (enabled) {
-          if (!item.fillColor) this.applyFillSpec(item, this.fillSpec());
-        } else {
-          item.fillColor = null;
-        }
-      });
-    } else {
-      this.fillEnabled = enabled;
-      if (!this.fillEnabled && !this.strokeEnabled) this.strokeEnabled = true;
-    }
-    this.updateCurrentDrawingStyles();
+    this.styles.setFillEnabled(enabled);
     this.notify();
   }
 
@@ -1586,6 +1457,10 @@ export class NibGliderEngine {
     return null;
   }
 
+  private containsPoint(boundary: AnyItem, pt: AnyItem): boolean {
+    try { return !!boundary.contains(pt); } catch { return false; }
+  }
+
   private shapesTouch(a: AnyItem, b: AnyItem): boolean {
     try {
       if (a && b && typeof a.intersects === 'function' && a.intersects(b))
@@ -1751,65 +1626,6 @@ export class NibGliderEngine {
     return clampSectorAngleValue(deg);
   }
 
-  // Horizontal shear (as a fraction of the bottom edge) that makes the
-  // interior angle at the bottom-left of the u/v frame equal `angleDeg`.
-  private frameAngleShear(u: AnyItem, v: AnyItem, angleDeg: number): number {
-    const θ = this.clampShapeAngle(angleDeg) * (Math.PI / 180);
-    const lenU = u.length;
-    if (!(lenU > 0)) return 0;
-    return (v.length / lenU) * (Math.cos(θ) / Math.sin(θ));
-  }
-
-  // Rotate (s, t) frame coords about the frame center by
-  // rectangleOrientation * 90°. The unit square maps onto itself, so an
-  // oriented shape still fits inside the frame bounds.
-  private rotST(s: number, t: number): [number, number] {
-    const o = ((this.rectangleOrientation % 4) + 4) % 4;
-    if (o === 1) return [1 - t, s];
-    if (o === 2) return [1 - s, 1 - t];
-    if (o === 3) return [t, 1 - s];
-    return [s, t];
-  }
-
-  // Shear for a square frame (the panel preview well): cot of the
-  // clamped interior angle.
-  private squareShear(angleDeg: number): number {
-    const θ = this.clampShapeAngle(angleDeg) * (Math.PI / 180);
-    return Math.cos(θ) / Math.max(Math.sin(θ), 1e-6);
-  }
-
-  // Canonical (s, t) quads for the frame-fitted shapes, shared by the
-  // canvas draw and the Rect Keys preview so both show the same vertex
-  // layout. Every vertex stays in [0, 1]: fixed height, shear varies.
-  // The canvas passes the aspect-correct frameAngleShear; the square
-  // preview well passes squareShear.
-  private trapezoidFrameST(shear: number): Array<[number, number]> {
-    const inset = Math.max(-0.49, Math.min(0.49, shear));
-    return [
-      [inset, 0],
-      [1 - inset, 0],
-      [1, 1],
-      [0, 1],
-    ];
-  }
-
-  private parallelogramFrameST(shear: number): Array<[number, number]> {
-    const k = Math.max(-0.9, Math.min(0.9, shear));
-    return k >= 0
-      ? [
-          [0, 1],
-          [1 - k, 1],
-          [1, 0],
-          [k, 0],
-        ]
-      : [
-          [-k, 1],
-          [1, 1],
-          [1 + k, 0],
-          [0, 0],
-        ];
-  }
-
   toggleGrid(): void {
     this.setGridEnabled(!this.isGridEnabled);
   }
@@ -1894,46 +1710,15 @@ export class NibGliderEngine {
 
   // --- Style helpers (drawingProperties.js) ---
   applyStrokeGeometry(item: AnyItem): void {
-    if (!item) return;
-    item.strokeCap = this.globalStrokeCap;
-    item.strokeJoin = this.globalStrokeJoin;
-    item.miterLimit = this.globalMiterLimit;
+    this.styles.applyStrokeGeometry(item);
   }
 
   applyCurrentStyles(item: AnyItem): void {
-    if (!item) return;
-    item.strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
-    item.strokeWidth = this.strokeEnabled ? this.globalStrokeWidth : 0;
-    if (this.fillEnabled) {
-      this.applyFillSpec(item, this.fillSpec());
-    } else {
-      item.fillColor = null;
-    }
-    this.applyStrokeGeometry(item);
-    this.applyStrokeDash(item);
+    this.styles.applyCurrentStyles(item);
   }
 
   updateCurrentDrawingStyles(): void {
-    const strokeWidth = this.strokeEnabled ? this.globalStrokeWidth : 0;
-    const strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
-    const fillColor = this.fillEnabled ? this.globalFillColor : null;
-    [
-      this.path,
-      this.previewShape,
-      this.quadPath,
-      this.previewPath,
-      this.previewRect,
-      this.previewInner,
-    ].forEach((item) => {
-      if (item) {
-        item.strokeWidth = strokeWidth;
-        item.strokeColor = strokeColor;
-        item.fillColor = fillColor;
-        this.applyStrokeGeometry(item);
-      }
-    });
-    if (this.path) this.applyStrokeDash(this.path);
-    if (this.isDrawingShape) this.updateShapePreview();
+    this.styles.updateCurrentDrawingStyles();
   }
 
   innerShapePreviewPath(
@@ -1941,112 +1726,10 @@ export class NibGliderEngine {
     params: InnerShapeParams,
     previewFrame: 'circle' | 'rect' = 'circle',
   ): string {
-    const radius = 0.9;
-    const steps = 72;
-    const f = (x: number, y: number): string =>
-      `${x.toFixed(3)},${y.toFixed(3)} `;
-    if (type === 'circle') {
-      return (
-        `M ${radius},0 A ${radius},${radius} 0 1,1 ${-radius},0 ` +
-        `A ${radius},${radius} 0 1,1 ${radius},0 Z`
-      );
-    }
-    if (type === 'sector' || type === 'semicircle' || type === 'segment') {
-      const sweep =
-        type === 'semicircle' ? 180 : this.clampSectorAngle(params.sector);
-      return type === 'segment'
-        ? this.segmentPreviewPath(radius, sweep)
-        : this.sectorPreviewPath(radius, sweep);
-    }
-    if (type === 'rectangle') {
-      const h = radius * 0.7;
-      return `M ${f(-h, -h)}L ${f(h, -h)}L ${f(h, h)}L ${f(-h, h)}Z`;
-    }
-    if (previewFrame === 'rect') {
-      // Rect Keys preview: the frame-fitted layout in the square well, so
-      // the height never rescales with the angle slider — only the shear
-      // varies. Oriented the same way as the canvas draw via rotST.
-      const e = radius;
-      const w = (s: number, t: number): [number, number] => {
-        const [rs, rt] = this.rotST(s, t);
-        return [-e + 2 * e * rs, -e + 2 * e * rt];
-      };
-      let quad: Array<[number, number]> | null = null;
-      if (type === 'rightTriangle') {
-        // Legs along the left and bottom of the well; 90° at bottom-left.
-        quad = [
-          [0, 1],
-          [1, 1],
-          [0, 0],
-        ];
-      } else if (type === 'trapezoid') {
-        quad = this.trapezoidFrameST(this.squareShear(params.angle));
-      } else if (type === 'parallelogram') {
-        quad = this.parallelogramFrameST(this.squareShear(params.angle));
-      }
-      if (quad) {
-        let d = 'M ';
-        for (const [s, t] of quad) {
-          const [x, y] = w(s, t);
-          d += f(x, y);
-        }
-        return d + 'Z';
-      }
-    }
-    const circumPts = this.circleInnerShapeUnitPoints(type, params.angle);
-    if (circumPts) {
-      let d = 'M ';
-      for (const [x, y] of circumPts) {
-        const [rx, ry] =
-          previewFrame === 'rect' ? this.rotWell(x, y) : [x, y];
-        d += f(radius * rx, radius * ry);
-      }
-      return d + 'Z';
-    }
-    if (type === 'polygon') {
-      const sides = params.sides || 6;
-      const angleStep = (Math.PI * 2) / sides;
-      // Mirror the canvas draw: edge-forward (inradius) turns a half step
-      // so an edge midpoint faces 0°, vertex-forward puts a vertex there.
-      const alignOffset = this.polygonRadiusMode === 'inradius' ? angleStep / 2 : 0;
-      let d = 'M ';
-      for (let i = 0; i < sides; i++) {
-        const angle = angleStep * i + alignOffset;
-        const [rx, ry] =
-          previewFrame === 'rect'
-            ? this.rotWell(Math.cos(angle), Math.sin(angle))
-            : [Math.cos(angle), Math.sin(angle)];
-        d += f(radius * rx, radius * ry);
-      }
-      return d + 'Z';
-    }
-    if (type === 'supershape') {
-      const { m = 5, n1 = 0.2, n2 = 1.7, n3 = 1.7, a1 = 1, a2 = 1 } = params;
-      let d = 'M ';
-      for (let i = 0; i <= steps; i++) {
-        const phi = (i / steps) * Math.PI * 2;
-        const r = this.supershapeRadius(phi, m, n1, n2, n3, a1, a2);
-        const scaledR = radius * (r || 0);
-        const [rx, ry] =
-          previewFrame === 'rect'
-            ? this.rotWell(Math.cos(phi), Math.sin(phi))
-            : [Math.cos(phi), Math.sin(phi)];
-        d += f(scaledR * rx, scaledR * ry);
-      }
-      return d + 'Z';
-    }
-    return 'M 0,0';
+    return this.shapes.innerShapePreviewPath(
+      type, params, previewFrame, this.rectangleOrientation, this.polygonRadiusMode,
+    );
   }
-
-  // Rotate a preview-well point about the well center, mirroring rotST.
-  private rotWell(x: number, y: number): [number, number] {
-    const o = ((this.rectangleOrientation % 4) + 4) % 4;
-    if (o === 1) return [-y, x];
-    if (o === 2) return [-x, -y];
-    if (o === 3) return [y, -x];
-    return [x, y];
-  }
-
   updatePreviewBox(): void {
     const circleSvg = document.getElementById('shapePreviewPath');
     if (circleSvg) {
@@ -2682,71 +2365,12 @@ export class NibGliderEngine {
     this.updateTextContent(); this.notify();
   }
 
-  private itemHexColor(c: AnyItem): string | null {
-    if (!c) return null;
-    if (typeof c === 'string') return c;
-    if (typeof c.toCSS === 'function') {
-      try {
-        return c.toCSS(true);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
-
-  // Paint of the selection for the Stroke/Fill panels: the first selected
-  // item's values, falling back to the globals where the item has none.
-  // Null when nothing is selected (panels show the globals instead).
-  selectionPaint(): {
-    strokeOn: boolean;
-    strokeColor: string;
-    strokeWidth: number;
-    strokeCap: StrokeCap;
-    strokeJoin: StrokeJoin;
-    miterLimit: number;
-    dashLength: number;
-    gapLength: number;
-    fillOn: boolean;
-    fillColor: string;
-    fillSpec: FillSpec;
-  } | null {
+  selectionPaint(): ReturnType<StyleManager['selectionPaint']> {
     if (this.selectedItems.length === 0) return null;
-    const it = this.selectedItems[0];
-    const sc = this.itemHexColor(it.strokeColor);
-    const fc = this.itemHexColor(it.fillColor);
-    const cap: StrokeCap =
-      it.strokeCap === 'butt' || it.strokeCap === 'square'
-        ? it.strokeCap
-        : 'round';
-    const join: StrokeJoin =
-      it.strokeJoin === 'miter' || it.strokeJoin === 'bevel'
-        ? it.strokeJoin
-        : 'round';
-    const w = Number(it.strokeWidth);
-    const m = Number(it.miterLimit);
-    const da = it.dashArray || it.strokeDashArray || it.strokeDasharray;
-    let dashLength = 0;
-    let gapLength = 0;
-    if (Array.isArray(da) && da.length) {
-      dashLength = Number(da[0]) || 0;
-      gapLength = da.length > 1 ? Number(da[1]) || 0 : dashLength;
-    }
-    return {
-      strokeOn: sc !== null,
-      strokeColor: sc ?? this.globalStrokeColor,
-      strokeWidth: Number.isFinite(w) && w > 0 ? w : this.globalStrokeWidth,
-      strokeCap: cap,
-      strokeJoin: join,
-      miterLimit: Number.isFinite(m) && m >= 1 ? m : this.globalMiterLimit,
-      dashLength,
-      gapLength,
-      fillOn: fc !== null,
-      fillColor: fc ?? this.globalFillColor,
-      fillSpec: this.fillSpecOf(it) ?? this.fillSpec(),
-    };
+    return this.styles.selectionPaint(this.selectedItems[0]);
   }
 
+  // --- Drawing tools (drawingToolsAndFunctions.js) ---
   // --- Drawing tools (drawingToolsAndFunctions.js) ---
   private retainCloneSources(original: paper.Item, clone: paper.Item): void {
     this.scene.retainClone(original, clone, (item) => this.shapePartOf(item));
@@ -2806,261 +2430,46 @@ export class NibGliderEngine {
   // right triangle are cyclic (every vertex on the circle); parallelogram
   // and rhombus keep their proportions, so only the long-diagonal vertices
   // land on the circle. `angleDeg` is the interior angle (10–170).
-  circleInnerShapeUnitPoints(
-    type: string,
-    angleDeg = 60,
-  ): Array<[number, number]> | null {
-    const circum = (
-      pts: Array<[number, number]>,
-    ): Array<[number, number]> => {
-      let maxR = 0;
-      for (const [x, y] of pts) {
-        const r = Math.hypot(x, y);
-        if (r > maxR) maxR = r;
-      }
-      if (!(maxR > 0)) return pts;
-      return pts.map(([x, y]) => [x / maxR, y / maxR]);
-    };
-    switch (type) {
-      case 'rightTriangle':
-      case 'rightTriangleB':
-        // Thales: hypotenuse is the diameter; right angle at (0, -1).
-        return [
-          [-1, 0],
-          [1, 0],
-          [0, -1],
-        ];
-      case 'trapezoid':
-        return this.trapezoidUnitPoints(angleDeg);
-      case 'parallelogram':
-        return circum(this.parallelogramUnitPoints(angleDeg));
-      case 'rhombus':
-        return circum([
-          [0, -0.9],
-          [0.7, 0],
-          [0, 0.9],
-          [-0.7, 0],
-        ]);
-      case 'kite':
-        // Two pairs of adjacent equal sides; cross-bar closer to the top.
-        return circum([
-          [0, -1],
-          [1, -1 / 3],
-          [0, 1],
-          [-1, -1 / 3],
-        ]);
-      default:
-        return null;
-    }
+  circleInnerShapeUnitPoints(type: string, angleDeg = 60): Array<[number, number]> | null {
+    return circleUnitPoints(type, angleDeg);
   }
 
-  private trapezoidUnitPoints(angleDeg: number): Array<[number, number]> {
-    const θ = this.clampShapeAngle(angleDeg) * (Math.PI / 180);
-    const cos = Math.cos(θ);
-    const sin = Math.max(Math.sin(θ), 1e-6);
-    const bottomHalf = 1;
-    const topHalf = 1 - cos;
-    const h = sin;
-    const yb = h / 2;
-    const yt = -h / 2;
-    const cy = (bottomHalf * bottomHalf - topHalf * topHalf) / (2 * h);
-    const R = Math.hypot(bottomHalf, yb - cy) || 1;
-    return [
-      [-topHalf / R, (yt - cy) / R],
-      [topHalf / R, (yt - cy) / R],
-      [bottomHalf / R, (yb - cy) / R],
-      [-bottomHalf / R, (yb - cy) / R],
-    ];
-  }
-
-  private parallelogramUnitPoints(angleDeg: number): Array<[number, number]> {
-    const θ = this.clampShapeAngle(angleDeg) * (Math.PI / 180);
-    const c = Math.cos(θ);
-    const s = Math.sin(θ);
-    return [
-      [-0.5 - 0.5 * c, 0.5 * s],
-      [0.5 - 0.5 * c, 0.5 * s],
-      [0.5 + 0.5 * c, -0.5 * s],
-      [-0.5 + 0.5 * c, -0.5 * s],
-    ];
-  }
-
-  createCircumShape(
-    center: AnyItem,
-    radius: number,
-    unitPoints: Array<[number, number]>,
-    rotationAngle = 0,
-  ): AnyItem {
-    const scope = this.scope;
-    const rot = (rotationAngle * Math.PI) / 180;
-    const c = Math.cos(rot);
-    const s = Math.sin(rot);
-    const path = new scope.Path();
-    for (const [x, y] of unitPoints) {
-      const rx = x * c - y * s;
-      const ry = x * s + y * c;
-      path.add(center.add(new scope.Point(rx * radius, ry * radius)));
-    }
-    path.closed = true;
-    return path;
+  createCircumShape(center: AnyItem, radius: number, unitPoints: Array<[number, number]>, rotationAngle = 0): AnyItem {
+    return this.shapes.createCircumShape(center, radius, unitPoints, rotationAngle);
   }
 
   sectorPreviewPath(radius: number, sweepDeg: number): string {
-    const sweep = this.clampSectorAngle(sweepDeg);
-    const a = (sweep * Math.PI) / 180;
-    const x2 = radius * Math.cos(a);
-    const y2 = radius * Math.sin(a);
-    const large = sweep > 180 ? 1 : 0;
-    return (
-      `M 0,0 L ${radius.toFixed(3)},0 ` +
-      `A ${radius.toFixed(3)},${radius.toFixed(3)} 0 ${large},1 ` +
-      `${x2.toFixed(3)},${y2.toFixed(3)} Z`
-    );
+    return sectorPreviewD(radius, sweepDeg);
   }
 
-  createSectorShape(
-    center: AnyItem,
-    radius: number,
-    sweepDeg: number,
-    rotationAngle = 0,
-  ): AnyItem {
-    const scope = this.scope;
-    const sweep = this.clampSectorAngle(sweepDeg);
-    const start = (rotationAngle * Math.PI) / 180;
-    const end = start + (sweep * Math.PI) / 180;
-    const mid = (start + end) / 2;
-    const pt = (ang: number): AnyItem =>
-      center.add(new scope.Point(Math.cos(ang) * radius, Math.sin(ang) * radius));
-    const path = new scope.Path();
-    path.moveTo(center);
-    path.lineTo(pt(start));
-    path.arcTo(pt(mid), pt(end));
-    path.closed = true;
-    return path;
+  createSectorShape(center: AnyItem, radius: number, sweepDeg: number, rotationAngle = 0): AnyItem {
+    return this.shapes.createSectorShape(center, radius, sweepDeg, rotationAngle);
   }
 
   segmentPreviewPath(radius: number, sweepDeg: number): string {
-    const sweep = this.clampSectorAngle(sweepDeg);
-    const a = (sweep * Math.PI) / 180;
-    const x2 = radius * Math.cos(a);
-    const y2 = radius * Math.sin(a);
-    const large = sweep > 180 ? 1 : 0;
-    return (
-      `M ${radius.toFixed(3)},0 ` +
-      `A ${radius.toFixed(3)},${radius.toFixed(3)} 0 ${large},1 ` +
-      `${x2.toFixed(3)},${y2.toFixed(3)} Z`
-    );
+    return segmentPreviewD(radius, sweepDeg);
   }
 
-  createSegmentShape(
-    center: AnyItem,
-    radius: number,
-    sweepDeg: number,
-    rotationAngle = 0,
-  ): AnyItem {
-    const scope = this.scope;
-    const sweep = this.clampSectorAngle(sweepDeg);
-    const start = (rotationAngle * Math.PI) / 180;
-    const end = start + (sweep * Math.PI) / 180;
-    const mid = (start + end) / 2;
-    const pt = (ang: number): AnyItem =>
-      center.add(new scope.Point(Math.cos(ang) * radius, Math.sin(ang) * radius));
-    const path = new scope.Path();
-    path.moveTo(pt(start));
-    path.arcTo(pt(mid), pt(end));
-    path.closed = true;
-    return path;
+  createSegmentShape(center: AnyItem, radius: number, sweepDeg: number, rotationAngle = 0): AnyItem {
+    return this.shapes.createSegmentShape(center, radius, sweepDeg, rotationAngle);
   }
 
   // --- Shape text (Display / Body / Circumference) ---
+  // --- Shape text (Display / Body / Circumference) ---
   // Glyph color follows the fill toggle so text matches painted shapes:
   // fill color when fill is on, otherwise the stroke color.
-  private textInk(): string {
-    return this.fillEnabled ? this.globalFillColor : this.globalStrokeColor;
-  }
-
-  private styleTextItem(item: AnyItem, spec: TextSpec = this.globalText): void {
-    if (!item) return;
-    item.fontFamily = spec.fontFamily;
-    item.fontSize = Math.max(4, spec.fontSize);
-    item.fontWeight = spec.fontWeight;
-    item.fillColor = this.textInk();
-    item.strokeColor = null;
-    item.justification = spec.justification;
-    const leading = Math.max(0.8, spec.leading || 1.2) * Math.max(4, spec.fontSize);
-    item.leading = leading;
-    item.data.isShapeText = true;
-  }
-
-  /**
-   * Geometry child of a shape+text group (marked data.shapeTextGroup by
-   * withShapeText): the child without text styling. Plain items return
-   * themselves, so paint call sites stay uniform.
-   */
   private shapePartOf(item: AnyItem): AnyItem {
-    if (
-      item &&
-      item.data &&
-      item.data.shapeTextGroup &&
-      Array.isArray(item.children)
-    ) {
-      const geo = item.children.find(
-        (c: AnyItem) => !(c.data && c.data.isShapeText),
-      );
-      if (geo) return geo;
-    }
-    return item;
+    return this.textLayout.shapePartOf(item);
   }
 
-  /**
-   * Attach derived text to finished geometry under Text Mode: Display
-   * flows around the boundary, Body fills the interior. Returns the
-   * geometry untouched when Text Mode is off or no text results.
-   */
-  private withShapeText(
-    path: AnyItem,
-    isPreview: boolean,
-    textRotation = 0,
-    center: AnyItem = null,
-  ): AnyItem {
-    if (!path || !this.textModeEnabled) return path;
-    const text =
-      this.textMode === 'body'
-        ? this.createBodyTextFor(path)
-        : this.createBoundaryText(path);
-    if (!text) return path;
-    if (
-      Number.isFinite(textRotation) &&
-      textRotation !== 0 &&
-      center &&
-      text.children
-    ) {
-      text.rotate(textRotation, center);
-    }
-    const group: AnyItem = new this.scope.Group();
-    group.addChild(path);
-    group.addChild(text);
-    group.data.shapeTextGroup = true;
-    if (isPreview) this.fadeShapeText(text);
-    return group;
+  private withShapeText(path: AnyItem, isPreview: boolean, textRotation = 0, center: AnyItem = null): AnyItem {
+    return this.textLayout.withShapeText(path, isPreview, textRotation, center);
   }
 
-  /** Fade preview text to match the dashed-geometry preview treatment. */
   private fadeShapeText(item: AnyItem): void {
-    if (!item) return;
-    if (item.className === 'PointText') {
-      item.opacity = 0.7;
-      return;
-    }
-    if (Array.isArray(item.children)) {
-      item.children.forEach((c: AnyItem) => this.fadeShapeText(c));
-    }
+    this.textLayout.fadeShapeText(item);
   }
 
-  // Live spline text: rebuild the derived Display/Body text for the
-  // in-progress stroke, faded like other previews. The stroke itself is
-  // untouched; the group is ignored by content hit-testing and snapping
-  // and is cleared on finalize/cancel.
   private refreshSplineTextPreview(): void {
     if (this.previewSplineText) {
       this.previewSplineText.remove();
@@ -3093,552 +2502,29 @@ export class NibGliderEngine {
 
   /** Clear preview fading after a preview group is stamped/finalized. */
   private resetStampedText(item: AnyItem): void {
-    if (!item) return;
-    item.opacity = 1;
-    if (Array.isArray(item.children)) {
-      item.children.forEach((c: AnyItem) => this.resetStampedText(c));
-    }
+    this.textLayout.resetStampedText(item);
   }
 
-  private containsPoint(boundary: AnyItem, pt: AnyItem): boolean {
-    try {
-      return !!boundary.contains(pt);
-    } catch {
-      return false;
-    }
-  }
-
-  /** Word-wrap shared by every Body Text container. */
-  private layoutBodyLines(
-    spec: TextSpec,
-    maxWidth: number,
-    content?: string,
-  ): string[] {
-    const words = (content ?? spec.content).split(/\s+/).filter(Boolean);
-    const size = Math.max(4, spec.fontSize);
-    // Kerned advances from parsed font bytes when available, else
-    // canvas measurement, else an em estimate.
-    const widthOf = (s: string): number =>
-      this.textMetrics.advance(s, spec.fontFamily, size, spec.fontWeight);
-    const lines: string[] = [];
-    let cur = '';
-    for (const w of words) {
-      const trial = cur ? `${cur} ${w}` : w;
-      if (cur && widthOf(trial) > maxWidth) {
-        lines.push(cur);
-        cur = w;
-      } else {
-        cur = trial;
-      }
-    }
-    if (cur) lines.push(cur);
-    if (lines.length === 0) lines.push(' ');
-    return lines;
-  }
-
-  /**
-   * Body text: the string word-wrapped to the boundary width, centered on
-   * its center, and clipped to the boundary itself (Paper.js has no
-   * AreaText). Works for any closed shape: hexagon, circle, rect frame.
-   */
   createBodyTextFor(boundary: AnyItem, content?: string): AnyItem | null {
-    const scope = this.scope;
-    const spec = this.globalText;
-    const bounds = boundary.bounds;
-    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
-    const size = Math.max(4, spec.fontSize);
-    const lines = this.layoutBodyLines(
-      spec,
-      Math.max(8, bounds.width * 0.75),
-      content,
-    );
-    const leading = Math.max(0.8, spec.leading || 1.2) * size;
-    const group: AnyItem = new scope.Group();
-    const startY = bounds.center.y - ((lines.length - 1) * leading) / 2;
-    lines.forEach((line, i) => {
-      const pt: AnyItem = new scope.PointText(
-        new scope.Point(bounds.center.x, startY + i * leading),
-      );
-      pt.content = line;
-      this.styleTextItem(pt, spec);
-      pt.data.textKind = 'body';
-      group.addChild(pt);
+    return this.textLayout.createBodyTextFor(boundary, content);
+  }
+
+  createBoundaryText(boundary: AnyItem, content?: string, line2?: string): AnyItem | null {
+    return this.textLayout.createBoundaryText(boundary, content, line2);
+  }
+
+  createInnerShape(center: AnyItem, radius: number, styleOrPreview = 'stroke', rotationAngle = 0): AnyItem {
+    return this.shapes.createInnerShape({
+      center, radius, styleOrPreview, rotationAngle,
+      shapeType: this.shapeType,
+      circleInnerShapeType: this.circleInnerShapeType,
+      circleInnerShapeParams: this.circleInnerShapeParams,
+      rectangleInnerShapeType: this.rectangleInnerShapeType,
+      rectangleInnerShapeParams: this.rectangleInnerShapeParams,
+      innerShapeType: this.innerShapeType,
+      innerShapeParams: this.innerShapeParams as InnerShapeParams,
+      polygonRadiusMode: this.polygonRadiusMode,
     });
-    // Open spline strokes have no interior to clip to: keep the centered
-    // wrapped lines visible instead of masking them away.
-    if (boundary.closed !== false) {
-      const mask: AnyItem = boundary.clone();
-      mask.clipMask = true;
-      group.addChild(mask);
-    }
-    group.data.isShapeText = true;
-    group.data.textKind = 'body';
-    return group;
-  }
-
-  /**
-   * Display text: one PointText per glyph walked along the boundary by arc
-   * length, oriented by the local tangent, offset inward (interior) or
-   * outward (exterior) by displayOffset per ring. The start offset is the
-   * configured degrees mapped onto total loop length, so circles keep
-   * their historic placement. Non-empty second line runs a second ring.
-   */
-  createBoundaryText(
-    boundary: AnyItem,
-    content?: string,
-    line2?: string,
-  ): AnyItem | null {
-    const scope = this.scope;
-    const spec = this.globalText;
-    const size = Math.max(4, spec.fontSize);
-    const L = boundary.length;
-    if (!(L > 0)) return null;
-    const lines = [content ?? spec.content, line2 ?? spec.line2].filter(
-      (s) => s && s.length > 0,
-    );
-    if (lines.length === 0) return null;
-    const offset = Math.max(0, this.displayOffset);
-    // Start offset in degrees, negated onto loop fraction: Paper.js
-    // circles run counter-clockwise from 3 o'clock, so -90° lands at the
-    // top exactly like the historic circle-only layout did.
-    const start =
-      ((((-this.circumferenceAngleOffset % 360) + 360) % 360) / 360) * L;
-    // Which normal side is interior? Probe once; fall back to the
-    // centroid side when the offset outgrows the shape. Open paths have
-    // no interior: both flows sit on the boundary.
-    let interiorSign = 0;
-    if (boundary.closed !== false) {
-      const p0 = boundary.getPointAt(0);
-      let n0 = boundary.getNormalAt(0);
-      if (p0 && n0 && n0.length > 0) {
-        n0 = n0.normalize();
-        const probeLen = Math.max(1, offset);
-        const plusIn = this.containsPoint(
-          boundary,
-          p0.add(n0.multiply(probeLen)),
-        );
-        const minusIn = this.containsPoint(
-          boundary,
-          p0.subtract(n0.multiply(probeLen)),
-        );
-        if (plusIn !== minusIn) {
-          interiorSign = plusIn ? 1 : -1;
-        } else {
-          const b = boundary.bounds;
-          const toC = b ? b.center.subtract(p0) : null;
-          interiorSign = toC && toC.dot(n0) >= 0 ? 1 : -1;
-        }
-      }
-    }
-    const straightEdges = this.straightBoundaryEdges(boundary);
-    if (straightEdges.length > 0) {
-      const text = this.createEdgeDisplayText(
-        boundary,
-        lines,
-        straightEdges,
-        start,
-        interiorSign,
-        offset,
-        spec,
-      );
-      if (text) return text;
-    }
-    const group: AnyItem = new scope.Group();
-    lines.forEach((text, li) => {
-      const side =
-        this.displayFlow === 'interior' ? interiorSign : -interiorSign;
-      const ring = offset * (li + 1);
-      let d = start;
-      let lastTan: number | null = null;
-      for (const ch of text) {
-        const w =
-          ch === ' '
-            ? size * 0.4
-            : this.textMetrics.advance(
-                ch,
-                spec.fontFamily,
-                size,
-                spec.fontWeight,
-              );
-        const step = w + this.circumferenceGap;
-        if (d + step > start + L) break;
-        if (ch === ' ') {
-          d += step;
-          continue;
-        }
-        const mid = d + w / 2;
-        const pos = boundary.getPointAt(mid);
-        if (!pos) break;
-        const tan = boundary.getTangentAt(mid);
-        if (tan && tan.length > 0) lastTan = tan.angle;
-        if (lastTan === null) {
-          d += step;
-          continue;
-        }
-        let nor = boundary.getNormalAt(mid);
-        if (!nor || nor.length === 0) {
-          const ra = ((lastTan + 90) * Math.PI) / 180;
-          nor = new scope.Point(Math.cos(ra), Math.sin(ra));
-        } else {
-          nor = nor.normalize();
-        }
-        const pt: AnyItem = new scope.PointText(new scope.Point(0, 0));
-        pt.content = ch;
-        this.styleTextItem(pt, spec);
-        pt.justification = 'center';
-        const at = pos.add(nor.multiply(side * ring));
-        pt.position = at;
-        // Glyph tops point to the circumference (outward) or the origin
-        // (inward) along the local normal, independent of boundary travel
-        // direction; degenerate normals fall back to the tangent.
-        const facing =
-          this.glyphOrientation === 'outward' ? -interiorSign : interiorSign;
-        pt.rotate(
-          facing !== 0 ? nor.multiply(facing).angle + 90 : lastTan,
-          at,
-        );
-        // Open spline strokes have no ring offset, so centered glyphs
-        // would straddle the path: anchor them vertically per the spline
-        // placement instead. Closed boundaries keep the ring layout above.
-        if (boundary.closed === false) {
-          this.anchorSplineGlyph(pt, at, spec, size);
-        }
-        pt.data.textKind = 'display';
-        group.addChild(pt);
-        d += step;
-      }
-    });
-    if (group.children.length === 0) {
-      group.remove();
-      return null;
-    }
-    group.data.isShapeText = true;
-    group.data.textKind = 'display';
-    return group;
-  }
-
-  /**
-   * Return polygonal boundary edges only. Curves intentionally use the
-   * continuous circumference layout below, where there is no vertex at which
-   * a word needs to wrap.
-   */
-  private straightBoundaryEdges(boundary: AnyItem): StraightBoundaryEdge[] {
-    if (boundary.closed === false || !Array.isArray(boundary.segments)) return [];
-    const segments = boundary.segments;
-    const curves = boundary.curves;
-    if (segments.length < 3 || !Array.isArray(curves) || curves.length !== segments.length) {
-      return [];
-    }
-    if (
-      segments.some((segment: AnyItem) =>
-        (segment.handleIn?.length ?? 0) > 1e-6 ||
-        (segment.handleOut?.length ?? 0) > 1e-6,
-      )
-    ) {
-      return [];
-    }
-    let start = 0;
-    const edges: StraightBoundaryEdge[] = [];
-    for (const curve of curves) {
-      const length = curve.length;
-      if (!(length > 1e-6)) return [];
-      edges.push({ start, length });
-      start += length;
-    }
-    return edges;
-  }
-
-  /**
-   * Lay Display Text out edge by edge. A candidate always contains complete
-   * words, so a word that does not fit in the remaining edge space moves to
-   * the following edge rather than being split across the corner.
-   */
-  private createEdgeDisplayText(
-    boundary: AnyItem,
-    lines: string[],
-    edges: StraightBoundaryEdge[],
-    start: number,
-    interiorSign: number,
-    offset: number,
-    spec: TextSpec,
-  ): AnyItem {
-    const scope = this.scope;
-    const size = Math.max(4, spec.fontSize);
-    const L = boundary.length;
-    const startAt = ((start % L) + L) % L;
-    let firstEdge = edges.findIndex(
-      (edge) => startAt >= edge.start && startAt < edge.start + edge.length,
-    );
-    if (firstEdge < 0) firstEdge = 0;
-    const group: AnyItem = new scope.Group();
-
-    for (let li = 0; li < lines.length; li++) {
-      const words = lines[li].trim().split(/\s+/).filter(Boolean);
-      let wordIndex = 0;
-      const side = this.displayFlow === 'interior' ? interiorSign : -interiorSign;
-      const ring = offset * (li + 1);
-      for (let edgeOffset = 0; edgeOffset < edges.length && wordIndex < words.length; edgeOffset++) {
-        const edge = edges[(firstEdge + edgeOffset) % edges.length];
-        let text = '';
-        while (wordIndex < words.length) {
-          const candidate = text ? `${text} ${words[wordIndex]}` : words[wordIndex];
-          if (this.displayTextAdvance(candidate, spec, size) > edge.length) break;
-          text = candidate;
-          wordIndex++;
-        }
-        if (!text) continue;
-        const advance = this.displayTextAdvance(text, spec, size);
-        const alignOffset =
-          spec.justification === 'right'
-            ? edge.length - advance
-            : spec.justification === 'center'
-              ? (edge.length - advance) / 2
-              : 0;
-        this.addDisplayGlyphs(
-          group,
-          boundary,
-          text,
-          edge.start + alignOffset,
-          side,
-          ring,
-          interiorSign,
-          spec,
-          size,
-        );
-      }
-    }
-    group.data.isShapeText = true;
-    group.data.textKind = 'display';
-    return group;
-  }
-
-  private displayTextAdvance(text: string, spec: TextSpec, size: number): number {
-    let advance = 0;
-    for (const ch of text) advance += this.displayGlyphStep(ch, spec, size);
-    return advance;
-  }
-
-  private displayGlyphStep(ch: string, spec: TextSpec, size: number): number {
-    const width =
-      ch === ' '
-        ? size * 0.4
-        : this.textMetrics.advance(ch, spec.fontFamily, size, spec.fontWeight);
-    return width + this.circumferenceGap;
-  }
-
-  private addDisplayGlyphs(
-    group: AnyItem,
-    boundary: AnyItem,
-    text: string,
-    start: number,
-    side: number,
-    ring: number,
-    interiorSign: number,
-    spec: TextSpec,
-    size: number,
-  ): void {
-    const scope = this.scope;
-    let d = start;
-    let lastTan: number | null = null;
-    for (const ch of text) {
-      const step = this.displayGlyphStep(ch, spec, size);
-      if (ch === ' ') {
-        d += step;
-        continue;
-      }
-      const mid = d + (step - this.circumferenceGap) / 2;
-      const pos = boundary.getPointAt(mid);
-      if (!pos) break;
-      const tan = boundary.getTangentAt(mid);
-      if (tan && tan.length > 0) lastTan = tan.angle;
-      if (lastTan === null) {
-        d += step;
-        continue;
-      }
-      let nor = boundary.getNormalAt(mid);
-      if (!nor || nor.length === 0) {
-        const ra = ((lastTan + 90) * Math.PI) / 180;
-        nor = new scope.Point(Math.cos(ra), Math.sin(ra));
-      } else {
-        nor = nor.normalize();
-      }
-      const pt: AnyItem = new scope.PointText(new scope.Point(0, 0));
-      pt.content = ch;
-      this.styleTextItem(pt, spec);
-      pt.justification = 'center';
-      const at = pos.add(nor.multiply(side * ring));
-      pt.position = at;
-      const facing =
-        this.glyphOrientation === 'outward' ? -interiorSign : interiorSign;
-      pt.rotate(facing !== 0 ? nor.multiply(facing).angle + 90 : lastTan, at);
-      pt.data.textKind = 'display';
-      group.addChild(pt);
-      d += step;
-    }
-  }
-
-  /**
-   * Shift a spline glyph from path-centered to its spline placement.
-   * Paper.js `position` is the visual center while the anchor (`point`)
-   * sits on the baseline at center justification, so the anchor rests
-   * `dcb` below the center along glyph-up. Moving the center along
-   * glyph-up by `dcb` lands the baseline on the spline; Above adds the
-   * descent (descender line on the spline) and Below subtracts the
-   * ascent (ascender line on the spline).
-   */
-  private anchorSplineGlyph(
-    pt: AnyItem,
-    at: AnyItem,
-    spec: TextSpec,
-    size: number,
-  ): void {
-    try {
-      const center = pt.bounds ? pt.bounds.center : null;
-      const anchor = pt.point;
-      if (!center || !anchor) return;
-      const up = center.subtract(anchor);
-      const dcb = up.length;
-      if (!(dcb > 0)) return;
-      const dir = up.normalize();
-      const m = this.textMetrics.vertical(
-        spec.fontFamily,
-        size,
-        spec.fontWeight,
-      );
-      const extra =
-        this.splineTextPlacement === 'above'
-          ? m.desc
-          : this.splineTextPlacement === 'below'
-            ? -m.asc
-            : 0;
-      pt.position = at.add(dir.multiply(dcb + extra));
-    } catch {
-      // Keep the centered glyph when bounds are unavailable.
-    }
-  }
-
-  createInnerShape(
-    center: AnyItem,
-    radius: number,
-    styleOrPreview = 'stroke',
-    rotationAngle = 0,
-  ): AnyItem {
-    const scope = this.scope;
-    const isPreview = styleOrPreview === 'preview';
-    const hasStroke =
-      !isPreview && (styleOrPreview === 'stroke' || styleOrPreview === 'fillstroke');
-    const hasFill =
-      !isPreview && (styleOrPreview === 'fill' || styleOrPreview === 'fillstroke');
-    let path: AnyItem = null;
-    const useCircleInner = this.shapeType != null && this.shapeType.startsWith('circle_');
-    const isRect =
-      this.shapeType != null && this.shapeType.startsWith('rectangle_');
-    const currentInnerType = useCircleInner
-      ? this.circleInnerShapeType
-      : isRect
-        ? this.rectangleInnerShapeType
-        : this.innerShapeType;
-    const currentInnerParams: Record<string, number> = useCircleInner
-      ? (this.circleInnerShapeParams as unknown as Record<string, number>)
-      : isRect
-        ? (this.rectangleInnerShapeParams as unknown as Record<string, number>)
-        : (this.innerShapeParams as Record<string, number>);
-    // Rotationally symmetric branches ignore rotationAngle, so text
-    // needs it applied explicitly to follow the guide (see below).
-    let geoRotates = true;
-    switch (currentInnerType) {
-      case 'circle':
-        path = new scope.Path.Circle(center, radius);
-        geoRotates = false;
-        break;
-      case 'sector':
-      case 'semicircle':
-      case 'segment': {
-        const sweep =
-          currentInnerType === 'semicircle'
-            ? 180
-            : this.clampSectorAngle(currentInnerParams['sector']);
-        path =
-          currentInnerType === 'segment'
-            ? this.createSegmentShape(center, radius, sweep, rotationAngle)
-            : this.createSectorShape(center, radius, sweep, rotationAngle);
-        if (this.shapeType === 'circle_diameter') {
-          path.rotate(180, center);
-        }
-        break;
-      }
-      case 'rectangle':
-        path = new scope.Path.Rectangle({
-          center,
-          size: new scope.Size(radius * 1.4, radius * 1.4),
-        });
-        geoRotates = false;
-        break;
-      case 'rightTriangle':
-      case 'rightTriangleB':
-      case 'trapezoid':
-      case 'parallelogram':
-      case 'rhombus':
-      case 'kite': {
-        const unit = this.circleInnerShapeUnitPoints(
-          currentInnerType,
-          currentInnerParams['angle'],
-        );
-        if (unit) {
-          path = this.createCircumShape(center, radius, unit, rotationAngle);
-        }
-        break;
-      }
-      case 'regularTriangle':
-        path = this.createRegularPolygon(center, radius, 3, rotationAngle);
-        break;
-      case 'regularPolygon':
-      case 'polygon':
-        path = this.createRegularPolygon(
-          center,
-          radius,
-          currentInnerParams['sides'] || 6,
-          rotationAngle,
-          this.polygonRadiusMode,
-        );
-        if (this.shapeType === 'circle_diameter') {
-          path.rotate(180, center);
-        }
-        break;
-      case 'supershape':
-        path = this.createSupershape(center, radius, currentInnerParams, rotationAngle);
-        break;
-      default:
-        break;
-    }
-    if (path) {
-      if (isPreview) {
-        path.strokeColor = this.globalStrokeColor;
-        path.strokeWidth = this.globalStrokeWidth;
-        path.strokeDasharray = [3, 3];
-        path.opacity = 0.7;
-        path.fillColor = null;
-      } else {
-        path.strokeColor = hasStroke ? this.globalStrokeColor : null;
-        path.strokeWidth = hasStroke ? this.globalStrokeWidth * 0.7 : 0;
-        if (hasFill) {
-          this.applyFillSpec(path, this.fillSpec());
-        } else {
-          path.fillColor = null;
-        }
-        this.applyStrokeDash(path);
-      }
-      this.applyStrokeGeometry(path);
-    }
-    // Text Mode derives text from the finished geometry. Branches that
-    // baked the guide rotation in need no extra turn; symmetric ones
-    // (circle, rectangle) get the angle applied to the text explicitly.
-    return this.withShapeText(
-      path,
-      isPreview,
-      geoRotates ? 0 : rotationAngle,
-      center,
-    );
   }
 
   drawInnerShape(frameItem: AnyItem, style: string): void {
@@ -3688,201 +2574,16 @@ export class NibGliderEngine {
   // frame itself (not a centered inscribed circle). The frame is described
   // by an origin corner plus full-edge vectors: P(s, t) = o + u*s + v*t.
 
-  private rectFrameBasis(): { o: AnyItem; u: AnyItem; v: AnyItem } | null {
-    const scope = this.scope;
-    const shapeType = this.shapeType;
-    if (shapeType === 'rectangle_diagonal') {
-      // Origin at the drag start corner; u/v follow the mouse so the
-      // inner shape mirrors when the diagonal crosses into another quadrant.
-      // Scaled by the diagonal mode, matching the preview frame.
-      if (!this.shapeStartPoint || !this.mousePt) return null;
-      const k = this.rectDiagonalScale();
-      const dx = (this.mousePt.x - this.shapeStartPoint.x) * k;
-      const dy = (this.mousePt.y - this.shapeStartPoint.y) * k;
-      if (dx === 0 || dy === 0) return null;
-      return {
-        o: this.shapeStartPoint,
-        u: new scope.Point(dx, 0),
-        v: new scope.Point(0, dy),
-      };
-    }
-    if (shapeType === 'rectangle_two_edges') {
-      if (!this.shapeStartPoint || !this.shapePt2 || !this.mousePt) return null;
-      const edge = this.shapePt2.subtract(this.shapeStartPoint);
-      if (edge.length === 0) return null;
-      const dir1 = edge.normalize();
-      const v2 = this.mousePt.subtract(this.shapePt2);
-      const perpVec = v2.subtract(dir1.multiply(v2.dot(dir1)));
-      if (perpVec.length === 0) return null;
-      return { o: this.shapeStartPoint, u: edge, v: perpVec };
-    }
-    if (shapeType === 'rectangle_centerline') {
-      if (!this.shapeStartPoint || !this.mousePt) return null;
-      const dir = this.mousePt.subtract(this.shapeStartPoint);
-      const halfLen = dir.length / 2;
-      if (halfLen === 0) return null;
-      const center = this.shapeStartPoint.add(this.mousePt).divide(2);
-      const unitDir = dir.normalize();
-      const perp = new scope.Point(-unitDir.y, unitDir.x);
-      const halfW = this.centerlineWidthForLength(dir.length) / 2;
-      return {
-        o: center.subtract(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW)),
-        u: unitDir.multiply(2 * halfLen),
-        v: perp.multiply(2 * halfW),
-      };
-    }
-    return null;
-  }
-
-  // Map unit-space points onto the rect frame, stretching each axis so
-  // the result touches all four frame edges. P maps unit [0,1] to the frame.
-  private fitUnitPoints(
-    unit: Array<[number, number]>,
-    P: (s: number, t: number) => AnyItem,
-  ): AnyItem {
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minY = Infinity;
-    let maxY = -Infinity;
-    for (const [ux, uy] of unit) {
-      if (ux < minX) minX = ux;
-      if (ux > maxX) maxX = ux;
-      if (uy < minY) minY = uy;
-      if (uy > maxY) maxY = uy;
-    }
-    if (!(maxX > minX) || !(maxY > minY)) return null;
-    const path = new this.scope.Path();
-    for (const [ux, uy] of unit) {
-      path.add(P((ux - minX) / (maxX - minX), (uy - minY) / (maxY - minY)));
-    }
-    path.closed = true;
-    return path;
-  }
-
   createRectFrameShape(styleOrPreview = 'stroke'): AnyItem {
-    const scope = this.scope;
-    const type = this.rectangleInnerShapeType;
-    const basis = this.rectFrameBasis();
-    if (!basis) return null;
-    const { o, u, v } = basis;
-    const P0 = (s: number, t: number): AnyItem =>
-      o.add(u.multiply(s)).add(v.multiply(t));
-    // Oriented frame map: rotate (s, t) about the frame center first, so
-    // every shape drawn below follows rectangleOrientation and still
-    // fits inside the frame bounds.
-    const P = (s: number, t: number): AnyItem => P0(...this.rotST(s, t));
-    const isPreview = styleOrPreview === 'preview';
-    if (type === 'rectangle') {
-      // Bare frame: no inner shape — but Text Mode still flows text
-      // around the frame itself. The caller draws the frame; only the
-      // text group is returned so nothing double-draws.
-      if (!this.textModeEnabled) return null;
-      const frame = new scope.Path({
-        segments: [P(0, 0), P(1, 0), P(1, 1), P(0, 1)],
-        closed: true,
-      });
-      const text =
-        this.textMode === 'body'
-          ? this.createBodyTextFor(frame)
-          : this.createBoundaryText(frame);
-      frame.remove();
-      if (!text) return null;
-      if (isPreview) this.fadeShapeText(text);
-      return text;
-    }
-    const params = this.rectangleInnerShapeParams;
-    let path: AnyItem = null;
-    switch (type) {
-      case 'rightTriangle':
-        // Legs along the full left and bottom edges, right angle at bottom-left.
-        path = new scope.Path({
-          segments: [P(0, 1), P(1, 1), P(0, 0)],
-          closed: true,
-        });
-        break;
-      case 'trapezoid': {
-        // Base angle in the frame: inset the top so the legs meet the
-        // bottom at `angle` degrees. Obtuse values invert (top wider).
-        const quad = this.trapezoidFrameST(
-          this.frameAngleShear(u, v, params.angle),
-        );
-        path = new scope.Path({
-          segments: quad.map(([s, t]) => P(s, t)),
-          closed: true,
-        });
-        break;
-      }
-      case 'parallelogram': {
-        // Fit inside the frame: shrink both bases to 1-|k| and pin
-        // opposite corners to the frame so every (s, t) stays in [0, 1].
-        const quad = this.parallelogramFrameST(
-          this.frameAngleShear(u, v, params.angle),
-        );
-        path = new scope.Path({
-          segments: quad.map(([s, t]) => P(s, t)),
-          closed: true,
-        });
-        break;
-      }
-      case 'rhombus':
-        // Vertices at the four edge midpoints.
-        path = new scope.Path({
-          segments: [P(0.5, 0), P(1, 0.5), P(0.5, 1), P(0, 0.5)],
-          closed: true,
-        });
-        break;
-      case 'kite':
-        // Two pairs of adjacent equal sides; touches all four edges,
-        // with the cross-bar a third of the way from the top. Centerline
-        // rotates 90° so the spine follows the drag axis.
-        path = new scope.Path({
-          segments:
-            this.shapeType === 'rectangle_centerline'
-              ? [P(0, 0.5), P(1 / 3, 0), P(1, 0.5), P(1 / 3, 1)]
-              : [P(0.5, 0), P(1, 1 / 3), P(0.5, 1), P(0, 1 / 3)],
-          closed: true,
-        });
-        break;
-      case 'circle':
-      case 'polygon': {
-        // Fit unit points to the frame so the shape touches all four edges.
-        const sides = type === 'circle' ? 72 : params.sides || 6;
-        const start = (this.shapeGuideAngle * Math.PI) / 180;
-        const unit: Array<[number, number]> = [];
-        for (let i = 0; i < sides; i++) {
-          const a = start + (i / sides) * Math.PI * 2;
-          unit.push([Math.cos(a), Math.sin(a)]);
-        }
-        path = this.fitUnitPoints(unit, P);
-        break;
-      }
-      case 'supershape': {
-        // Fit unit points to the frame so the shape touches all four edges.
-        const { m = 3, n1 = 0.2, n2 = 1.7, n3 = 1.7, a1 = 1, a2 = 1 } = params;
-        const steps = 360;
-        const unit: Array<[number, number]> = [];
-        for (let i = 0; i <= steps; i++) {
-          const phi = (i / steps) * Math.PI * 2;
-          const r = this.supershapeRadius(phi, m, n1, n2, n3, a1, a2) || 0;
-          unit.push([r * Math.cos(phi), r * Math.sin(phi)]);
-        }
-        path = this.fitUnitPoints(unit, P);
-        break;
-      }
-      default:
-        break;
-    }
-    if (!path) return null;
-    if (isPreview) {
-      path.strokeColor = this.globalStrokeColor;
-      path.strokeWidth = this.globalStrokeWidth;
-      path.strokeDasharray = [3, 3];
-      path.opacity = 0.7;
-      path.fillColor = null;
-    }
-    this.applyStrokeGeometry(path);
-    // Text Mode derives text from the finished frame-fitted geometry.
-    return this.withShapeText(path, isPreview);
+    return this.shapes.createRectFrameShape({
+      styleOrPreview,
+      innerType: this.rectangleInnerShapeType,
+      params: this.rectangleInnerShapeParams,
+      shapeType: this.shapeType,
+      orientation: this.rectangleOrientation,
+      guideAngle: this.shapeGuideAngle,
+      frame: this.rectFrameInput(),
+    });
   }
 
   rectCenterlineKC(): void {
@@ -4076,78 +2777,16 @@ export class NibGliderEngine {
     return [];
   }
 
-  createRegularPolygon(
-    center: AnyItem,
-    radius: number,
-    sides: number,
-    rotationAngle = 0,
-    radiusMode = 'circumradius',
-  ): AnyItem {
-    const scope = this.scope;
-    const angleStep = (Math.PI * 2) / sides;
-    const startAngle = (rotationAngle * Math.PI) / 180;
-    let actualRadius: number;
-    if (radiusMode === 'circumradius') {
-      actualRadius = radius;
-    } else {
-      actualRadius = radius / Math.cos(Math.PI / sides);
-    }
-    const path = new scope.Path();
-    for (let i = 0; i < sides; i++) {
-      const angle = startAngle + i * angleStep;
-      path.add(
-        center.add(
-          new scope.Point(Math.cos(angle) * actualRadius, Math.sin(angle) * actualRadius),
-        ),
-      );
-    }
-    if (radiusMode === 'inradius') {
-      path.rotate(360 / sides / 2, center);
-    }
-    path.closed = true;
-    return path;
+  createRegularPolygon(center: AnyItem, radius: number, sides: number, rotationAngle = 0, radiusMode = 'circumradius'): AnyItem {
+    return this.shapes.createRegularPolygon(center, radius, sides, rotationAngle, radiusMode);
   }
 
-  supershapeRadius(
-    phi: number,
-    m: number,
-    n1: number,
-    n2: number,
-    n3: number,
-    a1 = 1,
-    a2 = 1,
-  ): number {
-    const r1 = Math.pow(Math.abs(Math.cos((m * phi) / 4) / a1), n2);
-    const r2 = Math.pow(Math.abs(Math.sin((m * phi) / 4) / a2), n3);
-    const r = Math.pow(r1 + r2, -1 / n1);
-    return r || 0;
+  supershapeRadius(phi: number, m: number, n1: number, n2: number, n3: number, a1 = 1, a2 = 1): number {
+    return supershapeRadiusValue(phi, m, n1, n2, n3, a1, a2);
   }
 
-  createSupershape(
-    center: AnyItem,
-    radius: number,
-    params: Record<string, number>,
-    rotationAngle = 0,
-  ): AnyItem {
-    const scope = this.scope;
-    const rotationRad = (rotationAngle * Math.PI) / 180;
-    const path = new scope.Path();
-    const steps = 360;
-    const { m = 3, n1 = 0.2, n2 = 1.7, n3 = 1.7, a1 = 1, a2 = 1 } = params;
-    for (let i = 0; i <= steps; i++) {
-      const phi = (i / steps) * Math.PI * 2;
-      const r = this.supershapeRadius(phi, m, n1, n2, n3, a1, a2);
-      const scaledR = radius * (r || 0);
-      path.add(
-        new scope.Point(
-          center.x + scaledR * Math.cos(phi + rotationRad),
-          center.y + scaledR * Math.sin(phi + rotationRad),
-        ),
-      );
-    }
-    path.closed = true;
-    this.applyStrokeGeometry(path);
-    return path;
+  createSupershape(center: AnyItem, radius: number, params: Record<string, number>, rotationAngle = 0): AnyItem {
+    return this.shapes.createSupershape(center, radius, params as unknown as InnerShapeParams, rotationAngle);
   }
 
   // --- Guides (snap indicators and the grid) ---
@@ -4563,4 +3202,9 @@ export class NibGliderEngine {
     // Undo/redo labels are suspended here; the History panel still shows them.
     this.setStatusSchema({ state, steps });
   }
+}
+
+function xy(point: { x: number; y: number } | null | undefined): { x: number; y: number } | null {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+  return { x: point.x, y: point.y };
 }

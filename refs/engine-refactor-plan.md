@@ -251,7 +251,7 @@ individual deliverables and acceptance checks.
 - [ ] Phase 5: History and transforms
 - [ ] Phase 6: Snapping and grid
 - [ ] Phase 7: Drawing sessions and tools
-- [ ] Phase 8: Geometry and appearance
+- [x] Phase 8: Geometry and appearance
 - [ ] Phase 9: Combinatorics, importing, and presenters
 - [ ] Phase 10: Reduce the facade
 
@@ -559,7 +559,7 @@ Phase 4 implementation and checks:
 
 The contracts are documented in `src/engine/model/README.md`. Bezier sources
 store one or more contours with relative handles. Circle and polygon-family
-resolution is available; supershape resolution remains part of Phase 8.
+resolution is available. Supershape sampling landed with Phase 8.
 Semantic B-spline and composite records now resolve through Phase 4b's pure
 interpolation modules. Smoothed-polyline interpolation remains deferred.
 Text, image, and group sources remain records awaiting their own services.
@@ -760,7 +760,7 @@ Phase 6 implementation and checks:
   mounting, and engine delegation with focused Paper.js tests.
 - [ ] Run the Snapping section of `engine-smoke-checklist.md` in the browser.
 
-### Phase 7: Extract drawing sessions and tools
+[x] ### Phase 7: Extract drawing sessions and tools
 
 Create `DrawingSession.ts` for shared live-drawing state and lifecycle:
 

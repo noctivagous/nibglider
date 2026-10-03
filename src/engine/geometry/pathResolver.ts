@@ -6,8 +6,37 @@ import type { NGShape } from '../model/NGShape';
 import type { NGDrawable } from '../model/NGDrawable';
 import type { BezierSegment, ResolvedVectorGeometry, Vec2 } from '../model/geometryResolution';
 import { validateDrawable, validatePath } from '../model/serialization';
+import type { NGSupershape } from '../model/NGShape';
 import { resolveCompositePath } from './compositeExpansion';
 import { sampleBSpline, type SamplingOptions } from './splineInterpolation';
+
+// Same sample count as ShapeFactory's live Paper supershape. The closed
+// resolver omits the repeated seam vertex that Path.closed would connect.
+export const SUPERSHAPE_STEPS = 360;
+
+export function supershapeRadius(
+  phi: number, m: number, n1: number, n2: number, n3: number, a = 1, b = 1,
+): number {
+  const r1 = Math.pow(Math.abs(Math.cos((m * phi) / 4) / a), n2);
+  const r2 = Math.pow(Math.abs(Math.sin((m * phi) / 4) / b), n3);
+  const r = Math.pow(r1 + r2, -1 / n1);
+  return r || 0;
+}
+
+export function supershapePoints(shape: NGSupershape): Vec2[] {
+  const rot = shape.rotation * Math.PI / 180;
+  const points: Vec2[] = [];
+  for (let i = 0; i < SUPERSHAPE_STEPS; i++) {
+    const phi = (i / SUPERSHAPE_STEPS) * Math.PI * 2;
+    const radius = supershapeRadius(phi, shape.m, shape.n1, shape.n2, shape.n3, shape.a, shape.b);
+    const ang = phi + rot;
+    points.push({
+      x: shape.center.x + shape.scale.x * radius * Math.cos(ang),
+      y: shape.center.y + shape.scale.y * radius * Math.sin(ang),
+    });
+  }
+  return points;
+}
 
 export class GeometryResolutionError extends Error {
   constructor(message: string) { super(message); this.name = 'GeometryResolutionError'; }
@@ -65,7 +94,7 @@ function resolveShape(shape: NGShape): ResolvedVectorGeometry {
       const { origin: o, bottomWidth: w, topWidth: t, height: h, topOffset: x } = shape;
       return polygon([o, { x: o.x + w, y: o.y }, { x: o.x + x + t, y: o.y + h }, { x: o.x + x, y: o.y + h }]);
     }
-    case 'supershape': throw new GeometryResolutionError('Supershape resolution is deferred to the geometry extraction');
+    case 'supershape': return polygon(supershapePoints(shape));
   }
 }
 

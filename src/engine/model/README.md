@@ -16,8 +16,9 @@ selection, and history flows.
   Semantic B-spline, composite, and smoothed-polyline modes retain their own
   authoring parameters. B-spline and composite interpolation are supported;
   smoothed-polyline interpolation is deferred.
-- `NGShape.ts` preserves shape parameters. Circles and polygon-family records
-  resolve to Bezier paths; supershape resolution is deferred to Phase 8.
+- `NGShape.ts` preserves shape parameters. Circles, polygon-family records, and
+  supershapes resolve to paths. Supershapes sample the Gielis formula into a
+  closed polyline and leave the source parameters unchanged.
 - `NGText.ts`, `NGImage.ts`, and `NGGroup.ts` retain live text, asset/boundary/
   mask references, and ordered child identities. Their specialized rendering,
   asset resolution, outlining, and cross-record validation are later work.
