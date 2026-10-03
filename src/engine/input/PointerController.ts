@@ -28,6 +28,7 @@ export interface PointerHost {
   path(): Item;
   pathSnapBase(): Item;
   updateLivePath(point: Item): boolean;
+  updateLiveQuad(): void;
   isCompositePathDrawing(): boolean;
   quadPath(): Item;
   selectedItems(): Item[];
@@ -150,14 +151,7 @@ export class PointerController {
     }
     host.updateGridCursor();
     this.handleDragLock();
-    if (host.isDrawingPath() && !host.updateLivePath(host.mousePt()) && host.path()) {
-      if (host.path().segments.length === 1) host.path().add(host.mousePt());
-      if (host.path().segments.length > 1) {
-        host.path().removeSegment(host.path().segments.length - 1);
-        host.path().add(host.mousePt());
-      }
-      host.refreshSplineTextPreview();
-    }
+    if (host.isDrawingPath()) host.updateLivePath(host.mousePt());
     if (host.isDrawingShape()) {
       host.updateShapePreview();
       if (
@@ -168,13 +162,7 @@ export class PointerController {
         host.updateTextContent();
       }
     }
-    if (host.isDrawingQuad() && host.quadPath()) {
-      if (host.quadPath().segments.length === 1) host.quadPath().add(host.mousePt());
-      if (host.quadPath().segments.length > 1) {
-        host.quadPath().removeSegment(host.quadPath().segments.length - 1);
-        host.quadPath().add(host.mousePt());
-      }
-    }
+    if (host.isDrawingQuad()) host.updateLiveQuad();
   }
 
   onMouseDrag(event: paper.MouseEvent): void {

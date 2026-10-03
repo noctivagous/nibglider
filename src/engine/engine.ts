@@ -16,7 +16,12 @@ import {
 } from './input/PointerController';
 import { commandKeycap, keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
 import { modifiersOf } from './input/ModifierStateTracker';
-import { PathTool, type CompositeDeposit } from './drawing/PathTool';
+import { PathTool } from './drawing/PathTool';
+import { CircleTool } from './drawing/CircleTool';
+import { RectangleTool } from './drawing/RectangleTool';
+import { QuadTool } from './drawing/QuadTool';
+import { DrawingSession } from './drawing/DrawingSession';
+import type { DrawingHost } from './drawing/DrawingHost';
 import { SceneRepository, type RetainedPath } from './scene/SceneRepository';
 import { SelectionManager } from './scene/SelectionManager';
 import { HistoryManager } from './history/HistoryManager';
@@ -260,9 +265,12 @@ export class NibGliderEngine {
   textMetrics = new FontMetrics();
 
   // --- Drawing mode / shape state (drawingToolsAndFunctions.js) ---
-  isDrawingPath = false;
   pathDrawingMode: 'legacy' | 'ngComposite' = 'legacy';
+  private readonly drawing = new DrawingSession();
   private compositePathTool: PathTool;
+  private circleTool: CircleTool;
+  private rectangleTool: RectangleTool;
+  private quadTool: QuadTool;
   // Compatibility bridge until document/scene/history extraction. Only plain
   // source data is retained; derived items are kept separately for identity.
   private readonly scene: SceneRepository;
@@ -276,43 +284,61 @@ export class NibGliderEngine {
   private readonly documentManager = new DocumentManager();
   private get retainedPaths(): Map<string, RetainedPath> { return this.scene.records; }
   private set retainedPaths(value: Map<string, RetainedPath>) { this.scene.restoreRecords(value); }
-  isDrawingShape = false;
-  isDrawingQuad = false;
-  shapeType: ShapeType | null = null;
-  shapeStartPoint: AnyItem = null;
-  shapePt2: AnyItem = null;
-  shapeWidth = 90;
   maxShapeWidth = 200;
-  quadPath: AnyItem = null;
-  quadPointCount = 0;
-  shapeGuideAngle = 0;
-  // Live-drawing adjustments: multiplicative preview scale and additive
-  // preview rotation (degrees) applied to circle-mode previews. Reset on
-  // every session start/end/cancel; W stamps keep them (drawing continues).
-  liveScale = 1;
-  liveRotateOffset = 0;
-  // Base circumradius of the Radial Stamp shape at 1x magnification,
-  // independent of the placement-circle radius (a future radius-relative
-  // mode may scale from a reference radius instead).
-  radialStampBaseRadius = 45;
-  // Locked placement-circle radius for Radial Stamp, toggled by the 0 key.
-  // Null means unlocked: the radius follows the cursor.
-  radialStampLockedRadius: number | null = null;
+  // Live-drawing adjustments live on DrawingSession. Stamps keep them;
+  // session start, complete, and cancel reset them.
+  get isDrawingPath(): boolean { return this.drawing.isDrawingPath; }
+  set isDrawingPath(value: boolean) { this.drawing.isDrawingPath = value; }
+  get isDrawingShape(): boolean { return this.drawing.isDrawingShape; }
+  set isDrawingShape(value: boolean) { this.drawing.isDrawingShape = value; }
+  get isDrawingQuad(): boolean { return this.drawing.isDrawingQuad; }
+  set isDrawingQuad(value: boolean) { this.drawing.isDrawingQuad = value; }
+  get shapeType(): ShapeType | null { return this.drawing.shapeType; }
+  set shapeType(value: ShapeType | null) { this.drawing.shapeType = value; }
+  get shapeStartPoint(): AnyItem { return this.drawing.shapeStartPoint; }
+  set shapeStartPoint(value: AnyItem) { this.drawing.shapeStartPoint = value; }
+  get shapePt2(): AnyItem { return this.drawing.shapePt2; }
+  set shapePt2(value: AnyItem) { this.drawing.shapePt2 = value; }
+  get shapeWidth(): number { return this.drawing.shapeWidth; }
+  set shapeWidth(value: number) { this.drawing.shapeWidth = value; }
+  get quadPath(): AnyItem { return this.drawing.quadPath; }
+  set quadPath(value: AnyItem) { this.drawing.quadPath = value; }
+  get quadPointCount(): number { return this.drawing.quadPointCount; }
+  set quadPointCount(value: number) { this.drawing.quadPointCount = value; }
+  get shapeGuideAngle(): number { return this.drawing.shapeGuideAngle; }
+  set shapeGuideAngle(value: number) { this.drawing.shapeGuideAngle = value; }
+  get liveScale(): number { return this.drawing.liveScale; }
+  set liveScale(value: number) { this.drawing.liveScale = value; }
+  get liveRotateOffset(): number { return this.drawing.liveRotateOffset; }
+  set liveRotateOffset(value: number) { this.drawing.liveRotateOffset = value; }
+  get radialStampBaseRadius(): number { return this.drawing.radialStampBaseRadius; }
+  set radialStampBaseRadius(value: number) { this.drawing.radialStampBaseRadius = value; }
+  get radialStampLockedRadius(): number | null { return this.drawing.radialStampLockedRadius; }
+  set radialStampLockedRadius(value: number | null) { this.drawing.radialStampLockedRadius = value; }
+  get previewInner(): AnyItem { return this.drawing.previewInner; }
+  set previewInner(value: AnyItem) { this.drawing.previewInner = value; }
+  get previewSplineText(): AnyItem { return this.drawing.previewSplineText; }
+  set previewSplineText(value: AnyItem) { this.drawing.previewSplineText = value; }
+  get previewShape(): AnyItem { return this.drawing.previewShape; }
+  set previewShape(value: AnyItem) { this.drawing.previewShape = value; }
+  get previewLine(): AnyItem { return this.drawing.previewLine; }
+  set previewLine(value: AnyItem) { this.drawing.previewLine = value; }
+  get previewPath(): AnyItem { return this.drawing.previewPath; }
+  set previewPath(value: AnyItem) { this.drawing.previewPath = value; }
+  get previewRect(): AnyItem { return this.drawing.previewRect; }
+  set previewRect(value: AnyItem) { this.drawing.previewRect = value; }
+  get path(): AnyItem { return this.drawing.path; }
+  set path(value: AnyItem) { this.drawing.path = value; }
+  get mousePt(): AnyItem { return this.drawing.mousePt; }
+  set mousePt(value: AnyItem) { this.drawing.mousePt = value; }
+  get lastMousePt(): AnyItem { return this.drawing.lastMousePt; }
+  set lastMousePt(value: AnyItem) { this.drawing.lastMousePt = value; }
   private pointer = new PointerController(this.pointerApi());
   private keyboard = new KeyboardController(this.keyboardApi());
   /** Unified live-drawing state across path, shape, and quad sessions. */
   get isLiveDrawing(): boolean {
     return this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad;
   }
-  previewInner: AnyItem = null;
-  previewSplineText: AnyItem = null;
-  previewShape: AnyItem = null;
-  previewLine: AnyItem = null;
-  previewPath: AnyItem = null;
-  previewRect: AnyItem = null;
-  path: AnyItem = null;
-  mousePt: AnyItem = null;
-  lastMousePt: AnyItem = null;
 
   // --- Selection (selectionFunctions.js) ---
   private readonly selection: SelectionManager;
@@ -362,6 +388,86 @@ export class NibGliderEngine {
       if (!item.parent) this.layers.addToActive(item);
       this.refreshSplineTextPreview();
     });
+    const host = this.drawingHost();
+    this.compositePathTool.bind(host);
+    this.circleTool = new CircleTool(host);
+    this.rectangleTool = new RectangleTool(host);
+    this.quadTool = new QuadTool(host);
+  }
+
+  private drawingHost(): DrawingHost {
+    return {
+      session: this.drawing,
+      scope: () => this.scope,
+      pathDrawingMode: () => this.pathDrawingMode,
+      splineTension: () => this.splineTension,
+      fillEnabled: () => this.fillEnabled,
+      strokeEnabled: () => this.strokeEnabled,
+      globalStrokeColor: () => this.globalStrokeColor,
+      globalStrokeWidth: () => this.globalStrokeWidth,
+      depositPointMode: () => this.depositPointMode,
+      circleRadiusAnchor: () => this.circleRadiusAnchor,
+      rectangleInnerShapeType: () => this.rectangleInnerShapeType,
+      innerShapeType: () => this.innerShapeType,
+      endpointTolerance: () => this.endpointTolerance(),
+      rectDiagonalScale: () => this.rectDiagonalScale(),
+      centerlineWidthForLength: (length) => this.centerlineWidthForLength(length),
+      lastCenterlineWidth: () => this.lastCenterlineWidth,
+      setLastCenterlineWidth: (width) => { this.lastCenterlineWidth = width; },
+      layerChildren: () => [...this.layers.activeLayer.children],
+      isNonContentItem: (item) => this.isNonContentItem(item),
+      addToActive: (item) => this.layers.addToActive(item),
+      applyStrokeGeometry: (item) => this.applyStrokeGeometry(item),
+      applyStrokeDash: (item) => this.applyStrokeDash(item),
+      applyCurrentStyles: (item) => this.applyCurrentStyles(item),
+      applyFill: (item) => this.applyFillSpec(item, this.fillSpec()),
+      stylePreviewFrame: (item, brightness) => this.stylePreviewFrame(item, brightness),
+      addPreviewShadow: (item) => this.addPreviewShadow(item),
+      clearShadow: (item) => this.clearShadow(item),
+      withShapeText: (item, isPreview) => this.withShapeText(item, isPreview),
+      resetStampedText: (item) => this.resetStampedText(item),
+      shapePartOf: (item) => this.shapePartOf(item),
+      createInnerShape: (center, radius, style, rotation) => this.createInnerShape(center, radius, style, rotation),
+      createRectFrameShape: (style) => this.createRectFrameShape(style),
+      drawInnerShape: (frame, style) => this.drawInnerShape(frame, style),
+      refreshSplineText: () => this.refreshSplineTextPreview(),
+      clearSplineText: () => this.clearSplineTextPreview(),
+      findOpenEndpointNear: (point) => this.findOpenEndpointNear(point),
+      removeFromSelection: (item) => this.selection.remove(item),
+      dropItem: (item) => this.dropItem(item),
+      place: (item, opts) => this.placeDeposited(item, opts),
+      capture: () => this.captureDeposit(),
+      commit: (label, snap, placed, retain) => {
+        this.recordSceneCommand(label, snap.before, snap.selected, placed, retain ? snap.retained : undefined);
+      },
+      isRetained: (shape) => {
+        const id = shape?.data?.drawableId;
+        return typeof id === 'string' && this.retainedPaths.get(id)?.item === shape;
+      },
+      bezierSource: (item) => this.scene.bezierSource(item),
+      retainResult: (item, source) => this.retainCompositeResult(item, source),
+      pruneRecords: () => this.scene.pruneRecords(),
+      updateTextContent: () => this.updateTextContent(),
+      notify: () => this.notify(),
+      cancelDrawing: () => this.cancelCurrentDrawingOperation(),
+    };
+  }
+
+  private placeDeposited(item: AnyItem, opts?: { front?: boolean; opacity?: number }): AnyItem | null {
+    const placed = this.depositWithCombine(item);
+    if (!placed) return null;
+    placed.selected = false;
+    if (opts?.opacity != null) placed.opacity = opts.opacity;
+    if (opts?.front || placed.parent == null) this.layers.activeLayer.addChild(placed);
+    return placed;
+  }
+
+  private captureDeposit(): { before: AnyItem[]; selected: AnyItem[]; retained: Map<string, RetainedPath> } {
+    return {
+      before: this.contentItems(),
+      selected: [...this.selectedItems],
+      retained: new Map(this.retainedPaths),
+    };
   }
 
   private pointerApi(): PointerHost {
@@ -383,11 +489,8 @@ export class NibGliderEngine {
         const segments = this.path?.segments;
         return segments?.length ? segments[segments.length === 1 ? 0 : segments.length - 2].point : null;
       },
-      updateLivePath: (point) => {
-        if (!this.compositePathTool.active) return false;
-        this.compositePathTool.move(point);
-        return true;
-      },
+      updateLivePath: (point) => this.compositePathTool.track(point),
+      updateLiveQuad: () => this.quadTool.track(),
       isCompositePathDrawing: () => this.compositePathTool.active,
       quadPath: () => this.quadPath,
       selectedItems: () => this.selectedItems,
@@ -2396,77 +2499,6 @@ export class NibGliderEngine {
     return best;
   }
 
-  private cloneSegmentInto(path: AnyItem, seg: AnyItem): void {
-    const added = path.add(seg.point.clone());
-    if (!added) return;
-    if (seg.handleIn) added.handleIn = seg.handleIn.clone();
-    if (seg.handleOut) added.handleOut = seg.handleOut.clone();
-  }
-
-  // Weld a stroke's start onto another open path's endpoint at deposit:
-  // the joint snaps onto the target endpoint and the stroke's own points
-  // join the target (appended past its end, or prepended before its
-  // start), so an open stroke begun on an endpoint becomes part of that
-  // path. The surviving target keeps its own styles.
-  private joinDrawingStartInto(target: AnyItem, atStart: boolean): void {
-    const drawing = this.path;
-    const ours = drawing.segments;
-    const tsegs = target.segments;
-    const joint = atStart ? tsegs[0].point : tsegs[tsegs.length - 1].point;
-    ours[0].point = joint.clone();
-    if (atStart) {
-      // Prepending reverses point order, so each joint's handles swap
-      // sides to preserve the drawn curvature.
-      for (let i = 1; i < ours.length; i++) {
-        const seg = ours[i];
-        const inserted = target.insertSegment(0, seg.point.clone());
-        if (inserted) {
-          if (seg.handleOut) inserted.handleIn = seg.handleOut.clone();
-          if (seg.handleIn) inserted.handleOut = seg.handleIn.clone();
-        }
-      }
-    } else {
-      for (let i = 1; i < ours.length; i++) {
-        this.cloneSegmentInto(target, ours[i]);
-      }
-    }
-    this.path = target;
-    drawing.remove();
-  }
-
-  // END on another open path's endpoint: connect the drawing to it. The
-  // cursor point snaps onto the target endpoint for a clean joint, and
-  // the duplicate joint point is skipped so no zero-length segment forms.
-  // Ending on the target's end appends our points to it (it keeps its own
-  // styles); ending on its start appends its points to our drawing, which
-  // is then finalized with the current styles.
-  private joinDrawingInto(target: AnyItem, atStart: boolean): void {
-    const ours = this.path.segments;
-    const tsegs = target.segments;
-    const joint = atStart
-      ? tsegs[0].point
-      : tsegs[tsegs.length - 1].point;
-    ours[ours.length - 1].point = joint.clone();
-    if (atStart) {
-      for (let i = 1; i < tsegs.length; i++) {
-        this.cloneSegmentInto(this.path, tsegs[i]);
-      }
-      this.selection.remove(target);
-      target.remove();
-      this.applyCurrentStyles(this.path);
-      if (this.fillEnabled) this.path.closed = true;
-    } else {
-      const drawing = this.path;
-      for (let i = 0; i < ours.length - 1; i++) {
-        this.cloneSegmentInto(target, ours[i]);
-      }
-      this.path = target;
-      // The drawing's points now live on the target; drop the emptied
-      // stroke so no orphaned duplicate stays in the layer.
-      drawing.remove();
-    }
-  }
-
   // --- Selection (selectionFunctions.js + NibGliderApp.js) ---
   addItemToSelection(item: AnyItem): void {
     this.selection.add(item);
@@ -2716,6 +2748,17 @@ export class NibGliderEngine {
   }
 
   // --- Drawing tools (drawingToolsAndFunctions.js) ---
+  private retainCloneSources(original: paper.Item, clone: paper.Item): void {
+    this.scene.retainClone(original, clone, (item) => this.shapePartOf(item));
+  }
+
+  private retainCompositeResult(item: paper.Item, source?: NGPath): void {
+    const shape = this.shapePartOf(item);
+    if (!(shape instanceof this.scope.Path || shape instanceof this.scope.CompoundPath)) return;
+    const id = this.scene.retain(shape, source);
+    item.data.drawableId = id;
+  }
+
   stampItems(itemsToStamp: AnyItem[] | null): void {
     if (itemsToStamp === null) return;
     const before = this.contentItems();
@@ -2740,47 +2783,13 @@ export class NibGliderEngine {
 
   cancelCurrentDrawingOperation(): void {
     this.compositePathTool.cancel();
+    this.circleTool.cancel();
+    this.rectangleTool.cancel();
+    this.quadTool.cancel();
+    // Clears anything a tool did not claim, and resets live scale/rotation.
+    this.drawing.cancel();
     // Cancel (Q / Escape) also releases drag-lock, like Space does.
     this.setIsInDragLock(false);
-    if (this.previewInner) {
-      this.previewInner.remove();
-      this.previewInner = null;
-    }
-    this.clearSplineTextPreview();
-    if (this.isDrawingPath && this.path) {
-      this.path.remove();
-      this.path = null;
-      this.isDrawingPath = false;
-    }
-    if (this.isDrawingShape) {
-      if (this.previewShape) this.previewShape.remove();
-      if (this.previewLine) this.previewLine.remove();
-      if (this.previewPath) {
-        this.previewPath.remove();
-        this.previewPath = null;
-      }
-      if (this.previewRect) {
-        this.previewRect.remove();
-        this.previewRect = null;
-      }
-      if (this.previewInner) {
-        this.previewInner.remove();
-        this.previewInner = null;
-      }
-      this.previewShape = null;
-      this.previewLine = null;
-      this.isDrawingShape = false;
-      this.shapeType = null;
-      this.shapeStartPoint = null;
-      this.shapePt2 = null;
-    }
-    if (this.isDrawingQuad && this.quadPath) {
-      this.quadPath.remove();
-      this.quadPath = null;
-      this.isDrawingQuad = false;
-      this.quadPointCount = 0;
-    }
-    this.resetLiveAdjust();
     this.notify();
   }
 
@@ -3877,636 +3886,80 @@ export class NibGliderEngine {
   }
 
   rectCenterlineKC(): void {
-    const scope = this.scope;
-    if (this.shapeType === 'rectangle_centerline') {
-      const histBefore = this.contentItems();
-      const histSel = [...this.selectedItems];
-      const placed = this.endShapeAsStroke();
-      this.recordSceneCommand('Deposit shape', histBefore, histSel, placed);
-      this.updateTextContent();
-      return;
-    }
-    if (this.isDrawingShape) this.cancelCurrentDrawingOperation();
-    if (!this.mousePt) return;
-    this.resetLiveAdjust();
-    this.shapeStartPoint = this.mousePt.clone();
-    this.shapeType = 'rectangle_centerline';
-    this.shapeWidth = this.lastCenterlineWidth;
-    this.isDrawingShape = true;
-    this.previewShape = null;
-    this.previewPath = null;
-    this.previewLine = new scope.Path({
-      segments: [this.shapeStartPoint, this.shapeStartPoint],
-      strokeColor: new scope.Color(0.5),
-      strokeWidth: 1,
-      strokeDasharray: [4, 4],
-    });
-    this.layers.activeLayer.addChild(this.previewLine);
-    this.previewRect = new scope.Path({
-      segments: [
-        this.shapeStartPoint,
-        this.shapeStartPoint,
-        this.shapeStartPoint,
-        this.shapeStartPoint,
-      ],
-      closed: true,
-      strokeColor: this.globalStrokeColor,
-      strokeWidth: this.globalStrokeWidth,
-    });
-    this.layers.activeLayer.addChild(this.previewRect);
-    this.stylePreviewFrame(this.previewRect, 1);
-    this.applyStrokeGeometry(this.previewRect);
-    this.updateTextContent();
-    this.notify();
+    this.finishOrBeginRect(() => this.rectangleTool.beginCenterline());
   }
 
   rectTwoEdgesKC(): void {
-    const scope = this.scope;
-    if (this.shapeType === 'rectangle_two_edges') {
-      if (this.shapePt2 === null) {
-        this.shapePt2 = this.mousePt.clone();
-        if (this.previewPath) this.previewPath.add(this.shapePt2);
-        this.previewLine.firstSegment.point = this.shapePt2;
-        this.previewLine.lastSegment.point = this.shapePt2;
-        const pt1 = this.shapeStartPoint;
-        const pt2 = this.shapePt2;
-        const pt3 = this.mousePt;
-        const dir1 = pt2.subtract(pt1).normalize();
-        const v2 = pt3.subtract(pt2);
-        const perpVec = v2.subtract(dir1.multiply(v2.dot(dir1)));
-        const ptC = pt2.add(perpVec);
-        const ptD = pt1.add(perpVec);
-        this.previewRect = new scope.Path({
-          segments: [pt1, pt2, ptC, ptD],
-          closed: true,
-          strokeColor: this.globalStrokeColor,
-          strokeWidth: this.globalStrokeWidth,
-        });
-        this.layers.activeLayer.addChild(this.previewRect);
-        this.stylePreviewFrame(this.previewRect, 1);
-        this.applyStrokeGeometry(this.previewRect);
-        this.updateTextContent();
-      } else {
-        const histBefore = this.contentItems();
-        const histSel = [...this.selectedItems];
-        const placed = this.endShapeAsStroke();
-        this.recordSceneCommand(
-          'Deposit shape',
-          histBefore,
-          histSel,
-          placed,
-        );
-      }
+    this.finishOrBeginRect(() => this.rectangleTool.beginTwoEdges());
+  }
+
+  rectDiagonalKC(): void {
+    this.finishOrBeginRect(() => this.rectangleTool.beginDiagonal());
+  }
+
+  private finishOrBeginRect(begin: () => 'finish' | 'advance' | 'started' | 'noop'): void {
+    const result = begin();
+    if (result === 'finish') {
+      const snap = this.captureDeposit();
+      const placed = this.endShapeAsStroke();
+      this.recordSceneCommand('Deposit shape', snap.before, snap.selected, placed);
+      this.updateTextContent();
       return;
     }
-    if (this.isDrawingShape || !this.mousePt) return;
-    this.resetLiveAdjust();
-    this.shapeStartPoint = this.mousePt.clone();
-    this.shapeType = 'rectangle_two_edges';
-    this.shapePt2 = null;
-    this.isDrawingShape = true;
-    this.previewPath = new scope.Path({
-      segments: [this.shapeStartPoint],
-      strokeColor: this.globalStrokeColor,
-      strokeWidth: this.globalStrokeWidth,
-    });
-    this.applyStrokeGeometry(this.previewPath);
-    this.layers.activeLayer.addChild(this.previewPath);
-    this.previewLine = new scope.Path({
-      segments: [this.shapeStartPoint, this.shapeStartPoint],
-      strokeColor: new scope.Color(0.5),
-      strokeWidth: 1,
-      strokeDasharray: [4, 4],
-    });
-    this.layers.activeLayer.addChild(this.previewLine);
-    this.updateTextContent();
-    this.notify();
+    if (result === 'advance') {
+      this.updateTextContent();
+      return;
+    }
+    if (result === 'started') {
+      this.updateTextContent();
+      this.notify();
+    }
   }
 
   quadPointKC(): void {
-    const scope = this.scope;
-    if (!this.mousePt) return;
-    const histBefore = this.contentItems();
-    const histSel = [...this.selectedItems];
-    if (!this.quadPath) {
-      this.quadPath = new scope.Path({
-        segments: [this.mousePt],
-        strokeColor: this.globalStrokeColor,
-        strokeWidth: this.globalStrokeWidth,
-        fullySelected: true,
-      });
-      this.applyStrokeGeometry(this.quadPath);
-      this.quadPointCount = 1;
-      this.isDrawingQuad = true;
-      this.resetLiveAdjust();
-    } else {
-      this.quadPath.add(this.mousePt);
-      this.quadPointCount++;
-      if (this.quadPointCount === 4) {
-        this.applyCurrentStyles(this.quadPath);
-        this.quadPath.closed = true;
-        this.quadPath.selected = false;
-        const placed = this.depositWithCombine(this.quadPath);
-        if (placed) {
-          placed.selected = false;
-          if (placed.parent == null) this.layers.activeLayer.addChild(placed);
-        }
-        this.quadPath = null;
-        this.isDrawingQuad = false;
-        this.quadPointCount = 0;
-        this.resetLiveAdjust();
-        this.recordSceneCommand('Deposit shape', histBefore, histSel, [
-          placed,
-        ]);
-        this.updateTextContent();
-        this.notify();
-        return;
-      }
+    const snap = this.captureDeposit();
+    const result = this.quadTool.addPoint();
+    if (result === 'deposited') {
+      this.recordSceneCommand('Deposit shape', snap.before, snap.selected, [this.quadTool.lastPlaced]);
+      this.updateTextContent();
+      this.notify();
+      return;
     }
-    this.updateTextContent();
-    this.notify();
+    if (result === 'added') {
+      this.updateTextContent();
+      this.notify();
+    }
   }
 
   stampCurrentPreview(): void {
-    if (this.compositePathTool.active) {
-      const deposit = this.compositePathTool.stamp(this.fillEnabled);
-      if (deposit) this.depositCompositePath(deposit, 'Stamp');
-      return;
-    }
-    const histBefore = this.contentItems();
-    const histSel = [...this.selectedItems];
-    if (this.isDrawingPath && this.path) {
-      const stampedBase = this.path.clone();
-      this.applyCurrentStyles(stampedBase);
-      if (this.fillEnabled) stampedBase.closed = true;
-      const stamped = this.withShapeText(stampedBase, false);
-      stamped.selected = false;
-      const placedStamp = this.depositWithCombine(stamped);
-      if (placedStamp) {
-        placedStamp.selected = false;
-        placedStamp.opacity = 1;
-        this.layers.activeLayer.addChild(placedStamp);
-      }
-    } else if (this.isDrawingShape) {
-      if (
-        this.shapeType != null &&
-        this.shapeType.startsWith('circle_') &&
-        this.previewShape &&
-        this.previewShape.radius > 0
-      ) {
-        const isRadial = this.shapeType === 'circle_radial_stamp';
-        const center = isRadial
-          ? this.radialStampTangentPoint()
-          : this.previewShape.position;
-        const radius = this.previewShape.radius;
-        const strokeW = this.strokeEnabled ? this.globalStrokeWidth : 0;
-        const iradius = isRadial
-          ? this.radialStampBaseRadius * this.liveScale
-          : Math.max(0, radius - strokeW / 2) * this.liveScale;
-        const rotation = isRadial
-          ? this.radialStampRotation()
-          : this.shapeGuideAngle + this.liveRotateOffset;
-        if (center && iradius > 0) {
-          const stampedInner = this.createInnerShape(center, iradius, 'stroke', rotation);
-          if (stampedInner) {
-            this.applyCurrentStyles(this.shapePartOf(stampedInner));
-            stampedInner.selected = false;
-            const placedInner = this.depositWithCombine(stampedInner);
-            if (placedInner) {
-              placedInner.selected = false;
-              this.layers.activeLayer.addChild(placedInner);
-            }
-          }
-        }
-      } else if (
-        this.shapeType != null &&
-        this.shapeType.startsWith('rectangle_') &&
-        this.rectangleInnerShapeType !== 'rectangle'
-      ) {
-        const stampedShape = this.createRectFrameShape('stroke');
-        if (stampedShape) {
-          this.applyCurrentStyles(this.shapePartOf(stampedShape));
-          stampedShape.selected = false;
-          const placedShape = this.depositWithCombine(stampedShape);
-          if (placedShape) {
-            placedShape.selected = false;
-            this.layers.activeLayer.addChild(placedShape);
-          }
-        }
-      } else {
-        const framePreview = this.previewShape || this.previewRect || this.previewPath;
-        if (framePreview) {
-          const stampedFrame = framePreview.clone();
-          this.applyCurrentStyles(stampedFrame);
-          this.clearShadow(stampedFrame);
-          stampedFrame.opacity = 1;
-          stampedFrame.selected = false;
-          const placedFrame = this.depositWithCombine(stampedFrame);
-          if (placedFrame) {
-            placedFrame.selected = false;
-            this.layers.activeLayer.addChild(placedFrame);
-          }
-        }
-        if (this.previewInner) {
-          const stampedInner = this.previewInner.clone();
-          this.clearShadow(stampedInner);
-          this.resetStampedText(stampedInner);
-          const target = this.shapePartOf(stampedInner);
-          target.strokeColor = this.strokeEnabled ? this.globalStrokeColor : null;
-          target.strokeWidth = this.strokeEnabled ? this.globalStrokeWidth * 0.7 : 0;
-          if (this.fillEnabled) {
-            this.applyFillSpec(target, this.fillSpec());
-          } else {
-            target.fillColor = null;
-          }
-          this.applyStrokeGeometry(target);
-          this.applyStrokeDash(target);
-          stampedInner.selected = false;
-          const placedPreview = this.depositWithCombine(stampedInner);
-          if (placedPreview) {
-            placedPreview.selected = false;
-            this.layers.activeLayer.addChild(placedPreview);
-          }
-        }
-      }
-    } else if (this.isDrawingQuad && this.quadPath) {
-      const stamped = this.quadPath.clone();
-      this.applyCurrentStyles(stamped);
-      stamped.closed = true;
-      stamped.selected = false;
-      const placedQuad = this.depositWithCombine(stamped);
-      if (placedQuad) {
-        placedQuad.selected = false;
-        placedQuad.opacity = 1;
-        this.layers.activeLayer.addChild(placedQuad);
-      }
-    }
-    this.recordSceneCommand('Stamp', histBefore, histSel, []);
+    if (this.compositePathTool.stampComposite(this.fillEnabled)) return;
+    const snap = this.captureDeposit();
+    if (this.isDrawingPath && this.path) this.compositePathTool.stampLegacy();
+    else if (!this.circleTool.stamp() && !this.rectangleTool.stamp() && this.isDrawingQuad) this.quadTool.stamp();
+    this.recordSceneCommand('Stamp', snap.before, snap.selected, []);
     this.updateTextContent();
   }
 
   endPathOrShape(): void {
     if (this.compositePathTool.active) {
-      this.finishCompositePath(false);
+      this.compositePathTool.finishIntoScene(false);
       return;
     }
-    const histBefore = this.contentItems();
-    const histSel = [...this.selectedItems];
+    const snap = this.captureDeposit();
     const deposited: Array<AnyItem | null> = [];
-    if (this.isDrawingPath && this.path) {
-      const segs = this.path.segments;
-      const first = segs.length > 0 ? segs[0].point : null;
-      const tol = this.endpointTolerance();
-      const autoJoin = this.depositPointMode === 1;
-      if (
-        autoJoin &&
-        first &&
-        segs.length >= 3 &&
-        this.mousePt &&
-        this.mousePt.getDistance(first) <= tol
-      ) {
-        // END on the shape's own start: the start point becomes the last
-        // point and the shape closes (straight, like END).
-        this.path.removeSegment(segs.length - 1);
-        this.path.add(first.clone());
-        this.applyCurrentStyles(this.path);
-        this.path.closed = true;
-      } else if (autoJoin && this.mousePt) {
-        const hit = this.findOpenEndpointNear(this.mousePt);
-        if (hit) {
-          this.joinDrawingInto(hit.path, hit.atStart);
-        } else {
-          // No end join: weld a start begun on an open endpoint so an
-          // open stroke still joins into the path it started from.
-          const startHit =
-            first && segs.length >= 2
-              ? this.findOpenEndpointNear(first)
-              : null;
-          if (startHit) {
-            this.joinDrawingStartInto(startHit.path, startHit.atStart);
-          } else {
-            this.applyCurrentStyles(this.path);
-            if (this.fillEnabled) this.path.closed = true;
-          }
-        }
-      } else {
-        this.applyCurrentStyles(this.path);
-        if (this.fillEnabled) this.path.closed = true;
-      }
-      // Text Mode applies to spline drawing too: derive Display/Body
-      // text from the finished stroke, same as circle/rect keys. Grouping
-      // reparents a joined path out of the layer, so always add the
-      // returned group when it has no parent yet.
-      const finished = this.withShapeText(this.path, false);
-      finished.selected = false;
-      // Deposit-time combinatorics folds the stroke into the selection
-      // when a combine mode is armed.
-      const placed = this.depositWithCombine(finished);
-      if (placed) {
-        placed.selected = false;
-        // A joined path already lives in the layer; re-adding would
-        // only reorder it to the front.
-        if (placed.parent == null) {
-          this.layers.activeLayer.addChild(placed);
-        }
-      }
-      deposited.push(finished);
-      this.path = null;
-      this.isDrawingPath = false;
-      this.resetLiveAdjust();
-      this.clearSplineTextPreview();
-    } else if (this.isDrawingShape) {
-      deposited.push(...this.endShapeAsStroke());
-      if (this.previewInner) {
-        this.previewInner.remove();
-        this.previewInner = null;
-      }
-    } else if (this.isDrawingQuad && this.quadPath) {
-      this.applyCurrentStyles(this.quadPath);
-      this.quadPath.closed = true;
-      this.quadPath.selected = false;
-      const placedQuadEnd = this.depositWithCombine(this.quadPath);
-      if (placedQuadEnd) {
-        placedQuadEnd.selected = false;
-        if (placedQuadEnd.parent == null) {
-          this.layers.activeLayer.addChild(placedQuadEnd);
-        }
-      }
-      deposited.push(placedQuadEnd);
-      this.quadPath = null;
-      this.isDrawingQuad = false;
-      this.quadPointCount = 0;
-      this.resetLiveAdjust();
-    }
-    this.recordSceneCommand('Deposit shape', histBefore, histSel, deposited);
+    if (this.isDrawingPath && this.path) deposited.push(...this.compositePathTool.finishLegacy());
+    else if (this.isDrawingShape) deposited.push(...this.endShapeAsStroke());
+    else if (this.isDrawingQuad && this.quadPath) deposited.push(this.quadTool.finish());
+    this.recordSceneCommand('Deposit shape', snap.before, snap.selected, deposited);
     this.updateTextContent();
     this.notify();
   }
 
-  polyLineKC(): void {
-    if (this.pathDrawingMode === 'ngComposite') { this.compositePoint('hardCorner'); return; }
-    const scope = this.scope;
-    if (!this.mousePt) return;
-    if (!this.path) {
-      this.path = new scope.Path({
-        segments: [this.mousePt],
-        strokeColor: this.globalStrokeColor,
-        strokeWidth: this.globalStrokeWidth,
-        fullySelected: true,
-      });
-      this.applyStrokeGeometry(this.path);
-      this.applyStrokeDash(this.path);
-    } else {
-      const newSegment = this.path.add(this.mousePt);
-      if (newSegment) {
-        newSegment.handleIn = new scope.Point(0, 0);
-        newSegment.handleOut = new scope.Point(0, 0);
-      }
-    }
-    if (this.isDrawingPath === false) {
-      this.isDrawingPath = true;
-      this.resetLiveAdjust();
-    }
-    this.updateTextContent();
-    this.notify();
-  }
+  polyLineKC(): void { this.compositePathTool.sharpKey(); }
+  roundedPointKC(): void { this.compositePathTool.roundedKey(); }
+  splinePointKC(): void { this.compositePathTool.splineKey(); }
 
-  roundedPointKC(): void {
-    if (this.pathDrawingMode === 'ngComposite') this.compositePoint('roundedCorner');
-  }
-
-  private retainCloneSources(original: paper.Item, clone: paper.Item): void {
-    this.scene.retainClone(original, clone, (item) => this.shapePartOf(item));
-  }
-
-  private compositePoint(kind: 'bSpline' | 'hardCorner' | 'roundedCorner'): void {
-    if (!this.mousePt || this.isDrawingShape || this.isDrawingQuad) return;
-    this.compositePathTool.point(kind, this.mousePt);
-    this.path = this.compositePathTool.preview;
-    this.isDrawingPath = true;
-    this.updateTextContent();
-    this.notify();
-  }
-
-  private finishCompositePath(close: boolean): void {
-    const origin = this.compositePathTool.origin;
-    const nearStart = origin && this.mousePt && this.mousePt.getDistance(new this.scope.Point(origin.x, origin.y)) <= this.endpointTolerance();
-    const closed = close || this.fillEnabled || (this.depositPointMode === 1 && !!nearStart);
-    if (closed && nearStart) this.compositePathTool.move(origin!);
-    const deposit = this.compositePathTool.finish(closed);
-    this.path = null;
-    this.isDrawingPath = false;
-    this.resetLiveAdjust();
-    this.clearSplineTextPreview();
-    if (deposit) this.depositCompositePath(deposit, 'Deposit composite path');
-    this.updateTextContent();
-    this.notify();
-  }
-
-  private findCompositeEndpoint(point: paper.Point): { path: paper.Path; atStart: boolean } | null {
-    let best: { path: paper.Path; atStart: boolean } | null = null;
-    let distance = this.endpointTolerance();
-    for (const item of this.layers.activeLayer.children) {
-      // Joining plain top-level paths is an explicit conversion boundary.
-      // Groups/text keep their structure until scene/operation policy work.
-      if (!(item instanceof this.scope.Path) || item.closed || !item.segments.length || this.isNonContentItem(item)) continue;
-      for (const atStart of [false, true]) {
-        const segment = item.segments[atStart ? 0 : item.segments.length - 1];
-        const d = item.localToGlobal(segment.point).getDistance(point);
-        if (d <= distance) { distance = d; best = { path: item, atStart }; }
-      }
-    }
-    return best;
-  }
-
-  private joinCompositeDeposit(item: paper.Path): paper.Path {
-    if (item.closed || this.depositPointMode !== 1 || !item.segments.length) return item;
-    const end = item.segments[item.segments.length - 1].point;
-    const endHit = this.findCompositeEndpoint(end);
-    const hit = endHit ?? this.findCompositeEndpoint(item.segments[0].point);
-    if (!hit) return item;
-    const target = hit.path;
-    const matrix = target.globalMatrix;
-    const targetSegments = target.segments.map((s) => {
-      const transformHandle = (p: paper.Point) => new this.scope.Point(matrix.a * p.x + matrix.c * p.y, matrix.b * p.x + matrix.d * p.y);
-      return new this.scope.Segment(target.localToGlobal(s.point), transformHandle(s.handleIn), transformHandle(s.handleOut));
-    });
-    const drawing = item.segments.map((s) => s.clone());
-    const reverse = (segments: paper.Segment[]) => segments.reverse().map((s) => new this.scope.Segment(s.point, s.handleOut, s.handleIn));
-    const merge = (left: paper.Segment[], right: paper.Segment[]) => {
-      // The shared anchor owns the incoming handle from the left path and
-      // the outgoing handle from the right path.
-      left[left.length - 1].handleOut = right[0].handleOut.clone();
-      return [...left, ...right.slice(1)];
-    };
-    const joint = targetSegments[hit.atStart ? 0 : targetSegments.length - 1].point;
-    let segments: paper.Segment[];
-    if (endHit) {
-      drawing[drawing.length - 1].point = joint.clone();
-      segments = hit.atStart ? merge(drawing, targetSegments) : merge(targetSegments, reverse(drawing));
-    } else {
-      drawing[0].point = joint.clone();
-      segments = hit.atStart ? merge(reverse(drawing), targetSegments) : merge(targetSegments, drawing);
-    }
-    const joined = new this.scope.Path({ insert: false, applyMatrix: false, segments });
-    // Replace the old path instead of mutating its segments so the existing
-    // scene transaction restores geometry AND placement on undo.
-    item.remove(); this.dropItem(target);
-    return joined;
-  }
-
-  private depositCompositePath(deposit: CompositeDeposit, label: string): void {
-    const before = this.contentItems();
-    const selected = [...this.selectedItems];
-    const retainedBefore = new Map(this.retainedPaths);
-    const geometry = label === 'Stamp' ? deposit.item : this.joinCompositeDeposit(deposit.item);
-    this.applyCurrentStyles(geometry);
-    const finished = this.withShapeText(geometry, false);
-    const placed = this.depositWithCombine(finished);
-    if (placed) {
-      placed.selected = false;
-      if (!placed.parent) this.layers.activeLayer.addChild(placed);
-      const shape = this.shapePartOf(placed);
-      if (shape instanceof this.scope.Path || shape instanceof this.scope.CompoundPath) {
-        const source = placed === finished && geometry === deposit.item ? deposit.source : this.scene.bezierSource(shape);
-        this.retainCompositeResult(placed, source);
-      }
-    }
-    // Subtract consumes the deposit and returns null while placing one or
-    // more cuts itself. Capture those new results as lowered Bezier records.
-    const previousItems = new Set(before);
-    for (const item of this.contentItems()) {
-      if (!previousItems.has(item)) {
-        const shape = this.shapePartOf(item);
-        if (this.retainedPaths.get(shape?.data.drawableId)?.item !== shape) this.retainCompositeResult(item);
-      }
-    }
-    // Removed boolean/join operands are retained by the undo snapshot, not
-    // falsely advertised as current editable composite document objects.
-    this.scene.pruneRecords();
-    this.recordSceneCommand(label, before, selected, placed ? [placed] : [], retainedBefore);
-    this.updateTextContent(); this.notify();
-  }
-
-  private retainCompositeResult(item: paper.Item, source?: NGPath): void {
-    const shape = this.shapePartOf(item);
-    if (!(shape instanceof this.scope.Path || shape instanceof this.scope.CompoundPath)) return;
-    const id = this.scene.retain(shape, source);
-    item.data.drawableId = id;
-  }
-
-  splinePointKC(): void {
-    if (this.pathDrawingMode === 'ngComposite') { this.compositePoint('bSpline'); return; }
-    const scope = this.scope;
-    if (!this.mousePt) return;
-    if (!this.path) {
-      this.path = new scope.Path({
-        segments: [this.mousePt],
-        strokeColor: this.globalStrokeColor,
-        strokeWidth: this.globalStrokeWidth,
-        fullySelected: true,
-      });
-      this.applyStrokeGeometry(this.path);
-      this.applyStrokeDash(this.path);
-    } else {
-      const newSegment = this.path.add(this.mousePt);
-      this.smoothLastSplineJoint(newSegment);
-    }
-    if (this.isDrawingPath === false) {
-      this.isDrawingPath = true;
-      this.resetLiveAdjust();
-    }
-    this.updateTextContent();
-    this.notify();
-  }
-
-  // Mirror of the spline smoothing in splinePointKC: shape the joint
-  // before the path's last segment from the neighboring points, scaled
-  // by the current spline tension.
-  private smoothLastSplineJoint(newSegment: AnyItem): void {
-    if (!newSegment || !this.path || this.path.segments.length < 3) return;
-    const curr = this.path.segments[this.path.segments.length - 2];
-    const next = newSegment;
-    const p0 = this.path.segments[this.path.segments.length - 3].point;
-    const p1 = curr.point;
-    const p2 = next.point;
-    const d01 = p1.subtract(p0);
-    const d12 = p2.subtract(p1);
-    next.handleIn = d12.multiply(this.splineTension * 0.5);
-    curr.handleOut = d01.multiply(this.splineTension * 0.5);
-    if (curr.handleIn) {
-      curr.handleIn = curr.handleOut.multiply(-1);
-    }
-  }
-
-  // A joint drawn with the sharp key carries no handles; a spline joint
-  // does. The final segment inherits the character of the joint it leaves.
-  private jointIsSpline(seg: AnyItem): boolean {
-    if (!seg) return false;
-    const hi = seg.handleIn;
-    const ho = seg.handleOut;
-    return (
-      (!!hi && (hi.x !== 0 || hi.y !== 0)) ||
-      (!!ho && (ho.x !== 0 || ho.y !== 0))
-    );
-  }
-
-  // Complete Shape (R key): finish a path being drawn by committing the
-  // last segment from where the mouse is, then closing the shape. The
-  // trailing live-preview segment is replaced in place so no zero-length
-  // stub is left behind. The final segment is a spline only when the
-  // joint it leaves is one (all-sharp paths stay all-straight); otherwise
-  // it is committed sharp, exactly like the sharp key. When the mouse is
-  // near the first point, the final point lands exactly on it.
-  completeShapeWithSpline(): void {
-    if (this.compositePathTool.active) { this.finishCompositePath(true); return; }
-    const scope = this.scope;
-    if (!this.isDrawingPath || !this.path || !this.mousePt) return;
-    const histBefore = this.contentItems();
-    const histSel = [...this.selectedItems];
-    if (this.path.segments.length > 1) {
-      this.path.removeSegment(this.path.segments.length - 1);
-    }
-    let endPt = this.mousePt;
-    const first =
-      this.path.segments.length > 0 ? this.path.segments[0].point : null;
-    if (first) {
-      if (endPt.getDistance(first) <= this.endpointTolerance()) {
-        endPt = first.clone();
-      }
-    }
-    const newSegment = this.path.add(endPt);
-    const joint =
-      this.path.segments.length >= 2
-        ? this.path.segments[this.path.segments.length - 2]
-        : null;
-    if (this.jointIsSpline(joint)) {
-      this.smoothLastSplineJoint(newSegment);
-    } else if (newSegment) {
-      newSegment.handleIn = new scope.Point(0, 0);
-      newSegment.handleOut = new scope.Point(0, 0);
-    }
-    this.applyCurrentStyles(this.path);
-    this.path.closed = true;
-    const completed = this.withShapeText(this.path, false);
-    completed.selected = false;
-    const placedComplete = this.depositWithCombine(completed);
-    if (placedComplete) {
-      placedComplete.selected = false;
-      if (placedComplete.parent == null) {
-        this.layers.activeLayer.addChild(placedComplete);
-      }
-    }
-    this.path = null;
-    this.isDrawingPath = false;
-    this.resetLiveAdjust();
-    this.clearSplineTextPreview();
-    this.recordSceneCommand('Deposit shape', histBefore, histSel, [
-      completed,
-    ]);
-    this.updateTextContent();
-    this.notify();
-  }
+  completeShapeWithSpline(): void { this.compositePathTool.completeWithSpline(); }
 
   // --- Live-drawing key remaps ---
   // Reserved number-key slots for future live bindings (repeat counts,
@@ -4527,12 +3980,6 @@ export class NibGliderEngine {
     this.keyboard.register(binding);
   }
 
-  private resetLiveAdjust(): void {
-    this.liveScale = 1;
-    this.liveRotateOffset = 0;
-    this.radialStampLockedRadius = null;
-  }
-
   // Live scale/rotate apply to in-progress paths/quads (transformed about
   // the first point) and to circle-mode previews (folded into the fitted
   // shape). Rect Keys modes keep their existing behavior for now.
@@ -4545,46 +3992,7 @@ export class NibGliderEngine {
     );
   }
 
-  // Rotation baked into Radial Stamp geometry: tangent to the placement
-  // circle (guide angle + 90deg) plus the live rotation offset.
-  private radialStampRotation(): number {
-    return this.shapeGuideAngle + 90 + this.liveRotateOffset;
-  }
-
-  // Tangent point of the riding shape: projected onto the locked circle
-  // while the 0-key radius lock is on, otherwise the cursor itself.
-  private radialStampTangentPoint(): AnyItem {
-    if (
-      this.radialStampLockedRadius == null ||
-      !this.shapeStartPoint ||
-      !this.mousePt
-    ) {
-      return this.mousePt ? this.mousePt.clone() : null;
-    }
-    const vec = this.mousePt.subtract(this.shapeStartPoint);
-    if (!(vec.length > 0)) return this.shapeStartPoint.clone();
-    return this.shapeStartPoint.add(
-      vec.normalize().multiply(this.radialStampLockedRadius),
-    );
-  }
-
-  // 0 key: lock the placement radius at its current value, or unlock it
-  // so it follows the cursor again. Only meaningful mid-session.
-  toggleRadialStampRadiusLock(): void {
-    if (!this.isDrawingShape || this.shapeType !== 'circle_radial_stamp') {
-      return;
-    }
-    if (this.radialStampLockedRadius != null) {
-      this.radialStampLockedRadius = null;
-    } else {
-      this.radialStampLockedRadius = this.previewShape
-        ? this.previewShape.radius
-        : 0;
-    }
-    this.updateShapePreview();
-    this.updateTextContent();
-    this.notify();
-  }
+  toggleRadialStampRadiusLock(): void { this.circleTool.toggleRadiusLock(); }
 
   private liveScaleFactor(event: KeyboardEvent, dir: -1 | 1): number {
     return scaleFactor(modifiersOf(event), dir);
@@ -4592,22 +4000,13 @@ export class NibGliderEngine {
 
   private applyLiveScale(event: KeyboardEvent, dir: -1 | 1): void {
     const f = this.liveScaleFactor(event, dir);
-    if (this.compositePathTool.active) {
-      this.compositePathTool.scale(f); this.updateTextContent(); this.notify(); return;
+    if (this.compositePathTool.scaleLive(f) || this.quadTool.scaleLive(f)) {
+      this.updateTextContent();
+      this.notify();
+      return;
     }
-    if (this.isDrawingPath && this.path && this.path.segments.length > 0) {
-      this.path.scale(f, this.path.segments[0].point);
-      this.refreshSplineTextPreview();
-    } else if (
-      this.isDrawingQuad &&
-      this.quadPath &&
-      this.quadPath.segments.length > 0
-    ) {
-      this.quadPath.scale(f, this.quadPath.segments[0].point);
-    } else {
-      this.liveScale = Math.min(20, Math.max(0.05, this.liveScale * f));
-      this.updateShapePreview();
-    }
+    this.liveScale = Math.min(20, Math.max(0.05, this.liveScale * f));
+    this.updateShapePreview();
     this.updateTextContent();
     this.notify();
   }
@@ -4618,270 +4017,63 @@ export class NibGliderEngine {
 
   private applyLiveRotate(event: KeyboardEvent, dir: -1 | 1): void {
     const angle = dir * this.liveRotateStep(event);
-    if (this.compositePathTool.active) {
-      this.compositePathTool.rotate(angle); this.updateTextContent(); this.notify(); return;
+    if (this.compositePathTool.rotateLive(angle) || this.quadTool.rotateLive(angle)) {
+      this.updateTextContent();
+      this.notify();
+      return;
     }
-    if (this.isDrawingPath && this.path && this.path.segments.length > 0) {
-      this.path.rotate(angle, this.path.segments[0].point);
-      this.refreshSplineTextPreview();
-    } else if (
-      this.isDrawingQuad &&
-      this.quadPath &&
-      this.quadPath.segments.length > 0
-    ) {
-      this.quadPath.rotate(angle, this.quadPath.segments[0].point);
-    } else {
-      this.liveRotateOffset += angle;
-      this.updateShapePreview();
-    }
+    this.liveRotateOffset += angle;
+    this.updateShapePreview();
     this.updateTextContent();
     this.notify();
   }
 
   circleKC(mode: string): void {
-    const scope = this.scope;
-    if (this.shapeType != null && this.shapeType.startsWith('circle_')) {
-      const histBefore = this.contentItems();
-      const histSel = [...this.selectedItems];
+    const result = this.circleTool.start(mode);
+    if (result === 'finish') {
+      const snap = this.captureDeposit();
       const placed = this.endShapeAsStroke();
-      this.recordSceneCommand('Deposit shape', histBefore, histSel, placed);
+      this.recordSceneCommand('Deposit shape', snap.before, snap.selected, placed);
       this.updateTextContent();
       return;
     }
-    if (this.isDrawingShape || !this.mousePt) return;
-    this.resetLiveAdjust();
-    this.shapeStartPoint = this.mousePt.clone();
-    this.shapeType = ('circle_' + mode) as ShapeType;
-    this.isDrawingShape = true;
-    this.previewShape = new scope.Shape.Circle(this.shapeStartPoint, 0);
-    this.stylePreviewFrame(this.previewShape);
-    this.layers.activeLayer.addChild(this.previewShape);
-    this.previewLine = new scope.Path({
-      segments: [this.shapeStartPoint, this.shapeStartPoint],
-      strokeColor: new scope.Color(0.5),
-      strokeWidth: 1,
-      strokeDashArray: [4, 4],
-    });
-    this.layers.activeLayer.addChild(this.previewLine);
-    this.updateTextContent();
-    this.notify();
+    if (result === 'started') {
+      this.updateTextContent();
+      this.notify();
+    }
   }
 
-  // Radial Stamp (, key): the first press fixes the placement-circle
-  // origin; every later press stamps the riding shape (tangent point,
-  // tangent-rotated) and stays in the session until END/Complete/Cancel.
   radialStampKC(): void {
-    const scope = this.scope;
-    if (this.shapeType === 'circle_radial_stamp') {
+    const result = this.circleTool.startRadial();
+    if (result === 'stamp') {
       this.stampCurrentPreview();
       return;
     }
-    if (this.shapeType != null && this.shapeType.startsWith('circle_')) {
-      const histBefore = this.contentItems();
-      const histSel = [...this.selectedItems];
+    if (result === 'finish') {
+      const snap = this.captureDeposit();
       const placed = this.endShapeAsStroke();
-      this.recordSceneCommand('Deposit shape', histBefore, histSel, placed);
+      this.recordSceneCommand('Deposit shape', snap.before, snap.selected, placed);
       this.updateTextContent();
       return;
     }
-    if (this.isDrawingShape || !this.mousePt) return;
-    this.resetLiveAdjust();
-    this.shapeStartPoint = this.mousePt.clone();
-    this.shapeType = 'circle_radial_stamp';
-    this.isDrawingShape = true;
-    this.previewShape = new scope.Shape.Circle(this.shapeStartPoint, 0);
-    this.stylePreviewFrame(this.previewShape);
-    this.layers.activeLayer.addChild(this.previewShape);
-    this.previewLine = new scope.Path({
-      segments: [this.shapeStartPoint, this.shapeStartPoint],
-      strokeColor: new scope.Color(0.5),
-      strokeWidth: 1,
-      strokeDashArray: [4, 4],
-    });
-    this.layers.activeLayer.addChild(this.previewLine);
-    this.updateTextContent();
-    this.notify();
+    if (result === 'started') {
+      this.updateTextContent();
+      this.notify();
+    }
   }
 
-  // END / Complete Shape in Radial Stamp: deposit the live riding shape
-  // at the tangent point, then dismiss the placement guide. Stamped copies
-  // are already committed scene items.
   finishRadialStamp(): void {
     if (this.shapeType !== 'circle_radial_stamp') return;
-    const histBefore = this.contentItems();
-    const histSel = [...this.selectedItems];
+    const snap = this.captureDeposit();
     const placed = this.endShapeAsStroke();
-    this.recordSceneCommand('Deposit shape', histBefore, histSel, placed);
+    this.recordSceneCommand('Deposit shape', snap.before, snap.selected, placed);
     this.updateTextContent();
-  }
-
-  rectDiagonalKC(): void {
-    const scope = this.scope;
-    if (this.shapeType === 'rectangle_diagonal') {
-      const histBefore = this.contentItems();
-      const histSel = [...this.selectedItems];
-      const placed = this.endShapeAsStroke();
-      this.recordSceneCommand('Deposit shape', histBefore, histSel, placed);
-      this.updateTextContent();
-      return;
-    }
-    if (this.isDrawingShape || !this.mousePt) return;
-    this.resetLiveAdjust();
-    this.shapeStartPoint = this.mousePt.clone();
-    this.shapeType = 'rectangle_diagonal';
-    this.isDrawingShape = true;
-    this.previewShape = new scope.Shape.Rectangle(
-      this.shapeStartPoint,
-      new scope.Size(0, 0),
-    );
-    this.stylePreviewFrame(this.previewShape, 1);
-    this.layers.activeLayer.addChild(this.previewShape);
-    this.previewLine = new scope.Path({
-      segments: [this.shapeStartPoint, this.shapeStartPoint],
-      strokeColor: new scope.Color(0.5),
-      strokeWidth: 1,
-      strokeDashArray: [4, 4],
-    });
-    this.layers.activeLayer.addChild(this.previewLine);
-    this.updateTextContent();
-    this.notify();
   }
 
   endShapeAsStroke(): AnyItem[] {
-    const scope = this.scope;
-    if (!this.isDrawingShape || this.shapeType === null) return [];
-    const placed: AnyItem[] = [];
-    let finalPath: AnyItem = null;
-    const shapeType = this.shapeType;
-    // Non-rectangle Rect Keys choice: the rect frame is the bounds and only
-    // the fitted shape is drawn (no frame + inner double draw).
-    const rectShapeOnly =
-      shapeType.startsWith('rectangle_') &&
-      this.rectangleInnerShapeType !== 'rectangle';
-    if (shapeType.startsWith('circle_')) {
-      if (!this.previewShape || this.previewShape.radius === 0) return [];
-      // Radial Stamp deposits the riding shape at the tangent point (the
-      // cursor), not the inscribed guide circle.
-      const isRadial = shapeType === 'circle_radial_stamp';
-      const center = isRadial
-        ? this.radialStampTangentPoint()
-        : this.previewShape.position;
-      if (!center) return [];
-      const radius = this.previewShape.radius;
-      const strokeW = this.strokeEnabled ? this.globalStrokeWidth : 0;
-      const iradius = isRadial
-        ? this.radialStampBaseRadius * this.liveScale
-        : Math.max(0, radius - strokeW / 2) * this.liveScale;
-      const rotation = isRadial
-        ? this.radialStampRotation()
-        : this.shapeGuideAngle + this.liveRotateOffset;
-      if (iradius > 0) {
-        const innerPath = this.createInnerShape(center, iradius, 'stroke', rotation);
-        if (innerPath) {
-          this.applyCurrentStyles(this.shapePartOf(innerPath));
-          innerPath.selected = false;
-          const placedInner = this.depositWithCombine(innerPath);
-          if (placedInner) {
-            placedInner.selected = false;
-            if (placedInner.parent == null) {
-              this.layers.activeLayer.addChild(placedInner);
-            }
-            placed.push(placedInner);
-          }
-        }
-      }
-    } else if (shapeType === 'rectangle_diagonal') {
-      if (rectShapeOnly) {
-        finalPath = this.createRectFrameShape('stroke');
-      } else {
-        finalPath = new scope.Path.Rectangle({
-          center: this.previewShape.position,
-          size: this.previewShape.size,
-        });
-      }
-      if (finalPath) this.applyCurrentStyles(this.shapePartOf(finalPath));
-    } else if (shapeType === 'rectangle_two_edges') {
-      if (rectShapeOnly) {
-        finalPath = this.createRectFrameShape('stroke');
-      } else {
-        const pt1 = this.shapeStartPoint;
-        const pt2 = this.shapePt2;
-        const pt3 = this.mousePt;
-        const dir1 = pt2.subtract(pt1).normalize();
-        const v2 = pt3.subtract(pt2);
-        const perpVec = v2.subtract(dir1.multiply(v2.dot(dir1)));
-        const ptC = pt2.add(perpVec);
-        const ptD = pt1.add(perpVec);
-        finalPath = new scope.Path({
-          segments: [pt1, pt2, ptC, ptD],
-          closed: true,
-        });
-      }
-      if (finalPath) this.applyCurrentStyles(this.shapePartOf(finalPath));
-    } else if (shapeType === 'rectangle_centerline') {
-      if (rectShapeOnly) {
-        finalPath = this.createRectFrameShape('stroke');
-      } else {
-        const pt1 = this.shapeStartPoint;
-        const pt2 = this.mousePt;
-        const center = pt1.add(pt2).divide(2);
-        const dir = pt2.subtract(pt1);
-        const halfLen = dir.length / 2;
-        const unitDir = dir.normalize();
-        const perp = new scope.Point(-unitDir.y, unitDir.x);
-        const halfW = this.centerlineWidthForLength(dir.length) / 2;
-        const ptA = center.add(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
-        const ptB = center.add(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
-        const ptC = center.subtract(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
-        const ptD = center.subtract(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
-        finalPath = new scope.Path({
-          segments: [ptA, ptB, ptD, ptC],
-          closed: true,
-        });
-      }
-      if (finalPath) this.applyCurrentStyles(this.shapePartOf(finalPath));
-    }
-    if (shapeType === 'rectangle_centerline') {
-      this.lastCenterlineWidth = this.shapeWidth;
-    }
-    if (finalPath) {
-      finalPath.selected = false;
-      const placedFinal = this.depositWithCombine(finalPath);
-      if (placedFinal) {
-        placedFinal.selected = false;
-        if (placedFinal.parent == null) {
-          this.layers.activeLayer.addChild(placedFinal);
-        }
-        placed.push(placedFinal);
-        // Inner decoration follows the deposited (possibly combined)
-        // bounds; it is never itself combined.
-        if (!rectShapeOnly) this.drawInnerShape(placedFinal, 'stroke');
-      }
-    }
-    if (this.previewInner) {
-      this.previewInner.remove();
-      this.previewInner = null;
-    }
-    if (this.previewShape) this.previewShape.remove();
-    if (this.previewLine) this.previewLine.remove();
-    if (this.previewPath) {
-      this.previewPath.remove();
-      this.previewPath = null;
-    }
-    if (this.previewRect) {
-      this.previewRect.remove();
-      this.previewRect = null;
-    }
-    this.isDrawingShape = false;
-    this.shapeType = null;
-    this.shapeStartPoint = null;
-    this.shapePt2 = null;
-    this.previewShape = null;
-    this.previewLine = null;
-    this.resetLiveAdjust();
-    this.updateTextContent();
-    this.notify();
-    return placed;
+    if (this.circleTool.active) return this.circleTool.finish();
+    if (this.rectangleTool.active) return this.rectangleTool.finish();
+    return [];
   }
 
   createRegularPolygon(
@@ -5091,222 +4283,11 @@ export class NibGliderEngine {
     item.shadowBlur = 0;
   }
 
-  // Live rect preview: the dashed preview frame always tracks the mouse;
-  // with any non-Rectangle Rect Keys choice the fitted shape is drawn live
-  // inside it, on top of it.
-  private refreshRectPreview(
-    corners: [AnyItem, AnyItem, AnyItem, AnyItem] | null,
-    frameItem: AnyItem,
-  ): void {
-    if (frameItem) {
-      frameItem.visible = true;
-      if (corners && frameItem.segments) {
-        for (let i = 0; i < 4; i++) frameItem.segments[i].point = corners[i];
-      }
-    }
-    if (this.previewInner) {
-      this.previewInner.remove();
-      this.previewInner = null;
-    }
-    if (this.rectangleInnerShapeType === 'rectangle') return;
-    const shape = this.createRectFrameShape('preview');
-    if (shape) {
-      this.addPreviewShadow(shape);
-      this.previewInner = shape;
-      this.layers.activeLayer.addChild(shape);
-    }
-  }
-
   updateShapePreview(): void {
-    const scope = this.scope;
     if (!this.isDrawingShape || !this.shapeStartPoint) return;
-    // String-typed alias: the early-return branches below would otherwise
-    // narrow this.shapeType and forbid the rectangle comparisons further down.
-    const shapeType: string | null = this.shapeType;
-    if (this.shapeType === 'rectangle_two_edges') {
-      if (this.shapePt2 === null) {
-        this.previewLine.firstSegment.point = this.shapeStartPoint;
-        this.previewLine.lastSegment.point = this.mousePt;
-        if (this.previewPath.segments.length > 1) {
-          this.previewPath.removeSegment(1);
-        }
-        this.previewPath.add(this.mousePt);
-        if (this.previewInner) {
-          this.previewInner.remove();
-          this.previewInner = null;
-        }
-      } else {
-        this.previewLine.firstSegment.point = this.shapePt2;
-        this.previewLine.lastSegment.point = this.mousePt;
-        const pt1 = this.shapeStartPoint;
-        const pt2 = this.shapePt2;
-        const pt3 = this.mousePt;
-        const dir1 = pt2.subtract(pt1).normalize();
-        const v2 = pt3.subtract(pt2);
-        const perpVec = v2.subtract(dir1.multiply(v2.dot(dir1)));
-        const ptC = pt2.add(perpVec);
-        const ptD = pt1.add(perpVec);
-        this.refreshRectPreview([pt1, pt2, ptC, ptD], this.previewRect);
-      }
-      return;
-    } else if (this.shapeType === 'rectangle_centerline') {
-      const pt1 = this.shapeStartPoint;
-      const pt2 = this.mousePt;
-      this.previewLine.firstSegment.point = pt1;
-      this.previewLine.lastSegment.point = pt2;
-      const center = pt1.add(pt2).divide(2);
-      const dir = pt2.subtract(pt1);
-      const halfLen = dir.length / 2;
-      const unitDir = dir.normalize();
-      const perp = new scope.Point(-unitDir.y, unitDir.x);
-      const halfW = this.centerlineWidthForLength(dir.length) / 2;
-      const ptA = center.add(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
-      const ptB = center.add(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
-      const ptC = center.subtract(unitDir.multiply(halfLen)).add(perp.multiply(halfW));
-      const ptD = center.subtract(unitDir.multiply(halfLen)).subtract(perp.multiply(halfW));
-      this.refreshRectPreview([ptA, ptB, ptD, ptC], this.previewRect);
-      return;
-    }
-    const endPt = this.mousePt;
-    if (this.shapeType === 'circle_radius') {
-      if (this.circleRadiusAnchor === 'circumference') {
-        // Press point is a fixed circumference point; the cursor is the center.
-        this.previewShape.position = endPt;
-        this.previewShape.radius = this.shapeStartPoint.getDistance(endPt);
-      } else {
-        this.previewShape.position = this.shapeStartPoint;
-        this.previewShape.radius = this.shapeStartPoint.getDistance(endPt);
-      }
-      this.shapeGuideAngle = this.mousePt.subtract(this.previewShape.position).angle;
-    } else if (this.shapeType === 'circle_radial_stamp') {
-      // Placement guide: origin fixed at the start point. Unlocked, the
-      // radius follows the cursor; locked (0 key), it holds while the
-      // cursor orbits the origin and steers the tangent point.
-      this.previewShape.position = this.shapeStartPoint;
-      if (this.radialStampLockedRadius == null) {
-        this.previewShape.radius = this.shapeStartPoint.getDistance(endPt);
-      } else {
-        this.previewShape.radius = this.radialStampLockedRadius;
-      }
-      if (this.shapeStartPoint.getDistance(this.mousePt) > 0) {
-        this.shapeGuideAngle = this.mousePt.subtract(this.shapeStartPoint).angle;
-      }
-    } else if (this.shapeType === 'circle_diameter') {
-      this.previewShape.position = this.shapeStartPoint.add(endPt).divide(2);
-      this.previewShape.radius = this.shapeStartPoint.getDistance(endPt) / 2;
-      this.shapeGuideAngle = this.mousePt.subtract(this.previewShape.position).angle;
-    } else if (this.shapeType === 'rectangle_diagonal') {
-      const k = this.rectDiagonalScale();
-      const dx = (endPt.x - this.shapeStartPoint.x) * k;
-      const dy = (endPt.y - this.shapeStartPoint.y) * k;
-      const farPt = this.shapeStartPoint.add(new scope.Point(dx, dy));
-      this.previewShape.position = this.shapeStartPoint.add(farPt).divide(2);
-      this.previewShape.size = new scope.Size(Math.abs(dx), Math.abs(dy));
-    }
-    if (this.previewLine) {
-      this.previewLine.firstSegment.point = this.shapeStartPoint;
-      this.previewLine.lastSegment.point =
-        this.shapeType === 'circle_radial_stamp'
-          ? this.radialStampTangentPoint()
-          : endPt;
-    }
-    if (this.shapeType === 'rectangle_diagonal') {
-      this.refreshRectPreview(null, this.previewShape);
-      return;
-    }
-    if (this.previewInner) {
-      this.previewInner.remove();
-      this.previewInner = null;
-    }
-    if (this.shapeType === 'circle_radial_stamp') {
-      this.refreshRadialStampPreview();
-      return;
-    }
-    if (this.isDrawingShape && this.innerShapeType !== 'none') {
-      let framePreview: AnyItem = null;
-      if (
-        this.shapeType != null &&
-        this.shapeType.startsWith('circle_') &&
-        this.previewShape &&
-        this.previewShape.radius > 0
-      ) {
-        const pradius =
-          (this.previewShape.radius - this.previewShape.strokeWidth / 2) *
-          this.liveScale;
-        if (pradius > 0) {
-          this.previewInner = this.createInnerShape(
-            this.previewShape.position,
-            pradius,
-            'preview',
-            this.shapeGuideAngle + this.liveRotateOffset,
-          );
-          if (this.previewInner) {
-            this.addPreviewShadow(this.previewInner);
-            this.layers.activeLayer.addChild(this.previewInner);
-          }
-        }
-      } else if (
-        shapeType === 'rectangle_centerline' ||
-        (shapeType === 'rectangle_two_edges' && this.shapePt2 !== null)
-      ) {
-        framePreview = this.previewRect;
-      } else if (this.previewShape) {
-        framePreview = this.previewShape;
-      }
-      if (
-        framePreview &&
-        framePreview.bounds &&
-        framePreview.bounds.width > 0 &&
-        framePreview.bounds.height > 0
-      ) {
-        const inset = this.globalStrokeWidth * 1.5;
-        const pBounds = new scope.Rectangle(
-          framePreview.bounds.x + inset,
-          framePreview.bounds.y + inset,
-          framePreview.bounds.width - 2 * inset,
-          framePreview.bounds.height - 2 * inset,
-        );
-        if (pBounds.width > 0 && pBounds.height > 0) {
-          this.previewInner = this.createInnerShape(
-            pBounds.center,
-            (Math.min(pBounds.width, pBounds.height) / 2) * 0.9,
-            'preview',
-          );
-          if (this.previewInner) {
-            this.addPreviewShadow(this.previewInner);
-            this.layers.activeLayer.addChild(this.previewInner);
-          }
-        }
-      }
-    }
-  }
-
-  // Radial Stamp live preview: the selected Circle Keys shape rides the
-  // tangent point (the cursor) on the placement circle, rotated tangent to
-  // it. Size is the fixed base radius times the live scale factor.
-  private refreshRadialStampPreview(): void {
-    if (
-      !this.isDrawingShape ||
-      this.shapeType !== 'circle_radial_stamp' ||
-      !this.mousePt
-    ) {
-      return;
-    }
-    if (this.innerShapeType === 'none') return;
-    if (!this.previewShape || !(this.previewShape.radius > 0)) return;
-    const tangentPoint = this.radialStampTangentPoint();
-    const radius = this.radialStampBaseRadius * this.liveScale;
-    if (!(radius > 0)) return;
-    this.previewInner = this.createInnerShape(
-      tangentPoint,
-      radius,
-      'preview',
-      this.radialStampRotation(),
-    );
-    if (this.previewInner) {
-      this.addPreviewShadow(this.previewInner);
-      this.layers.activeLayer.addChild(this.previewInner);
-    }
+    const type = this.shapeType;
+    if (type != null && type.startsWith('rectangle_')) this.rectangleTool.update();
+    else if (type != null && type.startsWith('circle_')) this.circleTool.update();
   }
 
   /** Physical keyboard entry. Decisions live in KeyboardController. */

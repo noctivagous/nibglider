@@ -77,8 +77,11 @@ ACTIVE OBJECTS
 	 and so the shape can be dragged.
 	
 COMBINATORICS
-[ ] setting is previewed lived while drawing.
+[ ] If Combinatorics mode is on, it affects the Stamp (W) key.
+[ ] If combinatorics is on and set to subtract, an open path will act to slice paths and shapes (closed paths).
+[ ] with the Shape keys (Circle, Rect keys), the outcome is previewed lived while drawing shapes .
 [ ] shape margin.
+
 
   [x] the menu that appears when clicking on the icon for any panel section should have
   at the bottom collapse/expand, providing another place for the user to collapse and
@@ -186,6 +189,8 @@ loaded object 1 and 2.  section has tabs if user adds
 loaded objects.
 
 
+REPEAT
+
 [ ] repeat grid - select shape > loaded object  
    live drawing keys: 1 and 2 keys will adjust row count
    live drawing keys: 3 and 4 keys will adjust col. count
@@ -197,6 +202,9 @@ loaded objects.
 [ ] Rect Keys > capsule.  params: cap shape  [semicircle | triangle], cap length
 [ ] Circle Keys > annulus shape.
 
+[ ] The app will have a contextual menu and in this menu, there will be a Repeat menu item
+with various functions that can be applied to a selection.  Some will open up a floating panel
+that previews the operation on the canvas.
 
 REPEAT SECTION IN PANEL
 [ ] Repeat section in panel.  has toggle switch.
