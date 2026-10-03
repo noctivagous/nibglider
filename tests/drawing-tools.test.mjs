@@ -69,6 +69,39 @@ test('legacy path end keeps the deposited stroke and quad completion records one
   } finally { cleanup(); }
 });
 
+test('circle END deposits the preview size when the stroke is thick', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    e.setStrokeWidth(30);
+    e.circleInnerShapeType = 'circle';
+    e.mousePt = new s.Point(100, 100);
+    e.circleKC('radius');
+    e.pointer.onMouseMove({ point: new s.Point(200, 100) });
+    const guideRadius = e.previewShape.radius;
+    const previewWidth = e.previewInner.bounds.width;
+    // The live shape is the guide minus the 1px overlay, not half the 30pt stroke.
+    assert.ok(previewWidth > 2 * (guideRadius - 30 / 2) + 10);
+    e.endPathOrShape();
+    assert.equal(e.isDrawingShape, false);
+    assert.equal(layer.children.length, 1);
+    const deposited = layer.children[0];
+    assert.ok(Math.abs(deposited.bounds.width - previewWidth) < 0.05);
+    assert.ok(Math.abs(deposited.bounds.height - previewWidth) < 0.05);
+    assert.equal(deposited.strokeWidth, 30);
+
+    e.mousePt = new s.Point(0, 0);
+    e.circleKC('diameter');
+    e.pointer.onMouseMove({ point: new s.Point(160, 0) });
+    const diameterPreview = e.previewInner.bounds.width;
+    const before = new Set(layer.children);
+    e.stampCurrentPreview();
+    const stamped = layer.children.find((item) => !before.has(item));
+    assert.equal(e.isDrawingShape, true);
+    assert.ok(stamped);
+    assert.ok(Math.abs(stamped.bounds.width - diameterPreview) < 0.05);
+  } finally { cleanup(); }
+});
+
 test('rectangle diagonal cancel drops the frame and a fitted stamp does not end the session', () => {
   const { s, e, layer, cleanup } = engine();
   try {

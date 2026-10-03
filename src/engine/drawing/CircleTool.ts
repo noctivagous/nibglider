@@ -84,7 +84,7 @@ export class CircleTool {
     }
     if (!(session.isDrawingShape && this.host.innerShapeType() !== 'none')) return;
     if (session.previewShape && session.previewShape.radius > 0) {
-      const pradius = (session.previewShape.radius - session.previewShape.strokeWidth / 2) * session.liveScale;
+      const pradius = this.ridingRadius();
       if (pradius > 0) {
         session.previewInner = this.host.createInnerShape(
           session.previewShape.position, pradius, 'preview',
@@ -106,10 +106,7 @@ export class CircleTool {
     if (session.previewShape && session.previewShape.radius > 0) {
       const isRadial = session.shapeType === 'circle_radial_stamp';
       const center = isRadial ? this.tangentPoint() : session.previewShape.position;
-      const strokeW = this.host.strokeEnabled() ? this.host.globalStrokeWidth() : 0;
-      const iradius = isRadial
-        ? session.radialStampBaseRadius * session.liveScale
-        : Math.max(0, session.previewShape.radius - strokeW / 2) * session.liveScale;
+      const iradius = this.ridingRadius();
       const rotation = isRadial ? this.rotation() : session.shapeGuideAngle + session.liveRotateOffset;
       if (center && iradius > 0) this.depositInner(center, iradius, rotation, true);
       return true;
@@ -126,10 +123,7 @@ export class CircleTool {
     const center = isRadial ? this.tangentPoint() : session.previewShape.position;
     if (!center) return [];
     const placed: Item[] = [];
-    const strokeW = this.host.strokeEnabled() ? this.host.globalStrokeWidth() : 0;
-    const iradius = isRadial
-      ? session.radialStampBaseRadius * session.liveScale
-      : Math.max(0, session.previewShape.radius - strokeW / 2) * session.liveScale;
+    const iradius = this.ridingRadius();
     const rotation = isRadial ? this.rotation() : session.shapeGuideAngle + session.liveRotateOffset;
     if (iradius > 0) {
       const item = this.depositInner(center, iradius, rotation, false);
@@ -173,12 +167,25 @@ export class CircleTool {
     return placed;
   }
 
+  // Radius of the riding shape. The guide is a 1px overlay, so the preview
+  // only insets by that hairline. END and stamp use the same inset: taking
+  // half the deposited stroke off the radius made thick strokes land small.
+  private ridingRadius(): number {
+    const session = this.host.session;
+    if (session.shapeType === 'circle_radial_stamp') {
+      return session.radialStampBaseRadius * session.liveScale;
+    }
+    const guide = session.previewShape;
+    if (!guide || !(guide.radius > 0)) return 0;
+    return Math.max(0, guide.radius - guide.strokeWidth / 2) * session.liveScale;
+  }
+
   private refreshRadial(): void {
     const session = this.host.session;
     if (!session.isDrawingShape || session.shapeType !== 'circle_radial_stamp' || !session.mousePt) return;
     if (this.host.innerShapeType() === 'none') return;
     if (!session.previewShape || !(session.previewShape.radius > 0)) return;
-    const radius = session.radialStampBaseRadius * session.liveScale;
+    const radius = this.ridingRadius();
     if (!(radius > 0)) return;
     session.previewInner = this.host.createInnerShape(this.tangentPoint(), radius, 'preview', this.rotation());
     if (session.previewInner) {

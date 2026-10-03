@@ -11,6 +11,9 @@ is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app s
 be aware of pt, inch, pica, cm.  users will stay within mm to m for SI
 and inches to feet for English Units.
 
+[ ] Shift + stroke thicken and stroke thin (C and V) should increase by a larger increment like how
+scale and rotate keys go up when Shift is pressed.
+
 [ ] Selection Rectangle key for Caps Lock.  Pressing it starts selection rectangle
 pressing it a second time finalizes the selection.  selects what is contained
 by or intersects rectangle.  Esc will cancel.  Same mechanism as Rect By Diagonal.
