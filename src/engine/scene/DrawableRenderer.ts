@@ -5,6 +5,7 @@
 import type { NGDrawable } from '../model/NGDrawable';
 import type { ResolvedPath, ResolvedVectorGeometry } from '../model/geometryResolution';
 import { resolveDrawableGeometry } from '../geometry/pathResolver';
+import type { SceneRepository } from './SceneRepository';
 
 export interface DrawableStyle {
   strokeColor: string | null;
@@ -14,6 +15,7 @@ export interface DrawableStyle {
 export interface DrawableRendererDependencies {
   layerForId: (id: string) => paper.Layer | null;
   styleForId?: (id: string) => DrawableStyle | undefined;
+  scene?: SceneRepository;
 }
 
 export class DrawableRenderer {
@@ -54,6 +56,10 @@ export class DrawableRenderer {
       layer.addChild(item);
       this.items.get(drawable.id)?.remove();
       this.items.set(drawable.id, item);
+      if (this.dependencies.scene) {
+        if (this.dependencies.scene.isInScene(item)) this.dependencies.scene.bindDrawable(drawable, item);
+        else this.dependencies.scene.unbindDrawable(drawable.id);
+      }
       return item;
     } catch (error) {
       item.remove();
@@ -72,7 +78,7 @@ export class DrawableRenderer {
     return null;
   }
 
-  remove(id: string): void { this.items.get(id)?.remove(); this.items.delete(id); }
+  remove(id: string): void { this.items.get(id)?.remove(); this.items.delete(id); this.dependencies.scene?.unbindDrawable(id); }
   clear(): void { for (const id of this.items.keys()) this.remove(id); }
 
   private path(geometry: ResolvedPath): paper.Path {

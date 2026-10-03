@@ -95,6 +95,16 @@ model-driven transform/history services remain later work. Endpoint joining
 currently covers plain top-level paths, excluding grouped and text-wrapped
 paths.
 
+`scene/SceneRepository.ts` now owns active-layer content lookup, overlay
+filtering, reinsertion, and the retained path source-to-item association.
+`DrawableRenderer` can register rendered `NGDrawable` identities with the
+repository; lookup rejects stale items and returns independent record copies.
+`scene/SelectionManager.ts` owns membership, group/ungroup, duplicate, and
+z-order intents. The engine still publishes UI state and holds the undo stack;
+the services receive completed commands through a narrow callback. Legacy
+Paper drawing tools remain on their existing creation path until their tool
+migrations.
+
 ## Verification
 
 Run `npm test` for fixture round trips, model validation, and geometry-only

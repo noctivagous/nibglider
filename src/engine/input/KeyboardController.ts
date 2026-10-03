@@ -42,7 +42,7 @@ export interface KeyboardHost {
   setShapeWidth(v: number): void;
   splineTension(): number;
   setSplineTension(v: number): void;
-  setSelectedItems(items: Item[]): void;
+  clearSelection(): void;
   liveAdjustApplies(): boolean;
   resetZoom(): void;
   stepZoom(dir: 1 | -1): void;
@@ -359,9 +359,7 @@ export class KeyboardController {
   }
 
   private clearSelection(): void {
-    const items = this.host.selectedItems();
-    for (let i = 0; i < items.length; i++) items[i].selected = false;
-    this.host.setSelectedItems([]);
+    this.host.clearSelection();
     this.host.setIsInDragLock(false);
   }
 

@@ -1,7 +1,7 @@
 // Ported from the flat global scripts (drawingProperties.js,
 // drawingToolsAndFunctions.js, selectionFunctions.js, shapeGenerators.js,
-// NibGliderApp.js). All shared mutable state lives on this class; the
-// PaperScope is injected instead of paper.install(window).
+// NibGliderApp.js). Scene identity and selection state now live in focused
+// services; the PaperScope is injected instead of paper.install(window).
 // NB: `paper.*` below refers to the global namespace from paper's bundled
 // declarations (type positions only); the runtime value is never imported here.
 import { FontMetrics } from './fontMetrics';
@@ -17,8 +17,10 @@ import {
 import { commandKeycap, keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
 import { modifiersOf } from './input/ModifierStateTracker';
 import { PathTool, type CompositeDeposit } from './drawing/PathTool';
+import { SceneRepository, type RetainedPath } from './scene/SceneRepository';
+import { SelectionManager } from './scene/SelectionManager';
 import type { NGPathDrawable } from './model/NGDrawable';
-import type { NGPath, NGBezierPath } from './model/NGPath';
+import type { NGPath } from './model/NGPath';
 import {
   clampPolygonSides,
   clampSectorAngle as clampSectorAngleValue,
@@ -103,7 +105,6 @@ export {
 // paper behavior (null style assignment, shape-specific fields) that the
 // bundled declarations model more narrowly.
 type AnyItem = any;
-interface RetainedPath { source: NGPath; item: paper.PathItem; geometryKey: string }
 
 // One item's positional delta for a move command.
 interface MoveEntry {
@@ -266,7 +267,9 @@ export class NibGliderEngine {
   private compositePathTool: PathTool;
   // Compatibility bridge until document/scene/history extraction. Only plain
   // source data is retained; derived items are kept separately for identity.
-  private retainedPaths = new Map<string, RetainedPath>();
+  private readonly scene: SceneRepository;
+  private get retainedPaths(): Map<string, RetainedPath> { return this.scene.records; }
+  private set retainedPaths(value: Map<string, RetainedPath>) { this.scene.restoreRecords(value); }
   isDrawingShape = false;
   isDrawingQuad = false;
   shapeType: ShapeType | null = null;
@@ -316,7 +319,8 @@ export class NibGliderEngine {
   maxZoom = 16;
 
   // --- Selection (selectionFunctions.js) ---
-  selectedItems: AnyItem[] = [];
+  private readonly selection: SelectionManager;
+  get selectedItems(): AnyItem[] { return this.selection.selectedItems; }
   isInDragLock = false;
 
   private statusSchema: StatusSchema = { state: [], steps: [] };
@@ -329,6 +333,15 @@ export class NibGliderEngine {
   constructor(scope: paper.PaperScope, onKeyActivity: (a: KeyActivity) => void) {
     this.scope = scope;
     this.onKeyActivity = onKeyActivity;
+    this.scene = new SceneRepository(scope, () => ({
+      gridLayer: this.gridLayer,
+      cursors: [this.pathSnapCursor, this.pointSnapCursor, this.gridCursor],
+      previews: [this.previewInner, this.previewSplineText, this.previewShape,
+        this.previewLine, this.previewPath, this.previewRect],
+    }));
+    this.selection = new SelectionManager(this.scene,
+      (command) => this.history.push(command),
+      (original, clone) => this.scene.retainClone(original, clone, (item) => this.shapePartOf(item)));
     this.compositePathTool = new PathTool(scope, (item) => {
       this.applyCurrentStyles(item);
       item.fillColor = null;
@@ -364,6 +377,7 @@ export class NibGliderEngine {
       isCompositePathDrawing: () => this.compositePathTool.active,
       quadPath: () => this.quadPath,
       selectedItems: () => this.selectedItems,
+      toggleSelection: (item) => this.selection.toggle(item),
       isInDragLock: () => this.isInDragLock,
       mousePt: () => this.mousePt,
       setMousePt: (v) => {
@@ -432,9 +446,7 @@ export class NibGliderEngine {
       setSplineTension: (v) => {
         this.setSplineTension(v);
       },
-      setSelectedItems: (items) => {
-        this.selectedItems = items;
-      },
+      clearSelection: () => this.clearOutSelection(),
       liveAdjustApplies: () => this.liveAdjustApplies(),
       resetZoom: () => this.resetZoom(),
       stepZoom: (dir) => this.stepZoom(dir),
@@ -1418,8 +1430,7 @@ export class NibGliderEngine {
     this.removeItemFromSelection(tool);
     base.remove();
     tool.remove();
-    result.selected = true;
-    this.selectedItems.unshift(result);
+    this.selection.prepend(result);
     return true;
   }
 
@@ -1732,19 +1743,7 @@ export class NibGliderEngine {
   }
 
   getRetainedPathDrawable(id: string): NGPathDrawable | null {
-    const retained = this.retainedPaths.get(id);
-    if (!retained || !this.isInScene(retained.item)) return null;
-    const item = retained.item;
-    const t = item.globalMatrix;
-    // Legacy geometry edits may deliberately break composite invariants.
-    // Never expose stale semantic intent as the current editable geometry;
-    // keep the original archive so undo can recover its semantic source.
-    const source = this.pathGeometryKey(item) === retained.geometryKey
-      ? structuredClone(retained.source) : this.bezierSource(item, retained.source.id);
-    return { id, kind: 'path', layerId: `paper-layer-${item.layer.id}`,
-      source,
-      transform: { a: t.a, b: t.b, c: t.c, d: t.d, tx: t.tx, ty: t.ty },
-      opacity: item.opacity, visible: item.visible, locked: item.locked };
+    return this.scene.getRetainedPathDrawable(id);
   }
 
   setCircleRadiusAnchor(anchor: CircleRadiusAnchor): void {
@@ -2433,8 +2432,7 @@ export class NibGliderEngine {
       for (let i = 1; i < tsegs.length; i++) {
         this.cloneSegmentInto(this.path, tsegs[i]);
       }
-      const idx = this.selectedItems.indexOf(target);
-      if (idx !== -1) this.selectedItems.splice(idx, 1);
+      this.selection.remove(target);
       target.remove();
       this.applyCurrentStyles(this.path);
       if (this.fillEnabled) this.path.closed = true;
@@ -2452,44 +2450,26 @@ export class NibGliderEngine {
 
   // --- Selection (selectionFunctions.js + NibGliderApp.js) ---
   addItemToSelection(item: AnyItem): void {
-    if (this.isNonContentItem(item)) return;
-    item.selected = true;
-    this.selectedItems.push(item);
+    this.selection.add(item);
   }
 
   removeItemFromSelection(item: AnyItem): void {
-    const index = this.selectedItems.indexOf(item);
-    if (index !== -1) {
-      item.selected = false;
-      this.selectedItems.splice(index, 1);
-    }
+    this.selection.remove(item);
   }
 
   collectiveBounds(items: AnyItem[]): AnyItem {
-    let bounds: AnyItem = null;
-    for (let i = 0; i < items.length; i++) {
-      if (bounds === null) {
-        bounds = items[i].bounds.clone();
-      } else {
-        bounds = bounds.unite(items[i].bounds);
-      }
-    }
-    return bounds;
+    return this.selection.collectiveBounds(items);
   }
 
   collectiveCenter(items: AnyItem[]): AnyItem {
-    const bounds = this.collectiveBounds(items);
-    return bounds ? bounds.center : new this.scope.Point(0, 0);
+    return this.selection.collectiveCenter(items);
   }
 
   clearOutSelection(): void {
     if (this.pathSnapCursor) this.pathSnapCursor.selected = false;
     if (this.pointSnapCursor) this.pointSnapCursor.selected = false;
     if (this.gridCursor) this.gridCursor.selected = false;
-    for (let i = 0; i < this.selectedItems.length; i++) {
-      this.selectedItems[i].selected = false;
-    }
-    this.selectedItems = [];
+    this.selection.clear();
     this.updateTextContent();
     this.notify();
   }
@@ -2498,12 +2478,7 @@ export class NibGliderEngine {
     this.commitMoveGesture();
     const before = this.contentItems();
     const selBefore = [...this.selectedItems];
-    for (let i = this.selectedItems.length - 1; i >= 0; i--) {
-      const item = this.selectedItems[i];
-      this.removeItemFromSelection(item);
-      item.remove();
-    }
-    this.selectedItems = [];
+    this.selection.removeAll();
     this.recordSceneCommand(
       selBefore.length > 1 ? `Delete ${selBefore.length} items` : 'Delete',
       before,
@@ -2522,7 +2497,7 @@ export class NibGliderEngine {
   }
 
   hasSelection(): boolean {
-    return this.selectedItems.length > 0;
+    return this.selection.hasSelection;
   }
 
   // --- History (undo/redo) ---
@@ -2573,70 +2548,20 @@ export class NibGliderEngine {
   // Top-level active-layer artwork. Live previews, cursors, and the
   // grid are excluded so a snapshot can never resurrect UI chrome.
   private contentItems(): AnyItem[] {
-    const layer = this.scope.project
-      ? this.scope.project.activeLayer
-      : null;
-    if (!layer) return [];
-    const out: AnyItem[] = [];
-    for (const child of [...layer.children]) {
-      if (!this.isNonContentItem(child)) out.push(child);
-    }
-    return out;
+    return this.scene.contentItems();
   }
 
   // True while the item is reachable from the active layer.
   private isInScene(item: AnyItem): boolean {
-    if (!item) return false;
-    const layer = this.scope.project
-      ? this.scope.project.activeLayer
-      : null;
-    let p: AnyItem = item;
-    while (p) {
-      if (p === layer) return true;
-      p = p.parent;
-    }
-    return false;
+    return this.scene.isInScene(item);
   }
 
   private insertContentAt(item: AnyItem, anchor: AnyItem | null): void {
-    const layer = this.scope.project
-      ? this.scope.project.activeLayer
-      : null;
-    if (!layer) return;
-    try {
-      if (anchor && anchor.parent === layer) {
-        layer.insertChild(anchor.index, item);
-      } else {
-        layer.addChild(item);
-      }
-    } catch {
-      try {
-        layer.addChild(item);
-      } catch {
-        // Detached; nothing to restore.
-      }
-    }
+    this.scene.insertContentAt(item, anchor);
   }
 
   private restoreSelection(items: AnyItem[]): void {
-    for (const s of [...this.selectedItems]) {
-      try {
-        s.selected = false;
-      } catch {
-        // Already gone.
-      }
-    }
-    this.selectedItems = [];
-    for (const it of items) {
-      if (it && this.isInScene(it)) {
-        try {
-          it.selected = true;
-          this.selectedItems.push(it);
-        } catch {
-          // Already gone.
-        }
-      }
-    }
+    this.selection.restore(items);
   }
 
   // Record one undoable scene mutation. `before` is the content
@@ -2867,261 +2792,48 @@ export class NibGliderEngine {
   // A user group (data.isUserGroup) moves and selects as one item.
   // Shape+text groups (data.shapeTextGroup / data.isShapeText) are
   // atomic artwork and are never treated as user groups.
-  private topUserGroupOf(item: AnyItem): AnyItem {
-    let cur = item;
-    while (
-      cur &&
-      cur.parent &&
-      cur.parent.data &&
-      cur.parent.data.isUserGroup
-    ) {
-      cur = cur.parent;
-    }
-    return cur;
-  }
-
-  private groupableMembers(): AnyItem[] {
-    const layer = this.scope.project
-      ? this.scope.project.activeLayer
-      : null;
-    const out: AnyItem[] = [];
-    const seen = new Set<AnyItem>();
-    for (const it of this.selectedItems) {
-      if (!it || !this.isInScene(it)) continue;
-      const top = this.topUserGroupOf(it);
-      if (seen.has(top)) continue;
-      seen.add(top);
-      if (top.parent === layer) out.push(top);
-    }
-    return out;
-  }
+  private topUserGroupOf(item: AnyItem): AnyItem { return this.selection.topUserGroupOf(item); }
 
   canGroupSelection(): boolean {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
-      return false;
-    return this.groupableMembers().length >= 2;
+    return !this.isLiveDrawing && this.selection.canGroup;
   }
 
   canUngroupSelection(): boolean {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
-      return false;
-    for (const it of this.selectedItems) {
-      if (it && it.data && it.data.isUserGroup && this.isInScene(it))
-        return true;
-    }
-    return false;
+    return !this.isLiveDrawing && this.selection.canUngroup;
   }
 
   groupSelection(): void {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
-      return;
-    const members = this.groupableMembers();
-    if (members.length < 2) return;
-    const layer = this.scope.project.activeLayer;
-    const selBefore = [...this.selectedItems];
-    let at = members[0].index;
-    for (const m of members) {
-      if (m.index < at) at = m.index;
-    }
-    const group: AnyItem = new this.scope.Group(members);
-    group.data.isUserGroup = true;
-    try {
-      layer.insertChild(Math.min(at, layer.children.length), group);
-    } catch {
-      try {
-        layer.addChild(group);
-      } catch {
-        // Detached; nothing to record.
-      }
-    }
-    group.selected = true;
-    this.selectedItems = [group];
-    const kids = [...members];
-    this.history.push({
-      label: `Group ${kids.length} items`,
-      undo: () => {
-        const idx = Math.max(0, group.index);
-        for (let i = kids.length - 1; i >= 0; i--) {
-          try {
-            layer.insertChild(
-              Math.min(idx, layer.children.length),
-              kids[i],
-            );
-          } catch {
-            try {
-              layer.addChild(kids[i]);
-            } catch {
-              // Detached; skip.
-            }
-          }
-        }
-        this.removeItemFromSelection(group);
-        try {
-          group.remove();
-        } catch {
-          // Already gone.
-        }
-        this.restoreSelection(selBefore);
-      },
-      redo: () => {
-        for (const k of kids) {
-          if (this.isInScene(k) && k.parent !== group) {
-            try {
-              group.addChild(k);
-            } catch {
-              // Gone; skip.
-            }
-          }
-        }
-        if (!this.isInScene(group)) {
-          try {
-            layer.insertChild(
-              Math.min(at, layer.children.length),
-              group,
-            );
-          } catch {
-            try {
-              layer.addChild(group);
-            } catch {
-              // Detached; skip.
-            }
-          }
-        }
-        this.restoreSelection([group]);
-      },
-    });
-    this.updateTextContent();
-    this.notify();
+    if (this.isLiveDrawing || !this.selection.group()) return;
+    this.updateTextContent(); this.notify();
   }
 
   // --- Selection operations (Operations menu) ---
   // Top-level layer items backing the current selection: each selected
   // item maps up through its user group so transforms, duplicates, and
   // z-order moves act on whole groups, never on children directly.
-  private topLevelSelected(): AnyItem[] {
-    const out: AnyItem[] = [];
-    const seen = new Set<AnyItem>();
-    for (const it of this.selectedItems) {
-      if (!it || !this.isInScene(it)) continue;
-      const top = this.topUserGroupOf(it);
-      if (seen.has(top)) continue;
-      seen.add(top);
-      if (top.parent === this.scope.project?.activeLayer) out.push(top);
-    }
-    return out;
-  }
+  private topLevelSelected(): AnyItem[] { return this.selection.topLevelSelected(); }
 
   canDuplicateSelection(): boolean {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
-      return false;
-    return this.topLevelSelected().length > 0;
+    return !this.isLiveDrawing && this.selection.canDuplicate;
   }
 
   duplicateSelection(): void {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
-      return;
-    const src = this.topLevelSelected();
-    if (src.length === 0) return;
-    const selBefore = [...this.selectedItems];
-    const retainedBefore = new Map(this.retainedPaths);
-    const clones: AnyItem[] = [];
-    const step = new this.scope.Point(20, 20);
-    for (const item of src) {
-      let copy: AnyItem = null;
-      try {
-        copy = item.clone();
-        this.retainCloneSources(item, copy);
-        copy.translate(step);
-      } catch {
-        copy = null;
-      }
-      if (copy && this.isInScene(copy)) clones.push(copy);
-    }
-    if (clones.length === 0) return;
-    this.restoreSelection(clones);
-    const placed = [...clones];
-    const selAfter = [...clones];
-    const retainedAfter = new Map(this.retainedPaths);
-    this.history.push({
-      label: clones.length > 1 ? `Duplicate ${clones.length} items` : 'Duplicate',
-      undo: () => {
-        this.retainedPaths = new Map(retainedBefore);
-        for (const c of placed) {
-          if (this.isInScene(c)) {
-            this.removeItemFromSelection(c);
-            try {
-              c.remove();
-            } catch {
-              // Already gone.
-            }
-          }
-        }
-        this.restoreSelection(selBefore);
-      },
-      redo: () => {
-        this.retainedPaths = new Map(retainedAfter);
-        for (const c of placed) {
-          if (!this.isInScene(c)) this.insertContentAt(c, null);
-        }
-        this.restoreSelection(selAfter.filter((c) => this.isInScene(c)));
-      },
-    });
-    this.updateTextContent();
-    this.notify();
+    if (this.isLiveDrawing || !this.selection.duplicate()) return;
+    this.updateTextContent(); this.notify();
   }
 
   canReorderSelection(): boolean {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
-      return false;
-    return this.topLevelSelected().length > 0;
-  }
-
-  private reorderSelection(place: 'front' | 'back', label: string): void {
-    const layer = this.scope.project?.activeLayer;
-    if (!layer) return;
-    const targets = this.topLevelSelected();
-    if (targets.length === 0) return;
-    const beforeOrder = [...layer.children] as AnyItem[];
-    const set = new Set(targets);
-    const rest = beforeOrder.filter((c) => !set.has(c));
-    const afterOrder =
-      place === 'front' ? [...rest, ...targets] : [...targets, ...rest];
-    const applyOrder = (order: AnyItem[]): void => {
-      for (const child of order) {
-        try {
-          layer.addChild(child);
-        } catch {
-          // Detached; skip.
-        }
-      }
-    };
-    applyOrder(afterOrder);
-    const selAfter = [...this.selectedItems];
-    this.history.push({
-      label,
-      undo: () => {
-        applyOrder(beforeOrder.filter((c) => this.isInScene(c)));
-        this.restoreSelection(selAfter.filter((c) => this.isInScene(c)));
-      },
-      redo: () => {
-        applyOrder(afterOrder.filter((c) => this.isInScene(c)));
-        this.restoreSelection(selAfter.filter((c) => this.isInScene(c)));
-      },
-    });
-    this.updateTextContent();
-    this.notify();
+    return !this.isLiveDrawing && this.selection.canReorder;
   }
 
   bringSelectionToFront(): void {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
-      return;
-    this.reorderSelection('front', 'Bring to Front');
+    if (this.isLiveDrawing || !this.selection.bringToFront()) return;
+    this.updateTextContent(); this.notify();
   }
 
   sendSelectionToBack(): void {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
-      return;
-    this.reorderSelection('back', 'Send to Back');
+    if (this.isLiveDrawing || !this.selection.sendToBack()) return;
+    this.updateTextContent(); this.notify();
   }
 
   canTransformSelection(): boolean {
@@ -3185,89 +2897,8 @@ export class NibGliderEngine {
   }
 
   ungroupSelected(): void {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
-      return;
-    const groups = this.selectedItems.filter(
-      (it) => it && it.data && it.data.isUserGroup && this.isInScene(it),
-    );
-    if (groups.length === 0) return;
-    const layer = this.scope.project.activeLayer;
-    const selBefore = [...this.selectedItems];
-    const parts = groups.map((g: AnyItem) => ({
-      group: g,
-      kids: [...g.children] as AnyItem[],
-      at: Math.max(0, g.index),
-    }));
-    const apply = (): AnyItem[] => {
-      const out: AnyItem[] = [];
-      for (const p of parts) {
-        this.removeItemFromSelection(p.group);
-        const kidsNow = [...p.group.children] as AnyItem[];
-        kidsNow.forEach((k, i) => {
-          try {
-            layer.insertChild(
-              Math.min(p.at + i, layer.children.length),
-              k,
-            );
-          } catch {
-            try {
-              layer.addChild(k);
-            } catch {
-              // Detached; skip.
-            }
-          }
-        });
-        try {
-          p.group.remove();
-        } catch {
-          // Already gone.
-        }
-        out.push(...kidsNow.filter((k) => this.isInScene(k)));
-      }
-      return out;
-    };
-    const kids = apply();
-    this.restoreSelection(kids);
-    this.history.push({
-      label:
-        groups.length > 1
-          ? `Ungroup ${groups.length} groups`
-          : 'Ungroup',
-      undo: () => {
-        for (const p of parts) {
-          for (const k of p.kids) {
-            if (this.isInScene(k) && k.parent !== p.group) {
-              try {
-                p.group.addChild(k);
-              } catch {
-                // Gone; skip.
-              }
-            }
-          }
-          if (!this.isInScene(p.group)) {
-            try {
-              layer.insertChild(
-                Math.min(p.at, layer.children.length),
-                p.group,
-              );
-            } catch {
-              try {
-                layer.addChild(p.group);
-              } catch {
-                // Detached; skip.
-              }
-            }
-          }
-        }
-        this.restoreSelection(selBefore);
-      },
-      redo: () => {
-        const redone = apply();
-        this.restoreSelection(redone);
-      },
-    });
-    this.updateTextContent();
-    this.notify();
+    if (this.isLiveDrawing || !this.selection.ungroup()) return;
+    this.updateTextContent(); this.notify();
   }
 
   private itemHexColor(c: AnyItem): string | null {
@@ -4726,21 +4357,7 @@ export class NibGliderEngine {
   }
 
   private retainCloneSources(original: paper.Item, clone: paper.Item): void {
-    original.children?.forEach((child, i) => this.retainCloneSources(child, clone.children[i]));
-    const oldId = original.data.drawableId;
-    const retained = typeof oldId === 'string' ? this.retainedPaths.get(oldId) : undefined;
-    if (retained?.item === original && (clone instanceof this.scope.Path || clone instanceof this.scope.CompoundPath)) {
-      const id = crypto.randomUUID();
-      const source = structuredClone(retained.source); source.id = crypto.randomUUID();
-      clone.data.drawableId = id;
-      const tag = (item: paper.Item) => { item.data.drawableId = id; item.children?.forEach(tag); };
-      tag(clone);
-      this.retainedPaths.set(id, { source, item: clone, geometryKey: this.pathGeometryKey(clone) });
-    } else if (oldId) {
-      const childId = this.shapePartOf(clone)?.data.drawableId;
-      if (childId && childId !== oldId) clone.data.drawableId = childId;
-      else delete clone.data.drawableId;
-    }
+    this.scene.retainClone(original, clone, (item) => this.shapePartOf(item));
   }
 
   private compositePoint(kind: 'bSpline' | 'hardCorner' | 'roundedCorner'): void {
@@ -4765,23 +4382,6 @@ export class NibGliderEngine {
     if (deposit) this.depositCompositePath(deposit, 'Deposit composite path');
     this.updateTextContent();
     this.notify();
-  }
-
-  private bezierSource(item: paper.PathItem, id: string = crypto.randomUUID()): NGBezierPath {
-    const paths = item instanceof this.scope.Path ? [item] : item.children.filter((p) => p instanceof this.scope.Path) as paper.Path[];
-    return { id, mode: 'bezier', fillRule: item.fillRule === 'evenodd' ? 'evenodd' : 'nonzero',
-      contours: paths.map((path) => {
-        const t = path === item ? new this.scope.Matrix() : path.matrix;
-        const handle = (h: paper.Point) => ({ x: t.a * h.x + t.c * h.y, y: t.b * h.x + t.d * h.y });
-        return { closed: path.closed, segments: path.segments.map((s) => {
-          const p = t.transform(s.point);
-          return { point: { x: p.x, y: p.y }, handleIn: handle(s.handleIn), handleOut: handle(s.handleOut) };
-        }) };
-      }) };
-  }
-
-  private pathGeometryKey(item: paper.PathItem): string {
-    return JSON.stringify(this.bezierSource(item, 'geometry').contours);
   }
 
   private findCompositeEndpoint(point: paper.Point): { path: paper.Path; atStart: boolean } | null {
@@ -4849,7 +4449,7 @@ export class NibGliderEngine {
       if (!placed.parent) this.scope.project.activeLayer.addChild(placed);
       const shape = this.shapePartOf(placed);
       if (shape instanceof this.scope.Path || shape instanceof this.scope.CompoundPath) {
-        const source = placed === finished && geometry === deposit.item ? deposit.source : this.bezierSource(shape);
+        const source = placed === finished && geometry === deposit.item ? deposit.source : this.scene.bezierSource(shape);
         this.retainCompositeResult(placed, source);
       }
     }
@@ -4864,7 +4464,7 @@ export class NibGliderEngine {
     }
     // Removed boolean/join operands are retained by the undo snapshot, not
     // falsely advertised as current editable composite document objects.
-    for (const [id, retained] of this.retainedPaths) if (!this.isInScene(retained.item)) this.retainedPaths.delete(id);
+    this.scene.pruneRecords();
     this.recordSceneCommand(label, before, selected, placed ? [placed] : [], retainedBefore);
     this.updateTextContent(); this.notify();
   }
@@ -4872,12 +4472,8 @@ export class NibGliderEngine {
   private retainCompositeResult(item: paper.Item, source?: NGPath): void {
     const shape = this.shapePartOf(item);
     if (!(shape instanceof this.scope.Path || shape instanceof this.scope.CompoundPath)) return;
-    const id = crypto.randomUUID();
-    shape.applyMatrix = false;
+    const id = this.scene.retain(shape, source);
     item.data.drawableId = id;
-    const tag = (child: paper.Item) => { child.data.drawableId = id; child.children?.forEach(tag); };
-    tag(shape);
-    this.retainedPaths.set(id, { source: structuredClone(source ?? this.bezierSource(shape)), item: shape, geometryKey: this.pathGeometryKey(shape) });
   }
 
   splinePointKC(): void {
@@ -5503,37 +5099,7 @@ export class NibGliderEngine {
 
   // --- Mouse (NibGliderApp.js) ---
   private isNonContentItem(item: AnyItem): boolean {
-    if (!item) return true;
-    // project.hitTest's match callback receives a HitResult, not the item.
-    // HitResult has getClassName(), not a className bean.
-    if (typeof item.getClassName === 'function' && item.getClassName() === 'HitResult') {
-      item = item.item;
-    }
-    if (!item) return true;
-    if (this.isGuideItem(item)) return true;
-    if (
-      item === this.pathSnapCursor ||
-      item === this.pointSnapCursor ||
-      item === this.gridCursor
-    ) {
-      return true;
-    }
-    if (item.data && item.data.isUICursor) return true;
-    if (item.data && item.data.isPathPreview) return true;
-    if (this.gridLayer && (item === this.gridLayer || item.layer === this.gridLayer)) {
-      return true;
-    }
-    if (
-      item === this.previewInner ||
-      item === this.previewSplineText ||
-      item === this.previewShape ||
-      item === this.previewLine ||
-      item === this.previewPath ||
-      item === this.previewRect
-    ) {
-      return true;
-    }
-    return false;
+    return this.scene.isNonContentItem(item);
   }
 
   // Keyboard group per keycap, from the shared keymap.

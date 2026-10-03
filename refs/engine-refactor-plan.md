@@ -619,21 +619,38 @@ Create `SceneRepository.ts` and `SelectionManager.ts`.
 
 Move:
 
-- `contentItems`
-- `isInScene`
-- `insertContentAt`
-- selection add/remove/clear/restore
-- collective bounds and center
-- grouping and ungrouping
-- duplicate and z-order operations
-- non-content-item filtering
-- `drawableId` mapping between derived Paper.js items and `NGDrawable` records
+- [x] `contentItems`
+- [x] `isInScene`
+- [x] `insertContentAt`
+- [x] selection add/remove/clear/restore
+- [x] collective bounds and center
+- [x] grouping and ungrouping
+- [x] duplicate and z-order operations
+- [x] non-content-item filtering
+- [x] `drawableId` mapping between derived Paper.js items and `NGDrawable` records
 
 The selection service should expose intent-level methods such as
 `clear()`, `group()`, `duplicate()`, and `bringToFront()`, rather than expose
 Paper.js collection details to every other module. `DrawableRenderer` should
 be the only service that turns durable `NGDrawable` records into Paper.js
 items.
+
+Phase 4c implementation and checks:
+
+- [x] Move active-layer content lookup, reachability, reinsertion, overlay
+  filtering, and retained path identity into `SceneRepository`.
+- [x] Move selection membership, group/ungroup, duplicate, and z-order intents
+  into `SelectionManager`; keep the existing engine methods as UI entry points.
+- [x] Verify content filtering, drawable lookup, selection order, group and
+  duplicate identity, and operation undo/redo with Paper.js tests.
+- [ ] Run the Selection and keyboard shortcuts and History sections of
+  `engine-smoke-checklist.md` in the browser.
+
+Existing Paper-based tools still create some geometry directly. The new
+repository stores a temporary source-to-item association for composite path
+deposits; Phase 4d and later drawing migrations will make document records
+the general source of truth. The selection service owns command intent while
+the engine's undo manager still stores the history stack until Phase 5.
 
 ### Phase 4d: Establish the document boundary
 

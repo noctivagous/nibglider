@@ -31,6 +31,7 @@ export interface PointerHost {
   isCompositePathDrawing(): boolean;
   quadPath(): Item;
   selectedItems(): Item[];
+  toggleSelection(item: Item): void;
   isInDragLock(): boolean;
   mousePt(): Item;
   setMousePt(v: Item): void;
@@ -257,14 +258,7 @@ export class PointerController {
     let item: Item = hitResult && hitResult.item ? hitResult.item : null;
     if (item) item = host.topUserGroupOf(item);
     if (item) {
-      const alreadySelected = host.selectedItems().indexOf(item) !== -1;
-      if (alreadySelected) {
-        item.selected = false;
-        host.selectedItems().splice(host.selectedItems().indexOf(item), 1);
-      } else {
-        item.selected = true;
-        host.selectedItems().push(item);
-      }
+      host.toggleSelection(item);
     } else {
       host.clearOutSelection();
     }

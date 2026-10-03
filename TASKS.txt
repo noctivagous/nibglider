@@ -41,6 +41,19 @@ IN-DRAWING WIDGETS AND ACTOR OBJECTS
 	 filters like blurs. Can be dragged around like 
 	 a regular shape.
 
+   [ ] CROP FRAME  - crops objects to the frame that
+   are contained in or intersect with it.
+   
+  		 [ ] EXPORT FRAME - crops objects to the frame that
+          are contained in or intersect with it.  allows exporting
+          images within the document.  example: multiple icon
+          sizes are in a document but the document's purpose
+          isn't for printing them individually on sheets of paper.  
+          for this, the Export Frame can be configured
+          have multiple boxes in its bounds or the Export Frame
+          
+ 
+
 	[ ] PROPERTY-ACTOR COVERS  
 	Instead of acting on the image, will change configured properties,
 	especially effect properties, of objects on the page, like giving
@@ -48,6 +61,9 @@ IN-DRAWING WIDGETS AND ACTOR OBJECTS
 	Can be dragged around like a regular shape.
 
 ACTIVE OBJECTS
+   
+   
+   
 	[ ] VOID SHAPES AND VOID MASKS FOR NEGATIVE AREA SURROUND OBJECTS  (NON-DESTRUCTIVE)
 	 If a shape has void-shape property on it will make
 	 objects underneath it disappear non-destructively 
