@@ -28,6 +28,10 @@ export type SettingsOwner = 'path' | 'circle' | 'rect' | 'stroke' | 'fill';
 
 /** The engine methods these schemas read and write. */
 export interface SettingsTarget {
+  pathDrawingMode: 'legacy' | 'ngComposite';
+  compositeCornerRadius: number;
+  setPathDrawingMode(mode: 'legacy' | 'ngComposite'): void;
+  setCompositeCornerRadius(radius: number): void;
   circleRadiusAnchor: CircleRadiusAnchor;
   rectDiagonalMode: RectDiagonalMode;
   polygonRadiusMode: PolygonRadiusMode;
@@ -189,9 +193,30 @@ function polygonRadiusModeField(): SelectSetting {
 }
 
 // Key popovers edit how a tool draws, not what the panel sections draw.
-// Circle by Diameter, Circle by Radius, and Rect by Diagonal have popovers;
+// Path keys, Circle by Diameter, Circle by Radius, and Rect by Diagonal have popovers;
 // a key without a schema here shows no popover at all.
 const SCHEMAS: KeySettingsSchema[] = [
+  {
+    id: 'path-tool', title: 'Path tool', owner: 'path',
+    help: 'Choose a path mode before drawing. Composite uses F for sharp corners, G for B-spline points, and H for rounded corners. Finish or cancel before switching modes.',
+    fields: [
+      {
+        id: 'path-mode', kind: 'select', label: 'Path mode', default: 'legacy',
+        options: [{ value: 'legacy', label: 'Current path' }, { value: 'ngComposite', label: 'Composite path' }],
+        read: (t) => t.pathDrawingMode,
+        write: (t, value) => t.setPathDrawingMode(value as 'legacy' | 'ngComposite'),
+        validate: (value) => value === 'legacy' || value === 'ngComposite' ? value : null,
+      },
+      {
+        id: 'corner-radius', kind: 'number', label: 'Corner radius', unit: 'pt',
+        default: 12, min: 0, max: 200, step: 1,
+        visible: (t) => t.pathDrawingMode === 'ngComposite',
+        read: (t) => t.compositeCornerRadius,
+        write: (t, value) => t.setCompositeCornerRadius(value),
+        validate: (value) => Number.isFinite(value) ? Math.max(0, Math.min(200, value)) : 12,
+      },
+    ],
+  },
   {
     id: 'circle-diameter-tool',
     title: 'Circle by Diameter',

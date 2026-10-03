@@ -25,6 +25,7 @@ export interface KeyState {
   isInDragLock: boolean;
   /** Live scale/rotate applies to paths, quads, and circle previews. */
   liveAdjustApplies: boolean;
+  isCompositePath?: boolean;
 }
 
 export interface KeyCommand {
@@ -330,6 +331,16 @@ export const KEY_COMMANDS: KeyCommand[] = [
     exclusive: true,
   },
   {
+    id: 'rounded-point',
+    action: 'rounded-point',
+    keycap: 'H',
+    group: 'neutral',
+    help: 'Rounded composite path corner',
+    match: letter('h'),
+    available: (s) => !!s.isCompositePath && !s.isDrawingShape && !s.isDrawingQuad,
+    exclusive: true,
+  },
+  {
     id: 'circle-diameter',
     action: 'circle-diameter',
     keycap: 'N',
@@ -376,7 +387,7 @@ export const KEY_COMMANDS: KeyCommand[] = [
     group: 'neutral',
     help: 'Decrease spline tension',
     match: letter('j'),
-    available: (s) => s.isDrawingPath,
+    available: (s) => s.isDrawingPath && !s.isCompositePath,
     exclusive: true,
     alias: true,
   },
@@ -387,7 +398,7 @@ export const KEY_COMMANDS: KeyCommand[] = [
     group: 'neutral',
     help: 'Increase spline tension',
     match: letter('k'),
-    available: (s) => s.isDrawingPath,
+    available: (s) => s.isDrawingPath && !s.isCompositePath,
     exclusive: true,
     alias: true,
   },
@@ -398,7 +409,7 @@ export const KEY_COMMANDS: KeyCommand[] = [
     group: 'neutral',
     help: 'Reset spline tension',
     match: letter('/'),
-    available: (s) => s.isDrawingPath,
+    available: (s) => s.isDrawingPath && !s.isCompositePath,
     exclusive: true,
     highlight: false,
   },
@@ -565,9 +576,12 @@ export const KEY_COMMANDS: KeyCommand[] = [
 
 // Settings metadata attached to the command that owns the behavior.
 // Each popover edits how its tool draws (not what the panel sections
-// draw). Circle by Diameter, Circle by Radius, and Rect by Diagonal have
+// draw). Path keys, Circle by Diameter, Circle by Radius, and Rect by Diagonal have
 // popovers; keys without a link show no popover and no gear badge.
 const KEY_SETTINGS_LINKS: Record<string, { settingsId: string; settingsSummary: string }> = {
+  'sharp-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
+  'spline-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
+  'rounded-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
   'circle-diameter': { settingsId: 'circle-diameter-tool', settingsSummary: 'Circle polygon fit' },
   'circle-radius': { settingsId: 'circle-radius-tool', settingsSummary: 'Circle radius start' },
   'rect-diagonal': { settingsId: 'rect-diagonal-tool', settingsSummary: 'Rect diagonal extent' },
@@ -605,7 +619,7 @@ export const KEY_CAPS: KeyCap[] = [
   { id: 'KeyD', dataKey: 'd', commandId: 'toggle-fill', row: 'a', className: 'keyboardkey dKey toggleButton enabledButton', transform: 'translate(-27%, 0%)', legend: 'TOGGLE<br/>FILL' },
   { id: 'KeyF', dataKey: 'f', commandId: 'sharp-point', row: 'a', className: 'keyboardkey fKey drawingButton', transform: 'translate(-27%, 0%)', legend: 'SHARP</br>POINT' },
   { id: 'KeyG', dataKey: 'g', commandId: 'spline-point', row: 'a', className: 'keyboardkey gKey drawingButton enabledButton', transform: 'translate(-27%, 0%)', legend: 'SPLINE<br/>POINT' },
-  { id: 'KeyH', dataKey: 'h', row: 'a', className: 'keyboardkey hKey ', transform: 'translate(-27%, 0%)', legend: '' },
+  { id: 'KeyH', dataKey: 'h', commandId: 'rounded-point', row: 'a', className: 'keyboardkey hKey drawingButton', transform: 'translate(-27%, 0%)', legend: 'ROUNDED<br/>CORNER' },
   { id: 'KeyJ', dataKey: 'j', commandId: 'toggle-panel', row: 'a', className: 'keyboardkey jKey toggleButton enabledButton overlayToggle', transform: 'translate(-27%, 0%)', legend: 'PANEL<br/>TOGGLE' },
   { id: 'KeyK', dataKey: 'k', commandId: 'toggle-keyboard', row: 'a', className: 'keyboardkey kKey toggleButton enabledButton overlayToggle', transform: 'translate(-27%, 0%)', legend: 'KB<br/>TOGGLE' },
   { id: 'KeyL', dataKey: 'l', commandId: 'toggle-status', row: 'a', className: 'keyboardkey lKey toggleButton enabledButton overlayToggle statusToggle', transform: 'translate(-27%, 0%)', legend: 'STATUS<br/>TOGGLE', clickable: true },
@@ -777,7 +791,8 @@ function presentation(command: KeyCommand, code: string, state: KeyState, chord:
   } else if (command.id === 'tension-reset') {
     legend = 'RESET TENSION';
   } else if (command.action === 'sharp-point' || command.action === 'spline-point') {
-    description = `${state.isDrawingPath ? 'Add' : 'Start path with'} ${command.action === 'sharp-point' ? 'sharp' : 'spline'} point`;
+    description = `${state.isDrawingPath ? 'Add' : 'Start path with'} ${command.action === 'sharp-point' ? 'sharp' : state.isCompositePath ? 'B-spline' : 'spline'} point`;
+    if (state.isCompositePath && command.action === 'spline-point') legend = 'B-SPLINE POINT';
   } else if (command.action === 'finish-drawing') {
     legend = command.id === 'finish-r' ? 'COMPLETE SHAPE' : 'END DRAWING';
   }

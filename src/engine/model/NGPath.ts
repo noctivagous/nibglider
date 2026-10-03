@@ -1,6 +1,7 @@
 // Serializable path authoring data. Does not import Paper, React, or events.
 // Bézier contours preserve existing anchors/relative handles and compound
-// winding. The semantic modes retain intent; their interpolation is Phase 4b.
+// winding. Semantic modes retain intent; B-spline/composite interpolation is
+// implemented separately from these plain records.
 import type { BezierSegment, FillRule, Vec2 } from './geometryResolution';
 
 export interface NGBezierContour {

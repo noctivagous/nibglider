@@ -560,8 +560,8 @@ Phase 4 implementation and checks:
 The contracts are documented in `src/engine/model/README.md`. Bezier sources
 store one or more contours with relative handles. Circle and polygon-family
 resolution is available; supershape resolution remains part of Phase 8.
-Semantic B-spline, composite, and smoothed-polyline records can be validated
-and serialized, but interpolation is deliberately unavailable until Phase 4b.
+Semantic B-spline and composite records now resolve through Phase 4b's pure
+interpolation modules. Smoothed-polyline interpolation remains deferred.
 Text, image, and group sources remain records awaiting their own services.
 This is a non-interactive model/renderer proof: existing engine deposits,
 selection, history, and document persistence have not been migrated.
@@ -571,15 +571,44 @@ selection, history, and document persistence have not been migrated.
 Implement the initial composite path model from
 `ngpath-fmstroke-composite-path-study.md` as an opt-in path mode:
 
-1. Store semantic points and a trailing rubber-band point in
+1. [x] Store semantic points and a trailing rubber-band point in
    `PathDrawingSession`.
-2. Support B-spline, hard-corner, and rounded-corner commands.
-3. Expand semantic points into low-level segment/control conventions in pure
+2. [x] Support B-spline, hard-corner, and rounded-corner commands.
+3. [x] Expand semantic points into low-level segment/control conventions in pure
    functions.
-4. Sample B-spline runs in a pure interpolation module and render a derived
+4. [x] Sample B-spline runs in a pure interpolation module and render a derived
    Paper.js preview once per animation frame.
-5. Finalize into a regular resolved path while retaining semantic `NGPath`
-   data for native-document editing.
+5. [x] Finalize into a regular resolved path while retaining semantic `NGPath`
+   data at the engine deposit boundary; native document persistence follows
+   in the document phase.
+
+Phase 4b implementation and checks:
+
+- [x] Add a shared F/G/H key popover with Current path / Composite path mode
+  and rounded-corner radius. Keep Current path as the default and reject
+  mode changes during a live drawing session.
+- [x] Use F for sharp points, G for B-spline points, and H for rounded points.
+  Preserve the previous-point command convention and semantic snap base.
+- [x] Sample clamped open and periodic closed cubic B-splines adaptively;
+  keep explicit lines, hard corners, and rounded-corner parameters distinct.
+- [x] Coalesce preview updates per animation frame, adjust preview tolerance
+  with zoom, and finalize with a fixed document-space tolerance.
+- [x] Integrate A/R completion, W stamping, Q cancellation, live scale/rotate,
+  snapping, preview exclusion, and detach cleanup with existing engine flows.
+- [x] Retain plain source records and drawable identity through deposit,
+  clone/stamp, and undo/redo. Lower endpoint joins, boolean results, and
+  arbitrary Paper segment edits to Bezier sources when intent cannot survive.
+- [x] Verify model serialization, geometry, controller integration, transformed
+  snapping, boolean holes, and history with automated tests.
+- [ ] Complete the Composite path section of `engine-smoke-checklist.md` in
+  the browser, including text and keyboard/popover behavior.
+
+`PathTool`, `PathDrawingSession`, and `PathRenderer` own the new live path flow.
+The engine currently bridges retained records to its existing Paper scene and
+history; document-wide model ownership and persistence are later phases.
+Endpoint joining currently supports plain top-level paths. Bowed lines and
+staged arc commands remain deferred. Browser checks remain pending because
+the in-app browser connection was unavailable during implementation.
 
 Keep the existing Paper.js path tool as the fallback until the composite tool
 passes the same drawing, cancel, snap, and undo/redo checks.

@@ -16,6 +16,9 @@ import {
 } from './input/PointerController';
 import { commandKeycap, keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
 import { modifiersOf } from './input/ModifierStateTracker';
+import { PathTool, type CompositeDeposit } from './drawing/PathTool';
+import type { NGPathDrawable } from './model/NGDrawable';
+import type { NGPath, NGBezierPath } from './model/NGPath';
 import {
   clampPolygonSides,
   clampSectorAngle as clampSectorAngleValue,
@@ -100,6 +103,7 @@ export {
 // paper behavior (null style assignment, shape-specific fields) that the
 // bundled declarations model more narrowly.
 type AnyItem = any;
+interface RetainedPath { source: NGPath; item: paper.PathItem; geometryKey: string }
 
 // One item's positional delta for a move command.
 interface MoveEntry {
@@ -258,6 +262,11 @@ export class NibGliderEngine {
 
   // --- Drawing mode / shape state (drawingToolsAndFunctions.js) ---
   isDrawingPath = false;
+  pathDrawingMode: 'legacy' | 'ngComposite' = 'legacy';
+  private compositePathTool: PathTool;
+  // Compatibility bridge until document/scene/history extraction. Only plain
+  // source data is retained; derived items are kept separately for identity.
+  private retainedPaths = new Map<string, RetainedPath>();
   isDrawingShape = false;
   isDrawingQuad = false;
   shapeType: ShapeType | null = null;
@@ -320,6 +329,12 @@ export class NibGliderEngine {
   constructor(scope: paper.PaperScope, onKeyActivity: (a: KeyActivity) => void) {
     this.scope = scope;
     this.onKeyActivity = onKeyActivity;
+    this.compositePathTool = new PathTool(scope, (item) => {
+      this.applyCurrentStyles(item);
+      item.fillColor = null;
+      if (!item.parent) this.scope.project.activeLayer.addChild(item);
+      this.refreshSplineTextPreview();
+    });
   }
 
   private pointerApi(): PointerHost {
@@ -335,6 +350,18 @@ export class NibGliderEngine {
       isLengthSnappingEnabled: () => this.isLengthSnappingEnabled,
       isAspectSnappingEnabled: () => this.isAspectSnappingEnabled,
       path: () => this.path,
+      pathSnapBase: () => {
+        const base = this.compositePathTool.snapBase;
+        if (base) return new this.scope.Point(base.x, base.y);
+        const segments = this.path?.segments;
+        return segments?.length ? segments[segments.length === 1 ? 0 : segments.length - 2].point : null;
+      },
+      updateLivePath: (point) => {
+        if (!this.compositePathTool.active) return false;
+        this.compositePathTool.move(point);
+        return true;
+      },
+      isCompositePathDrawing: () => this.compositePathTool.active,
       quadPath: () => this.quadPath,
       selectedItems: () => this.selectedItems,
       isInDragLock: () => this.isInDragLock,
@@ -430,6 +457,8 @@ export class NibGliderEngine {
       rectTwoEdgesKC: () => this.rectTwoEdgesKC(),
       polyLineKC: () => this.polyLineKC(),
       splinePointKC: () => this.splinePointKC(),
+      roundedPointKC: () => this.roundedPointKC(),
+      compositePathEnabled: () => this.pathDrawingMode === 'ngComposite',
       circleKC: (mode) => this.circleKC(mode),
       radialStampKC: () => this.radialStampKC(),
       quadPointKC: () => this.quadPointKC(),
@@ -514,6 +543,7 @@ export class NibGliderEngine {
   }
 
   detach(): void {
+    if (this.compositePathTool.active) this.cancelCurrentDrawingOperation();
     this.input.detach();
     this.resetKeyboardInput();
   }
@@ -1687,6 +1717,36 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  setPathDrawingMode(mode: 'legacy' | 'ngComposite'): void {
+    if (this.isLiveDrawing || (mode !== 'legacy' && mode !== 'ngComposite')) return;
+    this.pathDrawingMode = mode;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  get compositeCornerRadius(): number { return this.compositePathTool.cornerRadius; }
+  setCompositeCornerRadius(radius: number): void {
+    this.compositePathTool.setCornerRadius(radius);
+    this.updateTextContent();
+    this.notify();
+  }
+
+  getRetainedPathDrawable(id: string): NGPathDrawable | null {
+    const retained = this.retainedPaths.get(id);
+    if (!retained || !this.isInScene(retained.item)) return null;
+    const item = retained.item;
+    const t = item.globalMatrix;
+    // Legacy geometry edits may deliberately break composite invariants.
+    // Never expose stale semantic intent as the current editable geometry;
+    // keep the original archive so undo can recover its semantic source.
+    const source = this.pathGeometryKey(item) === retained.geometryKey
+      ? structuredClone(retained.source) : this.bezierSource(item, retained.source.id);
+    return { id, kind: 'path', layerId: `paper-layer-${item.layer.id}`,
+      source,
+      transform: { a: t.a, b: t.b, c: t.c, d: t.d, tx: t.tx, ty: t.ty },
+      opacity: item.opacity, visible: item.visible, locked: item.locked };
+  }
+
   setCircleRadiusAnchor(anchor: CircleRadiusAnchor): void {
     if (anchor !== 'origin' && anchor !== 'circumference') return;
     this.circleRadiusAnchor = anchor;
@@ -2145,7 +2205,7 @@ export class NibGliderEngine {
     items.forEach((item) => {
       const candidatePoint =
         typeof item.getNearestPoint === 'function'
-          ? item.getNearestPoint(originalPoint)
+          ? item.localToGlobal(item.getNearestPoint(item.globalToLocal(originalPoint)))
           : item.position || null;
       if (!candidatePoint) return;
       const dist = candidatePoint.getDistance(originalPoint);
@@ -2220,15 +2280,15 @@ export class NibGliderEngine {
       }
       const segments = item.segments;
       if (!segments || segments.length === 0) return;
-      segments.forEach((seg: AnyItem) => consider(seg.point, 'point'));
+      segments.forEach((seg: AnyItem) => consider(item.localToGlobal(seg.point), 'point'));
       const curves = item.curves;
       if (curves) {
         curves.forEach((curve: AnyItem) =>
-          consider(curve.getPointAt(curve.length / 2), 'midpoint'),
+          consider(item.localToGlobal(curve.getPointAt(curve.length / 2)), 'midpoint'),
         );
       }
       if (item.closed) {
-        consider(item.bounds.center, 'centroid');
+        consider(item.localToGlobal(item.internalBounds.center), 'centroid');
       }
     };
     const items: AnyItem[] = scope.project.getItems({
@@ -2593,6 +2653,7 @@ export class NibGliderEngine {
     before: AnyItem[],
     selBefore: AnyItem[],
     explicitPlaced: Array<AnyItem | null>,
+    retainedBefore?: Map<string, RetainedPath>,
   ): void {
     const layer = this.scope.project
       ? this.scope.project.activeLayer
@@ -2662,9 +2723,11 @@ export class NibGliderEngine {
     const orderedPlaced = [...placed].sort(
       (a, b) => (orderAfter.get(b) ?? 0) - (orderAfter.get(a) ?? 0),
     );
+    const retainedAfter = retainedBefore ? new Map(this.retainedPaths) : null;
     this.history.push({
       label,
       undo: () => {
+        if (retainedBefore) this.retainedPaths = new Map(retainedBefore);
         for (const item of placed) {
           if (this.isInScene(item)) {
             this.removeItemFromSelection(item);
@@ -2682,6 +2745,7 @@ export class NibGliderEngine {
         this.restoreSelection(selBefore);
       },
       redo: () => {
+        if (retainedAfter) this.retainedPaths = new Map(retainedAfter);
         for (const item of victims) {
           if (this.isInScene(item)) {
             this.removeItemFromSelection(item);
@@ -2959,12 +3023,14 @@ export class NibGliderEngine {
     const src = this.topLevelSelected();
     if (src.length === 0) return;
     const selBefore = [...this.selectedItems];
+    const retainedBefore = new Map(this.retainedPaths);
     const clones: AnyItem[] = [];
     const step = new this.scope.Point(20, 20);
     for (const item of src) {
       let copy: AnyItem = null;
       try {
         copy = item.clone();
+        this.retainCloneSources(item, copy);
         copy.translate(step);
       } catch {
         copy = null;
@@ -2975,9 +3041,11 @@ export class NibGliderEngine {
     this.restoreSelection(clones);
     const placed = [...clones];
     const selAfter = [...clones];
+    const retainedAfter = new Map(this.retainedPaths);
     this.history.push({
       label: clones.length > 1 ? `Duplicate ${clones.length} items` : 'Duplicate',
       undo: () => {
+        this.retainedPaths = new Map(retainedBefore);
         for (const c of placed) {
           if (this.isInScene(c)) {
             this.removeItemFromSelection(c);
@@ -2991,6 +3059,7 @@ export class NibGliderEngine {
         this.restoreSelection(selBefore);
       },
       redo: () => {
+        this.retainedPaths = new Map(retainedAfter);
         for (const c of placed) {
           if (!this.isInScene(c)) this.insertContentAt(c, null);
         }
@@ -3271,8 +3340,10 @@ export class NibGliderEngine {
     if (itemsToStamp === null) return;
     const before = this.contentItems();
     const selBefore = [...this.selectedItems];
+    const retainedBefore = new Map(this.retainedPaths);
     for (let i = 0; i < itemsToStamp.length; i++) {
       const clone = itemsToStamp[i].clone();
+      this.retainCloneSources(itemsToStamp[i], clone);
       clone.selected = false;
       this.scope.project.activeLayer.addChild(clone);
     }
@@ -3283,10 +3354,12 @@ export class NibGliderEngine {
       before,
       selBefore,
       [],
+      retainedBefore,
     );
   }
 
   cancelCurrentDrawingOperation(): void {
+    this.compositePathTool.cancel();
     // Cancel (Q / Escape) also releases drag-lock, like Space does.
     this.setIsInDragLock(false);
     if (this.previewInner) {
@@ -4403,6 +4476,11 @@ export class NibGliderEngine {
   }
 
   stampCurrentPreview(): void {
+    if (this.compositePathTool.active) {
+      const deposit = this.compositePathTool.stamp(this.fillEnabled);
+      if (deposit) this.depositCompositePath(deposit, 'Stamp');
+      return;
+    }
     const scope = this.scope;
     const histBefore = this.contentItems();
     const histSel = [...this.selectedItems];
@@ -4517,6 +4595,10 @@ export class NibGliderEngine {
   }
 
   endPathOrShape(): void {
+    if (this.compositePathTool.active) {
+      this.finishCompositePath(false);
+      return;
+    }
     const scope = this.scope;
     const histBefore = this.contentItems();
     const histSel = [...this.selectedItems];
@@ -4612,6 +4694,7 @@ export class NibGliderEngine {
   }
 
   polyLineKC(): void {
+    if (this.pathDrawingMode === 'ngComposite') { this.compositePoint('hardCorner'); return; }
     const scope = this.scope;
     if (!this.mousePt) return;
     if (!this.path) {
@@ -4638,7 +4721,167 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  roundedPointKC(): void {
+    if (this.pathDrawingMode === 'ngComposite') this.compositePoint('roundedCorner');
+  }
+
+  private retainCloneSources(original: paper.Item, clone: paper.Item): void {
+    original.children?.forEach((child, i) => this.retainCloneSources(child, clone.children[i]));
+    const oldId = original.data.drawableId;
+    const retained = typeof oldId === 'string' ? this.retainedPaths.get(oldId) : undefined;
+    if (retained?.item === original && (clone instanceof this.scope.Path || clone instanceof this.scope.CompoundPath)) {
+      const id = crypto.randomUUID();
+      const source = structuredClone(retained.source); source.id = crypto.randomUUID();
+      clone.data.drawableId = id;
+      const tag = (item: paper.Item) => { item.data.drawableId = id; item.children?.forEach(tag); };
+      tag(clone);
+      this.retainedPaths.set(id, { source, item: clone, geometryKey: this.pathGeometryKey(clone) });
+    } else if (oldId) {
+      const childId = this.shapePartOf(clone)?.data.drawableId;
+      if (childId && childId !== oldId) clone.data.drawableId = childId;
+      else delete clone.data.drawableId;
+    }
+  }
+
+  private compositePoint(kind: 'bSpline' | 'hardCorner' | 'roundedCorner'): void {
+    if (!this.mousePt || this.isDrawingShape || this.isDrawingQuad) return;
+    this.compositePathTool.point(kind, this.mousePt);
+    this.path = this.compositePathTool.preview;
+    this.isDrawingPath = true;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  private finishCompositePath(close: boolean): void {
+    const origin = this.compositePathTool.origin;
+    const nearStart = origin && this.mousePt && this.mousePt.getDistance(new this.scope.Point(origin.x, origin.y)) <= this.endpointTolerance();
+    const closed = close || this.fillEnabled || (this.depositPointMode === 1 && !!nearStart);
+    if (closed && nearStart) this.compositePathTool.move(origin!);
+    const deposit = this.compositePathTool.finish(closed);
+    this.path = null;
+    this.isDrawingPath = false;
+    this.resetLiveAdjust();
+    this.clearSplineTextPreview();
+    if (deposit) this.depositCompositePath(deposit, 'Deposit composite path');
+    this.updateTextContent();
+    this.notify();
+  }
+
+  private bezierSource(item: paper.PathItem, id: string = crypto.randomUUID()): NGBezierPath {
+    const paths = item instanceof this.scope.Path ? [item] : item.children.filter((p) => p instanceof this.scope.Path) as paper.Path[];
+    return { id, mode: 'bezier', fillRule: item.fillRule === 'evenodd' ? 'evenodd' : 'nonzero',
+      contours: paths.map((path) => {
+        const t = path === item ? new this.scope.Matrix() : path.matrix;
+        const handle = (h: paper.Point) => ({ x: t.a * h.x + t.c * h.y, y: t.b * h.x + t.d * h.y });
+        return { closed: path.closed, segments: path.segments.map((s) => {
+          const p = t.transform(s.point);
+          return { point: { x: p.x, y: p.y }, handleIn: handle(s.handleIn), handleOut: handle(s.handleOut) };
+        }) };
+      }) };
+  }
+
+  private pathGeometryKey(item: paper.PathItem): string {
+    return JSON.stringify(this.bezierSource(item, 'geometry').contours);
+  }
+
+  private findCompositeEndpoint(point: paper.Point): { path: paper.Path; atStart: boolean } | null {
+    let best: { path: paper.Path; atStart: boolean } | null = null;
+    let distance = this.endpointTolerance();
+    for (const item of this.scope.project.activeLayer.children) {
+      // Joining plain top-level paths is an explicit conversion boundary.
+      // Groups/text keep their structure until scene/operation policy work.
+      if (!(item instanceof this.scope.Path) || item.closed || !item.segments.length || this.isNonContentItem(item)) continue;
+      for (const atStart of [false, true]) {
+        const segment = item.segments[atStart ? 0 : item.segments.length - 1];
+        const d = item.localToGlobal(segment.point).getDistance(point);
+        if (d <= distance) { distance = d; best = { path: item, atStart }; }
+      }
+    }
+    return best;
+  }
+
+  private joinCompositeDeposit(item: paper.Path): paper.Path {
+    if (item.closed || this.depositPointMode !== 1 || !item.segments.length) return item;
+    const end = item.segments[item.segments.length - 1].point;
+    const endHit = this.findCompositeEndpoint(end);
+    const hit = endHit ?? this.findCompositeEndpoint(item.segments[0].point);
+    if (!hit) return item;
+    const target = hit.path;
+    const matrix = target.globalMatrix;
+    const targetSegments = target.segments.map((s) => {
+      const transformHandle = (p: paper.Point) => new this.scope.Point(matrix.a * p.x + matrix.c * p.y, matrix.b * p.x + matrix.d * p.y);
+      return new this.scope.Segment(target.localToGlobal(s.point), transformHandle(s.handleIn), transformHandle(s.handleOut));
+    });
+    const drawing = item.segments.map((s) => s.clone());
+    const reverse = (segments: paper.Segment[]) => segments.reverse().map((s) => new this.scope.Segment(s.point, s.handleOut, s.handleIn));
+    const merge = (left: paper.Segment[], right: paper.Segment[]) => {
+      // The shared anchor owns the incoming handle from the left path and
+      // the outgoing handle from the right path.
+      left[left.length - 1].handleOut = right[0].handleOut.clone();
+      return [...left, ...right.slice(1)];
+    };
+    const joint = targetSegments[hit.atStart ? 0 : targetSegments.length - 1].point;
+    let segments: paper.Segment[];
+    if (endHit) {
+      drawing[drawing.length - 1].point = joint.clone();
+      segments = hit.atStart ? merge(drawing, targetSegments) : merge(targetSegments, reverse(drawing));
+    } else {
+      drawing[0].point = joint.clone();
+      segments = hit.atStart ? merge(reverse(drawing), targetSegments) : merge(targetSegments, drawing);
+    }
+    const joined = new this.scope.Path({ insert: false, applyMatrix: false, segments });
+    // Replace the old path instead of mutating its segments so the existing
+    // scene transaction restores geometry AND placement on undo.
+    item.remove(); this.dropItem(target);
+    return joined;
+  }
+
+  private depositCompositePath(deposit: CompositeDeposit, label: string): void {
+    const before = this.contentItems();
+    const selected = [...this.selectedItems];
+    const retainedBefore = new Map(this.retainedPaths);
+    const geometry = label === 'Stamp' ? deposit.item : this.joinCompositeDeposit(deposit.item);
+    this.applyCurrentStyles(geometry);
+    const finished = this.withShapeText(geometry, false);
+    const placed = this.depositWithCombine(finished);
+    if (placed) {
+      placed.selected = false;
+      if (!placed.parent) this.scope.project.activeLayer.addChild(placed);
+      const shape = this.shapePartOf(placed);
+      if (shape instanceof this.scope.Path || shape instanceof this.scope.CompoundPath) {
+        const source = placed === finished && geometry === deposit.item ? deposit.source : this.bezierSource(shape);
+        this.retainCompositeResult(placed, source);
+      }
+    }
+    // Subtract consumes the deposit and returns null while placing one or
+    // more cuts itself. Capture those new results as lowered Bezier records.
+    const previousItems = new Set(before);
+    for (const item of this.contentItems()) {
+      if (!previousItems.has(item)) {
+        const shape = this.shapePartOf(item);
+        if (this.retainedPaths.get(shape?.data.drawableId)?.item !== shape) this.retainCompositeResult(item);
+      }
+    }
+    // Removed boolean/join operands are retained by the undo snapshot, not
+    // falsely advertised as current editable composite document objects.
+    for (const [id, retained] of this.retainedPaths) if (!this.isInScene(retained.item)) this.retainedPaths.delete(id);
+    this.recordSceneCommand(label, before, selected, placed ? [placed] : [], retainedBefore);
+    this.updateTextContent(); this.notify();
+  }
+
+  private retainCompositeResult(item: paper.Item, source?: NGPath): void {
+    const shape = this.shapePartOf(item);
+    if (!(shape instanceof this.scope.Path || shape instanceof this.scope.CompoundPath)) return;
+    const id = crypto.randomUUID();
+    shape.applyMatrix = false;
+    item.data.drawableId = id;
+    const tag = (child: paper.Item) => { child.data.drawableId = id; child.children?.forEach(tag); };
+    tag(shape);
+    this.retainedPaths.set(id, { source: structuredClone(source ?? this.bezierSource(shape)), item: shape, geometryKey: this.pathGeometryKey(shape) });
+  }
+
   splinePointKC(): void {
+    if (this.pathDrawingMode === 'ngComposite') { this.compositePoint('bSpline'); return; }
     const scope = this.scope;
     if (!this.mousePt) return;
     if (!this.path) {
@@ -4701,6 +4944,7 @@ export class NibGliderEngine {
   // it is committed sharp, exactly like the sharp key. When the mouse is
   // near the first point, the final point lands exactly on it.
   completeShapeWithSpline(): void {
+    if (this.compositePathTool.active) { this.finishCompositePath(true); return; }
     const scope = this.scope;
     if (!this.isDrawingPath || !this.path || !this.mousePt) return;
     const histBefore = this.contentItems();
@@ -4833,6 +5077,9 @@ export class NibGliderEngine {
 
   private applyLiveScale(event: KeyboardEvent, dir: -1 | 1): void {
     const f = this.liveScaleFactor(event, dir);
+    if (this.compositePathTool.active) {
+      this.compositePathTool.scale(f); this.updateTextContent(); this.notify(); return;
+    }
     if (this.isDrawingPath && this.path && this.path.segments.length > 0) {
       this.path.scale(f, this.path.segments[0].point);
       this.refreshSplineTextPreview();
@@ -4856,6 +5103,9 @@ export class NibGliderEngine {
 
   private applyLiveRotate(event: KeyboardEvent, dir: -1 | 1): void {
     const angle = dir * this.liveRotateStep(event);
+    if (this.compositePathTool.active) {
+      this.compositePathTool.rotate(angle); this.updateTextContent(); this.notify(); return;
+    }
     if (this.isDrawingPath && this.path && this.path.segments.length > 0) {
       this.path.rotate(angle, this.path.segments[0].point);
       this.refreshSplineTextPreview();
@@ -5269,6 +5519,7 @@ export class NibGliderEngine {
       return true;
     }
     if (item.data && item.data.isUICursor) return true;
+    if (item.data && item.data.isPathPreview) return true;
     if (this.gridLayer && (item === this.gridLayer || item.layer === this.gridLayer)) {
       return true;
     }
@@ -5705,7 +5956,12 @@ export class NibGliderEngine {
       );
     }
     if (this.isDrawingPath) {
-      state.push(L('title', [T('Drawing Path')]));
+      state.push(L('title', [T(this.compositePathTool.active ? 'Drawing Composite Path' : 'Drawing Path')]));
+      if (this.compositePathTool.active) {
+        steps.push(L('hint', [K('sharp-point'), T(' sharp, '), K('spline-point'), T(' B-spline, '),
+          K('rounded-point'), T(` rounded (${this.compositeCornerRadius}pt), `),
+          K('finish-r'), T(' close, '), K('finish-a'), T(' end, '), K('cancel'), T(' cancel')]));
+      } else {
       steps.push(L('hint', [T('Move mouse to adjust path.')]));
       steps.push(
         L('hint', [
@@ -5723,6 +5979,7 @@ export class NibGliderEngine {
       steps.push(
         L('hint', [T('A near own start closes · A near a path end joins it')]),
       );
+      }
     }
     if (this.isDrawingShape) {
       if (

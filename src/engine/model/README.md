@@ -2,8 +2,9 @@
 
 `NGDrawable` records are authoritative page-item data. Paper.js items and
 resolved geometry are derived and may be discarded/rebuilt. These foundations
-are an isolated Phase 4 proof; existing engine tools still use their current
-Paper.js drawing, selection, and history flows.
+provide the Phase 4 model boundary. The opt-in composite path tool uses these
+sources while the engine bridges deposits to its existing Paper.js scene,
+selection, and history flows.
 
 ## Record contracts
 
@@ -13,7 +14,8 @@ Paper.js drawing, selection, and history flows.
 - `NGPath.ts` stores exact Bezier anchors and relative handle offsets in one
   or more contours. Each contour owns closure; the source owns its fill rule.
   Semantic B-spline, composite, and smoothed-polyline modes retain their own
-  authoring parameters. Interpolation is deferred to Phase 4b.
+  authoring parameters. B-spline and composite interpolation are supported;
+  smoothed-polyline interpolation is deferred.
 - `NGShape.ts` preserves shape parameters. Circles and polygon-family records
   resolve to Bezier paths; supershape resolution is deferred to Phase 8.
 - `NGText.ts`, `NGImage.ts`, and `NGGroup.ts` retain live text, asset/boundary/
@@ -59,6 +61,39 @@ surface. Roots and compound children carry `item.data.drawableId`; mapping
 rejects stale roots and foreign clones. Caller mutations to Paper segments or
 resolved geometry cannot change the retained source. Re-rendering from the
 record restores geometry and applies its transform once.
+
+## Composite path drawing
+
+Choose Composite path in the F/G/H key settings popover. Current path remains
+the default. F selects sharp corners, G selects B-spline points, and H selects
+rounded corners with the configured radius. A ends, R closes, W stamps, and
+Q cancels. Mode changes require finishing or canceling the live session.
+
+`drawing/PathDrawingSession.ts` owns semantic points and the trailing cursor
+point, including live scale/rotate and corner-radius changes. A point command
+sets the previous committed point's convention before committing the cursor.
+`PathTool.ts` owns session lifecycle and returns independent source/geometry
+deposits; the engine owns placement and history.
+
+`geometry/compositeExpansion.ts` expands hard corners into repeated controls,
+keeps explicit line runs exact, and resolves rounded corners through tangent
+trimming with arc, bevel, or B-spline treatments. Radius zero gives a sharp
+corner. `splineInterpolation.ts` samples clamped open or periodic closed cubic
+B-splines adaptively. Bowed lines and staged arcs are not implemented.
+
+`drawing/PathRenderer.ts` coalesces preview updates per animation frame with
+a tolerance of 0.5 screen pixels. Final output uses a fixed 0.1 document-point
+tolerance, so zoom does not change deposited geometry. Previews are excluded
+from content selection and history and removed on cancellation or detach.
+
+The engine retains plain source records separately from derived Paper items
+and restores that association with deposit/clone undo and redo. Endpoint joins
+and boolean results become Bezier records; arbitrary segment edits also expose
+a Bezier source. Whole-item transforms preserve semantic source parameters.
+This is a compatibility bridge: document-wide ownership, persistence, and
+model-driven transform/history services remain later work. Endpoint joining
+currently covers plain top-level paths, excluding grouped and text-wrapped
+paths.
 
 ## Verification
 

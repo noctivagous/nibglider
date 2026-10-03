@@ -28,6 +28,34 @@ the expected result, and Undo then Redo restores both directions.
 - [ ] W stamps the live preview without ending the session. With a
       selection and no live drawing, W stamps the selection.
 
+## Composite path (Phase 4b)
+
+Open the F or G key popover and select Composite path. Return to Current path
+after this pass to verify the legacy drawing checks above.
+
+- [ ] F places sharp points, G places B-spline points, and H places rounded
+      corners. The preview and key legends reflect the selected mode.
+- [ ] Change the rounded-corner radius in the key popover during a live path.
+      Existing rounded corners update; radius zero produces sharp corners.
+      A mode change during drawing leaves the current mode intact.
+- [ ] Move and drag the cursor with grid, point, path, angle, and length
+      snapping enabled one at a time. The trailing point follows the constraint
+      from the last semantic point. Transformed deposited paths still snap.
+- [ ] [ ] scale and ; ' rotate the live path. A deposits it; R closes it.
+      Joining near the starting point closes without a duplicate seam.
+- [ ] W stamps independently and keeps the session live. Each stamp and final
+      deposit has one undo step; Undo/Redo restores geometry and selection.
+- [ ] Q/Escape cancels without depositing. Reload during a live preview and
+      confirm cleanup produces no listener or animation-frame errors.
+- [ ] Zoom while drawing a long spline. The preview remains smooth, the
+      trailing point responds, and preview segments cannot be selected.
+- [ ] Join an open composite path to a plain path endpoint; undo restores the
+      original path. Union/Subtract/Intersect deposits restore operands on undo.
+- [ ] Deposit with Display and Body text enabled. Text follows the preview
+      and final geometry, and Undo/Redo restores the complete result.
+- [ ] Cancel or finish, switch back to Current path, and confirm legacy F/G
+      drawing and J/K tension commands still work.
+
 ## Selection and keyboard shortcuts
 
 - [ ] Dragging empty canvas pans. The wheel zooms toward the cursor.

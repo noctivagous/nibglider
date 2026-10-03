@@ -26,6 +26,9 @@ export interface PointerHost {
   isLengthSnappingEnabled(): boolean;
   isAspectSnappingEnabled(): boolean;
   path(): Item;
+  pathSnapBase(): Item;
+  updateLivePath(point: Item): boolean;
+  isCompositePathDrawing(): boolean;
   quadPath(): Item;
   selectedItems(): Item[];
   isInDragLock(): boolean;
@@ -94,10 +97,8 @@ export class PointerController {
     host.setMousePt(host.snapToGrid(event.point));
     if (host.isAngleSnappingEnabled() || host.isLengthSnappingEnabled()) {
       let snapBase: Item = null;
-      if (host.isDrawingPath() && host.path() && host.path().segments.length > 0) {
-        const baseIndex =
-          host.path().segments.length === 1 ? 0 : host.path().segments.length - 2;
-        snapBase = host.path().segments[baseIndex].point;
+      if (host.isDrawingPath()) {
+        snapBase = host.pathSnapBase();
       } else if (
         host.isDrawingShape() &&
         shapeType != null &&
@@ -152,7 +153,7 @@ export class PointerController {
     }
     host.updateGridCursor();
     this.handleDragLock();
-    if (host.isDrawingPath() && host.path()) {
+    if (host.isDrawingPath() && !host.updateLivePath(host.mousePt()) && host.path()) {
       if (host.path().segments.length === 1) host.path().add(host.mousePt());
       if (host.path().segments.length > 1) {
         host.path().removeSegment(host.path().segments.length - 1);
@@ -181,6 +182,10 @@ export class PointerController {
 
   onMouseDrag(event: paper.MouseEvent): void {
     const host = this.host;
+    if (host.isCompositePathDrawing()) {
+      this.onMouseMove(event);
+      return;
+    }
     if (host.isPanning()) {
       const view = host.scope().view;
       if (host.panAnchorCenter() !== null && host.panAnchorPoint() !== null) {

@@ -65,6 +65,8 @@ export interface KeyboardHost {
   rectTwoEdgesKC(): void;
   polyLineKC(): void;
   splinePointKC(): void;
+  roundedPointKC(): void;
+  compositePathEnabled(): boolean;
   circleKC(mode: string): void;
   radialStampKC(): void;
   quadPointKC(): void;
@@ -149,6 +151,7 @@ export class KeyboardController {
       selectedCount: host.selectedItems().length,
       isInDragLock: host.isInDragLock(),
       liveAdjustApplies: host.liveAdjustApplies(),
+      isCompositePath: host.compositePathEnabled(),
     };
   }
 
@@ -218,6 +221,9 @@ export class KeyboardController {
         return;
       case 'spline-point':
         host.splinePointKC();
+        return;
+      case 'rounded-point':
+        host.roundedPointKC();
         return;
       case 'circle-diameter':
         host.circleKC('diameter');

@@ -136,7 +136,7 @@ test('missing layers, foreign-project layers, styles, and unsupported sources le
     const item = renderer.render(model);
     for (const invalid of [
       { ...model, layerId: 'missing' }, { ...model, styleId: 'missing' },
-      { ...model, source: fixture('composite').source },
+      { ...model, source: { id: 'future', mode: 'smoothedPolyline', tension: 0.4, closed: false, points: [] } },
     ]) assert.throws(() => renderer.render(invalid));
     assert.equal(renderer.getItem(model.id), item);
     assert.equal(item.parent, layer);
@@ -149,7 +149,7 @@ test('missing layers, foreign-project layers, styles, and unsupported sources le
   } finally { scope.project.remove(); }
 });
 
-test('future semantic modes retain parameters but cannot silently render as a different path mode', () => {
+test('supported semantic modes resolve while deferred modes reject silent flattening', () => {
   const composite = fixture('composite');
   assert.equal(composite.source.points[2].corner.radius, 12);
   const base = fixture('bezier');
@@ -159,7 +159,8 @@ test('future semantic modes retain parameters but cannot silently render as a di
   ]) {
     const model = roundTrip({ ...base, source });
     assert.deepEqual(model.source, source);
-    assert.throws(() => resolveDrawableGeometry(model), GeometryResolutionError);
+    if (source.mode === 'smoothedPolyline') assert.throws(() => resolveDrawableGeometry(model), GeometryResolutionError);
+    else assert.equal(resolveDrawableGeometry(model).kind, 'path');
   }
 });
 

@@ -1,18 +1,25 @@
 // Pure model -> derived geometry. Owns no caches or scene state and never
-// mutates source parameters. Semantic interpolation is deliberately deferred
-// to Phase 4b, and text/image/group rendering to their later services.
+// mutates source parameters. Composite/B-spline interpolation is independent
+// of Paper.js; text/image/group rendering belongs to later services.
 import type { NGPath } from '../model/NGPath';
 import type { NGShape } from '../model/NGShape';
 import type { NGDrawable } from '../model/NGDrawable';
 import type { BezierSegment, ResolvedVectorGeometry, Vec2 } from '../model/geometryResolution';
 import { validateDrawable, validatePath } from '../model/serialization';
+import { resolveCompositePath } from './compositeExpansion';
+import { sampleBSpline, type SamplingOptions } from './splineInterpolation';
 
 export class GeometryResolutionError extends Error {
   constructor(message: string) { super(message); this.name = 'GeometryResolutionError'; }
 }
 
-export function resolvePath(path: NGPath): ResolvedVectorGeometry {
+export function resolvePath(path: NGPath, options: SamplingOptions = {}): ResolvedVectorGeometry {
   validatePath(path);
+  if (path.mode === 'ngComposite') return resolveCompositePath(path, options);
+  if (path.mode === 'bSpline') return { kind: 'path', closed: path.closed,
+    segments: sampleBSpline(path.points, path.closed, options).map((point) => ({
+      point, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 },
+    })) };
   if (path.mode !== 'bezier') throw new GeometryResolutionError(`Interpolation for ${path.mode} is not implemented yet`);
   const paths = path.contours.map((contour) => ({
     kind: 'path' as const, closed: contour.closed,
