@@ -40,6 +40,7 @@ export class CoordinateManager {
       case 'cm': return value * PT_PER_CM;
       case 'mm': return value * PT_PER_INCH / 25.4;
       case 'q': return value * PT_PER_INCH / 101.6;
+      default: throw new Error(`Unsupported SVG length unit: ${unit}`);
     }
   }
 
@@ -52,6 +53,7 @@ export class CoordinateManager {
     this.finite(value);
     if (!Number.isInteger(decimals) || decimals < 0 || decimals > 12) throw new Error('Invalid point precision');
     const scale = 10 ** decimals;
+    if (Math.abs(value) > Number.MAX_VALUE / scale) return value;
     const rounded = Math.round(value * scale) / scale;
     return Object.is(rounded, -0) ? 0 : rounded;
   }

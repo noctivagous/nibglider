@@ -21,7 +21,7 @@ export class DocumentManager {
 
   get pageSettings(): PageSettings { return { ...this.page }; }
   get isDirty(): boolean { return this.dirty; }
-  get sceneRevision(): number { return this.revision; }
+  get revisionNumber(): number { return this.revision; }
   subscribe(listener: (change: DocumentChange) => void): () => void {
     this.listeners.add(listener); return () => this.listeners.delete(listener);
   }

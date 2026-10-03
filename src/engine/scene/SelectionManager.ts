@@ -1,18 +1,17 @@
-// Selection intent and commands. Paper collection details and undo closures
-// stay here; the engine only decides when an intent is allowed and publishes UI.
-import type { UndoCommand } from '../undoManager';
+// Selection intent and Paper mutations. HistoryManager records undo entries.
+import { HistoryManager } from '../history/HistoryManager';
 import { SceneRepository } from './SceneRepository';
 
 type Item = any;
 export class SelectionManager {
   private items: Item[] = [];
   private readonly scene: SceneRepository;
-  private readonly push: (command: UndoCommand) => void;
+  private readonly history: HistoryManager;
   private readonly retainClone: (original: Item, clone: Item) => void;
 
-  constructor(scene: SceneRepository, push: (command: UndoCommand) => void,
+  constructor(scene: SceneRepository, history: HistoryManager,
     retainClone: (original: Item, clone: Item) => void) {
-    this.scene = scene; this.push = push; this.retainClone = retainClone;
+    this.scene = scene; this.history = history; this.retainClone = retainClone;
   }
   get selectedItems(): Item[] { return this.items; }
   get hasSelection(): boolean { return this.items.length > 0; }
@@ -96,29 +95,7 @@ export class SelectionManager {
     try { layer.insertChild(Math.min(at, layer.children.length), group); }
     catch { try { layer.addChild(group); } catch { return false; } }
     this.restore([group]);
-    const kids = [...members];
-    this.push({
-      label: `Group ${kids.length} items`,
-      undo: () => {
-        const index = Math.max(0, group.index);
-        for (let i = kids.length - 1; i >= 0; i--) {
-          try { layer.insertChild(Math.min(index, layer.children.length), kids[i]); }
-          catch { try { layer.addChild(kids[i]); } catch { /* Detached. */ } }
-        }
-        this.remove(group); try { group.remove(); } catch { /* Already gone. */ }
-        this.restore(before);
-      },
-      redo: () => {
-        for (const kid of kids) if (this.scene.isInScene(kid) && kid.parent !== group) {
-          try { group.addChild(kid); } catch { /* Gone. */ }
-        }
-        if (!this.scene.isInScene(group)) {
-          try { layer.insertChild(Math.min(at, layer.children.length), group); }
-          catch { try { layer.addChild(group); } catch { /* Detached. */ } }
-        }
-        this.restore([group]);
-      },
-    });
+    this.history.recordGroup(group, [...members], at, before);
     return true;
   }
 
@@ -143,22 +120,7 @@ export class SelectionManager {
       return out;
     };
     this.restore(apply());
-    this.push({
-      label: groups.length > 1 ? `Ungroup ${groups.length} groups` : 'Ungroup',
-      undo: () => {
-        for (const part of parts) {
-          for (const kid of part.kids) if (this.scene.isInScene(kid) && kid.parent !== part.group) {
-            try { part.group.addChild(kid); } catch { /* Gone. */ }
-          }
-          if (!this.scene.isInScene(part.group)) {
-            try { layer.insertChild(Math.min(part.at, layer.children.length), part.group); }
-            catch { try { layer.addChild(part.group); } catch { /* Detached. */ } }
-          }
-        }
-        this.restore(before);
-      },
-      redo: () => this.restore(apply()),
-    });
+    this.history.recordUngroup(parts, before, apply);
     return true;
   }
 
@@ -176,21 +138,7 @@ export class SelectionManager {
     if (!clones.length) return false;
     this.restore(clones);
     const after = this.snapshot(); const retainedAfter = this.scene.snapshotRecords();
-    this.push({
-      label: clones.length > 1 ? `Duplicate ${clones.length} items` : 'Duplicate',
-      undo: () => {
-        this.scene.restoreRecords(retainedBefore);
-        for (const clone of clones) if (this.scene.isInScene(clone)) {
-          this.remove(clone); try { clone.remove(); } catch { /* Already gone. */ }
-        }
-        this.restore(before);
-      },
-      redo: () => {
-        this.scene.restoreRecords(retainedAfter);
-        for (const clone of clones) if (!this.scene.isInScene(clone)) this.scene.insertContentAt(clone, null);
-        this.restore(after);
-      },
-    });
+    this.history.recordDuplicate(clones, before, after, retainedBefore, retainedAfter);
     return true;
   }
 
@@ -200,16 +148,9 @@ export class SelectionManager {
     const before = [...layer.children] as Item[];
     const set = new Set(targets); const rest = before.filter((item) => !set.has(item));
     const after = place === 'front' ? [...rest, ...targets] : [...targets, ...rest];
-    const apply = (order: Item[]) => {
-      for (const item of order) try { layer.addChild(item); } catch { /* Detached. */ }
-    };
-    apply(after);
+    for (const item of after) try { layer.addChild(item); } catch { /* Detached. */ }
     const selected = this.snapshot();
-    this.push({
-      label: place === 'front' ? 'Bring to Front' : 'Send to Back',
-      undo: () => { apply(before.filter((item) => this.scene.isInScene(item))); this.restore(selected); },
-      redo: () => { apply(after.filter((item) => this.scene.isInScene(item))); this.restore(selected); },
-    });
+    this.history.recordReorder(place, before, after, selected);
     return true;
   }
   bringToFront(): boolean { return this.reorder('front'); }

@@ -661,17 +661,40 @@ layer UI yet.
 
 Move or wrap:
 
-- active Paper.js layer lookup behind `LayerManager`
-- canonical document coordinates, physical units, SVG-unit conversion, and
+- [x] active Paper.js layer lookup behind `LayerManager`
+- [x] canonical document coordinates, physical units, SVG-unit conversion, and
   precision/rounding rules behind `CoordinateManager`
-- zoom and pan state behind `ViewportManager`
-- current/future page dimensions, orientation, and units behind
+- [x] zoom and pan state behind `ViewportManager`
+- [x] current/future page dimensions, orientation, and units behind
   `DocumentManager`
-- document dirty-state notifications after scene mutations
+- [x] document dirty-state notifications after scene mutations
 
 This makes future document settings and layers UI additive rather than a
 cross-cutting Paper.js refactor. Add `PersistenceManager.ts` only when a
 defined save/open/export format is ready to implement.
+
+Phase 4d implementation and checks:
+
+- [x] Keep the current single page unbounded until page dimensions are set;
+  retain dimensions in document points with derived orientation and display
+  unit. Page settings currently describe the document and do not crop canvas
+  artwork or add a page UI.
+- [x] Route active-layer access through `LayerManager` in the engine and
+  `SceneRepository`; preserve the existing grid guide layer.
+- [x] Route length entry/display through `CoordinateManager`, with 72 points
+  per inch and SVG scalar units at 96 CSS pixels per inch.
+- [x] Move pointer pan anchors and zoom limits, wheel zoom, keyboard zoom,
+  and reset into `ViewportManager` without changing document geometry.
+- [x] Publish dirty/revision changes for committed history entries, undo/redo,
+  boolean results, selection style edits, and page setting changes.
+- [x] Cover unit conversion, page metadata, active-layer lookup, cursor zoom,
+  pan, engine delegation, and dirty notifications with automated tests.
+- [ ] Run the canvas pan/zoom, unit entry, layer, and reload checks in
+  `engine-smoke-checklist.md` in the browser.
+
+Paper.js continues to parse complete SVG files during import. The coordinate
+manager defines application scalar conversion and precision rules. Persistence
+remains deferred until a save/open/export format is specified.
 
 ### Phase 5: Extract history and transforms
 
@@ -679,17 +702,33 @@ Create `HistoryManager.ts` around the existing `UndoManager`.
 
 Move:
 
-- `recordSceneCommand`
-- move command creation
-- move gesture begin/commit
-- group/duplicate/delete/reorder history commands
-- undo/redo facade methods
-- model-first commands that restore `NGDrawable` state before derived Paper.js
+- [x] `recordSceneCommand`
+- [x] move command creation
+- [x] move gesture begin/commit
+- [x] group/duplicate/delete/reorder history commands
+- [x] undo/redo facade methods
+- [x] model-first commands that restore `NGDrawable` state before derived Paper.js
   scene items
 
 Create `TransformManager.ts` for selection movement, scaling, rotation, and
 drag gestures. History should record completed intent-level operations, not
 every pointer event.
+
+Phase 5 implementation and checks:
+
+- [x] Put scene deposit/drop/delete, group/ungroup, duplicate, reorder, move,
+  and undo/redo command construction behind `HistoryManager`.
+- [x] Move drag, drag-lock, nudge, scale, rotate, and modal transform preview
+  mutations into `TransformManager`. Commit one move entry on gesture release;
+  coalesce repeated nudges. Keyboard scale/rotate now have undo entries.
+- [x] Add a model command boundary that restores plain `NGDrawable` records
+  before rebuilding derived Paper.js items. Composite path history continues
+  restoring retained semantic records before scene items; broader native
+  document ownership remains a later migration.
+- [x] Verify drag event batching, scale/rotate undo, source-first rebuild,
+  group/duplicate/order history, and existing engine behavior with tests.
+- [ ] Run the Selection and keyboard shortcuts and History sections of
+  `engine-smoke-checklist.md` in the browser.
 
 ### Phase 6: Extract snapping and grid
 
@@ -697,15 +736,29 @@ Create `SnappingManager.ts` and `GridRenderer.ts`.
 
 Move:
 
-- grid state and grid drawing
-- grid cursor
-- grid snapping
-- angle, length, aspect, path, and point snapping
-- snap indicator mounting and visibility
-- ignored-item filtering needed by snapping
+- [x] grid state and grid drawing
+- [x] grid cursor
+- [x] grid snapping
+- [x] angle, length, aspect, path, and point snapping
+- [x] snap indicator mounting and visibility
+- [x] ignored-item filtering needed by snapping
 
 Keep mathematical calculations as pure functions where possible. Paper.js
 objects and cursor rendering should stay in the manager boundary.
+
+Phase 6 implementation and checks:
+
+- [x] Put square/diamond lattice math plus angle, length, and aspect
+  calculations in pure `snappingMath.ts` functions.
+- [x] Move rendered grid dots and the grid cursor into `GridRenderer`; guide
+  and locked layers remain excluded from selection and export behavior.
+- [x] Move scene searches for nearest curves, segment points, midpoints, and
+  centroids, along with their indicators, into `SnappingManager`.
+- [x] Keep snapping order as grid, angle/length, path, point, and shape aspect;
+  point snapping continues to override path snapping when both apply.
+- [x] Verify lattice geometry, constraints, guide/preview exclusion, indicator
+  mounting, and engine delegation with focused Paper.js tests.
+- [ ] Run the Snapping section of `engine-smoke-checklist.md` in the browser.
 
 ### Phase 7: Extract drawing sessions and tools
 

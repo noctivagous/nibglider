@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import paper from 'paper';
 import { SceneRepository } from '../src/engine/scene/SceneRepository.ts';
 import { SelectionManager } from '../src/engine/scene/SelectionManager.ts';
+import { HistoryManager } from '../src/engine/history/HistoryManager.ts';
 import { DrawableRenderer } from '../src/engine/scene/DrawableRenderer.ts';
 import { NibGliderEngine } from '../src/engine/engine.ts';
 
@@ -10,11 +11,12 @@ function setup() {
   const scope = new paper.PaperScope(); scope.setup(new scope.Size(400, 300));
   const overlays = { gridLayer: null, cursors: [], previews: [] };
   const scene = new SceneRepository(scope, () => overlays);
-  const commands = [];
-  const selection = new SelectionManager(scene, (command) => commands.push(command),
+  let selection;
+  const history = new HistoryManager(scene, () => selection, () => {});
+  selection = new SelectionManager(scene, history,
     (original, clone) => scene.retainClone(original, clone, (item) => item));
   const rect = (x) => new scope.Path.Rectangle({ from: [x, 10], to: [x + 30, 40] });
-  return { scope, scene, selection, commands, overlays, rect,
+  return { scope, scene, selection, history, overlays, rect,
     cleanup: () => scope.project.remove() };
 }
 
@@ -65,7 +67,7 @@ test('model renderer registers current drawable identity with scene repository',
 });
 
 test('selection intents preserve membership, order, nested group identity, and undo/redo', () => {
-  const { scope, scene, selection, commands, rect, cleanup } = setup();
+  const { scope, scene, selection, history, rect, cleanup } = setup();
   try {
     const a = rect(10); const b = rect(80); const c = rect(150);
     selection.add(a); selection.add(b); selection.add(b);
@@ -75,32 +77,32 @@ test('selection intents preserve membership, order, nested group identity, and u
     assert.equal(group.data.isUserGroup, true);
     assert.equal(selection.topUserGroupOf(a), group);
     assert.deepEqual(selection.topLevelSelected(), [group]);
-    commands.at(-1).undo();
+    history.undo();
     assert.deepEqual(selection.selectedItems, [a, b]);
     assert.deepEqual(scene.contentItems(), [a, b, c]);
-    commands.at(-1).redo();
+    history.redo();
     assert.deepEqual(selection.selectedItems, [group]);
     assert.equal(selection.ungroup(), true);
     assert.deepEqual(selection.selectedItems, [a, b]);
-    commands.at(-1).undo(); assert.deepEqual(selection.selectedItems, [group]);
-    commands.at(-1).redo(); assert.deepEqual(selection.selectedItems, [a, b]);
+    history.undo(); assert.deepEqual(selection.selectedItems, [group]);
+    history.redo(); assert.deepEqual(selection.selectedItems, [a, b]);
     selection.restore([a]);
     const id = scene.retain(a);
     assert.equal(selection.duplicate(), true);
     const copy = selection.selectedItems[0];
     assert.notEqual(copy.data.drawableId, id);
     assert.equal(scene.drawableIdOf(copy), copy.data.drawableId);
-    commands.at(-1).undo(); assert.deepEqual(selection.selectedItems, [a]);
+    history.undo(); assert.deepEqual(selection.selectedItems, [a]);
     assert.equal(scene.getRetainedPathDrawable(copy.data.drawableId), null);
-    commands.at(-1).redo(); assert.deepEqual(selection.selectedItems, [copy]);
+    history.redo(); assert.deepEqual(selection.selectedItems, [copy]);
     assert.equal(scene.getRetainedPathDrawable(copy.data.drawableId).id, copy.data.drawableId);
     assert.equal(selection.bringToFront(), true);
     assert.equal(scene.contentItems().at(-1), copy);
-    commands.at(-1).undo(); assert.deepEqual(selection.selectedItems, [copy]);
-    commands.at(-1).redo(); assert.equal(scene.contentItems().at(-1), copy);
+    history.undo(); assert.deepEqual(selection.selectedItems, [copy]);
+    history.redo(); assert.equal(scene.contentItems().at(-1), copy);
     assert.equal(selection.sendToBack(), true);
     assert.equal(scene.contentItems()[0], copy);
-    commands.at(-1).undo(); assert.equal(scene.contentItems().at(-1), copy);
+    history.undo(); assert.equal(scene.contentItems().at(-1), copy);
     selection.clear(); assert.equal(selection.hasSelection, false);
     assert.equal(copy.selected, false);
     assert.equal(scope.project.activeLayer.children.includes(copy), true);
@@ -108,7 +110,7 @@ test('selection intents preserve membership, order, nested group identity, and u
 });
 
 test('duplicating a group gives its retained path child an independent source identity', () => {
-  const { scene, selection, commands, rect, cleanup } = setup();
+  const { scene, selection, history, rect, cleanup } = setup();
   try {
     const path = rect(10); const other = rect(80);
     const originalId = scene.retain(path);
@@ -121,8 +123,8 @@ test('duplicating a group gives its retained path child an independent source id
     assert.ok(copyId); assert.notEqual(copyId, originalId);
     assert.notEqual(scene.getRetainedPathDrawable(copyId).source.id,
       scene.getRetainedPathDrawable(originalId).source.id);
-    commands.at(-1).undo(); assert.equal(scene.getRetainedPathDrawable(copyId), null);
-    commands.at(-1).redo(); assert.equal(scene.drawableIdOf(pathCopy), copyId);
+    history.undo(); assert.equal(scene.getRetainedPathDrawable(copyId), null);
+    history.redo(); assert.equal(scene.drawableIdOf(pathCopy), copyId);
     assert.equal(scene.drawableIdOf(groupCopy), null);
   } finally { cleanup(); }
 });

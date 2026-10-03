@@ -105,6 +105,49 @@ the services receive completed commands through a narrow callback. Legacy
 Paper drawing tools remain on their existing creation path until their tool
 migrations.
 
+## Document boundary
+
+`document/LayerManager.ts` resolves the current active Paper layer and its
+project-local ID. `CoordinateManager.ts` treats points as canonical, converts
+inch/centimeter inputs and SVG scalar units (96 CSS pixels per inch), and
+provides finite coordinate and six-decimal rounding rules. Paper.js still
+parses full SVG imports and their transforms.
+
+`ViewportManager.ts` owns zoom limits, wheel zoom at the cursor, reset/step
+zoom, and drag-pan anchors. View changes leave document coordinates and dirty
+state alone. `DocumentManager.ts` starts with one unbounded page; optional
+width/height metadata is stored in points, with orientation and display unit.
+The app has no page cropping or page-settings UI yet.
+
+Committed history changes, undo/redo, boolean results, selected-item style
+edits, and page metadata edits emit document revision/dirty notifications.
+Preview movement and view changes do not. There is no persistence format or
+`PersistenceManager` yet.
+
+## History and transforms
+
+`history/HistoryManager.ts` owns the undo stack and constructs scene,
+selection, and move commands. It restores retained composite path sources
+before their Paper scene items. Its model command interface restores plain
+`NGDrawable` records before asking a renderer to rebuild derived items; broader
+native document ownership will use this boundary as tools migrate.
+
+`history/TransformManager.ts` applies drag, nudge, scale, rotation, and modal
+preview transforms. Drag updates remain live and create one history entry when
+the gesture ends. Repeated nudges coalesce; keyboard scale and rotate each
+create an undoable intent. Modal previews still commit one net transform
+through the existing operations dialog.
+
+## Snapping and grid
+
+`snapping/snappingMath.ts` contains the point-only grid, angle, length, and
+aspect constraints. `GridRenderer.ts` owns rendered guide dots and the grid
+cursor. `SnappingManager.ts` owns path and point scene searches, ignored
+preview/guide items, and indicator mounting. Its point candidates include
+segment anchors, curve midpoints, and closed-path centroids. Pointer routing
+keeps its established constraint order, with exact point candidates overriding
+the prior path candidate.
+
 ## Verification
 
 Run `npm test` for fixture round trips, model validation, and geometry-only

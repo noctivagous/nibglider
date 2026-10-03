@@ -31,6 +31,7 @@ export interface PointerHost {
   isCompositePathDrawing(): boolean;
   quadPath(): Item;
   selectedItems(): Item[];
+  moveSelectionBy(delta: Item): void;
   toggleSelection(item: Item): void;
   isInDragLock(): boolean;
   mousePt(): Item;
@@ -189,9 +190,7 @@ export class PointerController {
     host.setMousePt(host.snapToGrid(event.point));
     if (host.lastMousePt() === null) host.setLastMousePt(host.mousePt());
     const delta = host.mousePt().subtract(host.lastMousePt());
-    for (let i = 0; i < host.selectedItems().length; i++) {
-      host.selectedItems()[i].position = host.selectedItems()[i].position.add(delta);
-    }
+    host.moveSelectionBy(delta);
     host.setLastMousePt(host.mousePt());
   }
 
@@ -223,9 +222,7 @@ export class PointerController {
     if (host.isInDragLock()) {
       if (host.lastMousePt() === null) host.setLastMousePt(host.mousePt());
       const delta = host.mousePt().subtract(host.lastMousePt());
-      for (let i = 0; i < host.selectedItems().length; i++) {
-        host.selectedItems()[i].position = host.selectedItems()[i].position.add(delta);
-      }
+      host.moveSelectionBy(delta);
       host.setLastMousePt(host.mousePt());
     } else {
       host.setLastMousePt(null);

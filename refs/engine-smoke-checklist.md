@@ -98,6 +98,28 @@ after this pass to verify the legacy drawing checks above.
 
 ## Cleanup
 
+- [ ] Phase 5: drag a selected item through several moves and release. History
+      shows one Move entry; Undo restores the start and Redo the final place.
+- [ ] Phase 5: use arrow nudges, [ ] scale, and ; ' rotate on a selection.
+      Each completed action undoes and redoes correctly; repeated nudges
+      coalesce into one Move entry.
+- [ ] Phase 5: group, ungroup, duplicate, delete, send back, and bring front.
+      Undo/Redo restores both selection and stacking order, including a
+      composite path inside a duplicated group.
+- [ ] Phase 6: turn on Square and Diamond grids at several zoom levels. Grid
+      dots follow the visible canvas, remain unselectable, and the red cursor
+      only appears when grid snapping is enabled.
+- [ ] Phase 6: enable angle, length, path, point, and aspect snapping in
+      turn. Draw and move near a curve, endpoint, midpoint, and centroid;
+      indicator color and final point match the active constraint. Previews,
+      cursors, and grid dots never become snapping targets.
+- [ ] Phase 4d: pan empty canvas, zoom at the cursor with wheel, step zoom
+      with Ctrl/Cmd+- and Ctrl/Cmd+=, then reset with Ctrl/Cmd+0. Shapes and
+      snap targets stay aligned; selection and History do not change.
+- [ ] Phase 4d: switch snapping length display between points, inches, and
+      centimeters. Enter an equivalent length in each unit and verify the
+      same canvas constraint. Reload and check the selected display unit.
+
 - [ ] Reload the page. The canvas attaches, drawing still works, and
       leaving the page (or a dev-server reload) does not throw from a
       detached listener.

@@ -19,6 +19,10 @@ import { modifiersOf } from './input/ModifierStateTracker';
 import { PathTool, type CompositeDeposit } from './drawing/PathTool';
 import { SceneRepository, type RetainedPath } from './scene/SceneRepository';
 import { SelectionManager } from './scene/SelectionManager';
+import { HistoryManager } from './history/HistoryManager';
+import { TransformManager } from './history/TransformManager';
+import { GridRenderer } from './snapping/GridRenderer';
+import { SnappingManager } from './snapping/SnappingManager';
 import { LayerManager } from './document/LayerManager';
 import { CoordinateManager } from './document/CoordinateManager';
 import { ViewportManager } from './document/ViewportManager';
@@ -62,7 +66,6 @@ import type {
   TextMode,
   TextSpec,
 } from './types';
-import { UndoManager, type UndoCommand } from './undoManager';
 
 // Temporary compatibility re-exports. Callers may keep importing these
 // from engine.ts. New code should import from ./types.
@@ -110,17 +113,6 @@ interface StraightBoundaryEdge {
   /** Arc-length offset of the edge's first vertex. */
   start: number;
   length: number;
-}
-
-// One item's positional delta for a move command.
-interface MoveEntry {
-  item: AnyItem;
-  before: AnyItem;
-  after: AnyItem;
-}
-
-interface MoveCommand extends UndoCommand {
-  entries: MoveEntry[];
 }
 
 export class NibGliderEngine {
@@ -274,6 +266,10 @@ export class NibGliderEngine {
   // Compatibility bridge until document/scene/history extraction. Only plain
   // source data is retained; derived items are kept separately for identity.
   private readonly scene: SceneRepository;
+  private readonly history: HistoryManager;
+  private readonly transforms: TransformManager;
+  private readonly gridRenderer: GridRenderer;
+  private readonly snapping: SnappingManager;
   private readonly layers: LayerManager;
   private readonly coordinates = new CoordinateManager();
   private readonly viewport: ViewportManager;
@@ -342,9 +338,24 @@ export class NibGliderEngine {
       previews: [this.previewInner, this.previewSplineText, this.previewShape,
         this.previewLine, this.previewPath, this.previewRect],
     }), this.layers);
-    this.selection = new SelectionManager(this.scene,
-      (command) => this.history.push(command),
+    this.history = new HistoryManager(this.scene, () => this.selection,
+      () => this.documentManager.markEdited('scene'));
+    this.selection = new SelectionManager(this.scene, this.history,
       (original, clone) => this.scene.retainClone(original, clone, (item) => this.shapePartOf(item)));
+    this.transforms = new TransformManager(this.scene, this.selection, this.history);
+    this.gridRenderer = new GridRenderer(scope);
+    this.snapping = new SnappingManager(scope, () => ({
+      gridEnabled: this.isGridEnabled, gridSnapping: this.isGridSnappingEnabled,
+      gridType: this.gridType, gridSpacing: this.gridSpacing,
+      path: this.isPathSnappingEnabled, point: this.isPointSnappingEnabled,
+      angle: this.isAngleSnappingEnabled, length: this.isLengthSnappingEnabled,
+      aspect: this.isAspectSnappingEnabled, angleDegrees: this.angleSnapDegrees,
+      lengthStep: this.lengthSnapStep, aspectA: this.aspectRatioA, aspectB: this.aspectRatioB,
+    }), () => this.drawingIgnoredItems(), (item) => this.isGuideItem(item), {
+      mount: (item) => this.mountSnapIndicator(item),
+      pathCursor: (item) => { this.pathSnapCursor = item; },
+      pointCursor: (item) => { this.pointSnapCursor = item; },
+    });
     this.compositePathTool = new PathTool(scope, (item) => {
       this.applyCurrentStyles(item);
       item.fillColor = null;
@@ -380,6 +391,7 @@ export class NibGliderEngine {
       isCompositePathDrawing: () => this.compositePathTool.active,
       quadPath: () => this.quadPath,
       selectedItems: () => this.selectedItems,
+      moveSelectionBy: (delta) => this.transforms.moveSelectionBy(delta),
       toggleSelection: (item) => this.selection.toggle(item),
       isInDragLock: () => this.isInDragLock,
       mousePt: () => this.mousePt,
@@ -410,7 +422,7 @@ export class NibGliderEngine {
       beginMoveGesture: () => this.beginMoveGesture(),
       commitMoveGesture: () => this.commitMoveGesture(),
       clearMoveGesture: () => {
-        this.moveGesture = null;
+        this.transforms.cancelDrag();
       },
       topUserGroupOf: (item) => this.topUserGroupOf(item),
       isNonContentItem: (item) => this.isNonContentItem(item),
@@ -508,7 +520,11 @@ export class NibGliderEngine {
 
   getPageSettings(): PageSettings { return this.documentManager.pageSettings; }
   isDocumentDirty(): boolean { return this.documentManager.isDirty; }
-  documentRevision(): number { return this.documentManager.sceneRevision; }
+  documentRevision(): number { return this.documentManager.revisionNumber; }
+  setPageDimensions(width: number, height: number, unit: LengthUnit = 'pt'): void {
+    this.documentManager.setPageSize(width, height, unit);
+  }
+  setPageDisplayUnit(unit: LengthUnit): void { this.documentManager.setDisplayUnit(unit); }
   subscribeDocumentChanges(listener: (change: DocumentChange) => void): () => void {
     return this.documentManager.subscribe(listener);
   }
@@ -640,38 +656,7 @@ export class NibGliderEngine {
     item: AnyItem,
     selBefore: AnyItem[],
   ): void {
-    const layer = this.scope.project
-      ? this.layers.activeLayer
-      : null;
-    if (!layer || !item || !this.isInScene(item)) return;
-    const after = this.contentItems();
-    const i = after.indexOf(item);
-    let next: AnyItem | null = null;
-    for (let j = i + 1; j < after.length; j++) {
-      if (after[j] !== item) {
-        next = after[j];
-        break;
-      }
-    }
-    const selAfter = [...this.selectedItems];
-    this.history.push({
-      label,
-      undo: () => {
-        if (this.isInScene(item)) {
-          this.removeItemFromSelection(item);
-          try {
-            item.remove();
-          } catch {
-            // Already gone.
-          }
-        }
-        this.restoreSelection(selBefore);
-      },
-      redo: () => {
-        if (!this.isInScene(item)) this.insertContentAt(item, next);
-        this.restoreSelection(selAfter);
-      },
-    });
+    this.history.recordDrop(label, item, selBefore);
   }
 
   private placeDroppedItem(
@@ -799,9 +784,11 @@ export class NibGliderEngine {
   // the globals alone (deselecting restores the global readout).
   // Otherwise they write the globals for subsequently drawn shapes.
   private applyToSelection(fn: (item: AnyItem) => void): void {
+    if (!this.selectedItems.length) return;
     for (let i = 0; i < this.selectedItems.length; i++) {
       fn(this.selectedItems[i]);
     }
+    this.documentManager.markEdited('scene');
   }
 
   setStrokeWidth(strokeVal: number): void {
@@ -1986,6 +1973,37 @@ export class NibGliderEngine {
   // the square lattice rotated 45° with the same neighbor spacing, so snap
   // targets coincide with the rendered dots (see snapToGrid).
   drawGrid(): void {
+    this.gridRenderer.draw(this.gridType, this.gridSpacing);
+    this.gridLayer = this.gridRenderer.gridLayer;
+  }
+
+  clearGrid(): void {
+    this.gridRenderer.clear();
+    this.gridCursor = this.gridRenderer.gridCursor;
+  }
+
+  snapToGrid(point: AnyItem): AnyItem { return this.snapping.grid(point); }
+  updateGridCursor(): void {
+    this.gridRenderer.updateCursor(this.mousePt,
+      this.isGridEnabled && this.isGridSnappingEnabled,
+      (item) => this.mountSnapIndicator(item));
+    this.gridCursor = this.gridRenderer.gridCursor;
+  }
+  applyAngleSnapping(base: AnyItem, target: AnyItem): AnyItem { return this.snapping.angle(base, target); }
+  applyLengthSnapping(base: AnyItem, target: AnyItem): AnyItem { return this.snapping.length(base, target); }
+  applyAspectSnapping(base: AnyItem, target: AnyItem): AnyItem { return this.snapping.aspect(base, target); }
+  applyPathSnapping(original: AnyItem): void {
+    const snapped = this.snapping.snapPath(original);
+    if (snapped) this.mousePt = snapped;
+    this.pathSnapCursor = this.snapping.pathIndicator;
+  }
+  applyPointSnapping(original: AnyItem): void {
+    const snapped = this.snapping.snapPoint(original);
+    if (snapped) this.mousePt = snapped;
+    this.pointSnapCursor = this.snapping.pointIndicator;
+  }
+
+  legacyDrawGrid(): void {
     const scope = this.scope;
     const active = this.layers.activeLayer;
     if (!this.gridLayer) {
@@ -2044,13 +2062,13 @@ export class NibGliderEngine {
     scope.view.update();
   }
 
-  clearGrid(): void {
+  legacyClearGrid(): void {
     if (this.gridLayer) this.gridLayer.removeChildren();
     if (this.gridCursor) this.gridCursor.visible = false;
     this.scope.view.update();
   }
 
-  snapToGrid(point: AnyItem): AnyItem {
+  legacySnapToGrid(point: AnyItem): AnyItem {
     if (!this.isGridSnappingEnabled) return point;
     const scope = this.scope;
     const s = this.gridSpacing;
@@ -2067,7 +2085,7 @@ export class NibGliderEngine {
     );
   }
 
-  updateGridCursor(): void {
+  legacyUpdateGridCursor(): void {
     const scope = this.scope;
     // The red dot is a snap indicator, not a grid-visible indicator: it
     // shows only while grid snapping is on (and the grid itself is shown).
@@ -2086,7 +2104,7 @@ export class NibGliderEngine {
     this.mountSnapIndicator(this.gridCursor);
   }
 
-  applyAngleSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
+  legacyApplyAngleSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
     const scope = this.scope;
     if (!this.isAngleSnappingEnabled || !basePoint || !targetPoint) {
       return targetPoint;
@@ -2108,7 +2126,7 @@ export class NibGliderEngine {
     );
   }
 
-  applyLengthSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
+  legacyApplyLengthSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
     const scope = this.scope;
     if (!this.isLengthSnappingEnabled || !basePoint || !targetPoint) {
       return targetPoint;
@@ -2139,13 +2157,11 @@ export class NibGliderEngine {
 
   // Snap the second side so first:second matches the selected A:B ratio.
   private snapAspectSecond(first: number, second: number): number {
-    if (!(first > 0)) return second;
-    const { w, h } = this.aspectWH();
-    return first * (h / w);
+    return this.snapping.aspectSecond(first, second);
   }
 
   // Axis-aligned opposite corner: width:height stays the selected A:B.
-  applyAspectSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
+  legacyApplyAspectSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
     const scope = this.scope;
     if (!this.isAspectSnappingEnabled || !basePoint || !targetPoint) {
       return targetPoint;
@@ -2174,7 +2190,7 @@ export class NibGliderEngine {
     return `${w}:${h}`;
   }
 
-  applyPathSnapping(originalPoint: AnyItem): void {
+  legacyApplyPathSnapping(originalPoint: AnyItem): void {
     const scope = this.scope;
     if (!this.isPathSnappingEnabled || !originalPoint) {
       if (this.pathSnapCursor) this.pathSnapCursor.visible = false;
@@ -2235,7 +2251,7 @@ export class NibGliderEngine {
   // Snap to vector-shape points: segment endpoints, segment midpoints,
   // and closed-shape centroids. Nearest candidate wins and the indicator
   // dot takes the winning kind's color.
-  applyPointSnapping(originalPoint: AnyItem): void {
+  legacyApplyPointSnapping(originalPoint: AnyItem): void {
     const scope = this.scope;
     if (!this.isPointSnappingEnabled || !originalPoint) {
       if (this.pointSnapCursor) this.pointSnapCursor.visible = false;
@@ -2482,12 +2498,7 @@ export class NibGliderEngine {
     const before = this.contentItems();
     const selBefore = [...this.selectedItems];
     this.selection.removeAll();
-    this.recordSceneCommand(
-      selBefore.length > 1 ? `Delete ${selBefore.length} items` : 'Delete',
-      before,
-      selBefore,
-      [],
-    );
+    this.history.recordDelete(before, selBefore);
     this.setIsInDragLock(false);
   }
 
@@ -2510,42 +2521,21 @@ export class NibGliderEngine {
   // guarded by isInScene, so a command touching items that a later
   // non-undoable op (e.g. panel combinatorics) already consumed is a
   // harmless no-op instead of a crash.
-  private history = new UndoManager(100, 800, () => this.documentManager.markEdited('scene'));
-  private moveGesture: { items: AnyItem[]; points: AnyItem[] } | null =
-    null;
-
-  canUndo(): boolean {
-    return this.history.canUndo();
-  }
-
-  canRedo(): boolean {
-    return this.history.canRedo();
-  }
-
-  undoLabel(): string | null {
-    return this.history.undoLabel();
-  }
-
-  redoLabel(): string | null {
-    return this.history.redoLabel();
-  }
+  canUndo(): boolean { return this.history.canUndo(); }
+  canRedo(): boolean { return this.history.canRedo(); }
+  undoLabel(): string | null { return this.history.undoLabel(); }
+  redoLabel(): string | null { return this.history.redoLabel(); }
 
   undo(): void {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
-      return;
-    this.moveGesture = null;
+    if (this.isLiveDrawing) return;
     this.history.undo();
-    this.updateTextContent();
-    this.notify();
+    this.updateTextContent(); this.notify();
   }
 
   redo(): void {
-    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
-      return;
-    this.moveGesture = null;
+    if (this.isLiveDrawing) return;
     this.history.redo();
-    this.updateTextContent();
-    this.notify();
+    this.updateTextContent(); this.notify();
   }
 
   // Top-level active-layer artwork. Live previews, cursors, and the
@@ -2554,28 +2544,6 @@ export class NibGliderEngine {
     return this.scene.contentItems();
   }
 
-  // True while the item is reachable from the active layer.
-  private isInScene(item: AnyItem): boolean {
-    return this.scene.isInScene(item);
-  }
-
-  private insertContentAt(item: AnyItem, anchor: AnyItem | null): void {
-    this.scene.insertContentAt(item, anchor);
-  }
-
-  private restoreSelection(items: AnyItem[]): void {
-    this.selection.restore(items);
-  }
-
-  // Record one undoable scene mutation. `before` is the content
-  // snapshot taken before the mutation; `explicitPlaced` names items
-  // that already lived in the layer (the live stroke/quad being
-  // finished) so the add/remove diff alone would miss them. Fresh
-  // constructs, combine results, and combine victims are all derived
-  // from the diff, so armed deposit-time combinatorics is captured as
-  // one composite deposit entry. Segment-level edits of an adopted
-  // path (END-join continuation) are NOT captured — only the
-  // resulting item's placement is.
   private recordSceneCommand(
     label: string,
     before: AnyItem[],
@@ -2583,213 +2551,11 @@ export class NibGliderEngine {
     explicitPlaced: Array<AnyItem | null>,
     retainedBefore?: Map<string, RetainedPath>,
   ): void {
-    const layer = this.scope.project
-      ? this.layers.activeLayer
-      : null;
-    if (!layer) return;
-    const after = this.contentItems();
-    const beforeSet = new Set(before);
-    const afterSet = new Set(after);
-    const placed: AnyItem[] = [];
-    for (const item of explicitPlaced) {
-      if (item && this.isInScene(item) && placed.indexOf(item) === -1)
-        placed.push(item);
-    }
-    for (const item of after) {
-      if (!beforeSet.has(item) && placed.indexOf(item) === -1)
-        placed.push(item);
-    }
-    const victims = before.filter((item) => {
-      if (afterSet.has(item)) return false;
-      // Reparented into a placed group (finished stroke + derived
-      // text): hidden inside the deposit, not gone.
-      let p = item.parent;
-      while (p) {
-        if (placed.indexOf(p) !== -1) return false;
-        p = p.parent;
-      }
-      return true;
-    });
-    if (placed.length === 0 && victims.length === 0) return;
-    // Anchors: each item reinserts before its surviving successor, or
-    // appends when the anchor is gone.
-    const placedSet = new Set(placed);
-    const anchorAfter = new Map<AnyItem, AnyItem | null>();
-    const orderAfter = new Map<AnyItem, number>();
-    after.forEach((item, i) => orderAfter.set(item, i));
-    for (const item of placed) {
-      const i = orderAfter.get(item) ?? -1;
-      let next: AnyItem | null = null;
-      for (let j = i + 1; j < after.length; j++) {
-        if (!placedSet.has(after[j])) {
-          next = after[j];
-          break;
-        }
-      }
-      anchorAfter.set(item, next);
-    }
-    const victimSet = new Set(victims);
-    const anchorBefore = new Map<AnyItem, AnyItem | null>();
-    const orderBefore = new Map<AnyItem, number>();
-    before.forEach((item, i) => orderBefore.set(item, i));
-    for (const item of victims) {
-      const i = orderBefore.get(item) ?? -1;
-      let next: AnyItem | null = null;
-      for (let j = i + 1; j < before.length; j++) {
-        if (!victimSet.has(before[j])) {
-          next = before[j];
-          break;
-        }
-      }
-      anchorBefore.set(item, next);
-    }
-    const selAfter = [...this.selectedItems];
-    // Descending insertion before each anchor restores exact order.
-    const orderedVictims = [...victims].sort(
-      (a, b) => (orderBefore.get(b) ?? 0) - (orderBefore.get(a) ?? 0),
-    );
-    const orderedPlaced = [...placed].sort(
-      (a, b) => (orderAfter.get(b) ?? 0) - (orderAfter.get(a) ?? 0),
-    );
-    const retainedAfter = retainedBefore ? new Map(this.retainedPaths) : null;
-    this.history.push({
-      label,
-      undo: () => {
-        if (retainedBefore) this.retainedPaths = new Map(retainedBefore);
-        for (const item of placed) {
-          if (this.isInScene(item)) {
-            this.removeItemFromSelection(item);
-            try {
-              item.remove();
-            } catch {
-              // Already gone.
-            }
-          }
-        }
-        for (const item of orderedVictims) {
-          if (!this.isInScene(item))
-            this.insertContentAt(item, anchorBefore.get(item) ?? null);
-        }
-        this.restoreSelection(selBefore);
-      },
-      redo: () => {
-        if (retainedAfter) this.retainedPaths = new Map(retainedAfter);
-        for (const item of victims) {
-          if (this.isInScene(item)) {
-            this.removeItemFromSelection(item);
-            try {
-              item.remove();
-            } catch {
-              // Already gone.
-            }
-          }
-        }
-        for (const item of orderedPlaced) {
-          if (!this.isInScene(item))
-            this.insertContentAt(item, anchorAfter.get(item) ?? null);
-        }
-        this.restoreSelection(selAfter);
-      },
-    });
+    this.history.recordSceneCommand(label, before, selBefore, explicitPlaced, retainedBefore);
   }
 
-  // --- History: moves ---
-  // A drag, drag-lock run, or nudge burst is one entry holding
-  // per-item before/after positions. Only top-level items are
-  // restored: once grouped, an item's position is group-relative and
-  // the group's own move entry owns it.
-  private makeMoveCommand(
-    entries: MoveEntry[],
-    coalesceKey?: string,
-  ): MoveCommand {
-    const activeLayerOf = (): AnyItem =>
-      this.scope.project ? this.layers.activeLayer : null;
-    const cmd: MoveCommand = {
-      label:
-        entries.length > 1 ? `Move ${entries.length} items` : 'Move',
-      entries,
-      undo: () => {
-        const layer = activeLayerOf();
-        for (const e of entries) {
-          if (e.item && layer && e.item.parent === layer) {
-            try {
-              e.item.position = e.before.clone();
-            } catch {
-              // Already gone.
-            }
-          }
-        }
-      },
-      redo: () => {
-        const layer = activeLayerOf();
-        for (const e of entries) {
-          if (e.item && layer && e.item.parent === layer) {
-            try {
-              e.item.position = e.after.clone();
-            } catch {
-              // Already gone.
-            }
-          }
-        }
-      },
-    };
-    if (coalesceKey !== undefined) {
-      cmd.coalesceKey = coalesceKey;
-      cmd.absorb = (next: UndoCommand): boolean => {
-        const n = next as MoveCommand;
-        if (!Array.isArray(n.entries) || n.entries.length !== entries.length)
-          return false;
-        for (let i = 0; i < entries.length; i++) {
-          if (n.entries[i].item !== entries[i].item) return false;
-        }
-        for (let i = 0; i < entries.length; i++)
-          entries[i].after = n.entries[i].after;
-        return true;
-      };
-    }
-    return cmd;
-  }
-
-  private beginMoveGesture(): void {
-    const items = [...this.selectedItems];
-    if (items.length === 0) {
-      this.moveGesture = null;
-      return;
-    }
-    this.moveGesture = {
-      items,
-      points: items.map((it) =>
-        it.position ? it.position.clone() : null,
-      ),
-    };
-  }
-
-  // Push one move entry for the in-flight gesture when anything
-  // actually moved. Safe to call with no gesture active.
-  private commitMoveGesture(coalesceKey?: string): void {
-    const g = this.moveGesture;
-    this.moveGesture = null;
-    if (!g) return;
-    const layer = this.scope.project
-      ? this.layers.activeLayer
-      : null;
-    const entries: MoveEntry[] = [];
-    for (let i = 0; i < g.items.length; i++) {
-      const item = g.items[i];
-      const before = g.points[i];
-      if (!item || !before || !item.position) continue;
-      if (!layer || item.parent !== layer) continue;
-      const after = item.position.clone();
-      try {
-        if (after.getDistance(before) > 1e-9)
-          entries.push({ item, before, after });
-      } catch {
-        // Unmeasurable; skip.
-      }
-    }
-    if (entries.length === 0) return;
-    this.history.push(this.makeMoveCommand(entries, coalesceKey));
-  }
+  private beginMoveGesture(): void { this.transforms.beginDrag(); }
+  private commitMoveGesture(coalesceKey?: string): void { this.transforms.commitDrag(coalesceKey); }
 
   // --- History: groups ---
   // A user group (data.isUserGroup) moves and selects as one item.
@@ -2860,33 +2626,13 @@ export class NibGliderEngine {
   // as its numeric field changes. No history here — the modal records one
   // undo entry for the net delta when the user commits.
   scaleSelectionPreview(factor: number): void {
-    if (!Number.isFinite(factor) || factor <= 0) return;
-    const items = this.topLevelSelected();
-    if (items.length === 0) return;
-    const center = this.collectiveCenter(items);
-    for (const it of items) {
-      try {
-        it.scale(factor, center);
-      } catch {
-        // Gone; skip.
-      }
-    }
+    this.transforms.scalePreview(factor);
     this.updateTextContent();
     this.notify();
   }
 
   rotateSelectionPreview(degrees: number): void {
-    if (!Number.isFinite(degrees) || degrees === 0) return;
-    const items = this.topLevelSelected();
-    if (items.length === 0) return;
-    const center = this.collectiveCenter(items);
-    for (const it of items) {
-      try {
-        it.rotate(degrees, center);
-      } catch {
-        // Gone; skip.
-      }
-    }
+    this.transforms.rotatePreview(degrees);
     this.updateTextContent();
     this.notify();
   }
@@ -5569,38 +5315,17 @@ export class NibGliderEngine {
   }
 
   private nudgeSelection(dx: number, dy: number): void {
-    this.commitMoveGesture();
-    const nudgeItems = [...this.selectedItems];
-    const nudgeBefore = nudgeItems.map((it) => it.position.clone());
-    const delta = new this.scope.Point(dx, dy);
-    for (let i = 0; i < this.selectedItems.length; i++) {
-      this.selectedItems[i].position = this.selectedItems[i].position.add(delta);
-    }
-    const nudgeEntries: MoveEntry[] = [];
-    for (let i = 0; i < nudgeItems.length; i++) {
-      nudgeEntries.push({
-        item: nudgeItems[i],
-        before: nudgeBefore[i],
-        after: nudgeItems[i].position.clone(),
-      });
-    }
-    this.history.push(this.makeMoveCommand(nudgeEntries, 'nudge'));
+    this.transforms.nudge(dx, dy);
     this.updateTextContent();
     this.notify();
   }
 
   private scaleSelection(factor: number): void {
-    const center = this.collectiveCenter(this.selectedItems);
-    for (let i = 0; i < this.selectedItems.length; i++) {
-      this.selectedItems[i].scale(factor, center);
-    }
+    this.transforms.scale(factor);
   }
 
   private rotateSelection(degrees: number): void {
-    const center = this.collectiveCenter(this.selectedItems);
-    for (let i = 0; i < this.selectedItems.length; i++) {
-      this.selectedItems[i].rotate(degrees, center);
-    }
+    this.transforms.rotate(degrees);
   }
 
   // --- Canvas status overlay (NibGliderApp.js updateTextContent) ---
