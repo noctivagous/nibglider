@@ -4,6 +4,7 @@
 import type { NGPathDrawable } from '../model/NGDrawable';
 import type { NGDrawable } from '../model/NGDrawable';
 import type { NGPath, NGBezierPath } from '../model/NGPath';
+import { LayerManager } from '../document/LayerManager';
 
 type Item = any;
 export interface RetainedPath { source: NGPath; item: paper.PathItem; geometryKey: string }
@@ -14,11 +15,12 @@ export class SceneRepository {
   records = new Map<string, RetainedPath>();
   private readonly modelItems = new Map<string, { drawable: NGDrawable; item: paper.Item }>();
   private readonly overlays: () => SceneOverlayRefs;
+  private readonly layers: LayerManager;
 
-  constructor(scope: paper.PaperScope, overlays: () => SceneOverlayRefs) {
-    this.scope = scope; this.overlays = overlays;
+  constructor(scope: paper.PaperScope, overlays: () => SceneOverlayRefs, layers = new LayerManager(scope)) {
+    this.scope = scope; this.overlays = overlays; this.layers = layers;
   }
-  get layer(): paper.Layer | null { return this.scope.project?.activeLayer ?? null; }
+  get layer(): paper.Layer | null { return this.layers.activeOrNull; }
 
   isNonContentItem(value: Item): boolean {
     if (!value) return true;
@@ -86,7 +88,7 @@ export class SceneRepository {
     // the archive for undo, but expose the current geometry as a Bezier source.
     const source = this.pathGeometryKey(item) === retained.geometryKey
       ? structuredClone(retained.source) : this.bezierSource(item, retained.source.id);
-    return { id, kind: 'path', layerId: `paper-layer-${item.layer.id}`,
+    return { id, kind: 'path', layerId: this.layers.activeLayerId!,
       source, transform: { a: t.a, b: t.b, c: t.c, d: t.d, tx: t.tx, ty: t.ty },
       opacity: item.opacity, visible: item.visible, locked: item.locked };
   }

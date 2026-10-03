@@ -38,11 +38,9 @@ export interface PointerHost {
   lastMousePt(): Item;
   setLastMousePt(v: Item): void;
   isPanning(): boolean;
-  setIsPanning(v: boolean): void;
-  panAnchorCenter(): Item;
-  setPanAnchorCenter(v: Item): void;
-  panAnchorPoint(): Item;
-  setPanAnchorPoint(v: Item): void;
+  beginPan(point: Item): void;
+  panTo(point: Item, delta: Item): void;
+  endPan(): void;
   snapToGrid(point: Item): Item;
   applyAngleSnapping(base: Item, target: Item): Item;
   applyLengthSnapping(base: Item, target: Item): Item;
@@ -50,7 +48,6 @@ export interface PointerHost {
   applyPointSnapping(original: Item): void;
   applyAspectSnapping(base: Item, target: Item): Item;
   snapAspectSecond(first: number, second: number): number;
-  afterViewChange(): void;
   updateGridCursor(): void;
   refreshSplineTextPreview(): void;
   updateShapePreview(): void;
@@ -79,14 +76,12 @@ export class PointerController {
     if (!hit || !hit.item) {
       host.clearOutSelection();
       host.clearMoveGesture();
-      host.setIsPanning(true);
-      host.setPanAnchorCenter(host.scope().view.center.clone());
-      host.setPanAnchorPoint(event.point.clone());
+      host.beginPan(event.point);
       this.setCanvasCursor('grabbing');
       host.updateTextContent();
       return;
     }
-    host.setIsPanning(false);
+    host.endPan();
     this.applyHitSelection(hit);
     host.beginMoveGesture();
   }
@@ -188,20 +183,7 @@ export class PointerController {
       return;
     }
     if (host.isPanning()) {
-      const view = host.scope().view;
-      if (host.panAnchorCenter() !== null && host.panAnchorPoint() !== null) {
-        // Pointer travel since pan start, in project units. Subtracting
-        // the center out of each point cancels the view translation, so
-        // this measures pure pointer travel regardless of how center has
-        // moved between events (unlike event.delta, which mixes frames).
-        const offset = event.point
-          .subtract(view.center)
-          .subtract(host.panAnchorPoint().subtract(host.panAnchorCenter()));
-        view.center = host.panAnchorCenter().subtract(offset);
-      } else {
-        view.center = view.center.subtract(event.delta);
-      }
-      host.afterViewChange();
+      host.panTo(event.point, event.delta);
       return;
     }
     host.setMousePt(host.snapToGrid(event.point));
@@ -227,9 +209,7 @@ export class PointerController {
   private endPan(): void {
     const host = this.host;
     if (!host.isPanning()) return;
-    host.setIsPanning(false);
-    host.setPanAnchorCenter(null);
-    host.setPanAnchorPoint(null);
+    host.endPan();
     this.setCanvasCursor('');
   }
 

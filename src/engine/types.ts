@@ -117,20 +117,12 @@ export type GridType = 'square' | 'diamond';
 /** Display unit for snapping length inputs. Stored values stay in points. */
 export type LengthUnit = 'pt' | 'inch' | 'cm';
 
-export const PT_PER_INCH = 72;
-export const PT_PER_CM = PT_PER_INCH / 2.54;
-
-export function pointsToLengthUnit(pt: number, unit: LengthUnit): number {
-  if (unit === 'inch') return pt / PT_PER_INCH;
-  if (unit === 'cm') return pt / PT_PER_CM;
-  return pt;
-}
-
-export function lengthUnitToPoints(v: number, unit: LengthUnit): number {
-  if (unit === 'inch') return v * PT_PER_INCH;
-  if (unit === 'cm') return v * PT_PER_CM;
-  return v;
-}
+// Compatibility exports for existing callers. CoordinateManager owns the
+// conversion rules and finite-value checks.
+export { PT_PER_INCH, PT_PER_CM } from './document/CoordinateManager';
+import { coordinates } from './document/CoordinateManager';
+export function pointsToLengthUnit(pt: number, unit: LengthUnit): number { return coordinates.fromPoints(pt, unit); }
+export function lengthUnitToPoints(v: number, unit: LengthUnit): number { return coordinates.toPoints(v, unit); }
 
 export type RectangleInnerShape =
   | 'rectangle'

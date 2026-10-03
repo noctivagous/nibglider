@@ -19,6 +19,10 @@ import { modifiersOf } from './input/ModifierStateTracker';
 import { PathTool, type CompositeDeposit } from './drawing/PathTool';
 import { SceneRepository, type RetainedPath } from './scene/SceneRepository';
 import { SelectionManager } from './scene/SelectionManager';
+import { LayerManager } from './document/LayerManager';
+import { CoordinateManager } from './document/CoordinateManager';
+import { ViewportManager } from './document/ViewportManager';
+import { DocumentManager, type DocumentChange, type PageSettings } from './document/DocumentManager';
 import type { NGPathDrawable } from './model/NGDrawable';
 import type { NGPath } from './model/NGPath';
 import {
@@ -30,10 +34,6 @@ import {
   clampSupershapeParam,
   snapShapeAngle as snapShapeAngleValue,
 } from './input/KeySettingsRegistry';
-import {
-  lengthUnitToPoints,
-  pointsToLengthUnit,
-} from './types';
 import type {
   CircleInnerShape,
   CircleRadiusAnchor,
@@ -105,6 +105,12 @@ export {
 // paper behavior (null style assignment, shape-specific fields) that the
 // bundled declarations model more narrowly.
 type AnyItem = any;
+
+interface StraightBoundaryEdge {
+  /** Arc-length offset of the edge's first vertex. */
+  start: number;
+  length: number;
+}
 
 // One item's positional delta for a move command.
 interface MoveEntry {
@@ -268,6 +274,10 @@ export class NibGliderEngine {
   // Compatibility bridge until document/scene/history extraction. Only plain
   // source data is retained; derived items are kept separately for identity.
   private readonly scene: SceneRepository;
+  private readonly layers: LayerManager;
+  private readonly coordinates = new CoordinateManager();
+  private readonly viewport: ViewportManager;
+  private readonly documentManager = new DocumentManager();
   private get retainedPaths(): Map<string, RetainedPath> { return this.scene.records; }
   private set retainedPaths(value: Map<string, RetainedPath>) { this.scene.restoreRecords(value); }
   isDrawingShape = false;
@@ -307,16 +317,6 @@ export class NibGliderEngine {
   path: AnyItem = null;
   mousePt: AnyItem = null;
   lastMousePt: AnyItem = null;
-  isPanning = false;
-  // Pan anchor: view center + pointer point at pan start. Paper's
-  // event.delta is a project-space delta computed across the center
-  // change applied by the previous drag, which stutters; re-deriving
-  // the pointer offset from this fixed anchor every drag stays
-  // frame-consistent.
-  panAnchorCenter: AnyItem = null;
-  panAnchorPoint: AnyItem = null;
-  minZoom = 0.1;
-  maxZoom = 16;
 
   // --- Selection (selectionFunctions.js) ---
   private readonly selection: SelectionManager;
@@ -333,19 +333,22 @@ export class NibGliderEngine {
   constructor(scope: paper.PaperScope, onKeyActivity: (a: KeyActivity) => void) {
     this.scope = scope;
     this.onKeyActivity = onKeyActivity;
+    this.layers = new LayerManager(scope);
+    this.viewport = new ViewportManager(scope, () => this.afterViewChange());
+    this.documentManager.subscribe(() => this.notify());
     this.scene = new SceneRepository(scope, () => ({
       gridLayer: this.gridLayer,
       cursors: [this.pathSnapCursor, this.pointSnapCursor, this.gridCursor],
       previews: [this.previewInner, this.previewSplineText, this.previewShape,
         this.previewLine, this.previewPath, this.previewRect],
-    }));
+    }), this.layers);
     this.selection = new SelectionManager(this.scene,
       (command) => this.history.push(command),
       (original, clone) => this.scene.retainClone(original, clone, (item) => this.shapePartOf(item)));
     this.compositePathTool = new PathTool(scope, (item) => {
       this.applyCurrentStyles(item);
       item.fillColor = null;
-      if (!item.parent) this.scope.project.activeLayer.addChild(item);
+      if (!item.parent) this.layers.addToActive(item);
       this.refreshSplineTextPreview();
     });
   }
@@ -387,18 +390,10 @@ export class NibGliderEngine {
       setLastMousePt: (v) => {
         this.lastMousePt = v;
       },
-      isPanning: () => this.isPanning,
-      setIsPanning: (v) => {
-        this.isPanning = v;
-      },
-      panAnchorCenter: () => this.panAnchorCenter,
-      setPanAnchorCenter: (v) => {
-        this.panAnchorCenter = v;
-      },
-      panAnchorPoint: () => this.panAnchorPoint,
-      setPanAnchorPoint: (v) => {
-        this.panAnchorPoint = v;
-      },
+      isPanning: () => this.viewport.isPanning,
+      beginPan: (point) => this.viewport.beginPan(point),
+      panTo: (point, delta) => this.viewport.panTo(point, delta),
+      endPan: () => this.viewport.endPan(),
       snapToGrid: (point) => this.snapToGrid(point),
       applyAngleSnapping: (base, target) => this.applyAngleSnapping(base, target),
       applyLengthSnapping: (base, target) => this.applyLengthSnapping(base, target),
@@ -419,7 +414,6 @@ export class NibGliderEngine {
       },
       topUserGroupOf: (item) => this.topUserGroupOf(item),
       isNonContentItem: (item) => this.isNonContentItem(item),
-      afterViewChange: () => this.afterViewChange(),
     };
   }
 
@@ -512,6 +506,13 @@ export class NibGliderEngine {
 
   getVersion = (): number => this.version;
 
+  getPageSettings(): PageSettings { return this.documentManager.pageSettings; }
+  isDocumentDirty(): boolean { return this.documentManager.isDirty; }
+  documentRevision(): number { return this.documentManager.sceneRevision; }
+  subscribeDocumentChanges(listener: (change: DocumentChange) => void): () => void {
+    return this.documentManager.subscribe(listener);
+  }
+
   private notify(): void {
     this.version++;
     this.listeners.forEach((fn) => fn());
@@ -556,6 +557,7 @@ export class NibGliderEngine {
 
   detach(): void {
     if (this.compositePathTool.active) this.cancelCurrentDrawingOperation();
+    this.viewport.endPan();
     this.input.detach();
     this.resetKeyboardInput();
   }
@@ -579,7 +581,7 @@ export class NibGliderEngine {
             ),
           )
         : view.center.clone();
-    const cascade = 24 / (view.zoom || 1);
+    const cascade = 24 / this.viewport.zoom;
     this.lastDropNote = '';
     const selBefore = [...this.selectedItems];
     this.clearOutSelection();
@@ -639,7 +641,7 @@ export class NibGliderEngine {
     selBefore: AnyItem[],
   ): void {
     const layer = this.scope.project
-      ? this.scope.project.activeLayer
+      ? this.layers.activeLayer
       : null;
     if (!layer || !item || !this.isInScene(item)) return;
     const after = this.contentItems();
@@ -1201,12 +1203,12 @@ export class NibGliderEngine {
   }
 
   lengthSnapStepInUnit(): number {
-    return pointsToLengthUnit(this.lengthSnapStep, this.lengthUnit);
+    return this.coordinates.fromPoints(this.lengthSnapStep, this.lengthUnit);
   }
 
   setLengthSnapStepFromUnit(v: number): void {
     if (!Number.isFinite(v)) return;
-    this.setLengthSnapStep(lengthUnitToPoints(v, this.lengthUnit));
+    this.setLengthSnapStep(this.coordinates.toPoints(v, this.lengthUnit));
   }
 
   setAspectSnappingEnabled(v: boolean): void {
@@ -1456,6 +1458,7 @@ export class NibGliderEngine {
       return;
     }
     const ok = this.combinePair(mode);
+    if (ok) this.documentManager.markEdited('scene');
     this.lastCombineNote = ok
       ? ''
       : 'No result — shapes may not overlap.';
@@ -1555,7 +1558,7 @@ export class NibGliderEngine {
     // Live drawing state, previews, cursors, and the grid are never
     // targets (mirrors isNonContentItem plus the in-progress stroke).
     const targets: Array<{ geo: AnyItem; container: AnyItem }> = [];
-    const layer = this.scope.project.activeLayer;
+    const layer = this.layers.activeLayer;
     for (const item of [...layer.children]) {
       if (!item || item === deposited) continue;
       if (item === this.path || item === this.quadPath) continue;
@@ -1984,7 +1987,7 @@ export class NibGliderEngine {
   // targets coincide with the rendered dots (see snapToGrid).
   drawGrid(): void {
     const scope = this.scope;
-    const active = scope.project.activeLayer;
+    const active = this.layers.activeLayer;
     if (!this.gridLayer) {
       this.gridLayer = new scope.Layer();
       this.gridLayer.name = 'gridLayer';
@@ -2507,7 +2510,7 @@ export class NibGliderEngine {
   // guarded by isInScene, so a command touching items that a later
   // non-undoable op (e.g. panel combinatorics) already consumed is a
   // harmless no-op instead of a crash.
-  private history = new UndoManager(100, 800, () => this.notify());
+  private history = new UndoManager(100, 800, () => this.documentManager.markEdited('scene'));
   private moveGesture: { items: AnyItem[]; points: AnyItem[] } | null =
     null;
 
@@ -2581,7 +2584,7 @@ export class NibGliderEngine {
     retainedBefore?: Map<string, RetainedPath>,
   ): void {
     const layer = this.scope.project
-      ? this.scope.project.activeLayer
+      ? this.layers.activeLayer
       : null;
     if (!layer) return;
     const after = this.contentItems();
@@ -2700,7 +2703,7 @@ export class NibGliderEngine {
     coalesceKey?: string,
   ): MoveCommand {
     const activeLayerOf = (): AnyItem =>
-      this.scope.project ? this.scope.project.activeLayer : null;
+      this.scope.project ? this.layers.activeLayer : null;
     const cmd: MoveCommand = {
       label:
         entries.length > 1 ? `Move ${entries.length} items` : 'Move',
@@ -2768,7 +2771,7 @@ export class NibGliderEngine {
     this.moveGesture = null;
     if (!g) return;
     const layer = this.scope.project
-      ? this.scope.project.activeLayer
+      ? this.layers.activeLayer
       : null;
     const entries: MoveEntry[] = [];
     for (let i = 0; i < g.items.length; i++) {
@@ -2976,7 +2979,7 @@ export class NibGliderEngine {
       const clone = itemsToStamp[i].clone();
       this.retainCloneSources(itemsToStamp[i], clone);
       clone.selected = false;
-      this.scope.project.activeLayer.addChild(clone);
+      this.layers.activeLayer.addChild(clone);
     }
     this.recordSceneCommand(
       itemsToStamp.length > 1
@@ -3304,7 +3307,6 @@ export class NibGliderEngine {
   // untouched; the group is ignored by content hit-testing and snapping
   // and is cleared on finalize/cancel.
   private refreshSplineTextPreview(): void {
-    const scope = this.scope;
     if (this.previewSplineText) {
       this.previewSplineText.remove();
       this.previewSplineText = null;
@@ -3324,7 +3326,7 @@ export class NibGliderEngine {
     this.fadeShapeText(text);
     this.addPreviewShadow(text);
     this.previewSplineText = text;
-    scope.project.activeLayer.addChild(text);
+    this.layers.activeLayer.addChild(text);
   }
 
   private clearSplineTextPreview(): void {
@@ -3473,6 +3475,19 @@ export class NibGliderEngine {
         }
       }
     }
+    const straightEdges = this.straightBoundaryEdges(boundary);
+    if (straightEdges.length > 0) {
+      const text = this.createEdgeDisplayText(
+        boundary,
+        lines,
+        straightEdges,
+        start,
+        interiorSign,
+        offset,
+        spec,
+      );
+      if (text) return text;
+    }
     const group: AnyItem = new scope.Group();
     lines.forEach((text, li) => {
       const side =
@@ -3545,6 +3560,166 @@ export class NibGliderEngine {
     group.data.isShapeText = true;
     group.data.textKind = 'display';
     return group;
+  }
+
+  /**
+   * Return polygonal boundary edges only. Curves intentionally use the
+   * continuous circumference layout below, where there is no vertex at which
+   * a word needs to wrap.
+   */
+  private straightBoundaryEdges(boundary: AnyItem): StraightBoundaryEdge[] {
+    if (boundary.closed === false || !Array.isArray(boundary.segments)) return [];
+    const segments = boundary.segments;
+    const curves = boundary.curves;
+    if (segments.length < 3 || !Array.isArray(curves) || curves.length !== segments.length) {
+      return [];
+    }
+    if (
+      segments.some((segment: AnyItem) =>
+        (segment.handleIn?.length ?? 0) > 1e-6 ||
+        (segment.handleOut?.length ?? 0) > 1e-6,
+      )
+    ) {
+      return [];
+    }
+    let start = 0;
+    const edges: StraightBoundaryEdge[] = [];
+    for (const curve of curves) {
+      const length = curve.length;
+      if (!(length > 1e-6)) return [];
+      edges.push({ start, length });
+      start += length;
+    }
+    return edges;
+  }
+
+  /**
+   * Lay Display Text out edge by edge. A candidate always contains complete
+   * words, so a word that does not fit in the remaining edge space moves to
+   * the following edge rather than being split across the corner.
+   */
+  private createEdgeDisplayText(
+    boundary: AnyItem,
+    lines: string[],
+    edges: StraightBoundaryEdge[],
+    start: number,
+    interiorSign: number,
+    offset: number,
+    spec: TextSpec,
+  ): AnyItem {
+    const scope = this.scope;
+    const size = Math.max(4, spec.fontSize);
+    const L = boundary.length;
+    const startAt = ((start % L) + L) % L;
+    let firstEdge = edges.findIndex(
+      (edge) => startAt >= edge.start && startAt < edge.start + edge.length,
+    );
+    if (firstEdge < 0) firstEdge = 0;
+    const group: AnyItem = new scope.Group();
+
+    for (let li = 0; li < lines.length; li++) {
+      const words = lines[li].trim().split(/\s+/).filter(Boolean);
+      let wordIndex = 0;
+      const side = this.displayFlow === 'interior' ? interiorSign : -interiorSign;
+      const ring = offset * (li + 1);
+      for (let edgeOffset = 0; edgeOffset < edges.length && wordIndex < words.length; edgeOffset++) {
+        const edge = edges[(firstEdge + edgeOffset) % edges.length];
+        let text = '';
+        while (wordIndex < words.length) {
+          const candidate = text ? `${text} ${words[wordIndex]}` : words[wordIndex];
+          if (this.displayTextAdvance(candidate, spec, size) > edge.length) break;
+          text = candidate;
+          wordIndex++;
+        }
+        if (!text) continue;
+        const advance = this.displayTextAdvance(text, spec, size);
+        const alignOffset =
+          spec.justification === 'right'
+            ? edge.length - advance
+            : spec.justification === 'center'
+              ? (edge.length - advance) / 2
+              : 0;
+        this.addDisplayGlyphs(
+          group,
+          boundary,
+          text,
+          edge.start + alignOffset,
+          side,
+          ring,
+          interiorSign,
+          spec,
+          size,
+        );
+      }
+    }
+    group.data.isShapeText = true;
+    group.data.textKind = 'display';
+    return group;
+  }
+
+  private displayTextAdvance(text: string, spec: TextSpec, size: number): number {
+    let advance = 0;
+    for (const ch of text) advance += this.displayGlyphStep(ch, spec, size);
+    return advance;
+  }
+
+  private displayGlyphStep(ch: string, spec: TextSpec, size: number): number {
+    const width =
+      ch === ' '
+        ? size * 0.4
+        : this.textMetrics.advance(ch, spec.fontFamily, size, spec.fontWeight);
+    return width + this.circumferenceGap;
+  }
+
+  private addDisplayGlyphs(
+    group: AnyItem,
+    boundary: AnyItem,
+    text: string,
+    start: number,
+    side: number,
+    ring: number,
+    interiorSign: number,
+    spec: TextSpec,
+    size: number,
+  ): void {
+    const scope = this.scope;
+    let d = start;
+    let lastTan: number | null = null;
+    for (const ch of text) {
+      const step = this.displayGlyphStep(ch, spec, size);
+      if (ch === ' ') {
+        d += step;
+        continue;
+      }
+      const mid = d + (step - this.circumferenceGap) / 2;
+      const pos = boundary.getPointAt(mid);
+      if (!pos) break;
+      const tan = boundary.getTangentAt(mid);
+      if (tan && tan.length > 0) lastTan = tan.angle;
+      if (lastTan === null) {
+        d += step;
+        continue;
+      }
+      let nor = boundary.getNormalAt(mid);
+      if (!nor || nor.length === 0) {
+        const ra = ((lastTan + 90) * Math.PI) / 180;
+        nor = new scope.Point(Math.cos(ra), Math.sin(ra));
+      } else {
+        nor = nor.normalize();
+      }
+      const pt: AnyItem = new scope.PointText(new scope.Point(0, 0));
+      pt.content = ch;
+      this.styleTextItem(pt, spec);
+      pt.justification = 'center';
+      const at = pos.add(nor.multiply(side * ring));
+      pt.position = at;
+      const facing =
+        this.glyphOrientation === 'outward' ? -interiorSign : interiorSign;
+      pt.rotate(facing !== 0 ? nor.multiply(facing).angle + 90 : lastTan, at);
+      pt.data.textKind = 'display';
+      group.addChild(pt);
+      d += step;
+    }
   }
 
   /**
@@ -3731,7 +3906,7 @@ export class NibGliderEngine {
       const innerPath = this.createInnerShape(center, iradius, style, this.shapeGuideAngle);
       if (innerPath) {
         innerPath.selected = false;
-        scope.project.activeLayer.addChild(innerPath);
+        this.layers.activeLayer.addChild(innerPath);
       }
       return;
     }
@@ -3750,7 +3925,7 @@ export class NibGliderEngine {
     const innerPath = this.createInnerShape(center, iradius, style, this.shapeGuideAngle);
     if (innerPath) {
       innerPath.selected = false;
-      scope.project.activeLayer.addChild(innerPath);
+      this.layers.activeLayer.addChild(innerPath);
     }
   }
 
@@ -3980,7 +4155,7 @@ export class NibGliderEngine {
       strokeWidth: 1,
       strokeDasharray: [4, 4],
     });
-    scope.project.activeLayer.addChild(this.previewLine);
+    this.layers.activeLayer.addChild(this.previewLine);
     this.previewRect = new scope.Path({
       segments: [
         this.shapeStartPoint,
@@ -3992,7 +4167,7 @@ export class NibGliderEngine {
       strokeColor: this.globalStrokeColor,
       strokeWidth: this.globalStrokeWidth,
     });
-    scope.project.activeLayer.addChild(this.previewRect);
+    this.layers.activeLayer.addChild(this.previewRect);
     this.stylePreviewFrame(this.previewRect, 1);
     this.applyStrokeGeometry(this.previewRect);
     this.updateTextContent();
@@ -4021,7 +4196,7 @@ export class NibGliderEngine {
           strokeColor: this.globalStrokeColor,
           strokeWidth: this.globalStrokeWidth,
         });
-        scope.project.activeLayer.addChild(this.previewRect);
+        this.layers.activeLayer.addChild(this.previewRect);
         this.stylePreviewFrame(this.previewRect, 1);
         this.applyStrokeGeometry(this.previewRect);
         this.updateTextContent();
@@ -4050,14 +4225,14 @@ export class NibGliderEngine {
       strokeWidth: this.globalStrokeWidth,
     });
     this.applyStrokeGeometry(this.previewPath);
-    scope.project.activeLayer.addChild(this.previewPath);
+    this.layers.activeLayer.addChild(this.previewPath);
     this.previewLine = new scope.Path({
       segments: [this.shapeStartPoint, this.shapeStartPoint],
       strokeColor: new scope.Color(0.5),
       strokeWidth: 1,
       strokeDasharray: [4, 4],
     });
-    scope.project.activeLayer.addChild(this.previewLine);
+    this.layers.activeLayer.addChild(this.previewLine);
     this.updateTextContent();
     this.notify();
   }
@@ -4088,7 +4263,7 @@ export class NibGliderEngine {
         const placed = this.depositWithCombine(this.quadPath);
         if (placed) {
           placed.selected = false;
-          if (placed.parent == null) scope.project.activeLayer.addChild(placed);
+          if (placed.parent == null) this.layers.activeLayer.addChild(placed);
         }
         this.quadPath = null;
         this.isDrawingQuad = false;
@@ -4112,7 +4287,6 @@ export class NibGliderEngine {
       if (deposit) this.depositCompositePath(deposit, 'Stamp');
       return;
     }
-    const scope = this.scope;
     const histBefore = this.contentItems();
     const histSel = [...this.selectedItems];
     if (this.isDrawingPath && this.path) {
@@ -4125,7 +4299,7 @@ export class NibGliderEngine {
       if (placedStamp) {
         placedStamp.selected = false;
         placedStamp.opacity = 1;
-        scope.project.activeLayer.addChild(placedStamp);
+        this.layers.activeLayer.addChild(placedStamp);
       }
     } else if (this.isDrawingShape) {
       if (
@@ -4154,7 +4328,7 @@ export class NibGliderEngine {
             const placedInner = this.depositWithCombine(stampedInner);
             if (placedInner) {
               placedInner.selected = false;
-              scope.project.activeLayer.addChild(placedInner);
+              this.layers.activeLayer.addChild(placedInner);
             }
           }
         }
@@ -4170,7 +4344,7 @@ export class NibGliderEngine {
           const placedShape = this.depositWithCombine(stampedShape);
           if (placedShape) {
             placedShape.selected = false;
-            scope.project.activeLayer.addChild(placedShape);
+            this.layers.activeLayer.addChild(placedShape);
           }
         }
       } else {
@@ -4184,7 +4358,7 @@ export class NibGliderEngine {
           const placedFrame = this.depositWithCombine(stampedFrame);
           if (placedFrame) {
             placedFrame.selected = false;
-            scope.project.activeLayer.addChild(placedFrame);
+            this.layers.activeLayer.addChild(placedFrame);
           }
         }
         if (this.previewInner) {
@@ -4205,7 +4379,7 @@ export class NibGliderEngine {
           const placedPreview = this.depositWithCombine(stampedInner);
           if (placedPreview) {
             placedPreview.selected = false;
-            scope.project.activeLayer.addChild(placedPreview);
+            this.layers.activeLayer.addChild(placedPreview);
           }
         }
       }
@@ -4218,7 +4392,7 @@ export class NibGliderEngine {
       if (placedQuad) {
         placedQuad.selected = false;
         placedQuad.opacity = 1;
-        scope.project.activeLayer.addChild(placedQuad);
+        this.layers.activeLayer.addChild(placedQuad);
       }
     }
     this.recordSceneCommand('Stamp', histBefore, histSel, []);
@@ -4230,7 +4404,6 @@ export class NibGliderEngine {
       this.finishCompositePath(false);
       return;
     }
-    const scope = this.scope;
     const histBefore = this.contentItems();
     const histSel = [...this.selectedItems];
     const deposited: Array<AnyItem | null> = [];
@@ -4288,7 +4461,7 @@ export class NibGliderEngine {
         // A joined path already lives in the layer; re-adding would
         // only reorder it to the front.
         if (placed.parent == null) {
-          scope.project.activeLayer.addChild(placed);
+          this.layers.activeLayer.addChild(placed);
         }
       }
       deposited.push(finished);
@@ -4310,7 +4483,7 @@ export class NibGliderEngine {
       if (placedQuadEnd) {
         placedQuadEnd.selected = false;
         if (placedQuadEnd.parent == null) {
-          scope.project.activeLayer.addChild(placedQuadEnd);
+          this.layers.activeLayer.addChild(placedQuadEnd);
         }
       }
       deposited.push(placedQuadEnd);
@@ -4387,7 +4560,7 @@ export class NibGliderEngine {
   private findCompositeEndpoint(point: paper.Point): { path: paper.Path; atStart: boolean } | null {
     let best: { path: paper.Path; atStart: boolean } | null = null;
     let distance = this.endpointTolerance();
-    for (const item of this.scope.project.activeLayer.children) {
+    for (const item of this.layers.activeLayer.children) {
       // Joining plain top-level paths is an explicit conversion boundary.
       // Groups/text keep their structure until scene/operation policy work.
       if (!(item instanceof this.scope.Path) || item.closed || !item.segments.length || this.isNonContentItem(item)) continue;
@@ -4446,7 +4619,7 @@ export class NibGliderEngine {
     const placed = this.depositWithCombine(finished);
     if (placed) {
       placed.selected = false;
-      if (!placed.parent) this.scope.project.activeLayer.addChild(placed);
+      if (!placed.parent) this.layers.activeLayer.addChild(placed);
       const shape = this.shapePartOf(placed);
       if (shape instanceof this.scope.Path || shape instanceof this.scope.CompoundPath) {
         const source = placed === finished && geometry === deposit.item ? deposit.source : this.scene.bezierSource(shape);
@@ -4575,7 +4748,7 @@ export class NibGliderEngine {
     if (placedComplete) {
       placedComplete.selected = false;
       if (placedComplete.parent == null) {
-        scope.project.activeLayer.addChild(placedComplete);
+        this.layers.activeLayer.addChild(placedComplete);
       }
     }
     this.path = null;
@@ -4736,14 +4909,14 @@ export class NibGliderEngine {
     this.isDrawingShape = true;
     this.previewShape = new scope.Shape.Circle(this.shapeStartPoint, 0);
     this.stylePreviewFrame(this.previewShape);
-    scope.project.activeLayer.addChild(this.previewShape);
+    this.layers.activeLayer.addChild(this.previewShape);
     this.previewLine = new scope.Path({
       segments: [this.shapeStartPoint, this.shapeStartPoint],
       strokeColor: new scope.Color(0.5),
       strokeWidth: 1,
       strokeDashArray: [4, 4],
     });
-    scope.project.activeLayer.addChild(this.previewLine);
+    this.layers.activeLayer.addChild(this.previewLine);
     this.updateTextContent();
     this.notify();
   }
@@ -4772,14 +4945,14 @@ export class NibGliderEngine {
     this.isDrawingShape = true;
     this.previewShape = new scope.Shape.Circle(this.shapeStartPoint, 0);
     this.stylePreviewFrame(this.previewShape);
-    scope.project.activeLayer.addChild(this.previewShape);
+    this.layers.activeLayer.addChild(this.previewShape);
     this.previewLine = new scope.Path({
       segments: [this.shapeStartPoint, this.shapeStartPoint],
       strokeColor: new scope.Color(0.5),
       strokeWidth: 1,
       strokeDashArray: [4, 4],
     });
-    scope.project.activeLayer.addChild(this.previewLine);
+    this.layers.activeLayer.addChild(this.previewLine);
     this.updateTextContent();
     this.notify();
   }
@@ -4816,14 +4989,14 @@ export class NibGliderEngine {
       new scope.Size(0, 0),
     );
     this.stylePreviewFrame(this.previewShape, 1);
-    scope.project.activeLayer.addChild(this.previewShape);
+    this.layers.activeLayer.addChild(this.previewShape);
     this.previewLine = new scope.Path({
       segments: [this.shapeStartPoint, this.shapeStartPoint],
       strokeColor: new scope.Color(0.5),
       strokeWidth: 1,
       strokeDashArray: [4, 4],
     });
-    scope.project.activeLayer.addChild(this.previewLine);
+    this.layers.activeLayer.addChild(this.previewLine);
     this.updateTextContent();
     this.notify();
   }
@@ -4865,7 +5038,7 @@ export class NibGliderEngine {
           if (placedInner) {
             placedInner.selected = false;
             if (placedInner.parent == null) {
-              scope.project.activeLayer.addChild(placedInner);
+              this.layers.activeLayer.addChild(placedInner);
             }
             placed.push(placedInner);
           }
@@ -4931,7 +5104,7 @@ export class NibGliderEngine {
       if (placedFinal) {
         placedFinal.selected = false;
         if (placedFinal.parent == null) {
-          scope.project.activeLayer.addChild(placedFinal);
+          this.layers.activeLayer.addChild(placedFinal);
         }
         placed.push(placedFinal);
         // Inner decoration follows the deposited (possibly combined)
@@ -5048,7 +5221,7 @@ export class NibGliderEngine {
   private ensureGuideLayer(): AnyItem {
     const scope = this.scope;
     const project = scope.project;
-    const active = project.activeLayer;
+    const active = this.layers.activeLayer;
     let layer = this.guideLayer;
     if (!layer || layer.project !== project) {
       layer = new scope.Layer();
@@ -5123,22 +5296,11 @@ export class NibGliderEngine {
 
   // Zoom around the view center, honoring min/max zoom.
   private stepZoom(dir: 1 | -1): void {
-    const view = this.scope.view;
-    const oldZoom = view.zoom || 1;
-    const next = Math.min(
-      this.maxZoom,
-      Math.max(this.minZoom, oldZoom * (dir > 0 ? 1.25 : 1 / 1.25)),
-    );
-    if (next === oldZoom) return;
-    view.zoom = next;
-    this.afterViewChange();
+    this.viewport.stepZoom(dir);
   }
 
   private resetZoom(): void {
-    const view = this.scope.view;
-    if ((view.zoom || 1) === 1) return;
-    view.zoom = 1;
-    this.afterViewChange();
+    this.viewport.resetZoom();
   }
 
   private onMouseWheel(event: WheelEvent): void {
@@ -5151,17 +5313,7 @@ export class NibGliderEngine {
       event.clientX - rect.left,
       event.clientY - rect.top,
     );
-    const oldZoom = view.zoom || 1;
-    const next = Math.min(
-      this.maxZoom,
-      Math.max(this.minZoom, oldZoom * Math.exp(-event.deltaY * 0.002)),
-    );
-    if (next === oldZoom) return;
-    const before = view.viewToProject(viewPoint);
-    view.zoom = next;
-    const after = view.viewToProject(viewPoint);
-    view.center = view.center.add(before.subtract(after));
-    this.afterViewChange();
+    this.viewport.zoomForWheel(event.deltaY, viewPoint);
   }
 
   /** Select the content item under the cursor. */
@@ -5200,7 +5352,6 @@ export class NibGliderEngine {
     corners: [AnyItem, AnyItem, AnyItem, AnyItem] | null,
     frameItem: AnyItem,
   ): void {
-    const scope = this.scope;
     if (frameItem) {
       frameItem.visible = true;
       if (corners && frameItem.segments) {
@@ -5216,7 +5367,7 @@ export class NibGliderEngine {
     if (shape) {
       this.addPreviewShadow(shape);
       this.previewInner = shape;
-      scope.project.activeLayer.addChild(shape);
+      this.layers.activeLayer.addChild(shape);
     }
   }
 
@@ -5345,7 +5496,7 @@ export class NibGliderEngine {
           );
           if (this.previewInner) {
             this.addPreviewShadow(this.previewInner);
-            scope.project.activeLayer.addChild(this.previewInner);
+            this.layers.activeLayer.addChild(this.previewInner);
           }
         }
       } else if (
@@ -5377,7 +5528,7 @@ export class NibGliderEngine {
           );
           if (this.previewInner) {
             this.addPreviewShadow(this.previewInner);
-            scope.project.activeLayer.addChild(this.previewInner);
+            this.layers.activeLayer.addChild(this.previewInner);
           }
         }
       }
@@ -5388,7 +5539,6 @@ export class NibGliderEngine {
   // tangent point (the cursor) on the placement circle, rotated tangent to
   // it. Size is the fixed base radius times the live scale factor.
   private refreshRadialStampPreview(): void {
-    const scope = this.scope;
     if (
       !this.isDrawingShape ||
       this.shapeType !== 'circle_radial_stamp' ||
@@ -5409,7 +5559,7 @@ export class NibGliderEngine {
     );
     if (this.previewInner) {
       this.addPreviewShadow(this.previewInner);
-      scope.project.activeLayer.addChild(this.previewInner);
+      this.layers.activeLayer.addChild(this.previewInner);
     }
   }
 

@@ -1740,6 +1740,31 @@ function TextParams({
                 ))}
               </div>
             </span>
+            <span className="param-item">
+              <label>On Edge</label>
+              <div className="seg-ctrl" role="group" aria-label="Text position on edge">
+                {TEXT_JUSTIFY_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    title={`${opt.label} on each polygon edge`}
+                    aria-label={opt.label}
+                    className={spec.justification === opt.value ? 'active' : undefined}
+                    onClick={() => engine.setTextJustification(opt.value)}
+                  >
+                    <svg viewBox="0 0 16 14" width="18" height="14" aria-hidden="true">
+                      <path
+                        d={opt.icon}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            </span>
           </div>
           <span className="param-item">
             <label>Spline</label>
@@ -1889,31 +1914,33 @@ function TextParams({
           </div>
         </span>
       </div>
-      <span className="param-item">
-        <label>Align</label>
-        <div className="seg-ctrl" role="group" aria-label="Text alignment">
-          {TEXT_JUSTIFY_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              title={opt.label}
-              aria-label={opt.label}
-              className={spec.justification === opt.value ? 'active' : undefined}
-              onClick={() => engine.setTextJustification(opt.value)}
-            >
-              <svg viewBox="0 0 16 14" width="18" height="14" aria-hidden="true">
-                <path
-                  d={opt.icon}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
-          ))}
-        </div>
-      </span>
+      {textMode === 'body' ? (
+        <span className="param-item">
+          <label>Align</label>
+          <div className="seg-ctrl" role="group" aria-label="Text alignment">
+            {TEXT_JUSTIFY_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                title={opt.label}
+                aria-label={opt.label}
+                className={spec.justification === opt.value ? 'active' : undefined}
+                onClick={() => engine.setTextJustification(opt.value)}
+              >
+                <svg viewBox="0 0 16 14" width="18" height="14" aria-hidden="true">
+                  <path
+                    d={opt.icon}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            ))}
+          </div>
+        </span>
+      ) : null}
       <ParamSlider
         id="textLeadingSlider"
         label="Leading"
