@@ -13,6 +13,7 @@
 //   See refs/engine-smoke-checklist.md.
 
 import type { StatusKeyGroup } from '../types';
+import type { ModifierChord, ModifierSnapshot } from './ModifierStateTracker';
 
 export interface KeyState {
   isDrawingPath: boolean;
@@ -64,7 +65,7 @@ export interface KeyCap {
   dataKey: string;
   className: string;
   legend: string;
-  row: 'q' | 'a' | 'z' | 'space';
+  row: 'q' | 'a' | 'z' | 'space' | 'modifiers';
   commandId?: string;
   transform?: string;
   badge?: 'circle' | 'rect';
@@ -502,7 +503,7 @@ export const KEY_COMMANDS: KeyCommand[] = [
     keycap: 'Q',
     group: 'end',
     help: 'Cancel the current drawing',
-    match: (e) => e.key === 'q',
+    match: letter('q'),
     available: always,
     exclusive: false,
   },
@@ -581,6 +582,9 @@ for (const cmd of KEY_COMMANDS) {
 }
 
 export const KEY_CAPS: KeyCap[] = [
+  { id: 'ControlLeft', dataKey: 'ctrl', row: 'modifiers', className: 'keyboardkey modifierKey', legend: 'CONTROL' },
+  { id: 'AltLeft', dataKey: 'alt', row: 'modifiers', className: 'keyboardkey modifierKey', legend: 'ALT' },
+  { id: 'MetaLeft', dataKey: 'meta', row: 'modifiers', className: 'keyboardkey modifierKey', legend: 'META' },
   { id: 'Tab', dataKey: 'tab', commandId: 'select', row: 'q', className: 'keyboardkey tabKey OtherKey enabledButton', legend: 'SELECT OBJECTS' },
   { id: 'KeyQ', dataKey: 'q', commandId: 'cancel', row: 'q', className: 'keyboardkey KeyQ operationButton enabledButton cancelButton', transform: 'translate(-45%, 0%)', legend: 'CANCEL' },
   { id: 'KeyW', dataKey: 'w', commandId: 'stamp', row: 'q', className: 'keyboardkey wKey operationButton enabledButton', legend: 'STAMP' },
@@ -595,7 +599,7 @@ export const KEY_CAPS: KeyCap[] = [
   { id: 'BracketLeft', dataKey: '[', commandId: 'scale-down', row: 'q', className: 'keyboardkey  bracketLeftKey operationButton enabledButton', legend: 'SCALE -' },
   { id: 'BracketRight', dataKey: ']', commandId: 'scale-up', row: 'q', className: 'keyboardkey  bracketRightKey operationButton enabledButton', legend: 'SCALE +' },
   { id: 'Backslash', dataKey: '\\', row: 'q', className: 'keyboardkey  backslashKey', legend: '' },
-  { id: 'CapsLock', dataKey: 'capslock', row: 'a', className: 'keyboardkey capsLockKey OtherKey hidden', legend: '' },
+  { id: 'CapsLock', dataKey: 'capslock', row: 'a', className: 'keyboardkey capsLockKey OtherKey', legend: '' },
   { id: 'KeyA', dataKey: 'a', commandId: 'finish-a', row: 'a', className: 'keyboardkey KeyA endButton', transform: 'translate(-27%, 0%)', legend: '<b>END</b><br />' },
   { id: 'KeyS', dataKey: 's', commandId: 'toggle-stroke', row: 'a', className: 'keyboardkey sKey toggleButton enabledButton', transform: 'translate(-27%, 0%)', legend: 'TOGGLE<br/>STROKE' },
   { id: 'KeyD', dataKey: 'd', commandId: 'toggle-fill', row: 'a', className: 'keyboardkey dKey toggleButton enabledButton', transform: 'translate(-27%, 0%)', legend: 'TOGGLE<br/>FILL' },
@@ -608,8 +612,8 @@ export const KEY_CAPS: KeyCap[] = [
   { id: 'Semicolon', dataKey: ';', commandId: 'rotate-ccw', row: 'a', className: 'keyboardkey semicolonKey operationButton enabledButton', transform: 'translate(-27%, 0%)', legend: 'ROTATE -' },
   { id: 'Quote', dataKey: "'", commandId: 'rotate-cw', row: 'a', className: 'keyboardkey  singleQuoteKey operationButton enabledButton', transform: 'translate(-27%, 0%)', legend: 'ROTATE +' },
   { id: 'Enter', dataKey: 'return', row: 'a', className: 'keyboardkey returnKey OtherKey hidden', transform: 'translate(-5%, 0%)', legend: 'RETURN' },
-  { id: 'ShiftLeft', dataKey: 'shift', row: 'z', className: 'keyboardkey shiftKeyLeft OtherKey hidden', legend: '' },
-  { id: 'KeyZ', dataKey: 'z', row: 'z', className: 'keyboardkey KeyZ ', transform: 'translate(38%, 0%)', legend: '' },
+  { id: 'ShiftLeft', dataKey: 'shift', row: 'z', className: 'keyboardkey shiftKeyLeft OtherKey', legend: '' },
+  { id: 'KeyZ', dataKey: 'z', row: 'z', className: 'keyboardkey KeyZ zKey ', transform: 'translate(38%, 0%)', legend: '' },
   { id: 'KeyX', dataKey: 'x', row: 'z', className: 'keyboardkey xKey ', transform: 'translate(38%, 0%)', legend: '' },
   { id: 'KeyC', dataKey: 'c', commandId: 'stroke-thinner', row: 'z', className: 'keyboardkey cKey stepper1Decrement enabledButton', transform: 'translate(38%, 0%)', legend: '-<br />STROKE<br />WIDTH' },
   { id: 'KeyV', dataKey: 'v', commandId: 'stroke-thicker', row: 'z', className: 'keyboardkey vKey stepper1Increment enabledButton', transform: 'translate(38%, 0%)', legend: '+<br />STROKE<br />WIDTH' },
@@ -619,7 +623,7 @@ export const KEY_CAPS: KeyCap[] = [
   { id: 'Comma', dataKey: ',', commandId: 'radial-stamp', row: 'z', className: 'keyboardkey commaKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', legend: 'RADIAL<br/>STAMP', badge: 'circle' },
   { id: 'Period', dataKey: '.', row: 'z', className: 'keyboardkey periodKey ', transform: 'translate(38%, 0%)', legend: '' },
   { id: 'Slash', dataKey: '/', commandId: 'grid-toggle', row: 'z', className: 'keyboardkey forwardSlashKey OtherKey enabledButton', transform: 'translate(38%, 0%)', legend: 'GRID<br/>TOGGLE' },
-  { id: 'ShiftRight', dataKey: 'shift', row: 'z', className: 'keyboardkey shiftKeyRight OtherKey hidden', transform: 'translate(15%, 0%)', legend: '' },
+  { id: 'ShiftRight', dataKey: 'shift', row: 'z', className: 'keyboardkey shiftKeyRight OtherKey', transform: 'translate(15%, 0%)', legend: '' },
   { id: 'Space', dataKey: 'spacebar', commandId: 'drag-lock', row: 'space', className: 'keyboardkey spacebarKey OtherKey enabledButton selectionButton', legend: 'DRAG LOCK' },
 ];
 
@@ -665,11 +669,13 @@ export function matchAppCommand(
     isInDragLock: false,
     liveAdjustApplies: false,
   };
-  for (const cmd of KEY_COMMANDS) {
-    if (cmd.owner !== 'app') continue;
-    if (!cmd.match(event)) continue;
-    if (!cmd.available(keyState)) return null;
-    return cmd.id;
+  const code = event.code || codeForLabel(event.key);
+  for (const variant of KEY_VARIANTS) {
+    if (variant.command.owner !== 'app' || variant.code !== code) continue;
+    const chord = variant.chord;
+    if (chord.shift !== event.shiftKey || chord.alt !== event.altKey ||
+      chord.control !== event.ctrlKey || chord.meta !== event.metaKey) continue;
+    if (variant.when(keyState)) return variant.commandId;
   }
   return null;
 }
@@ -690,4 +696,122 @@ export function isCommandAvailable(
     isInDragLock: false,
     liveAdjustApplies: false,
   });
+}
+
+
+export type KeyboardPlatform = 'mac' | 'other';
+export function keyboardPlatform(): KeyboardPlatform {
+  return typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other';
+}
+
+export function primaryShortcut(key: string, shift = false, platform = keyboardPlatform()): string {
+  return `${platform === 'mac' ? '⌘' : 'Ctrl'}+${shift ? 'Shift+' : ''}${key}`;
+}
+
+// The values here are used by commands AND legends; modifiers never change
+// stroke-width/centerline steps. Shift wins over Alt for scale/rotation,
+// while nudge combines them, preserving the established physical behavior.
+export function scaleFactor(chord: Pick<ModifierChord, 'shift' | 'alt'>, dir: -1 | 1): number {
+  return chord.shift ? (dir < 0 ? 0.8 : 1.25) : chord.alt ? (dir < 0 ? 0.98 : 1.02) : (dir < 0 ? 0.9 : 1.1);
+}
+export function rotationStep(chord: Pick<ModifierChord, 'shift' | 'alt'>): number {
+  return chord.shift ? 45 : chord.alt ? 5 : 10;
+}
+export function nudgeStep(chord: Pick<ModifierChord, 'shift' | 'alt'>): number {
+  return (chord.shift ? 10 : 1) * (chord.alt ? 0.2 : 1);
+}
+
+const PUNCTUATION: Record<string, string> = {
+  BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'",
+  Comma: ',', Slash: '/', Space: ' ', Digit0: '0', Minus: '-', Equal: '=',
+};
+export function physicalKey(code: string): string {
+  return PUNCTUATION[code] ?? (code.startsWith('Key') ? code.slice(3).toLowerCase() : code);
+}
+function codeForLabel(label: string): string {
+  if (/^[a-z]$/i.test(label)) return `Key${label.toUpperCase()}`;
+  return Object.keys(PUNCTUATION).find((code) => PUNCTUATION[code] === label) ?? label;
+}
+
+export interface KeyCommandVariant {
+  code: string;
+  chord: ModifierChord;
+  commandId: string;
+  command: KeyCommand;
+  when: (state: KeyState) => boolean;
+  present: (state: KeyState, chord: ModifierSnapshot, platform: KeyboardPlatform) => {
+    legend: string; description: string; group: StatusKeyGroup;
+  };
+}
+
+function presentation(command: KeyCommand, code: string, state: KeyState, chord: ModifierSnapshot, platform: KeyboardPlatform) {
+  const cap = KEY_CAPS.find((cap) => cap.commandId === command.id);
+  let legend = cap?.legend || command.help.toUpperCase();
+  let description = command.help;
+  const dir = code === 'BracketLeft' || code === 'Semicolon' ? -1 : 1;
+  if (command.action === 'brackets') {
+    if (state.isDrawingShape && state.shapeType === 'rectangle_centerline') {
+      legend = `WIDTH ${dir < 0 ? '−' : '+'}2 PT`;
+      description = `Adjust centerline width by ${dir * 2} pt`;
+    } else {
+      const factor = scaleFactor(chord, dir);
+      legend = `SCALE ×${factor}`;
+      description = `Scale ${state.isLiveDrawing && state.liveAdjustApplies ? 'live drawing' : 'selection'} by ${factor}`;
+    }
+  } else if (command.action === 'rotate') {
+    legend = `ROTATE ${dir < 0 ? '−' : '+'}${rotationStep(chord)}°`;
+    description = `Rotate ${state.isLiveDrawing && state.liveAdjustApplies ? 'live drawing' : 'selection'} by ${dir * rotationStep(chord)}°`;
+  } else if (command.action === 'nudge') {
+    legend = `NUDGE ${nudgeStep(chord)} PT`;
+    description = `Nudge selection ${nudgeStep(chord)} pt`;
+  } else if (command.action === 'group') {
+    legend = chord.shift ? 'UNGROUP' : 'GROUP';
+    description = `${legend} selection (${primaryShortcut('G', chord.shift, platform)})`;
+  } else if (command.action === 'undo' || command.action === 'redo') {
+    legend = command.help.toUpperCase();
+    description = `${command.help} (${primaryShortcut(code.slice(3), chord.shift, platform)})`;
+  } else if (command.action === 'stroke-thinner' || command.action === 'stroke-thicker') {
+    legend = `STROKE ${command.action === 'stroke-thinner' ? '−' : '+'}1 PT`;
+  } else if (command.id === 'tension-down' || command.id === 'tension-up') {
+    legend = `TENSION ${command.id === 'tension-down' ? '−' : '+'}0.1`;
+  } else if (command.id === 'tension-reset') {
+    legend = 'RESET TENSION';
+  } else if (command.action === 'sharp-point' || command.action === 'spline-point') {
+    description = `${state.isDrawingPath ? 'Add' : 'Start path with'} ${command.action === 'sharp-point' ? 'sharp' : 'spline'} point`;
+  } else if (command.action === 'finish-drawing') {
+    legend = command.id === 'finish-r' ? 'COMPLETE SHAPE' : 'END DRAWING';
+  }
+  return { legend, description, group: command.group };
+}
+
+// Compile existing ordered commands into exact typed physical chords. Both
+// dispatch and presentation consume this registry. No browser Event is needed
+// to resolve a layout, and Option-produced characters cannot move a keycap.
+// Only commands that require a primary modifier may claim browser shortcuts.
+export const KEY_VARIANTS: KeyCommandVariant[] = [];
+const variantCodes = [...new Set([
+  ...KEY_CAPS.map((cap) => cap.id), 'Digit0', 'Minus', 'Equal', 'Escape', 'Backspace',
+  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+])];
+for (const command of KEY_COMMANDS) {
+  if (command.id === 'bracket-keys' || command.id === 'rotate-keys') continue;
+  const when = command.action === 'brackets' ? commandById('bracket-keys')!.available
+    : command.action === 'rotate' ? commandById('rotate-keys')!.available
+    : command.action === 'nudge' ? (state: KeyState) => idle(state) && state.selectedCount > 0
+    : command.id === 'radial-lock' ? (state: KeyState) => state.isDrawingShape && state.shapeType === 'circle_radial_stamp'
+    : command.available;
+  for (const code of variantCodes) {
+    for (let bits = 0; bits < 16; bits++) {
+      const chord = Object.freeze({ shift: !!(bits & 1), alt: !!(bits & 2), control: !!(bits & 4), meta: !!(bits & 8) });
+      const event = { code, key: physicalKey(code), shiftKey: chord.shift, altKey: chord.alt, ctrlKey: chord.control, metaKey: chord.meta } as KeyboardEvent;
+      if (!command.match(event)) continue;
+      if (chord.control || chord.meta) {
+        // Unregistered primary chords must retain browser/native behavior.
+        if (chord.alt || (chord.control && chord.meta) || command.match({ ...event, ctrlKey: false, metaKey: false } as KeyboardEvent)) continue;
+      }
+      KEY_VARIANTS.push({ code, chord, commandId: command.id, command, when,
+        present: (state, modifiers, platform) => presentation(command, code, state, modifiers, platform),
+      });
+    }
+  }
 }

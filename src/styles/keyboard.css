@@ -989,3 +989,32 @@ color:rgb(210, 115, 115) !important;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
+
+/* Physical modifier display is always present, including when Space is hidden. */
+.keyboard-modifiers {
+    display: flex;
+    gap: 5px;
+    position: absolute;
+    right: 10px;
+    top: -28px;
+}
+#keyboardContainer .keyboard-modifiers button {
+    min-width: 64px;
+    height: 24px;
+    font-size: calc(10px * var(--kb-scale, 1));
+    padding: 3px 8px;
+}
+#keyboardContainer .keyboard-modifiers button::before {
+    content: none;
+}
+#keyboardKeysContainer button.key-unavailable {
+    opacity: 0.4 !important;
+}
+#keyboardContainer button.modifierKey.active {
+    background: #405878 !important;
+    color: #fff !important;
+    opacity: 1 !important;
+}
+#keyboardContainer button.modifierKey::after {
+    content: none;
+}

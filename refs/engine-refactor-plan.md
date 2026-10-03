@@ -82,6 +82,8 @@ src/engine/
   input/
     InputManager.ts         # Register/unregister browser and Paper events
     KeyboardController.ts   # Keymap, live-key bindings, keyboard routing
+    ModifierStateTracker.ts # Physical/latching modifier state and reset rules
+    KeyboardLayoutResolver.ts # Context + modifiers -> visible keycap variants
     PointerController.ts    # Pointer drawing, selection, drag, and pan
     DropController.ts       # SVG/raster drag-and-drop
 
@@ -310,6 +312,12 @@ The status overlay reads the same labels and availability data. This prevents
 the physical keyboard, visible keyboard, and status hints from maintaining
 three inconsistent copies of shortcut logic.
 
+The legacy `external-proj/nibglider-ck/js/keyMappingsObjects.js` demonstrates
+the intended outcome: the same physical key receives a different legend,
+command, and visual treatment for modifier chords. Adapt that behavior through
+typed key variants and a layout resolver; do not port its global
+`window.keyMappings`, function-name strings, or global function registry.
+
 [x] ### Phase 3c: Onscreen-key settings popovers
 
 Implement configurable onscreen keys at the same time as the shared keymap.
@@ -393,6 +401,102 @@ start from origin or circumference) and Rect by Diagonal
 without a schema show no popover. A gear badge in the key's lower-right
 corner marks keys with settings. Values stay on the engine per the Phase 3c
 rule above until the owning services exist.
+
+### Phase 3d: Modifier-responsive keyboard layouts
+
+Make the onscreen keyboard display the command that would run for the current
+physical modifier chord and drawing/selection context. The layout must change
+immediately when Shift, Option/Alt, Control, or Command is pressed, then
+restore on release.
+
+Add `ModifierStateTracker.ts`:
+
+- tracks `shift`, `alt`, `control`, `meta`, and `capsLock` from physical
+  keydown/keyup events and `event.getModifierState('CapsLock')`;
+- resets transient state on window blur, document visibility changes, and
+  engine detach so a lost keyup cannot leave a modifier visually stuck;
+- publishes immutable snapshots to `GUIManager` and the onscreen keyboard;
+- separately supports a future touch/mouse “latched modifier” state, clearly
+  distinguished from physically held modifiers.
+
+Add `KeyboardLayoutResolver.ts`:
+
+- input: a physical keycap position, modifier snapshot, platform, and
+  contextual `KeyState` such as drawing mode, active tool, selection, and drag
+  lock;
+- output: the currently visible command variant, legend, description,
+  settings ID, availability, disabled state, keyboard group, and visual token
+  for every cap;
+- resolution priority: contextual live-drawing binding first, then exact
+  modifier chord, then base/idle command;
+- uses physical `KeyboardEvent.code` values for stable key positions while
+  showing platform-specific labels such as Command on macOS and Control on
+  Windows/Linux.
+
+Represent modifiers as typed data instead of the legacy `$`, `^`, and `~`
+prefix strings:
+
+```ts
+interface ModifierChord {
+  shift?: boolean;
+  alt?: boolean;
+  control?: boolean;
+  meta?: boolean;
+}
+
+interface KeyCommandVariant {
+  chord: ModifierChord;
+  commandId: string;
+  legend: string;
+  description: string;
+  visual: KeyVisualToken;
+  settingsId?: string;
+  when?: (state: KeyState) => boolean;
+}
+```
+
+`keymap.ts` remains the single typed registry. Each keycap names its physical
+code and ordered variants; the resolver selects one. `KeyboardController`
+dispatches that same variant, `OnscreenKeyboard.tsx` renders it,
+`KeySettingsPopover` opens its matching settings schema, and `StatusOverlay`
+uses its help text.
+
+Interaction requirements:
+
+- Highlight all held modifier keys, not only the last non-modifier key.
+- Onscreen Shift/Alt/Control/Command caps show physical pressed state and,
+  later, separately styled latched state.
+- A touch/mouse user may tap modifiers to compose a latched chord and then
+  tap a command key; clear temporary latches after command execution unless
+  deliberately pinned.
+- Pressing a physical modifier must never execute a drawing command.
+- Intercept Command/Control browser shortcuts only for registered application
+  commands that are safe to own; preserve browser and text-entry behavior
+  otherwise.
+- If a modifier changes the resolved command while a key settings popover is
+  open, close the popover or re-resolve by `settingsId`; never edit settings
+  for a stale command variant.
+
+Initial implementation scope:
+
+1. Base, Shift, and Alt/Option variants for the current scale, rotate, nudge,
+   stroke-width, and live-drawing adjustment keys.
+2. Context-sensitive legends for current spline/path and selection commands.
+3. Platform-aware primary-shortcut labels for undo/redo and menu commands.
+4. Touch/mouse latching only after physical modifier display is correct.
+
+Acceptance checks:
+
+- Holding Shift updates scale/rotate labels before the subsequent command key
+  is pressed.
+- Releasing a modifier, blurring the window, or changing tabs restores the
+  base layout without stale highlights.
+- The physical chord executed by `KeyboardController` matches the command
+  displayed on that cap for the same context.
+- Status hints, key settings, panel/menu shortcut labels, and the keyboard
+  agree with the resolved variant.
+- A context change during live drawing cannot leave the keyboard displaying a
+  command the controller will reject.
 
 ### Phase 4: Establish page-item and geometry models
 

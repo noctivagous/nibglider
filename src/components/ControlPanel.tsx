@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { primaryShortcut } from '../engine/input/keymap';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
 import NumericStepper from './NumericStepper';
@@ -1976,16 +1977,16 @@ function HistoryButtons({
   showHistory?: boolean;
 }) {
   const undoTitle = engine.canUndo()
-    ? `Undo ${engine.undoLabel() ?? ''} (Ctrl/⌘+Z)`
+    ? `Undo ${engine.undoLabel() ?? ''} (${primaryShortcut('Z')})`
     : 'Nothing to undo';
   const redoTitle = engine.canRedo()
-    ? `Redo ${engine.redoLabel() ?? ''} (Ctrl/⌘+Shift+Z)`
+    ? `Redo ${engine.redoLabel() ?? ''} (${primaryShortcut('Z', true)})`
     : 'Nothing to redo';
   const groupTitle = engine.canGroupSelection()
-    ? 'Group selection (Ctrl/⌘+G)'
+    ? `Group selection (${primaryShortcut('G')})`
     : 'Select 2+ shapes to group';
   const ungroupTitle = engine.canUngroupSelection()
-    ? 'Ungroup selection (Ctrl/⌘+Shift+G)'
+    ? `Ungroup selection (${primaryShortcut('G', true)})`
     : 'Select a group to ungroup';
   const historyReadout = showHistory ? (
     <span className="history-readout" role="status" title="Latest undo and redo entries">

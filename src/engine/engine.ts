@@ -14,7 +14,8 @@ import {
   PointerController,
   type PointerHost,
 } from './input/PointerController';
-import { commandKeycap, keyGroupForLabel } from './input/keymap';
+import { commandKeycap, keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
+import { modifiersOf } from './input/ModifierStateTracker';
 import {
   clampPolygonSides,
   clampSectorAngle as clampSectorAngleValue,
@@ -450,6 +451,16 @@ export class NibGliderEngine {
     };
   }
 
+  // UI consumers share the controller's authoritative input/context snapshots.
+  getModifiers = () => this.keyboard.modifiers.getSnapshot();
+  subscribeModifiers = (listener: () => void) => this.keyboard.modifiers.subscribe(listener);
+  getKeyState = () => this.keyboard.keyState();
+
+  private resetKeyboardInput(): void {
+    this.keyboard.modifiers.reset();
+    this.onKeyActivity({ code: '', active: false });
+  }
+
   // --- React bridge: version counter + subscription ---
   subscribe = (fn: () => void): (() => void) => {
     this.listeners.add(fn);
@@ -484,6 +495,7 @@ export class NibGliderEngine {
       onKeyDown: (event) => this.keyboard.handleKeyDown(event),
       onKeyHighlight: (event) => this.keyboard.reportKeyHighlight(event),
       onKeyUp: (event) => this.keyboard.reportKeyUp(event),
+      onInputReset: () => this.resetKeyboardInput(),
       onDrop: (event) => this.handleImageDrop(event),
       onWheel: (event) => this.onMouseWheel(event),
       onDocumentMouseUp: () => this.pointer.releasePointer(),
@@ -503,6 +515,7 @@ export class NibGliderEngine {
 
   detach(): void {
     this.input.detach();
+    this.resetKeyboardInput();
   }
 
   private handleImageDrop(event: DragEvent): void {
@@ -4815,9 +4828,7 @@ export class NibGliderEngine {
   }
 
   private liveScaleFactor(event: KeyboardEvent, dir: -1 | 1): number {
-    if (event.shiftKey) return dir < 0 ? 0.8 : 1.25;
-    if (event.altKey) return dir < 0 ? 0.98 : 1.02;
-    return dir < 0 ? 0.9 : 1.1;
+    return scaleFactor(modifiersOf(event), dir);
   }
 
   private applyLiveScale(event: KeyboardEvent, dir: -1 | 1): void {
@@ -4840,9 +4851,7 @@ export class NibGliderEngine {
   }
 
   private liveRotateStep(event: KeyboardEvent): number {
-    if (event.shiftKey) return 45;
-    if (event.altKey) return 5;
-    return 10;
+    return rotationStep(modifiersOf(event));
   }
 
   private applyLiveRotate(event: KeyboardEvent, dir: -1 | 1): void {

@@ -60,7 +60,9 @@ ACTIVE OBJECTS
 	 applying that combinatoric operation but non-destructively
 	 and so the shape can be dragged.
 	
-
+COMBINATORICS
+[ ] setting is previewed lived while drawing.
+[ ] shape margin.
 
   [x] the menu that appears when clicking on the icon for any panel section should have
   at the bottom collapse/expand, providing another place for the user to collapse and
@@ -252,6 +254,12 @@ to start from either the circle origin or the circumference.
 ONSCREEN KEYBOARD
 [ ] handle to the left of the keyboard so that the user can drag it to different
 positions.
+
+
+
+MANUFACTURE
+[ ] Reverse order from drawing: Dialog box with preview: Make Text, select shape (e.g.) Rect Keys or Circle Keys shape,
+see in preview frame before accepting and then it is deposited, editable.
 
 Text mode popver:
 [ ] Put Flow and Orientation on same row

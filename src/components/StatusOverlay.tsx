@@ -1,4 +1,6 @@
 import { useSyncExternalStore } from 'react';
+import { keyboardPlatform } from '../engine/input/keymap';
+import { resolveKeyboardLayout } from '../engine/input/KeyboardLayoutResolver';
 import type {
   NibGliderEngine,
   StatusLine,
@@ -44,8 +46,19 @@ export default function StatusOverlay({
   hidden?: boolean;
 }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
+  const modifiers = useSyncExternalStore(engine.subscribeModifiers, engine.getModifiers);
   const schema = engine.getStatusSchema();
-  if (schema.state.length === 0 && schema.steps.length === 0) return null;
+  const resolved = resolveKeyboardLayout(modifiers, keyboardPlatform(), engine.getKeyState());
+  const primary = modifiers.control || modifiers.meta;
+  const adjustmentIds = ['scale-down', 'scale-up', 'rotate-ccw', 'rotate-cw', 'tension-down', 'tension-up', 'tension-reset'];
+  const chordHints: StatusLine[] = resolved
+    .filter((cap) => cap.available && cap.variant && (primary || adjustmentIds.includes(cap.commandId ?? '')))
+    .map((cap) => ({ kind: 'hint', runs: [
+      { t: 'key', s: cap.dataKey.toUpperCase(), g: cap.variant!.command.group },
+      { t: 'text', s: ` ${cap.description}` },
+    ] }));
+  const steps = primary ? chordHints : [...schema.steps, ...chordHints];
+  if (schema.state.length === 0 && steps.length === 0) return null;
   return (
     <div
       id="statusOverlay"
@@ -54,10 +67,10 @@ export default function StatusOverlay({
     >
       <div className="status-table">
         <Section lines={schema.state} />
-        {schema.state.length > 0 && schema.steps.length > 0 && (
+        {schema.state.length > 0 && steps.length > 0 && (
           <span className="st-sep st-divider" aria-hidden="true"> | </span>
         )}
-        <Section lines={schema.steps} />
+        <Section lines={steps} />
       </div>
     </div>
   );

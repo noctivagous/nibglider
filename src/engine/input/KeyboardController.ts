@@ -13,11 +13,14 @@
 
 import type { KeyActivity, LiveKeyBinding } from '../types';
 import {
-  KEY_COMMANDS,
   commandById,
   isTextEntryTarget,
+  scaleFactor, rotationStep, nudgeStep,
   type KeyState,
 } from './keymap';
+
+import { ModifierStateTracker, modifiersOf } from './ModifierStateTracker';
+import { eventCode, resolveKeyVariants } from './KeyboardLayoutResolver';
 
 type Item = any;
 
@@ -84,6 +87,7 @@ export interface KeyboardHost {
 
 export class KeyboardController {
   private readonly host: KeyboardHost;
+  readonly modifiers = new ModifierStateTracker();
   private liveKeyBindings: LiveKeyBinding[] = [];
 
   constructor(host: KeyboardHost) {
@@ -102,11 +106,17 @@ export class KeyboardController {
   }
 
   handleKeyDown(event: KeyboardEvent): void {
+    this.modifiers.update(event);
     if (isTextEntryTarget(event)) return;
-    for (const cmd of KEY_COMMANDS) {
-      if (cmd.owner === 'app' || cmd.dispatch === false) continue;
-      if (!cmd.match(event)) continue;
-      if (!cmd.available(this.keyState())) continue;
+    const code = eventCode(event);
+    if (/^(Shift|Alt|Control|Meta|CapsLock)/.test(code)) return;
+    const variants = resolveKeyVariants(code, modifiersOf(event), this.keyState());
+    if (!variants.length) return;
+    // Resolve against one pre-command context so finishing a path cannot
+    // accidentally invoke its idle variant on the same keydown.
+    for (const variant of variants) {
+      const cmd = variant.command;
+      if (cmd.owner === 'app') continue;
       this.perform(cmd.action, event);
       if (cmd.exclusive) return;
     }
@@ -118,16 +128,17 @@ export class KeyboardController {
     if (isTextEntryTarget(event)) return;
     // Slash resets tension or toggles the grid and does not light a keycap.
     if (event.key.toLowerCase() === '/') return;
-    if (event.code && event.metaKey === false) {
+    if (event.code && !/^(Shift|Alt|Control|Meta|CapsLock)/.test(event.code)) {
       this.host.onKeyActivity({ code: event.code, active: true });
     }
   }
 
   reportKeyUp(event: KeyboardEvent): void {
+    this.modifiers.update(event);
     if (event.code) this.host.onKeyActivity({ code: event.code, active: false });
   }
 
-  private keyState(): KeyState {
+  keyState(): KeyState {
     const host = this.host;
     return {
       isDrawingPath: host.isDrawingPath(),
@@ -150,7 +161,7 @@ export class KeyboardController {
         return;
       case 'step-zoom':
         event.preventDefault();
-        host.stepZoom(event.key === '-' ? -1 : 1);
+        host.stepZoom(event.code === 'Minus' || event.key === '-' ? -1 : 1);
         return;
       case 'undo':
         event.preventDefault();
@@ -290,9 +301,7 @@ export class KeyboardController {
       host.selectedItems().length > 0
     ) {
       // Base nudge 1 unit; Shift = longer, Alt = shorter.
-      let d = 1;
-      if (event.shiftKey) d *= 10;
-      if (event.altKey) d *= 0.2;
+      const d = nudgeStep(modifiersOf(event));
       let dx = 0;
       let dy = 0;
       if (event.key === 'ArrowLeft') dx = -d;
@@ -327,9 +336,7 @@ export class KeyboardController {
     if (this.runLive(event)) return;
     if (host.selectedItems().length > 0) {
       // Shift = bigger step, Alt = finer step.
-      const factorDown = event.shiftKey ? 0.8 : event.altKey ? 0.98 : 0.9;
-      const factorUp = event.shiftKey ? 1.25 : event.altKey ? 1.02 : 1.1;
-      host.scaleSelection(down ? factorDown : factorUp);
+      host.scaleSelection(scaleFactor(modifiersOf(event), down ? -1 : 1));
     }
   }
 
@@ -340,7 +347,7 @@ export class KeyboardController {
     if (this.runLive(event)) return;
     if (host.selectedItems().length > 0) {
       // Shift = 45°, Alt = 5°, otherwise 10°.
-      const step = event.shiftKey ? 45 : event.altKey ? 5 : 10;
+      const step = rotationStep(modifiersOf(event));
       host.rotateSelection(down ? -step : step);
     }
   }
@@ -371,7 +378,7 @@ export class KeyboardController {
 
   private finishDrawing(event: KeyboardEvent): void {
     const host = this.host;
-    const key = event.key.toLowerCase();
+    const key = event.code.startsWith('Key') ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
     if (!(host.isDrawingPath() || host.isDrawingShape() || host.isDrawingQuad())) {
       // Idle with drag-lock on, END releases the lock instead of drawing.
       if (host.isInDragLock()) host.setIsInDragLock(false);

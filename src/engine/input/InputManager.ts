@@ -21,6 +21,7 @@ export interface InputCallbacks {
   onKeyDown: (event: KeyboardEvent) => void;
   onKeyHighlight: (event: KeyboardEvent) => void;
   onKeyUp: (event: KeyboardEvent) => void;
+  onInputReset: () => void;
   onDrop: (event: DragEvent) => void;
   onWheel: (event: WheelEvent) => void;
   onDocumentMouseUp: () => void;
@@ -48,6 +49,9 @@ export class InputManager {
     const onKeyHighlight = (event: KeyboardEvent) =>
       handlers.onKeyHighlight(event);
     const onKeyUp = (event: KeyboardEvent) => handlers.onKeyUp(event);
+    const onVisibilityChange = () => handlers.onInputReset();
+    window.addEventListener('blur', handlers.onInputReset);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     const onCanvasMove = () => {
       if (document.activeElement !== canvas) canvas.focus();
     };
@@ -72,6 +76,9 @@ export class InputManager {
     window.addEventListener('afterprint', handlers.onAfterPrint);
 
     this.cleanup = () => {
+      window.removeEventListener('blur', handlers.onInputReset);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      handlers.onInputReset();
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keydown', onKeyHighlight);
       document.removeEventListener('keyup', onKeyUp);

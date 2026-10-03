@@ -1,5 +1,6 @@
-import { useCallback, useLayoutEffect, useState, useSyncExternalStore } from 'react';
-import { KEY_CAPS, commandById, type KeyCap, type KeyState } from '../engine/input/keymap';
+import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
+import { keyboardPlatform, type KeyCap } from '../engine/input/keymap';
+import { resolveKeyboardLayout, type ResolvedKeyCap } from '../engine/input/KeyboardLayoutResolver';
 import { schemaById } from '../engine/input/KeySettingsRegistry';
 import type { NibGliderEngine } from '../engine/engine';
 import KeySettingsPopover from './KeySettingsPopover';
@@ -279,19 +280,6 @@ function ResizeHandle({
   );
 }
 
-function keyStateOf(engine: NibGliderEngine): KeyState {
-  return {
-    isDrawingPath: engine.isDrawingPath,
-    isDrawingShape: engine.isDrawingShape,
-    isDrawingQuad: engine.isDrawingQuad,
-    isLiveDrawing: engine.isLiveDrawing,
-    shapeType: engine.shapeType,
-    selectedCount: engine.selectedItems.length,
-    isInDragLock: engine.isInDragLock,
-    liveAdjustApplies: engine.isDrawingPath || engine.isDrawingQuad,
-  };
-}
-
 function KeyButton({
   def,
   active,
@@ -300,7 +288,7 @@ function KeyButton({
   settingsOpen,
   onToggleSettings,
 }: {
-  def: KeyCap;
+  def: ResolvedKeyCap;
   active: boolean;
   onClick?: () => void;
   settingsLabel?: string;
@@ -318,10 +306,14 @@ function KeyButton({
       className={
         def.className +
         (active ? ' active' : '') +
-        (opensSettings ? ' key-has-settings' : '')
+        (opensSettings ? ' key-has-settings' : '') +
+        (!def.available ? ' key-unavailable' : '') +
+        (def.row === 'modifiers' || /^(Shift|CapsLock)/.test(def.id) ? ' modifierKey' : '')
       }
       style={def.transform ? { transform: def.transform } : undefined}
-      aria-label={opensSettings ? settingsLabel : undefined}
+      title={def.description}
+      aria-disabled={!def.available}
+      aria-label={opensSettings ? settingsLabel : def.description}
       aria-haspopup={opensSettings ? 'dialog' : undefined}
       aria-expanded={opensSettings ? settingsOpen === true : undefined}
       onClick={
@@ -382,7 +374,19 @@ export default function Keyboard({
   onCommand?: (commandId: string) => void;
 }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
-  const [open, setOpen] = useState<{ id: string; anchor: HTMLButtonElement } | null>(null);
+  const [open, setOpen] = useState<{ id: string; settingsId: string; anchor: HTMLButtonElement } | null>(null);
+  const [modifiers, setModifiers] = useState(engine.getModifiers);
+  useEffect(
+    () =>
+      engine.subscribeModifiers(() => {
+        setModifiers(engine.getModifiers());
+        // A modifier can resolve this cap to a different command, so avoid
+        // leaving a settings surface attached to its prior command variant.
+        setOpen(null);
+      }),
+    [engine],
+  );
+  const layout = resolveKeyboardLayout(modifiers, keyboardPlatform(), engine.getKeyState());
   const closeSettings = useCallback((reason: 'escape' | 'outside') => {
     setOpen((current) => {
       if (reason === 'escape' && current) {
@@ -392,32 +396,38 @@ export default function Keyboard({
       return null;
     });
   }, []);
-  const clickFor = (def: KeyCap) =>
+  const clickFor = (def: ResolvedKeyCap) =>
     def.clickable && def.commandId && onCommand
       ? () => onCommand(def.commandId as string)
       : undefined;
-  const settingsFor = (def: KeyCap) => {
-    if (!def.commandId) return null;
-    const cmd = commandById(def.commandId);
-    if (!cmd?.settingsId || !cmd.settingsSummary) return null;
-    if (cmd.settingsAvailability && !cmd.settingsAvailability(keyStateOf(engine))) return null;
-    if (!schemaById(cmd.settingsId)) return null;
-    return { id: cmd.settingsId, summary: cmd.settingsSummary };
+  const settingsFor = (def: ResolvedKeyCap) => {
+    if (!def.settingsId || !def.settingsSummary || !schemaById(def.settingsId)) return null;
+    return { id: def.settingsId, summary: def.settingsSummary };
   };
-  const toggleSettings = (def: KeyCap, anchor: HTMLButtonElement) => {
-    setOpen((current) => (current?.id === def.id ? null : { id: def.id, anchor }));
+  const toggleSettings = (def: ResolvedKeyCap, anchor: HTMLButtonElement) => {
+    setOpen((current) => (current?.id === def.id ? null : { id: def.id, settingsId: def.settingsId!, anchor }));
   };
-  const openCap = open ? KEY_CAPS.find((cap) => cap.id === open.id) : undefined;
+  const openCap = open ? layout.find((cap) => cap.id === open.id) : undefined;
   const openSettings = openCap ? settingsFor(openCap) : null;
-  const openSchema = openSettings ? schemaById(openSettings.id) : null;
-  const row = (name: KeyCap['row']) => KEY_CAPS.filter((cap) => cap.row === name);
-  const renderCap = (def: KeyCap) => {
+  const openSchema = openSettings && openSettings.id === open?.settingsId ? schemaById(openSettings.id) : null;
+  const modifierIsHeld = (id: string): boolean =>
+    id.startsWith('Shift') ? modifiers.shift
+      : id.startsWith('Alt') ? modifiers.alt
+      : id.startsWith('Control') ? modifiers.control
+      : id.startsWith('Meta') ? modifiers.meta
+      : id === 'CapsLock' ? modifiers.capsLock
+      : false;
+  const isModifierCap = (id: string): boolean =>
+    /^(Shift|Alt|Control|Meta|CapsLock)/.test(id);
+  const row = (name: KeyCap['row']) =>
+    layout.filter((cap) => cap.row === name && (!isModifierCap(cap.id) || modifierIsHeld(cap.id)));
+  const renderCap = (def: ResolvedKeyCap) => {
     const settings = settingsFor(def);
     return (
       <KeyButton
         key={def.id}
         def={def}
-        active={activeCode === def.id}
+        active={isModifierCap(def.id) ? modifierIsHeld(def.id) : activeCode === def.id}
         onClick={clickFor(def)}
         settingsLabel={settings ? `Settings: ${settings.summary}` : undefined}
         settingsOpen={open?.id === def.id}
@@ -434,6 +444,9 @@ export default function Keyboard({
       {row('a').map(renderCap)}
       {row('z').map(renderCap)}
       {showSpacebar && row('space').map(renderCap)}
+    </div>
+    <div className="keyboard-modifiers" aria-label="Physical modifiers">
+      {row('modifiers').map(renderCap)}
     </div>
     <ResizeHandle width={width} onWidthChange={onWidthChange} />
     {open && openSchema ? (
