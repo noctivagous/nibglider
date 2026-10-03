@@ -234,7 +234,28 @@ view models and invoke their public commands.
 
 ## Suggested extraction order
 
-[x] ### Phase 0: Baseline and inventory
+Track phase completion here. Active phases also use task lists for their
+individual deliverables and acceptance checks.
+
+- [x] Phase 0: Baseline and inventory
+- [x] Phase 1: Extract shared types
+- [x] Phase 2: Extract input lifecycle
+- [x] Phase 3: Extract keyboard and pointer controllers
+- [x] Phase 3b: Establish one declarative keymap
+- [x] Phase 3c: Onscreen-key settings popovers
+- [ ] Phase 3d: Modifier-responsive keyboard layouts
+- [x] Phase 4: Page-item and geometry models
+- [ ] Phase 4b: Composite `NGPath` behavior
+- [ ] Phase 4c: Scene and selection services
+- [ ] Phase 4d: Document boundary
+- [ ] Phase 5: History and transforms
+- [ ] Phase 6: Snapping and grid
+- [ ] Phase 7: Drawing sessions and tools
+- [ ] Phase 8: Geometry and appearance
+- [ ] Phase 9: Combinatorics, importing, and presenters
+- [ ] Phase 10: Reduce the facade
+
+### Phase 0: Baseline and inventory
 
 - Record the current `engine.ts` public methods and public state consumed by
   React components.
@@ -246,7 +267,7 @@ view models and invoke their public commands.
   keyboard shortcuts, snapping, text, combinatorics, import, and undo/redo.
 - Do not change behavior or rename the public facade yet.
 
-[x] ### Phase 1: Extract shared types
+### Phase 1: Extract shared types
 
 Create `src/engine/types.ts` and move:
 
@@ -263,7 +284,7 @@ Create `src/engine/types.ts` and move:
 Re-export these types from `engine.ts` temporarily so existing imports do not
 break.
 
-[x] ### Phase 2: Extract input lifecycle
+### Phase 2: Extract input lifecycle
 
 Create `InputManager.ts` first because `attach()` and `detach()` currently
 mix several unrelated concerns.
@@ -282,7 +303,7 @@ Move:
 `InputManager` should only translate events into callbacks. It should not
 decide whether a key means “draw a circle” or “undo”.
 
-[x] ### Phase 3: Extract keyboard and pointer controllers
+### Phase 3: Extract keyboard and pointer controllers
 
 Create:
 
@@ -295,7 +316,7 @@ Create:
 Keep the current key behavior unchanged. This phase should make input
 behavior independently traceable without moving drawing algorithms yet.
 
-[x] ### Phase 3b: Establish one declarative keymap
+### Phase 3b: Establish one declarative keymap
 
 Before separating the visible keyboard, introduce a shared keymap definition
 that describes each command once:
@@ -318,7 +339,7 @@ command, and visual treatment for modifier chords. Adapt that behavior through
 typed key variants and a layout resolver; do not port its global
 `window.keyMappings`, function-name strings, or global function registry.
 
-[x] ### Phase 3c: Onscreen-key settings popovers
+### Phase 3c: Onscreen-key settings popovers
 
 Implement configurable onscreen keys at the same time as the shared keymap.
 Clicking a configurable key opens an anchored tooltip/popover above that key
@@ -411,25 +432,25 @@ restore on release.
 
 Add `ModifierStateTracker.ts`:
 
-- tracks `shift`, `alt`, `control`, `meta`, and `capsLock` from physical
+- [x] Track `shift`, `alt`, `control`, `meta`, and `capsLock` from physical
   keydown/keyup events and `event.getModifierState('CapsLock')`;
-- resets transient state on window blur, document visibility changes, and
+- [x] Reset transient state on window blur, document visibility changes, and
   engine detach so a lost keyup cannot leave a modifier visually stuck;
-- publishes immutable snapshots to `GUIManager` and the onscreen keyboard;
-- separately supports a future touch/mouse “latched modifier” state, clearly
+- [x] Publish immutable snapshots to the onscreen keyboard and UI consumers.
+- [ ] Separately support a future touch/mouse “latched modifier” state, clearly
   distinguished from physically held modifiers.
 
 Add `KeyboardLayoutResolver.ts`:
 
-- input: a physical keycap position, modifier snapshot, platform, and
+- [x] Accept a physical keycap position, modifier snapshot, platform, and
   contextual `KeyState` such as drawing mode, active tool, selection, and drag
   lock;
-- output: the currently visible command variant, legend, description,
+- [x] Resolve the visible command variant, legend, description,
   settings ID, availability, disabled state, keyboard group, and visual token
   for every cap;
-- resolution priority: contextual live-drawing binding first, then exact
+- [x] Resolve contextual live-drawing bindings first, then exact
   modifier chord, then base/idle command;
-- uses physical `KeyboardEvent.code` values for stable key positions while
+- [x] Use physical `KeyboardEvent.code` values for stable key positions while
   showing platform-specific labels such as Command on macOS and Control on
   Windows/Linux.
 
@@ -463,39 +484,39 @@ uses its help text.
 
 Interaction requirements:
 
-- Highlight all held modifier keys, not only the last non-modifier key.
-- Onscreen Shift/Alt/Control/Command caps show physical pressed state and,
+- [x] Highlight all held modifier keys, not only the last non-modifier key.
+- [x] Show onscreen Shift/Alt/Control/Command caps only while physically held;
   later, separately styled latched state.
-- A touch/mouse user may tap modifiers to compose a latched chord and then
+- [ ] Let a touch/mouse user tap modifiers to compose a latched chord and then
   tap a command key; clear temporary latches after command execution unless
   deliberately pinned.
-- Pressing a physical modifier must never execute a drawing command.
-- Intercept Command/Control browser shortcuts only for registered application
+- [x] Ensure pressing a physical modifier never executes a drawing command.
+- [x] Intercept Command/Control browser shortcuts only for registered application
   commands that are safe to own; preserve browser and text-entry behavior
   otherwise.
-- If a modifier changes the resolved command while a key settings popover is
+- [x] If a modifier changes the resolved command while a key settings popover is
   open, close the popover or re-resolve by `settingsId`; never edit settings
   for a stale command variant.
 
 Initial implementation scope:
 
-1. Base, Shift, and Alt/Option variants for the current scale, rotate, nudge,
+1. [x] Base, Shift, and Alt/Option variants for the current scale, rotate, nudge,
    stroke-width, and live-drawing adjustment keys.
-2. Context-sensitive legends for current spline/path and selection commands.
-3. Platform-aware primary-shortcut labels for undo/redo and menu commands.
-4. Touch/mouse latching only after physical modifier display is correct.
+2. [x] Context-sensitive legends for current spline/path and selection commands.
+3. [x] Platform-aware primary-shortcut labels for undo/redo and menu commands.
+4. [ ] Touch/mouse latching only after physical modifier display is correct.
 
 Acceptance checks:
 
-- Holding Shift updates scale/rotate labels before the subsequent command key
+- [ ] Holding Shift updates scale/rotate labels before the subsequent command key
   is pressed.
-- Releasing a modifier, blurring the window, or changing tabs restores the
+- [ ] Releasing a modifier, blurring the window, or changing tabs restores the
   base layout without stale highlights.
-- The physical chord executed by `KeyboardController` matches the command
+- [ ] The physical chord executed by `KeyboardController` matches the command
   displayed on that cap for the same context.
-- Status hints, key settings, panel/menu shortcut labels, and the keyboard
+- [ ] Status hints, key settings, panel/menu shortcut labels, and the keyboard
   agree with the resolved variant.
-- A context change during live drawing cannot leave the keyboard displaying a
+- [ ] A context change during live drawing cannot leave the keyboard displaying a
   command the controller will reject.
 
 ### Phase 4: Establish page-item and geometry models
@@ -503,21 +524,47 @@ Acceptance checks:
 Before moving drawing tools onto new behaviors, introduce the serializable
 document model described in the two geometry references:
 
-- `NGDrawableBase` for shared page-item identity, layer membership, transform,
+- [x] `NGDrawableBase` for shared page-item identity, layer membership, transform,
   visibility, locking, and style references.
-- `NGDrawable` source-kind union for path, semantic shape, text, image, and
+- [x] `NGDrawable` source-kind union for path, semantic shape, text, image, and
   group items.
-- `NGPath` with existing-compatible Bezier/path behavior first, followed by
+- [x] `NGPath` with existing-compatible Bezier/path behavior first, followed by
   B-spline, `ngComposite`, and smoothed-polyline modes.
-- `NGShape` records for parameter-preserving shapes such as circle, polygon,
+- [x] `NGShape` records for parameter-preserving shapes such as circle, polygon,
   quadrilateral, trapezoid, parallelogram, and supershape.
-- `ResolvedGeometry` as the common result for paths, compound paths, holes,
+- [x] `ResolvedGeometry` as the common result for paths, compound paths, holes,
   and image-mask boundaries.
 
 Do not immediately migrate all existing Paper.js objects. First prove that a
 new `NGPathDrawable` can render to a Paper.js item, map back by
 `drawableId`, and serialize without retaining a Paper.js object as document
 truth. Then introduce one semantic shape type and one composite-path fixture.
+
+Phase 4 implementation and checks:
+
+- [x] Validate and round-trip drawable records as plain JSON without Paper.js
+  objects, rejecting unknown fields, invalid coordinates, and invalid metadata.
+- [x] Render a Bezier `NGPathDrawable`, retaining relative handles, closure,
+  compound contours, winding/fill rules, and holes.
+- [x] Map rendered roots and compound children back through `drawableId`;
+  replace or remove derived items without copying authoritative model state.
+- [x] Apply layer placement, affine transform, style reference, visibility,
+  opacity, and lock state through explicit renderer dependencies.
+- [x] Resolve and render a semantic circle while retaining its center/radius;
+  rebuild derived geometry after changing those parameters.
+- [x] Add a composite-path fixture retaining spline, hard-corner, and rounded
+  corner intent and parameters through serialization.
+- [x] Run model and Paper.js integration tests with `npm test`, plus build
+  and lint checks. Tests verify source/scene independence and failure cleanup.
+
+The contracts are documented in `src/engine/model/README.md`. Bezier sources
+store one or more contours with relative handles. Circle and polygon-family
+resolution is available; supershape resolution remains part of Phase 8.
+Semantic B-spline, composite, and smoothed-polyline records can be validated
+and serialized, but interpolation is deliberately unavailable until Phase 4b.
+Text, image, and group sources remain records awaiting their own services.
+This is a non-interactive model/renderer proof: existing engine deposits,
+selection, history, and document persistence have not been migrated.
 
 ### Phase 4b: Establish composite NGPath behavior
 

@@ -1,0 +1,12 @@
+{
+  "id": "bezier-1", "kind": "path", "layerId": "artwork",
+  "transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 0, "ty": 0 },
+  "opacity": 1, "visible": true, "locked": false, "styleId": "blue-stroke",
+  "source": {
+    "id": "path-1", "mode": "bezier", "fillRule": "nonzero",
+    "contours": [{ "closed": false, "segments": [
+      { "point": { "x": 10, "y": 20 }, "handleIn": { "x": 0, "y": 0 }, "handleOut": { "x": 20, "y": -10 } },
+      { "point": { "x": 90, "y": 60 }, "handleIn": { "x": -15, "y": 30 }, "handleOut": { "x": 0, "y": 0 } }
+    ] }]
+  }
+}

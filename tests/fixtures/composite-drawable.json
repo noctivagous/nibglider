@@ -1,0 +1,13 @@
+{
+  "id": "composite-1", "kind": "path", "layerId": "artwork",
+  "transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 0, "ty": 0 },
+  "opacity": 1, "visible": true, "locked": false,
+  "source": {
+    "id": "composite-path-1", "mode": "ngComposite", "closed": false,
+    "points": [
+      { "id": "p1", "x": 0, "y": 0, "kind": "bSpline", "outgoing": { "kind": "bSpline" } },
+      { "id": "p2", "x": 50, "y": 60, "kind": "hardCorner", "outgoing": { "kind": "line" } },
+      { "id": "p3", "x": 100, "y": 10, "kind": "roundedCorner", "corner": { "rounding": "arc", "radius": 12 } }
+    ]
+  }
+}

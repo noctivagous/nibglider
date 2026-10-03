@@ -1,0 +1,6 @@
+{
+  "id": "circle-1", "kind": "shape", "layerId": "artwork",
+  "transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 0, "ty": 0 },
+  "opacity": 0.8, "visible": true, "locked": false, "name": "Parametric circle",
+  "source": { "type": "circle", "center": { "x": 120, "y": 80 }, "radius": 30 }
+}
