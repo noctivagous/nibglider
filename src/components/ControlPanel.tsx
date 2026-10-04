@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import { primaryShortcut } from '../engine/input/keymap';
 import { PanelsManager, sectionLabel, sectionOrder } from '../ui/PanelsManager';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
+import WidgetHandle from './WidgetHandle';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
 import NumericStepper from './NumericStepper';
 import type {
@@ -375,7 +376,7 @@ const SNAP_DEFAULTS: Record<string, boolean> = {
 const HISTORY_SEG_DEFAULTS: Record<string, boolean> = {
   undoRedo: true,
   grouping: true,
-  history: true,
+  history: false,
 };
 
 function loadBoolRecord(
@@ -1096,54 +1097,26 @@ const STROKE_POSITION_OPTIONS: Array<{ value: StrokePosition; label: string }> =
 ];
 
 function StrokePositionIcon({ position }: { position: StrokePosition }) {
-  // Draw a shape path (rounded rectangle) with the stroke band in the correct position
-  const pathD = "M4 2.5 C4 1.67 4.67 1 5.5 1 L10.5 1 C11.33 1 12 1.67 12 2.5 L12 9.5 C12 10.33 11.33 11 10.5 11 L5.5 11 C4.67 11 4 10.33 4 9.5 Z";
-  
-  // Outside: stroke entirely outside the path boundary
-  // Center: stroke straddles the path boundary  
-  // Inside: stroke entirely inside the path boundary
-  const placement = position === 'outside'
-    ? (
-      <g>
-        <path d={pathD} fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="1.5 1" opacity="0.5" />
-        <path
-          d="M3.5 2 C3.5 1.17 4.17 0.5 5 0.5 L11 0.5 C11.83 0.5 12.5 1.17 12.5 2 L12.5 10 C12.5 10.83 11.83 11.5 11 11.5 L5 11.5 C4.17 11.5 3.5 10.83 3.5 10 Z"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinejoin="round"
-        />
-      </g>
-    )
+  // The stroke band (filled rect) stays fixed in position and width.
+  // The path (dashed line) moves: left edge for outside, center for center, right edge for inside.
+  const bandX = 6; // fixed position
+  const bandWidth = 4; // fixed width
+  const pathX = position === 'outside'
+    ? bandX // left edge of band
     : position === 'center'
-      ? (
-        <g>
-          <path d={pathD} fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="1.5 1" opacity="0.5" />
-          <path
-            d={pathD}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinejoin="round"
-          />
-        </g>
-      )
-      : (
-        <g>
-          <path d={pathD} fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="1.5 1" opacity="0.5" />
-          <path
-            d="M4.5 3 C4.5 2.45 4.95 2 5.5 2 L10.5 2 C11.05 2 11.5 2.45 11.5 3 L11.5 9 C11.5 9.55 11.05 10 10.5 10 L5.5 10 C4.95 10 4.5 9.55 4.5 9 Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinejoin="round"
-          />
-        </g>
-      );
+      ? bandX + bandWidth / 2 // center of band
+      : bandX + bandWidth; // right edge of band
+
+  const strokeBand = (
+    <g>
+      <rect x={bandX} y="2" width={bandWidth} height="8" fill="currentColor" opacity="0.9" rx="0.5" />
+      <line x1={pathX} y1="2" x2={pathX} y2="10" stroke="currentColor" strokeWidth="0.5" strokeDasharray="1.5 1" opacity="0.5" />
+    </g>
+  );
 
   return (
     <svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true">
-      {placement}
+      {strokeBand}
     </svg>
   );
 }
@@ -2635,6 +2608,8 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   const [docValue, setDocValue] = useState('doc-none');
   const [opValue, setOpValue] = useState('ops-none');
   const [layersValue, setLayersValue] = useState('layers-none');
+  const [sectionsValue, setSectionsValue] = useState('sections-none');
+  const [debugValue, setDebugValue] = useState('debug-none');
   const [opDialog, setOpDialog] = useState<
     | { kind: 'scale'; draft: number; applied: number }
     | { kind: 'rotate'; draft: number; applied: number }
@@ -2744,7 +2719,6 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   // File menu: document gallery, transfer, and learning. Nothing here has a
   // backing store yet, so every entry is a disabled stub with a tooltip.
   const FILE_OPTIONS: CustomSelectOption[] = [
-    { value: 'file-none', label: 'File' },
     { value: 'hdr-file-doc', label: 'Document', header: true },
     { value: 'file-open', label: 'Open Document (Gallery)', disabled: true, title: 'The document gallery is not available yet' },
     { value: 'file-new', label: 'New Document', disabled: true, title: 'New documents are not available yet' },
@@ -2765,11 +2739,9 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     },
     [dismissSelects],
   );
-  // Document and Settings menu: grouped document controls, then application
-  // controls (section restore and settings reset live here now).
+  // Document and Settings menu: document controls only. Section restore
+  // and settings reset live in the Sections and Debug menus below.
   const DOCUMENT_OPTIONS: CustomSelectOption[] = [
-    { value: 'doc-none', label: 'Document' },
-    { value: 'hdr-doc-document', label: 'Document', header: true },
     { value: 'doc-canvas', label: 'Canvas size…', disabled: true, title: 'Canvas size settings are not available yet' },
     {
       value: 'grp-doc-unit',
@@ -2780,52 +2752,49 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         { value: 'doc-unit-cm', label: 'Centimeters (cm)' },
       ],
     },
-    { value: 'hdr-doc-application', label: 'Application', header: true },
+  ];
+  const handleDocument = useCallback(
+    (value: string) => {
+      dismissSelects();
+      if (value === 'doc-unit-pt') engine.setLengthUnit('pt');
+      else if (value === 'doc-unit-inch') engine.setLengthUnit('inch');
+      else if (value === 'doc-unit-cm') engine.setLengthUnit('cm');
+      setDocValue('doc-none');
+    },
+    [engine, dismissSelects],
+  );
+  // Sections menu: restore removed panel sections.
+  const removedOptions: CustomSelectOption[] = [
     ...(removedList.length > 0
       ? [
           {
-            value: 'grp-doc-restore',
-            label: 'Restore section',
+            value: 'grp-removed',
+            label: 'Restore',
             children: removedList.map((id) => ({
               value: `restore:${id}`,
               label: sectionLabel(id),
             })),
           },
         ]
-      : [
-          {
-            value: 'doc-restore-none',
-            label: 'Restore section',
-            disabled: true,
-            title: 'No removed sections to restore',
-          },
-        ]),
-    { value: 'doc-reset-settings', label: 'Reset all settings' },
+      : []),
   ];
-  const handleDocument = useCallback(
-    (value: string) => {
-      dismissSelects();
-      if (value.startsWith('restore:')) restoreSection(value.slice(8));
-      else if (value === 'doc-unit-pt') engine.setLengthUnit('pt');
-      else if (value === 'doc-unit-inch') engine.setLengthUnit('inch');
-      else if (value === 'doc-unit-cm') engine.setLengthUnit('cm');
-      else if (value === 'doc-reset-settings') {
-        try {
-          for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-            const key = localStorage.key(index);
-            if (key?.startsWith('nibglider.')) localStorage.removeItem(key);
-          }
-        } catch { /* Storage can be unavailable in private browsing. */ }
-        window.location.reload();
+  const DEBUG_OPTIONS: CustomSelectOption[] = [
+    { value: 'debug-reset-settings', label: 'Reset all settings' },
+  ];
+  const handleDebug = useCallback((value: string) => {
+    setDebugValue('debug-none');
+    if (value !== 'debug-reset-settings') return;
+    try {
+      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+        const key = localStorage.key(index);
+        if (key?.startsWith('nibglider.')) localStorage.removeItem(key);
       }
-      setDocValue('doc-none');
-    },
-    [engine, dismissSelects, restoreSection],
-  );
+    } catch { /* Storage can be unavailable in private browsing. */ }
+    window.location.reload();
+  }, []);
   // Operations menu: flat grouped areas (headers, not collapsible parents)
   // so every entry is one hover away. Shortcuts shown where a binding exists.
   const OPERATIONS_OPTIONS: CustomSelectOption[] = [
-    { value: 'ops-none', label: 'Operations' },
     { value: 'hdr-ops-immediate', label: 'Immediate', header: true },
     { value: 'op-delete', label: 'Delete selection', shortcut: 'Backspace' },
     { value: 'op-duplicate', label: 'Duplicate selection' },
@@ -2839,7 +2808,6 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   ];
   // Layers and Objects menu: ordering and selection operations.
   const LAYERS_OPTIONS: CustomSelectOption[] = [
-    { value: 'layers-none', label: 'Layers' },
     { value: 'hdr-layers-order', label: 'Order', header: true },
     { value: 'layer-front', label: 'Bring to front' },
     { value: 'layer-back', label: 'Send to back' },
@@ -3045,14 +3013,17 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   return (
     <div className="panel-shell">
       <div className="panel-rail" role="group" aria-label="Panel tools">
+        <WidgetHandle widget="menus" label="Application menus" />
         <div className="rail-box" title="File: documents, import, export">
           <CustomSelect
             id="panelFileSelect"
             ariaLabel="File"
+            placeholder="File"
             value={fileValue}
             options={FILE_OPTIONS}
             onChange={handleFile}
             openOnHover
+            stickyOnClick
             onHoverOpen={handleSelectHoverOpen}
             forceCloseKey={selectCloseKey}
           />
@@ -3061,10 +3032,12 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           <CustomSelect
             id="panelDocumentSelect"
             ariaLabel="Document and Settings"
+            placeholder="Document"
             value={docValue}
             options={DOCUMENT_OPTIONS}
             onChange={handleDocument}
             openOnHover
+            stickyOnClick
             onHoverOpen={handleSelectHoverOpen}
             forceCloseKey={selectCloseKey}
           />
@@ -3073,10 +3046,12 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           <CustomSelect
             id="panelOperationsSelect"
             ariaLabel="Operations on the selection"
+            placeholder="Operations"
             value={opValue}
             options={OPERATIONS_OPTIONS}
             onChange={handleOperation}
             openOnHover
+            stickyOnClick
             onHoverOpen={handleSelectHoverOpen}
             forceCloseKey={selectCloseKey}
           />
@@ -3085,10 +3060,43 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           <CustomSelect
             id="panelLayersSelect"
             ariaLabel="Layers and Objects"
+            placeholder="Layers"
             value={layersValue}
             options={LAYERS_OPTIONS}
             onChange={handleLayers}
             openOnHover
+            stickyOnClick
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
+          />
+        </div>
+        <div className="rail-box" title="Panel sections">
+          <CustomSelect
+            id="panelSectionsSelect"
+            ariaLabel="Panel sections"
+            placeholder="Sections"
+            value={sectionsValue}
+            options={removedOptions}
+            onChange={(v) => {
+              if (v.startsWith('restore:')) restoreSection(v.slice(8));
+              setSectionsValue('sections-none');
+            }}
+            openOnHover
+            stickyOnClick
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
+          />
+        </div>
+        <div className="rail-box" title="Debug settings">
+          <CustomSelect
+            id="panelDebugSelect"
+            ariaLabel="Debug settings"
+            placeholder="Debug"
+            value={debugValue}
+            options={DEBUG_OPTIONS}
+            onChange={handleDebug}
+            openOnHover
+            stickyOnClick
             onHoverOpen={handleSelectHoverOpen}
             forceCloseKey={selectCloseKey}
           />
@@ -3140,6 +3148,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           endDrag();
         }}
       >
+      <WidgetHandle widget="sections" label="Panel sections" />
       {rowBreakNodes}
       {dragPlaceholderNode}
       {isRemoved('strokeControls') ? null : (

@@ -113,7 +113,8 @@ UNUSED:
 
     position: absolute;
     bottom: 10px;
-    left: 10px;
+    /* Room for the widget move handle floating at the container's left. */
+    left: 36px;
     transform: none;
     z-index: 9999;
     background-color: black;

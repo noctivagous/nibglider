@@ -2,6 +2,7 @@
 stack (current), and grid.  still hover to show.  top left is File (icon), top right is Document and Settings,
   bottom left: Operations, bottom right:Layers and Obj.
   
+  [ ] section widget handles inside the panel should have hover style that is lighter
   
   File: Open Document (Gallery), New Document, Save (Gallery), Renamed, Export, Import, Tutorial (future)
   Document and Settings: for configuring the document (canvas size, m), the application.

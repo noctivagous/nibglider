@@ -4,8 +4,10 @@ import { NibGliderEngine, type KeyActivity } from './engine/engine';
 import { isCommandAvailable, matchAppCommand } from './engine/input/keymap';
 import ControlPanel from './components/ControlPanel';
 import OnscreenKeyboard from './components/OnscreenKeyboard';
+import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
 import { GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
+import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
 
 // Section title labels in the panel are hidden; icons, keys, and hover
@@ -17,6 +19,8 @@ export default function App() {
   const [activeCode, setActiveCode] = useState<string | null>(null);
   const [gui] = useState(() => new GUIManager());
   const ui = useSyncExternalStore(gui.subscribe, gui.getSnapshot);
+  const [layout] = useState(() => new WidgetLayout());
+  const layoutSnap = useSyncExternalStore(layout.subscribe, layout.getSnapshot);
   const [engine] = useState(
     () =>
       new NibGliderEngine(new paper.PaperScope(), (a: KeyActivity) =>
@@ -41,6 +45,31 @@ export default function App() {
     paint();
     return engine.subscribe(paint);
   }, [engine]);
+
+  // Layout awareness: report the panel and floating menus-rail rects so the
+  // layout manager can keep the status box out from under the rail.
+  // Measured synchronously on mount (before paint) so the first frame is
+  // already placed; ResizeObserver picks up later changes.
+  useEffect(() => {
+    const panel = document.getElementById('controlPanel');
+    const rail = panel?.querySelector('.panel-rail');
+    if (!panel || !rail) return;
+    const report = () => {
+      const p = panel.getBoundingClientRect();
+      const r = rail.getBoundingClientRect();
+      layout.setRect('panel', { x: p.x, y: p.y, width: p.width, height: p.height });
+      layout.setRect('menus', { x: r.x, y: r.y, width: r.width, height: r.height });
+    };
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(panel);
+    ro.observe(rail);
+    window.addEventListener('resize', report);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', report);
+    };
+  }, [layout, ui.controlsVisible]);
 
   // Console parity with the legacy global setSpacebarVisible():
   // window.setSpacebarVisible(true) reveals the on-screen Space key.
@@ -132,7 +161,11 @@ export default function App() {
           >
             <ControlPanel engine={engine} />
           </div>
-          <StatusOverlay engine={engine} hidden={!ui.statusVisible} />
+          <StatusOverlay
+            engine={engine}
+            hidden={!ui.statusVisible}
+            shiftX={layoutSnap.statusShiftX}
+          />
         </div>
         <div className="corner-div">
           <div
@@ -153,6 +186,7 @@ export default function App() {
               } as CSSProperties
             }
           >
+            <WidgetHandle widget="keyboard" label="On-screen keyboard" />
             <OnscreenKeyboard
               engine={engine}
               activeCode={activeCode}

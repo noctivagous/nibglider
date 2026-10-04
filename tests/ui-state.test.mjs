@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GUIManager, KEYBOARD_WIDTH_DEFAULT } from '../src/ui/GUIManager.ts';
+import { WidgetLayout, statusShiftX } from '../src/ui/WidgetLayout.ts';
 import { APPLICATION_MENUS, PanelsManager, sectionOrder } from '../src/ui/PanelsManager.ts';
 import { buildStatusSchema } from '../src/ui/StatusPresenter.ts';
 import { writePreviewPaths } from '../src/ui/PreviewBoxPresenter.ts';
@@ -103,6 +104,33 @@ test('application menus cover file, document, operations, and layers', () => {
   for (const id of ['bring-to-front', 'send-to-back', 'duplicate-selection', 'group']) {
     assert.ok(byId.layers.items.some((item) => item.commandId === id), `layers menu lists ${id}`);
   }
+});
+
+test('status box clears the menus rail hanging below the panel', () => {
+  const panel = { x: 10, y: 10, width: 1000, height: 110 };
+  // Tall rail overlaps the status lane: shift by the rail width.
+  assert.equal(statusShiftX(panel, { x: 10, y: 10, width: 136, height: 200 }), 136);
+  // Short rail stays inside the panel: no shift.
+  assert.equal(statusShiftX(panel, { x: 10, y: 10, width: 136, height: 100 }), 0);
+  // Missing rects: no shift.
+  assert.equal(statusShiftX(undefined, { x: 10, y: 10, width: 136, height: 200 }), 0);
+  assert.equal(statusShiftX(panel, undefined), 0);
+});
+
+test('widget layout publishes the status shift and persists positions', () => {
+  const mem = store();
+  const layout = new WidgetLayout(mem);
+  assert.equal(layout.getSnapshot().statusShiftX, 0);
+  layout.setRect('panel', { x: 10, y: 10, width: 1000, height: 110 });
+  layout.setRect('menus', { x: 10, y: 10, width: 136, height: 200 });
+  assert.equal(layout.getSnapshot().statusShiftX, 136);
+  // Near-identical rects do not bump the version.
+  const version = layout.getVersion();
+  layout.setRect('menus', { x: 10.1, y: 10, width: 136, height: 200 });
+  assert.equal(layout.getVersion(), version);
+  // Saved drag positions round-trip through the store.
+  layout.setWidgetPosition('keyboard', 40, 500);
+  assert.deepEqual(new WidgetLayout(mem).getSnapshot().positions, { keyboard: { x: 40, y: 500 } });
 });
 
 test('status schema keeps a drop note and does not publish undo labels', () => {

@@ -41,9 +41,12 @@ function Section({ lines }: { lines: StatusLine[] }) {
 export default function StatusOverlay({
   engine,
   hidden,
+  shiftX,
 }: {
   engine: NibGliderEngine;
   hidden?: boolean;
+  /** Left offset (px) clearing widgets that hang below the panel. */
+  shiftX?: number;
 }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const modifiers = useSyncExternalStore(engine.subscribeModifiers, engine.getModifiers);
@@ -64,6 +67,7 @@ export default function StatusOverlay({
       id="statusOverlay"
       className={hidden ? 'status-hidden' : undefined}
       aria-hidden="true"
+      style={shiftX ? { marginLeft: shiftX } : undefined}
     >
       <div className="status-table">
         <Section lines={schema.state} />

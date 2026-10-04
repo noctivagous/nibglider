@@ -1,5 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  SELECT_MENU_OPEN_EVENT,
+  selectMenuDismissed,
+  selectMenuOpened,
+  selectMenuTriggerClicked,
+  shouldDismissOnCursorExit,
+  type SelectMenuOpenTrigger,
+} from './selectMenuPolicy';
 
 export interface CustomSelectOption {
   value: string;
@@ -50,6 +58,8 @@ export default function CustomSelect({
   openOnHover = false,
   onHoverOpen,
   forceCloseKey,
+  stickyOnClick = false,
+  placeholder,
 }: {
   id?: string;
   ariaLabel: string;
@@ -62,8 +72,22 @@ export default function CustomSelect({
   onHoverOpen?: () => void;
   /** Changing value forces the menu closed (single-open invariant). */
   forceCloseKey?: number;
+  /**
+   * Label shown on the trigger button. Application menus use this for the
+   * button name (File, Document, …) so the name itself is not repeated as a
+   * row in the menu list. Otherwise the selected option's label is shown.
+   */
+  placeholder?: string;
+  /**
+   * Application menus only: a click pins the menu so cursor exit no longer
+   * dismisses it. Hover-opened menus still hide on cursor exit.
+   */
+  stickyOnClick?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const fallbackId = useId();
+  const menuId = id ?? fallbackId;
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const path = findPath(options, value);
     return new Set((path ?? []).slice(0, -1).map((o) => o.value));
@@ -73,6 +97,12 @@ export default function CustomSelect({
   const rootRef = useRef<HTMLSpanElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Remembers how the menu was opened so DOM focus only follows an explicit
+  // keyboard open. Hover/click opens must not steal focus: the menu's
+  // mouse-leave guard treats focus-inside as keyboard navigation holding the
+  // menu open, and focusing on every open would suppress cursor-exit
+  // dismissal for mouse users entirely.
+  const openTriggerRef = useRef<SelectMenuOpenTrigger>('hover');
   // Hover-open timer: same 180ms delayed-close idiom as the panel
   // preview flyouts, so the pointer can travel trigger -> menu.
   const hoverCloseTimer = useRef<number | null>(null);
@@ -101,9 +131,29 @@ export default function CustomSelect({
   useEffect(() => {
     if (forceCloseKey === undefined) return;
     cancelHoverClose();
-    setOpen(false);
+    const next = selectMenuDismissed();
+    setOpen(next.open);
+    setPinned(next.pinned);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceCloseKey]);
+  // A pinned (clicked) application menu yields when a sibling menu opens,
+  // keeping the single-open invariant that the hover-close timer otherwise
+  // provides. Non-sticky menus keep their existing timer behavior.
+  useEffect(() => {
+    if (!stickyOnClick) return;
+    const onSiblingOpen = (e: Event) => {
+      if ((e as CustomEvent<{ id: string }>).detail?.id === menuId) return;
+      if (hoverCloseTimer.current !== null) {
+        window.clearTimeout(hoverCloseTimer.current);
+        hoverCloseTimer.current = null;
+      }
+      const next = selectMenuDismissed();
+      setOpen(next.open);
+      setPinned(next.pinned);
+    };
+    window.addEventListener(SELECT_MENU_OPEN_EVENT, onSiblingOpen);
+    return () => window.removeEventListener(SELECT_MENU_OPEN_EVENT, onSiblingOpen);
+  }, [stickyOnClick, menuId]);
 
   // Ancestors of the current value join the expanded set (instead of
   // overriding it at render time), so an outside value change still
@@ -155,7 +205,12 @@ export default function CustomSelect({
 
 
 
-  const openMenu = () => {
+  const openMenu = (trigger: SelectMenuOpenTrigger = 'hover') => {
+    window.dispatchEvent(
+      new CustomEvent(SELECT_MENU_OPEN_EVENT, { detail: { id: menuId } }),
+    );
+    openTriggerRef.current = trigger;
+    setPinned(selectMenuOpened(stickyOnClick, trigger).pinned);
     const el = triggerRef.current;
     if (el) {
       const r = el.getBoundingClientRect();
@@ -178,24 +233,34 @@ export default function CustomSelect({
   };
 
   const closeMenu = (refocus: boolean) => {
-    setOpen(false);
+    const next = selectMenuDismissed();
+    setOpen(next.open);
+    setPinned(next.pinned);
     if (refocus) triggerRef.current?.focus();
   };
 
   useEffect(() => {
     if (!open) return;
-    menuRef.current?.focus();
+    // Keyboard opens move focus into the menu for arrow/Enter navigation
+    // (and the focus-inside guard then holds it open past mouse slips).
+    // Hover/click opens leave focus alone so cursor exit can dismiss.
+    if (openTriggerRef.current === 'keyboard') menuRef.current?.focus();
+    const dismiss = () => {
+      const next = selectMenuDismissed();
+      setOpen(next.open);
+      setPinned(next.pinned);
+    };
     const onPointerDown = (e: PointerEvent) => {
       const t = e.target as Node;
       if (!rootRef.current?.contains(t) && !menuRef.current?.contains(t)) {
-        setOpen(false);
+        dismiss();
       }
     };
     // A scroll inside the menu itself (wheel, trackpad, or dragging its
     // scrollbar) must not close it — only a viewport shift behind it.
     const onViewportShift = (e: Event) => {
       if (menuRef.current?.contains(e.target as Node)) return;
-      setOpen(false);
+      dismiss();
     };
     document.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('scroll', onViewportShift, true);
@@ -227,7 +292,9 @@ export default function CustomSelect({
     const target = rows.find((r) => !r.isHeader && !r.isParent && r.option.value === v);
     if (!target || target.option.disabled) return;
     onChange(v);
-    setOpen(false);
+    const next = selectMenuDismissed();
+    setOpen(next.open);
+    setPinned(next.pinned);
     triggerRef.current?.focus();
   };
 
@@ -262,7 +329,9 @@ export default function CustomSelect({
       e.preventDefault();
       activateRow(focusIdx);
     } else if (e.key === 'Tab') {
-      setOpen(false);
+      const next = selectMenuDismissed();
+      setOpen(next.open);
+      setPinned(next.pinned);
     }
   };
 
@@ -274,11 +343,23 @@ export default function CustomSelect({
   const handleTriggerMouseEnter = () => {
     if (!hoverWantsMouse()) return;
     cancelHoverClose();
+    // Re-hovering an open menu must not re-run openMenu: a hover open would
+    // clear a click pin and drop the stuck menu on the next cursor exit.
     if (!open) openMenu();
     onHoverOpen?.();
   };
   const handleTriggerMouseLeave = () => {
-    if (!openOnHover) return;
+    // A clicked (pinned) application menu sticks past cursor exit.
+    if (
+      !shouldDismissOnCursorExit({
+        openOnHover,
+        stickyOnClick,
+        snapshot: { open, pinned },
+        focusWithinMenu: false,
+      })
+    ) {
+      return;
+    }
     scheduleHoverClose();
   };
 
@@ -294,14 +375,22 @@ export default function CustomSelect({
         onMouseEnter={handleTriggerMouseEnter}
         onMouseLeave={handleTriggerMouseLeave}
         onClick={() => {
-          if (open) closeMenu(false);
-          else openMenu();
+          // Plain menus toggle. A sticky application menu pins on click:
+          // clicking a hover-opened menu sticks it, clicking again unpins.
+          const next = selectMenuTriggerClicked({ open, pinned }, stickyOnClick);
+          if (next.open && !open) {
+            openMenu('click');
+            return;
+          }
+          if (next.pinned) cancelHoverClose();
+          setOpen(next.open);
+          setPinned(next.pinned);
         }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             e.stopPropagation();
-            openMenu();
+            openMenu('keyboard');
           }
         }}
       >
@@ -310,7 +399,7 @@ export default function CustomSelect({
             {selectedLeaf.image}
           </span>
         )}
-        <span className="cs-trigger-label">{selectedLeaf?.label ?? ''}</span>
+        <span className="cs-trigger-label">{placeholder ?? selectedLeaf?.label ?? ''}</span>
         <span className={`cs-caret${open ? ' open' : ''}`} aria-hidden="true" />
       </button>
       {open &&
@@ -331,8 +420,19 @@ export default function CustomSelect({
               if (openOnHover) cancelHoverClose();
             }}
             onMouseLeave={() => {
-              if (!openOnHover) return;
-              if (menuRef.current?.contains(document.activeElement)) return;
+              // Keyboard focus inside the menu pins it open past a mouse
+              // slip; a clicked (pinned) application menu sticks as well.
+              if (
+                !shouldDismissOnCursorExit({
+                  openOnHover,
+                  stickyOnClick,
+                  snapshot: { open, pinned },
+                  focusWithinMenu:
+                    menuRef.current?.contains(document.activeElement) ?? false,
+                })
+              ) {
+                return;
+              }
               scheduleHoverClose();
             }}
           >

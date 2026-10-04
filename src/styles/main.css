@@ -131,13 +131,17 @@ article {
   color: #e8edf3;
   padding: 5px 10px;
   text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 0;
+  overflow-wrap: break-word;
 }
 
 #statusOverlay .st-seg {
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 #statusOverlay .st-line-title {
@@ -748,6 +752,7 @@ html, body {
 }
 
 #controlPanel .panel-sections {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-content: flex-start;
@@ -755,8 +760,12 @@ html, body {
   flex-wrap: wrap;
   gap: 6px;
   flex: 1 1 auto;
+  order: 1;
   min-width: 0;
-  padding: 0;
+  /* Reserve the floating rail's width so sections never slide under it. */
+  margin-left: var(--rail-width);
+  /* Lane for the widget move handle at the box's left edge. */
+  padding: 0 0 0 22px;
   border: none;
   border-radius: 0;
   background: none;
@@ -1115,6 +1124,15 @@ body {
   width: max-content;
   max-width: 100%;
   min-width: min(100%, 14rem);
+}
+
+/* Collapsed Circle/Rect keys shrink to the icon: beats the one-line
+   titlebar minimum above (2 IDs) with an extra class. */
+#controlPanel #circleFrameControls.section-collapsed,
+#controlPanel #rectFrameControls.section-collapsed {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
 }
 
 #controlPanel .pane-body-row {
@@ -1907,6 +1925,34 @@ body {
 
 #controlPanel #rectFrameControls .pane-titlebar {
   background: linear-gradient(to bottom, rgba(45, 212, 191, 0.18), rgba(15, 148, 132, 0.18)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+/* Collapsed strips keep their section color coding: the titlebar tint
+   moves onto the strip since the titlebar itself is unmounted. */
+#controlPanel #circleFrameControls.section-collapsed {
+  background: linear-gradient(to bottom, rgba(79, 143, 247, 0.22), rgba(47, 111, 224, 0.22)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #rectFrameControls.section-collapsed {
+  background: linear-gradient(to bottom, rgba(45, 212, 191, 0.18), rgba(15, 148, 132, 0.18)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #gridControls.section-collapsed {
+  background: linear-gradient(to bottom, rgba(148, 163, 184, 0.20), rgba(100, 116, 139, 0.20)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #snappingControls.section-collapsed {
+  background: linear-gradient(to bottom, rgba(245, 166, 35, 0.20), rgba(200, 120, 20, 0.20)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #fillControls.section-collapsed {
+  flex: 0 0 auto;
+  background: linear-gradient(to bottom, #161c24 0%, #0e1218 60%, #090c10 100%);
+}
+
+#controlPanel #strokeControls.section-collapsed {
+  flex: 0 0 auto;
+  background: linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
 }
 
 #controlPanel #rectFrameControls .pane-icon {
@@ -2921,9 +2967,14 @@ kbd,
    The rail sits left of one wrapping section container. Each section carries
    a drag bar that stays visible when the section collapses to an icon. */
 #controlPanel .panel-shell {
+  --rail-width: 9.75rem;
+  position: relative;
   display: flex;
   flex-direction: row;
-  align-items: stretch;
+  /* Menus and sections are independent widget areas: the rail floats
+     outside the panel's height, so a growing menus list never stretches
+     the sections, and either one can be moved in the layout later. */
+  align-items: flex-start;
   width: 100%;
   min-width: 0;
   background: none;
@@ -2936,14 +2987,70 @@ kbd,
 }
 
 #controlPanel .panel-rail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 60;
   display: flex;
   flex-direction: column;
   gap: 4px;
   flex: none;
-  align-self: stretch;
-  padding: 4px;
+  order: 0;
+  width: var(--rail-width);
+  padding: 4px 4px 4px 24px;
   background: linear-gradient(to bottom, #0d1218, #141b24);
   border-right: 1px solid #0b0e12;
+  border-bottom: 1px solid #0b0e12;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.65);
+}
+
+/* Widget move handles: slim grip strips at the left of each widget box
+   (menus rail, panel sections, on-screen keyboard). Foundation for
+   draggable widgets via data-widget hooks; no dragging yet. */
+.widget-handle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  color: var(--dp-text-3);
+  cursor: grab;
+  border-radius: 4px;
+}
+
+.widget-handle:hover,
+.widget-handle:focus-visible {
+  color: var(--dp-text-1);
+}
+
+.widget-handle:focus-visible {
+  outline: 2px solid #4f8ff7;
+  outline-offset: 1px;
+}
+
+#controlPanel .panel-rail .widget-handle {
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  bottom: 4px;
+}
+
+#controlPanel .panel-sections .widget-handle {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  bottom: 4px;
+}
+
+#keyboardContainer > .widget-handle {
+  position: absolute;
+  left: -26px;
+  top: 0;
+  bottom: 0;
+  width: 18px;
+  background: linear-gradient(to bottom, #0d1218, #141b24);
+  border: 1px solid #0b0e12;
+  border-radius: 5px;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.65);
 }
 
@@ -3031,9 +3138,14 @@ kbd,
   pointer-events: none;
 }
 
-/* Collapsed: drag bar plus the section icon only. */
+/* Collapsed: drag bar plus the section icon only. Keeps the titlebar
+   surface so the icon never floats on transparency. Sections with their
+   own id-level background keep it via higher specificity. */
 #controlPanel .panel-card.section-collapsed {
   flex: 0 0 auto;
+  background: linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+  border-bottom: 1px solid #0b0e12;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 #controlPanel .section-collapsed-icon {
