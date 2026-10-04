@@ -275,7 +275,7 @@ export class NibGliderEngine {
 
   // --- Text config (Text panel + Display/Body/Circumference text) ---
   globalText: TextSpec = {
-    content: 'Ag',
+    content: 'Hello World',
     line2: '',
     fontFamily: 'Helvetica',
     fontSize: 24,

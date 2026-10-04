@@ -8,12 +8,21 @@ export interface CustomSelectOption {
   image?: ReactNode;
   /** Presence of children makes the row an expandable tree parent. */
   children?: CustomSelectOption[];
+  /** Non-interactive group header separating grouped areas of a menu. */
+  header?: boolean;
+  /** Right-aligned keyboard shortcut chip shown next to the label. */
+  shortcut?: string;
+  /** Disabled rows render dimmed and cannot be chosen. */
+  disabled?: boolean;
+  /** Native tooltip for the row (e.g. why a future item is disabled). */
+  title?: string;
 }
 
 interface FlatRow {
   option: CustomSelectOption;
   depth: number;
   isParent: boolean;
+  isHeader: boolean;
 }
 
 function findPath(
@@ -22,6 +31,7 @@ function findPath(
   trail: CustomSelectOption[] = [],
 ): CustomSelectOption[] | null {
   for (const o of options) {
+    if (o.header) continue;
     if (!o.children && o.value === value) return [...trail, o];
     if (o.children) {
       const hit = findPath(o.children, value, [...trail, o]);
@@ -114,14 +124,29 @@ export default function CustomSelect({
     const out: FlatRow[] = [];
     const walk = (opts: CustomSelectOption[], depth: number) => {
       for (const o of opts) {
-        const isParent = !!o.children?.length;
-        out.push({ option: o, depth, isParent });
+        const isHeader = !!o.header;
+        const isParent = !isHeader && !!o.children?.length;
+        out.push({ option: o, depth, isParent, isHeader });
         if (isParent && expanded.has(o.value)) walk(o.children!, depth + 1);
       }
     };
     walk(options, 0);
     return out;
   }, [options, expanded]);
+
+  // Group headers are never focus targets: Arrow/Home/End skip them.
+  const stepFocus = (from: number, dir: -1 | 1): number => {
+    let i = from + dir;
+    while (i >= 0 && i < rows.length && rows[i].isHeader) i += dir;
+    if (i < 0 || i >= rows.length) return from;
+    return i;
+  };
+  const edgeFocus = (dir: -1 | 1): number => {
+    const i = dir < 0 ? 0 : rows.length - 1;
+    if (rows.length === 0) return 0;
+    if (!rows[i].isHeader) return i;
+    return stepFocus(i, dir < 0 ? 1 : -1);
+  };
 
   const selectedLeaf = useMemo(
     () => findPath(options, value)?.at(-1) ?? null,
@@ -140,8 +165,15 @@ export default function CustomSelect({
         minWidth: Math.max(r.width, 180),
       });
     }
-    const selIdx = rows.findIndex((r) => !r.isParent && r.option.value === value);
-    setFocusIdx(selIdx >= 0 ? selIdx : 0);
+    const selIdx = rows.findIndex(
+      (r) => !r.isParent && !r.isHeader && !r.option.disabled && r.option.value === value,
+    );
+    if (selIdx >= 0) {
+      setFocusIdx(selIdx);
+    } else {
+      const first = rows.findIndex((r) => !r.isParent && !r.isHeader && !r.option.disabled);
+      setFocusIdx(first >= 0 ? first : edgeFocus(1));
+    }
     setOpen(true);
   };
 
@@ -192,6 +224,8 @@ export default function CustomSelect({
   };
 
   const choose = (v: string) => {
+    const target = rows.find((r) => !r.isHeader && !r.isParent && r.option.value === v);
+    if (!target || target.option.disabled) return;
     onChange(v);
     setOpen(false);
     triggerRef.current?.focus();
@@ -199,7 +233,7 @@ export default function CustomSelect({
 
   const activateRow = (idx: number) => {
     const row = rows[idx];
-    if (!row) return;
+    if (!row || row.isHeader || row.option.disabled) return;
     if (row.isParent) toggleParent(row.option.value);
     else choose(row.option.value);
   };
@@ -214,16 +248,16 @@ export default function CustomSelect({
       closeMenu(true);
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setFocusIdx((i) => Math.min(i + 1, rows.length - 1));
+      setFocusIdx((i) => stepFocus(i, 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setFocusIdx((i) => Math.max(i - 1, 0));
+      setFocusIdx((i) => stepFocus(i, -1));
     } else if (e.key === 'Home') {
       e.preventDefault();
-      setFocusIdx(0);
+      setFocusIdx(edgeFocus(-1));
     } else if (e.key === 'End') {
       e.preventDefault();
-      setFocusIdx(rows.length - 1);
+      setFocusIdx(edgeFocus(1));
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       activateRow(focusIdx);
@@ -302,44 +336,63 @@ export default function CustomSelect({
               scheduleHoverClose();
             }}
           >
-            {rows.map((row, i) => (
-              <div
-                key={row.option.value}
-                role="treeitem"
-                data-idx={i}
-                aria-selected={!row.isParent && row.option.value === value}
-                aria-expanded={
-                  row.isParent ? expanded.has(row.option.value) : undefined
-                }
-                className={
-                  'cs-item' +
-                  (row.isParent ? ' cs-parent' : '') +
-                  (!row.isParent && row.option.value === value
-                    ? ' selected'
-                    : '') +
-                  (i === focusIdx ? ' focused' : '')
-                }
-                style={{ paddingLeft: 8 + row.depth * 16 }}
-                onMouseEnter={() => setFocusIdx(i)}
-                onClick={() => activateRow(i)}
-              >
-                {row.isParent && (
-                  <span
-                    className={
-                      'cs-caret' +
-                      (expanded.has(row.option.value) ? ' open' : '')
-                    }
-                    aria-hidden="true"
-                  />
-                )}
-                {row.option.image && (
-                  <span className="cs-image" aria-hidden="true">
-                    {row.option.image}
-                  </span>
-                )}
-                <span className="cs-label">{row.option.label}</span>
-              </div>
-            ))}
+            {rows.map((row, i) =>
+              row.isHeader ? (
+                <div
+                  key={row.option.value}
+                  role="presentation"
+                  className="cs-group"
+                  style={{ paddingLeft: 8 + row.depth * 16 }}
+                >
+                  <span className="cs-group-label">{row.option.label}</span>
+                </div>
+              ) : (
+                <div
+                  key={row.option.value}
+                  role="treeitem"
+                  data-idx={i}
+                  aria-selected={!row.isParent && row.option.value === value}
+                  aria-disabled={row.option.disabled || undefined}
+                  aria-expanded={
+                    row.isParent ? expanded.has(row.option.value) : undefined
+                  }
+                  title={row.option.title}
+                  className={
+                    'cs-item' +
+                    (row.isParent ? ' cs-parent' : '') +
+                    (!row.isParent && row.option.value === value
+                      ? ' selected'
+                      : '') +
+                    (i === focusIdx ? ' focused' : '') +
+                    (row.option.disabled ? ' disabled' : '')
+                  }
+                  style={{ paddingLeft: 8 + row.depth * 16 }}
+                  onMouseEnter={() => setFocusIdx(i)}
+                  onClick={() => activateRow(i)}
+                >
+                  {row.isParent && (
+                    <span
+                      className={
+                        'cs-caret' +
+                        (expanded.has(row.option.value) ? ' open' : '')
+                      }
+                      aria-hidden="true"
+                    />
+                  )}
+                  {row.option.image && (
+                    <span className="cs-image" aria-hidden="true">
+                      {row.option.image}
+                    </span>
+                  )}
+                  <span className="cs-label">{row.option.label}</span>
+                  {row.option.shortcut && (
+                    <span className="cs-shortcut">
+                      <kbd>{row.option.shortcut}</kbd>
+                    </span>
+                  )}
+                </div>
+              ),
+            )}
           </div>,
           document.body,
         )}

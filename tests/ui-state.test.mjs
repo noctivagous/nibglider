@@ -68,6 +68,43 @@ test('legacy grouped panel layout becomes one ordered sequence', () => {
   ]);
 });
 
+test('dragging across a row boundary keeps the requested visual row', () => {
+  const mem = store();
+  const panels = new PanelsManager(mem);
+  panels.setRowStarts(['circleFrameControls', 'gridControls']);
+
+  // Moving the first card immediately before row two's first card does not
+  // change the flat order enough to create a natural flex wrap. The break
+  // must move onto the dragged card itself.
+  panels.moveSection('strokeControls', 'circleFrameControls');
+  assert.equal(panels.rowStarts[0], 'strokeControls');
+  assert.equal(sectionOrder(panels.order).indexOf('strokeControls'), 2);
+  assert.equal(new PanelsManager(mem).rowStarts[0], 'strokeControls');
+
+  // Starting with a fresh layout, move the last card of row one to the end
+  // of row two. The two row boundaries must remain on their rows.
+  const again = new PanelsManager(store());
+  again.setRowStarts(['circleFrameControls', 'gridControls']);
+  again.moveSection('textControls', 'historyControls', true);
+  assert.deepEqual(again.rowStarts, ['circleFrameControls', 'gridControls']);
+  assert.equal(sectionOrder(again.order).indexOf('textControls'), 6);
+});
+
+test('application menus cover file, document, operations, and layers', () => {
+  const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
+  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'document', 'operations', 'layers']);
+  assert.equal(byId.file.title, 'File');
+  assert.deepEqual(byId.file.items.map((item) => item.commandId), [
+    'open-gallery', 'new-document', 'save-gallery', 'rename-document', 'export', 'import', 'tutorial',
+  ]);
+  assert.ok(byId.document.items.some((item) => item.commandId === 'length-unit'));
+  assert.ok(byId.operations.items.some((item) => item.commandId === 'group'));
+  assert.ok(byId.operations.items.some((item) => item.commandId === 'delete-selection'));
+  for (const id of ['bring-to-front', 'send-to-back', 'duplicate-selection', 'group']) {
+    assert.ok(byId.layers.items.some((item) => item.commandId === id), `layers menu lists ${id}`);
+  }
+});
+
 test('status schema keeps a drop note and does not publish undo labels', () => {
   const schema = buildStatusSchema(snap({ dropNote: 'Drop skipped: notes.txt is not an image.', selectedCount: 2 }));
   const text = JSON.stringify(schema);

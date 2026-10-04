@@ -183,9 +183,9 @@ function PanelSection({
   onIconMenu: (id: string, anchor: HTMLElement) => void;
   onToggleCollapse: (id: string) => void;
   onRemoveRequest: (id: string, x: number, y: number) => void;
-  onDragSessionStart: (id: string, size: { width: number; height: number }) => void;
+  onDragSessionStart: (id: string, size: { width: number; height: number }, rowStarts: string[]) => void;
   onDragSessionEnd: () => void;
-  onDragHover: (id: string, after: boolean) => void;
+  onDragHover: (id: string, after: boolean, x: number, y: number) => void;
   children: ReactNode;
 }) {
   const didDrag = useRef(false);
@@ -228,7 +228,7 @@ function PanelSection({
         e.stopPropagation();
         const rect = e.currentTarget.getBoundingClientRect();
         const after = e.clientX > rect.left + rect.width / 2;
-        onDragHover(id, after);
+        onDragHover(id, after, e.clientX, e.clientY);
       }}
       onDrop={(e) => {
         if (!e.dataTransfer?.types.includes('text/panel-section')) return;
@@ -261,6 +261,16 @@ function PanelSection({
           didDrag.current = true;
           const section = e.currentTarget.closest('section');
           const rect = section?.getBoundingClientRect();
+          const rowStarts: string[] = [];
+          let previousTop: number | null = null;
+          const siblings = section?.parentElement?.querySelectorAll(':scope > section') ?? [];
+          const visualOrder = [...siblings]
+            .map((item) => ({ id: item.id, rect: item.getBoundingClientRect() }))
+            .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+          for (const item of visualOrder) {
+            if (previousTop !== null && item.rect.top > previousTop + 3) rowStarts.push(item.id);
+            previousTop = item.rect.top;
+          }
           const dt = e.dataTransfer;
           if (dt) {
             dt.effectAllowed = 'move';
@@ -308,7 +318,7 @@ function PanelSection({
           onDragSessionStart(id, {
             width: rect?.width ?? 0,
             height: rect?.height ?? 0,
-          });
+          }, rowStarts);
         }}
         onDragEnd={() => {
           clearDragImage();
@@ -1086,27 +1096,54 @@ const STROKE_POSITION_OPTIONS: Array<{ value: StrokePosition; label: string }> =
 ];
 
 function StrokePositionIcon({ position }: { position: StrokePosition }) {
-  // The dashed rectangle is the path. Four solid strips are the stroke band:
-  // wholly beyond it, straddling it, or wholly within it.
-  const pathBoundary = <rect x="3" y="2.5" width="10" height="7" rx="0.6" fill="none"
-    stroke="currentColor" strokeWidth="0.65" strokeDasharray="1.2 1" opacity="0.9" />;
-  const band = (top: number, left: number, right: number, bottom: number) => (
-    <g fill="currentColor">
-      <rect x={left} y={top} width={16 - left - right} height="1.5" rx="0.35" />
-      <rect x={left} y={12 - bottom - 1.5} width={16 - left - right} height="1.5" rx="0.35" />
-      <rect x={left} y={top} width="1.5" height={12 - top - bottom} rx="0.35" />
-      <rect x={16 - right - 1.5} y={top} width="1.5" height={12 - top - bottom} rx="0.35" />
-    </g>
-  );
+  // Draw a shape path (rounded rectangle) with the stroke band in the correct position
+  const pathD = "M4 2.5 C4 1.67 4.67 1 5.5 1 L10.5 1 C11.33 1 12 1.67 12 2.5 L12 9.5 C12 10.33 11.33 11 10.5 11 L5.5 11 C4.67 11 4 10.33 4 9.5 Z";
+  
+  // Outside: stroke entirely outside the path boundary
+  // Center: stroke straddles the path boundary  
+  // Inside: stroke entirely inside the path boundary
   const placement = position === 'outside'
-    ? band(0.5, 1, 1, 0.5)
+    ? (
+      <g>
+        <path d={pathD} fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="1.5 1" opacity="0.5" />
+        <path
+          d="M3.5 2 C3.5 1.17 4.17 0.5 5 0.5 L11 0.5 C11.83 0.5 12.5 1.17 12.5 2 L12.5 10 C12.5 10.83 11.83 11.5 11 11.5 L5 11.5 C4.17 11.5 3.5 10.83 3.5 10 Z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+      </g>
+    )
     : position === 'center'
-      ? band(1.75, 2.25, 2.25, 1.75)
-      : band(3, 3, 3, 2.5);
+      ? (
+        <g>
+          <path d={pathD} fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="1.5 1" opacity="0.5" />
+          <path
+            d={pathD}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+          />
+        </g>
+      )
+      : (
+        <g>
+          <path d={pathD} fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="1.5 1" opacity="0.5" />
+          <path
+            d="M4.5 3 C4.5 2.45 4.95 2 5.5 2 L10.5 2 C11.05 2 11.5 2.45 11.5 3 L11.5 9 C11.5 9.55 11.05 10 10.5 10 L5.5 10 C4.95 10 4.5 9.55 4.5 9 Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+        </g>
+      );
+
   return (
     <svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true">
       {placement}
-      {pathBoundary}
     </svg>
   );
 }
@@ -2536,7 +2573,10 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   const restoreSection = useCallback((id: string) => {
     panels.restoreSection(id);
   }, [panels]);
-  const dragRef = useRef<{ id: string } | null>(null);
+  const dragRef = useRef<{
+    id: string;
+    gapTarget: { x: number; y: number } | null;
+  } | null>(null);
   const dragStartFrame = useRef<number | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragPlaceholder, setDragPlaceholder] = useState<{
@@ -2544,17 +2584,18 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     width: number;
     height: number;
   } | null>(null);
-  const beginDrag = useCallback((id: string, size: { width: number; height: number }) => {
-    dragRef.current = { id };
+  const beginDrag = useCallback((id: string, size: { width: number; height: number }, rowStarts: string[]) => {
+    dragRef.current = { id, gapTarget: null };
     // Hiding the draggable during dragstart aborts native dragging in some
     // browsers. Wait until the browser has captured its drag image.
     dragStartFrame.current = requestAnimationFrame(() => {
       dragStartFrame.current = null;
       if (dragRef.current?.id !== id) return;
+      panels.setRowStarts(rowStarts);
       setDraggingId(id);
       setDragPlaceholder({ id, ...size });
     });
-  }, []);
+  }, [panels]);
   const endDrag = useCallback(() => {
     if (dragStartFrame.current !== null) {
       cancelAnimationFrame(dragStartFrame.current);
@@ -2574,9 +2615,15 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     };
   }, [endDrag]);
   const hoverDrag = useCallback(
-    (overId: string, after: boolean) => {
+    (overId: string, after: boolean, x: number, y: number) => {
       const drag = dragRef.current;
       if (!drag || drag.id === overId) return;
+      // The row-start target moves when the placeholder enters its row.
+      // Keep it stable until the pointer has actually moved away.
+      if (drag.gapTarget) {
+        if (Math.hypot(x - drag.gapTarget.x, y - drag.gapTarget.y) < 16) return;
+        drag.gapTarget = null;
+      }
       panels.moveSection(drag.id, overId, after);
     },
     [panels],
@@ -2584,14 +2631,16 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   const isRemoved = useCallback((id: string) => removedList.includes(id), [removedList]);
   // Operations rail box: immediate entries act on the selection at once;
   // scale/rotate open the modal dialog with a live on-page preview.
+  const [fileValue, setFileValue] = useState('file-none');
+  const [docValue, setDocValue] = useState('doc-none');
   const [opValue, setOpValue] = useState('ops-none');
+  const [layersValue, setLayersValue] = useState('layers-none');
   const [opDialog, setOpDialog] = useState<
     | { kind: 'scale'; draft: number; applied: number }
     | { kind: 'rotate'; draft: number; applied: number }
     | null
   >(null);
-  const [sectionsValue, setSectionsValue] = useState('sections-none');
-  const [debugValue, setDebugValue] = useState('debug-none');
+
   const openOpDialog = useCallback(
     (kind: 'scale' | 'rotate') => {
       if (!engine.canTransformSelection()) return;
@@ -2692,59 +2741,145 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     }
     setOpDialog(null);
   }, [engine, opDialog]);
-  const OPERATIONS_OPTIONS: CustomSelectOption[] = [
-    { value: 'ops-none', label: 'Operations' },
-    {
-      value: 'grp-immediate',
-      label: 'Immediate',
-      children: [
-        { value: 'op-delete', label: 'Delete selection' },
-        { value: 'op-duplicate', label: 'Duplicate selection' },
-        { value: 'op-group', label: 'Group selection' },
-        { value: 'op-ungroup', label: 'Ungroup selection' },
-        { value: 'op-front', label: 'Bring to front' },
-        { value: 'op-back', label: 'Send to back' },
-      ],
-    },
-    {
-      value: 'grp-dialog',
-      label: 'With dialog',
-      children: [
-        { value: 'op-scale', label: 'Scale…' },
-        { value: 'op-rotate', label: 'Rotate…' },
-      ],
-    },
+  // File menu: document gallery, transfer, and learning. Nothing here has a
+  // backing store yet, so every entry is a disabled stub with a tooltip.
+  const FILE_OPTIONS: CustomSelectOption[] = [
+    { value: 'file-none', label: 'File' },
+    { value: 'hdr-file-doc', label: 'Document', header: true },
+    { value: 'file-open', label: 'Open Document (Gallery)', disabled: true, title: 'The document gallery is not available yet' },
+    { value: 'file-new', label: 'New Document', disabled: true, title: 'New documents are not available yet' },
+    { value: 'file-save', label: 'Save (Gallery)', disabled: true, title: 'The document gallery is not available yet' },
+    { value: 'file-rename', label: 'Rename…', disabled: true, title: 'Renaming is not available yet' },
+    { value: 'hdr-file-transfer', label: 'Transfer', header: true },
+    { value: 'file-export', label: 'Export…', disabled: true, title: 'Export is not available yet' },
+    { value: 'file-import', label: 'Import…', disabled: true, title: 'Import is not available yet' },
+    { value: 'hdr-file-learn', label: 'Learn', header: true },
+    { value: 'file-tutorial', label: 'Tutorial', disabled: true, title: 'The tutorial arrives in a future release' },
   ];
-  const removedOptions: CustomSelectOption[] = [
-    { value: 'sections-none', label: 'Sections' },
+  const handleFile = useCallback(
+    (v: string) => {
+      if (v === 'file-none') return;
+      dismissSelects();
+      // All entries are disabled stubs for now; stay on the placeholder.
+      setFileValue('file-none');
+    },
+    [dismissSelects],
+  );
+  // Document and Settings menu: grouped document controls, then application
+  // controls (section restore and settings reset live here now).
+  const DOCUMENT_OPTIONS: CustomSelectOption[] = [
+    { value: 'doc-none', label: 'Document' },
+    { value: 'hdr-doc-document', label: 'Document', header: true },
+    { value: 'doc-canvas', label: 'Canvas size…', disabled: true, title: 'Canvas size settings are not available yet' },
+    {
+      value: 'grp-doc-unit',
+      label: 'Length unit',
+      children: [
+        { value: 'doc-unit-pt', label: 'Points (pt)' },
+        { value: 'doc-unit-inch', label: 'Inches' },
+        { value: 'doc-unit-cm', label: 'Centimeters (cm)' },
+      ],
+    },
+    { value: 'hdr-doc-application', label: 'Application', header: true },
     ...(removedList.length > 0
       ? [
           {
-            value: 'grp-removed',
-            label: 'Restore',
+            value: 'grp-doc-restore',
+            label: 'Restore section',
             children: removedList.map((id) => ({
               value: `restore:${id}`,
               label: sectionLabel(id),
             })),
           },
         ]
-      : []),
+      : [
+          {
+            value: 'doc-restore-none',
+            label: 'Restore section',
+            disabled: true,
+            title: 'No removed sections to restore',
+          },
+        ]),
+    { value: 'doc-reset-settings', label: 'Reset all settings' },
   ];
-  const DEBUG_OPTIONS: CustomSelectOption[] = [
-    { value: 'debug-none', label: 'Debug' },
-    { value: 'debug-reset-settings', label: 'Reset all settings' },
-  ];
-  const handleDebug = useCallback((value: string) => {
-    setDebugValue('debug-none');
-    if (value !== 'debug-reset-settings') return;
-    try {
-      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-        const key = localStorage.key(index);
-        if (key?.startsWith('nibglider.')) localStorage.removeItem(key);
+  const handleDocument = useCallback(
+    (value: string) => {
+      dismissSelects();
+      if (value.startsWith('restore:')) restoreSection(value.slice(8));
+      else if (value === 'doc-unit-pt') engine.setLengthUnit('pt');
+      else if (value === 'doc-unit-inch') engine.setLengthUnit('inch');
+      else if (value === 'doc-unit-cm') engine.setLengthUnit('cm');
+      else if (value === 'doc-reset-settings') {
+        try {
+          for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+            const key = localStorage.key(index);
+            if (key?.startsWith('nibglider.')) localStorage.removeItem(key);
+          }
+        } catch { /* Storage can be unavailable in private browsing. */ }
+        window.location.reload();
       }
-    } catch { /* Storage can be unavailable in private browsing. */ }
-    window.location.reload();
-  }, []);
+      setDocValue('doc-none');
+    },
+    [engine, dismissSelects, restoreSection],
+  );
+  // Operations menu: flat grouped areas (headers, not collapsible parents)
+  // so every entry is one hover away. Shortcuts shown where a binding exists.
+  const OPERATIONS_OPTIONS: CustomSelectOption[] = [
+    { value: 'ops-none', label: 'Operations' },
+    { value: 'hdr-ops-immediate', label: 'Immediate', header: true },
+    { value: 'op-delete', label: 'Delete selection', shortcut: 'Backspace' },
+    { value: 'op-duplicate', label: 'Duplicate selection' },
+    { value: 'op-group', label: 'Group selection', shortcut: primaryShortcut('G') },
+    { value: 'op-ungroup', label: 'Ungroup selection', shortcut: primaryShortcut('G', true) },
+    { value: 'op-front', label: 'Bring to front' },
+    { value: 'op-back', label: 'Send to back' },
+    { value: 'hdr-ops-dialog', label: 'With dialog', header: true },
+    { value: 'op-scale', label: 'Scale…' },
+    { value: 'op-rotate', label: 'Rotate…' },
+  ];
+  // Layers and Objects menu: ordering and selection operations.
+  const LAYERS_OPTIONS: CustomSelectOption[] = [
+    { value: 'layers-none', label: 'Layers' },
+    { value: 'hdr-layers-order', label: 'Order', header: true },
+    { value: 'layer-front', label: 'Bring to front' },
+    { value: 'layer-back', label: 'Send to back' },
+    { value: 'hdr-layers-selection', label: 'Selection', header: true },
+    { value: 'layer-group', label: 'Group selection', shortcut: primaryShortcut('G') },
+    { value: 'layer-ungroup', label: 'Ungroup selection', shortcut: primaryShortcut('G', true) },
+    { value: 'layer-duplicate', label: 'Duplicate selection' },
+    { value: 'layer-delete', label: 'Delete selection', shortcut: 'Backspace' },
+  ];
+  const handleLayers = useCallback(
+    (v: string) => {
+      if (v === 'layers-none') return;
+      dismissSelects();
+      switch (v) {
+        case 'layer-delete':
+          engine.removeAllSelectedItemsAndReset();
+          break;
+        case 'layer-duplicate':
+          engine.duplicateSelection();
+          break;
+        case 'layer-group':
+          engine.groupSelection();
+          break;
+        case 'layer-ungroup':
+          engine.ungroupSelected();
+          break;
+        case 'layer-front':
+          engine.bringSelectionToFront();
+          break;
+        case 'layer-back':
+          engine.sendSelectionToBack();
+          break;
+        default:
+          break;
+      }
+      // Reset to the placeholder label after acting.
+      setLayersValue('layers-none');
+    },
+    [engine, dismissSelects],
+  );
   // Selection state: when items are selected the Stroke/Fill panels
   // reflect the selection (first selected item) instead of the globals.
   const sel = engine.selectionPaint();
@@ -2875,7 +3010,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   const orderedSections = sectionOrder(orderMap);
   const sectionProps = (id: string) => {
     return {
-      order: orderedSections.indexOf(id),
+      order: orderedSections.indexOf(id) * 2,
       menuOpen: iconMenu?.id === id,
       dragging: draggingId === id,
       onIconMenu: toggleIconMenu,
@@ -2892,16 +3027,48 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         className="section-drag-placeholder"
         aria-hidden="true"
         style={{
-          order: orderedSections.indexOf(dragPlaceholder.id),
+          order: orderedSections.indexOf(dragPlaceholder.id) * 2,
           width: dragPlaceholder.width,
           height: dragPlaceholder.height,
         }}
       />
     : null;
+  const rowBreakNodes = panels.rowStarts
+    .filter((id) => !isRemoved(id) && orderedSections.indexOf(id) > 0)
+    .map((id) => <span
+      key={id}
+      className="panel-row-break"
+      aria-hidden="true"
+      style={{ order: orderedSections.indexOf(id) * 2 - 1 }}
+    />);
 
   return (
     <div className="panel-shell">
       <div className="panel-rail" role="group" aria-label="Panel tools">
+        <div className="rail-box" title="File: documents, import, export">
+          <CustomSelect
+            id="panelFileSelect"
+            ariaLabel="File"
+            value={fileValue}
+            options={FILE_OPTIONS}
+            onChange={handleFile}
+            openOnHover
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
+          />
+        </div>
+        <div className="rail-box" title="Document and Settings">
+          <CustomSelect
+            id="panelDocumentSelect"
+            ariaLabel="Document and Settings"
+            value={docValue}
+            options={DOCUMENT_OPTIONS}
+            onChange={handleDocument}
+            openOnHover
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
+          />
+        </div>
         <div className="rail-box" title="Operations on the selection">
           <CustomSelect
             id="panelOperationsSelect"
@@ -2914,28 +3081,13 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             forceCloseKey={selectCloseKey}
           />
         </div>
-        <div className="rail-box" title="Debug settings">
+        <div className="rail-box" title="Layers and Objects">
           <CustomSelect
-            id="panelDebugSelect"
-            ariaLabel="Debug settings"
-            value={debugValue}
-            options={DEBUG_OPTIONS}
-            onChange={handleDebug}
-            openOnHover
-            onHoverOpen={handleSelectHoverOpen}
-            forceCloseKey={selectCloseKey}
-          />
-        </div>
-        <div className="rail-box" title="Panel sections">
-          <CustomSelect
-            id="panelSectionsSelect"
-            ariaLabel="Panel sections"
-            value={sectionsValue}
-            options={removedOptions}
-            onChange={(v) => {
-              if (v.startsWith('restore:')) restoreSection(v.slice(8));
-              setSectionsValue('sections-none');
-            }}
+            id="panelLayersSelect"
+            ariaLabel="Layers and Objects"
+            value={layersValue}
+            options={LAYERS_OPTIONS}
+            onChange={handleLayers}
             openOnHover
             onHoverOpen={handleSelectHoverOpen}
             forceCloseKey={selectCloseKey}
@@ -2949,22 +3101,37 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         onDragOver={(e) => {
           if (!e.dataTransfer?.types.includes('text/panel-section')) return;
           e.preventDefault();
-          const dragged = dragRef.current;
-          if (e.target !== e.currentTarget || !dragged) return;
-          const placeholder = e.currentTarget.querySelector('.section-drag-placeholder');
-          const preview = placeholder?.getBoundingClientRect();
-          if (preview && e.clientX >= preview.left && e.clientX <= preview.right &&
-              e.clientY >= preview.top && e.clientY <= preview.bottom) return;
-          const sections = [...e.currentTarget.querySelectorAll(':scope > section:not(.section-dragging)')];
-          const nearest = sections.map((section) => {
-            const rect = section.getBoundingClientRect();
-            const dx = Math.max(rect.left - e.clientX, 0, e.clientX - rect.right);
-            const dy = Math.max(rect.top - e.clientY, 0, e.clientY - rect.bottom);
-            return { id: section.id, rect, distance: dx * dx + dy * dy };
-          }).sort((a, b) => a.distance - b.distance)[0];
-          if (nearest) {
-            panels.moveSection(dragged.id, nearest.id,
-              e.clientX > nearest.rect.left + nearest.rect.width / 2);
+          if (e.target !== e.currentTarget) return;
+          const drag = dragRef.current;
+          if (!drag) return;
+          if (drag.gapTarget) {
+            if (Math.hypot(e.clientX - drag.gapTarget.x,
+              e.clientY - drag.gapTarget.y) < 16) return;
+            drag.gapTarget = null;
+          }
+          const visible = [...e.currentTarget.querySelectorAll(':scope > section:not(.section-dragging)')]
+            .map((section) => ({ id: section.id, rect: section.getBoundingClientRect() }))
+            .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+          const rows: Array<{ first: typeof visible[number]; bottom: number }> = [];
+          for (const section of visible) {
+            const last = rows[rows.length - 1];
+            if (last && Math.abs(last.first.rect.top - section.rect.top) < 3) {
+              last.bottom = Math.max(last.bottom, section.rect.bottom);
+            } else {
+              rows.push({ first: section, bottom: section.rect.bottom });
+            }
+          }
+          for (let index = 1; index < rows.length; index += 1) {
+            const previous = rows[index - 1];
+            const row = rows[index];
+            const first = row.first;
+            // Include the inter-row gap and the empty space just left of the
+            // first card. Both should mean "insert before this row".
+            if (e.clientY < previous.bottom || e.clientY > row.bottom ||
+                e.clientX > first.rect.left + Math.min(60, first.rect.width / 2)) continue;
+            drag.gapTarget = { x: e.clientX, y: e.clientY };
+            panels.moveSection(drag.id, first.id);
+            break;
           }
         }}
         onDrop={(e) => {
@@ -2973,6 +3140,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           endDrag();
         }}
       >
+      {rowBreakNodes}
       {dragPlaceholderNode}
       {isRemoved('strokeControls') ? null : (
       <PanelSection

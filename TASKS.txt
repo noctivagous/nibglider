@@ -1,11 +1,15 @@
 [ ] application menus, currently to the left of drawing control sections in the Panel should have two views, 
 stack (current), and grid.  still hover to show.  top left is File (icon), top right is Document and Settings,
   bottom left: Operations, bottom right:Layers and Obj.
-  File - New, Save, Export, Import, Walkthrough (future)
-  Document and Settings - for configuring the document (canvas size, m), the application.
-  Layers and Objects  operations like Bring To Front, Group selection, Duplicate Selection
-  Operations and Modes - operations.
+  
+  
+  File: Open Document (Gallery), New Document, Save (Gallery), Renamed, Export, Import, Tutorial (future)
+  Document and Settings: for configuring the document (canvas size, m), the application.
+  Layers and Objects:  operations like Bring To Front, Group selection, Duplicate Selection
   make sure keyboard shortcuts can be listed next to the items.
+  
+  Operations and Modes operations.
+  
   [ ] in the code we want to set the data foundation for measurement and page units, whether the user
 is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app should
 be aware of pt, inch, pica, cm.  users will stay within mm to m for SI
@@ -23,12 +27,15 @@ description.  NGPath > Polygon > Quadrilateral > Parallelogram,  Polygon > Quadr
 Polygon > Regular Polygon.  when object changes, like has union, subtraction, intersection
 operations, path change, then it moves to regular Path.
 
+
 CURSOR STATES 
 
 [ ] When the cursor hovers over a snapping point, it should change to indicate this.
 
 PANEL SECTION CONTROLS
 
+[ ] When the panel section is dragged into a new spot, the others that move
+should animate with their rearrangment.
 
 [ ] Hovering over the stroke stepper numeric text field  will show a vertical slider
 flyout popover.  a numeric text field with this attribute and accompanying
@@ -95,7 +102,7 @@ ACTIVE OBJECTS
 	 and so the shape can be dragged.
 	
 COMBINATORICS
-[ ] If Combinatorics mode is on, it affects the Stamp (W) key.
+[ ] If Combinatorics mode is on, the Stamp (W) key should use it too.
 [ ] If combinatorics is on and set to subtract, an open path will act to slice paths and shapes (closed paths).
 [ ] with the Shape keys (Circle, Rect keys), the outcome is previewed lived while drawing shapes .
 [ ] shape margin.

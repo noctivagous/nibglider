@@ -10,10 +10,33 @@ export interface MenuItemDef { commandId: string }
 export interface MenuDef { id: string; title: string; items: MenuItemDef[] }
 
 export const APPLICATION_MENUS: MenuDef[] = [
-  { id: 'file', title: 'File', items: [{ commandId: 'undo' }, { commandId: 'redo' }] },
-  { id: 'document', title: 'Document and Settings', items: [{ commandId: 'reset-zoom' }] },
-  { id: 'operations', title: 'Operations and Modes', items: [{ commandId: 'group' }, { commandId: 'delete-selection' }] },
-  { id: 'layers', title: 'Layers and Objects', items: [{ commandId: 'select' }] },
+  {
+    id: 'file', title: 'File', items: [
+      { commandId: 'open-gallery' }, { commandId: 'new-document' },
+      { commandId: 'save-gallery' }, { commandId: 'rename-document' },
+      { commandId: 'export' }, { commandId: 'import' }, { commandId: 'tutorial' },
+    ],
+  },
+  {
+    id: 'document', title: 'Document and Settings', items: [
+      { commandId: 'page-size' }, { commandId: 'length-unit' },
+      { commandId: 'reset-zoom' }, { commandId: 'toggle-panel' },
+      { commandId: 'toggle-keyboard' }, { commandId: 'toggle-status' },
+    ],
+  },
+  {
+    id: 'operations', title: 'Operations and Modes', items: [
+      { commandId: 'group' }, { commandId: 'delete-selection' },
+      { commandId: 'scale-dialog' }, { commandId: 'rotate-dialog' },
+    ],
+  },
+  {
+    id: 'layers', title: 'Layers and Objects', items: [
+      { commandId: 'select' }, { commandId: 'bring-to-front' },
+      { commandId: 'send-to-back' }, { commandId: 'duplicate-selection' },
+      { commandId: 'group' },
+    ],
+  },
 ];
 
 export const PANEL_GROUP_IDS = ['paint', 'keys', 'snap'] as const;
@@ -40,6 +63,7 @@ const DEFAULT_SECTION_GROUPS: Record<string, string[]> = {
 const COLLAPSED_KEY = 'nibglider.panelCollapsed';
 const REMOVED_KEY = 'nibglider.panelRemoved';
 const ORDER_KEY = 'nibglider.panelOrder';
+const ROW_STARTS_KEY = 'nibglider.panelRowStarts';
 
 export function sectionLabel(id: string): string {
   return PANEL_SECTIONS.find((section) => section.id === id)?.label ?? id;
@@ -128,6 +152,7 @@ export class PanelsManager {
   collapsed: Record<string, boolean>;
   removed: string[];
   order: Record<string, string[]>;
+  rowStarts: string[];
   private version = 0;
   private readonly listeners = new Set<() => void>();
 
@@ -136,6 +161,7 @@ export class PanelsManager {
     this.collapsed = loadRecord(store, COLLAPSED_KEY);
     this.removed = loadList(store, REMOVED_KEY);
     this.order = loadOrder(store, ORDER_KEY);
+    this.rowStarts = loadList(store, ROW_STARTS_KEY);
   }
 
   get menuLayout(): MenuLayout {
@@ -169,6 +195,15 @@ export class PanelsManager {
     this.emit();
   }
 
+  setRowStarts(ids: string[]): void {
+    const order = sectionOrder(this.order);
+    const next = [...new Set(ids)].filter((id) => order.includes(id) && id !== order[0]);
+    if (next.length === this.rowStarts.length && next.every((id, i) => id === this.rowStarts[i])) return;
+    this.rowStarts = next;
+    this.write(ROW_STARTS_KEY, JSON.stringify(next));
+    this.emit();
+  }
+
   moveSection(fromId: string, toId: string, after = false): void {
     const before = sectionOrder(this.order);
     if (!before.includes(fromId) || fromId === toId) return;
@@ -176,9 +211,25 @@ export class PanelsManager {
     const at = toId ? next.indexOf(toId) : -1;
     if (at < 0) next.push(fromId);
     else next.splice(after ? at + 1 : at, 0, fromId);
-    if (before.every((id, index) => id === next[index])) return;
-    this.order = { all: next };
-    this.write(ORDER_KEY, JSON.stringify(this.order));
+    const starts = new Set(this.rowStarts);
+    if (starts.delete(fromId)) {
+      const successor = before[before.indexOf(fromId) + 1];
+      if (successor) starts.add(successor);
+    }
+    if (!after && starts.delete(toId)) starts.add(fromId);
+    const rowStarts = next.filter((id) => starts.has(id) && id !== next[0]);
+    const orderChanged = before.some((id, index) => id !== next[index]);
+    const rowsChanged = rowStarts.length !== this.rowStarts.length ||
+      rowStarts.some((id, index) => id !== this.rowStarts[index]);
+    if (!orderChanged && !rowsChanged) return;
+    if (orderChanged) {
+      this.order = { all: next };
+      this.write(ORDER_KEY, JSON.stringify(this.order));
+    }
+    if (rowsChanged) {
+      this.rowStarts = rowStarts;
+      this.write(ROW_STARTS_KEY, JSON.stringify(rowStarts));
+    }
     this.emit();
   }
 
