@@ -8,6 +8,7 @@ import TutorialOverlay from './components/TutorialOverlay';
 import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
+import { restorableDocument } from './ui/DocumentGallery';
 import { PanelsManager } from './ui/PanelsManager';
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
@@ -249,10 +250,23 @@ export default function App() {
     if (tutorialSnap.status === 'done') markTutorialCompleted(browserStore());
   }, [tutorialSnap.status]);
 
+  // Restores the open gallery document once per engine lifetime, so a
+  // reload lands back on the saved scene. StrictMode remounts the attach
+  // effect without recreating the engine, hence the guard.
+  const restoredRef = useRef(false);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     engine.attach(canvas);
+    if (!restoredRef.current) {
+      restoredRef.current = true;
+      try {
+        const doc = restorableDocument(browserStore());
+        if (doc && engine.replaceSceneWithSVG(`Open ${doc.name}`, doc.svg)) {
+          engine.markDocumentClean();
+        }
+      } catch { /* A bad save never blocks startup. */ }
+    }
     return () => engine.detach();
   }, [engine]);
 

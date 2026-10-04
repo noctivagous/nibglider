@@ -124,6 +124,20 @@ export function currentId(store: KeyValueStore = browserStore()): string | null 
   return docs.some((doc) => doc.id === id) ? id : null;
 }
 
+/** The named gallery document, or null when the id is unknown. */
+export function getDocument(store: KeyValueStore, id: string): GalleryDoc | null {
+  return parseDocs(store.getItem(GALLERY_DOCS_KEY)).find((doc) => doc.id === id) ?? null;
+}
+
+/** The document to restore on startup: the current one when it still
+ * exists and holds artwork. Null means start with a blank canvas. */
+export function restorableDocument(store: KeyValueStore = browserStore()): GalleryDoc | null {
+  const id = currentId(store);
+  if (!id) return null;
+  const doc = getDocument(store, id);
+  return doc && doc.svg.trim().length > 0 ? doc : null;
+}
+
 /** Name of the currently open gallery document, or null for untitled work. */
 export function currentName(store: KeyValueStore = browserStore()): string | null {
   const id = currentId(store);

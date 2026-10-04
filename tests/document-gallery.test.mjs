@@ -4,8 +4,10 @@ import {
   currentId,
   currentName,
   deleteDocument,
+  getDocument,
   listDocuments,
   renameDocument,
+  restorableDocument,
   saveDocument,
   setCurrent,
 } from '../src/ui/DocumentGallery.ts';
@@ -61,6 +63,31 @@ test('gallery delete clears the current id only when it points at the doc', () =
   assert.equal(deleteDocument(mem, second), true);
   assert.equal(currentId(mem), null);
   assert.deepEqual(listDocuments(mem), []);
+});
+
+test('gallery looks up documents by id', () => {
+  const mem = store();
+  assert.equal(getDocument(mem, 'missing'), null);
+  const id = saveDocument(mem, 'First', SVG);
+  assert.equal(getDocument(mem, id)?.name, 'First');
+  assert.equal(getDocument(mem, 'missing'), null);
+});
+
+test('reload restores the saved current document', () => {
+  const mem = store();
+  assert.equal(restorableDocument(mem), null);
+  const id = saveDocument(mem, 'Work', SVG);
+  assert.equal(restorableDocument(mem)?.id, id);
+});
+
+test('reload starts blank when the current doc is gone or empty', () => {
+  const mem = store();
+  const id = saveDocument(mem, 'Work', SVG);
+  assert.ok(restorableDocument(mem));
+  deleteDocument(mem, id);
+  assert.equal(restorableDocument(mem), null);
+  saveDocument(mem, 'Empty', '   ');
+  assert.equal(restorableDocument(mem), null);
 });
 
 test('gallery tolerates corrupt store contents', () => {
