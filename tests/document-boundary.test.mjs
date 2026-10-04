@@ -155,8 +155,9 @@ test('wheel gestures route pinch, trackpad pan, and notched zoom', () => {
   assert.equal(classifyWheel(wheel({ deltaX: 12, deltaY: 4 })), 'pan');
   assert.equal(classifyWheel(wheel({ deltaY: 6 })), 'pan');
   assert.equal(classifyWheel(wheel({ deltaY: 100 })), 'zoom');
-  assert.equal(classifyWheel(wheel({ deltaY: 4, wheelDeltaY: 120 })), 'zoom');
-  assert.equal(classifyWheel(wheel({ deltaY: 137, wheelDeltaY: -411 })), 'pan');
+  assert.equal(classifyWheel(wheel({ deltaY: 100, wheelDeltaY: -120 })), 'zoom');
+  assert.equal(classifyWheel(wheel({ deltaY: 100, wheelDeltaY: -120 }), true), 'zoom');
+  assert.equal(classifyWheel(wheel({ deltaY: 4, wheelDeltaY: -12 })), 'pan');
   assert.equal(classifyWheel(wheel({ deltaY: 100 }), true), 'pan');
   assert.equal(classifyWheel(wheel({ deltaY: 100 }), false), 'zoom');
 });
@@ -173,12 +174,55 @@ test('trackpad pan shifts the view and pinch zooms without dirtying', () => {
     assert.equal(s.view.center.x, before.x - 20);
     assert.equal(s.view.center.y, before.y - 10);
     assert.equal(s.view.zoom, 1);
-    engine['onMouseWheel'](wheel({ deltaY: 100 }));
+    engine['onMouseWheel'](wheel({ deltaY: 100, wheelDeltaY: -120 }));
     assert.equal(s.view.zoom, Math.exp(-0.2));
     engine['onMouseWheel'](wheel({ ctrlKey: true, deltaY: -10 }));
     assert.ok(Math.abs(s.view.zoom - Math.exp(-0.2) * Math.exp(0.06)) < 1e-9);
     assert.equal(engine.documentRevision(), 0);
     assert.equal(engine.isDocumentDirty(), false);
+  } finally { s.project.remove(); }
+});
+
+test('safari gesture pinch zooms by scale ratio and stands wheel down', () => {
+  const s = scope(); const engine = new NibGliderEngine(s, () => {});
+  const gesture = (over = {}) => ({ preventDefault: () => {}, ...over });
+  const wheel = (over = {}) => ({
+    deltaX: 0, deltaY: 0, deltaMode: 0, ctrlKey: false, clientX: 0, clientY: 0,
+    preventDefault: () => {}, ...over,
+  });
+  try {
+    engine.onGestureStart(gesture({ scale: 1 }));
+    engine.onGestureChange(gesture({ scale: 1.2 }));
+    assert.equal(s.view.zoom, 1.2);
+    engine.onGestureChange(gesture({ scale: 1.44 }));
+    assert.ok(Math.abs(s.view.zoom - 1.44) < 1e-9);
+    engine.onGestureChange(gesture({ scale: 14.4 }));
+    assert.equal(s.view.zoom, 1.44 * 1.3);
+    engine['onMouseWheel'](wheel({ deltaY: 100, wheelDeltaY: -120 }));
+    assert.equal(s.view.zoom, 1.44 * 1.3);
+    engine.onGestureEnd();
+    engine['onMouseWheel'](wheel({ deltaY: 100, wheelDeltaY: -120 }));
+    assert.ok(Math.abs(s.view.zoom - 1.44 * 1.3 * Math.exp(-0.2)) < 1e-9);
+  } finally { s.project.remove(); }
+});
+
+test('pan deltas are capped per event and clamped to content', () => {
+  const s = scope(); const engine = new NibGliderEngine(s, () => {});
+  try {
+    const viewport = engine['viewport'];
+    const before = s.view.center.clone();
+    viewport.panByScreen(1000, 0);
+    assert.equal(s.view.center.x, before.x - 200);
+    viewport.panByScreen(0, -1000);
+    assert.equal(s.view.center.y, before.y + 200);
+    const small = new s.Path.Rectangle({ from: [0, 0], to: [100, 100] });
+    viewport.panByScreen(30, 0);
+    assert.deepEqual([s.view.center.x, s.view.center.y], [50, 50]);
+    small.remove();
+    const wide = new s.Path.Rectangle({ from: [0, 0], to: [1000, 1000] });
+    for (let i = 0; i < 30; i++) viewport.panByScreen(200, 0);
+    assert.equal(s.view.center.x, 0 + 40 - s.view.bounds.width / 2);
+    wide.remove();
   } finally { s.project.remove(); }
 });
 

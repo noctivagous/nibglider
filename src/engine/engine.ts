@@ -157,10 +157,10 @@ export function classifyWheel(event: Pick<WheelEvent, 'deltaX' | 'deltaY' | 'del
   if (event.deltaMode !== 0) return 'zoom';
   if (event.deltaX !== 0) return 'pan';
   if (event.deltaY === 0) return 'pan';
-  if (
-    typeof event.wheelDeltaY === 'number' && event.wheelDeltaY !== 0 &&
-    event.wheelDeltaY % 120 !== 0
-  ) {
+  if (typeof event.wheelDeltaY === 'number' && event.wheelDeltaY !== 0) {
+    // Legacy notch multiples are definitive wheel hardware either way, and
+    // beat the momentum-sticky window below.
+    if (event.wheelDeltaY % 120 === 0) return 'zoom';
     return 'pan';
   }
   if (!Number.isInteger(event.deltaY) || Math.abs(event.deltaY) < 50) return 'pan';
@@ -470,7 +470,10 @@ export class NibGliderEngine {
       textModeEnabled: () => this.textModeEnabled,
     });
     this.context.layers = new LayerManager(scope);
-    this.context.viewport = new ViewportManager(scope, () => this.afterViewChange());
+    this.context.viewport = new ViewportManager(scope, () => this.afterViewChange(), () => {
+      const items = this.contentItems();
+      return items.length > 0 ? this.collectiveBounds(items) : null;
+    });
     this.context.documentManager = new DocumentManager();
     this.documentManager.subscribe(() => this.notify());
     this.context.scene = new SceneRepository(scope, () => ({
@@ -651,6 +654,9 @@ export class NibGliderEngine {
       onInputReset: () => this.resetKeyboardInput(),
       onDrop: (event) => this.drops.handle(event),
       onWheel: (event) => this.onMouseWheel(event),
+      onGestureStart: (event) => this.onGestureStart(event),
+      onGestureChange: (event) => this.onGestureChange(event),
+      onGestureEnd: () => this.onGestureEnd(),
       onDocumentMouseUp: () => this.pointer.releasePointer(),
       onBeforePrint: this.onBeforePrint,
       onAfterPrint: this.onAfterPrint,
@@ -2138,6 +2144,11 @@ export class NibGliderEngine {
   }
 
   private lastTrackpadPanAt = 0;
+  /** Safari reports pinch as gesture events, not ctrl+wheel. While one is
+   * in flight the wheel zoom/pinch branch stands down (dual-reporting
+   * engines would otherwise zoom twice); pan still applies. */
+  private gestureZoomActive = false;
+  private gestureZoomBase = 0;
 
   private onMouseWheel(event: WheelEvent): void {
     // Always swallowed: browsers treat ctrl+wheel as page zoom, and the
@@ -2145,11 +2156,13 @@ export class NibGliderEngine {
     event.preventDefault();
     if (event.deltaY === 0 && event.deltaX === 0) return;
     const recentTrackpad = Date.now() - this.lastTrackpadPanAt < TRACKPAD_STICKY_MS;
-    if (classifyWheel(event, recentTrackpad) === 'pan') {
+    const gesture = classifyWheel(event, recentTrackpad);
+    if (gesture === 'pan') {
       this.lastTrackpadPanAt = Date.now();
       this.viewport.panByScreen(event.deltaX, event.deltaY);
       return;
     }
+    if (this.gestureZoomActive) return;
     const view = this.scope.view;
     const el = view.element as HTMLCanvasElement | null;
     const viewPoint = el && typeof el.getBoundingClientRect === 'function'
@@ -2165,6 +2178,38 @@ export class NibGliderEngine {
   /** Select the content item under the cursor. */
   hitTestUnderCursor(): void {
     this.pointer.hitTestUnderCursor();
+  }
+
+  /** Safari trackpad pinch: cumulative scale from gesturestart. */
+  onGestureStart(event: Event): void {
+    event.preventDefault();
+    const scale = (event as unknown as { scale?: unknown }).scale;
+    this.gestureZoomBase = typeof scale === 'number' && scale > 0 ? scale : 0;
+    this.gestureZoomActive = this.gestureZoomBase > 0;
+  }
+
+  /** Each change zooms by the ratio since the last one, at the pointer. */
+  onGestureChange(event: Event): void {
+    event.preventDefault();
+    const e = event as unknown as { scale?: unknown; clientX?: unknown; clientY?: unknown };
+    if (typeof e.scale !== 'number' || !(e.scale > 0) || !this.gestureZoomActive) return;
+    const ratio = e.scale / this.gestureZoomBase;
+    this.gestureZoomBase = e.scale;
+    const view = this.scope.view;
+    const el = view.element as HTMLCanvasElement | null;
+    const viewPoint = el && typeof el.getBoundingClientRect === 'function' &&
+      typeof e.clientX === 'number' && typeof e.clientY === 'number'
+      ? (() => {
+        const rect = el.getBoundingClientRect();
+        return new this.scope.Point(e.clientX - rect.left, e.clientY - rect.top);
+      })()
+      : view.center.clone();
+    this.viewport.zoomByFactor(ratio, viewPoint);
+  }
+
+  onGestureEnd(): void {
+    this.gestureZoomActive = false;
+    this.gestureZoomBase = 0;
   }
 
   // Preview style convention for the drawing keys (circle keys, rect

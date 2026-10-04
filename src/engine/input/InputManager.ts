@@ -24,6 +24,9 @@ export interface InputCallbacks {
   onInputReset: () => void;
   onDrop: (event: DragEvent) => void;
   onWheel: (event: WheelEvent) => void;
+  onGestureStart: (event: Event) => void;
+  onGestureChange: (event: Event) => void;
+  onGestureEnd: () => void;
   onDocumentMouseUp: () => void;
   onBeforePrint: () => void;
   onAfterPrint: () => void;
@@ -61,6 +64,11 @@ export class InputManager {
     const onDragOver = (event: DragEvent) => event.preventDefault();
     const onDrop = (event: DragEvent) => handlers.onDrop(event);
     const onWheel = (event: WheelEvent) => handlers.onWheel(event);
+    // Safari reports trackpad pinch as gesture events instead of
+    // ctrl+wheel. Non-passive so the page zoom can be prevented.
+    const onGestureStart = (event: Event) => handlers.onGestureStart(event);
+    const onGestureChange = (event: Event) => handlers.onGestureChange(event);
+    const onGestureEnd = () => handlers.onGestureEnd();
     const onDocumentMouseUp = () => handlers.onDocumentMouseUp();
 
     document.addEventListener('keydown', onKeyDown);
@@ -71,6 +79,9 @@ export class InputManager {
     canvas.addEventListener('dragover', onDragOver);
     canvas.addEventListener('drop', onDrop);
     canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('gesturestart', onGestureStart);
+    canvas.addEventListener('gesturechange', onGestureChange);
+    canvas.addEventListener('gestureend', onGestureEnd);
     document.addEventListener('mouseup', onDocumentMouseUp);
     window.addEventListener('beforeprint', handlers.onBeforePrint);
     window.addEventListener('afterprint', handlers.onAfterPrint);
@@ -90,6 +101,9 @@ export class InputManager {
       canvas.removeEventListener('dragover', onDragOver);
       canvas.removeEventListener('drop', onDrop);
       canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('gesturestart', onGestureStart);
+      canvas.removeEventListener('gesturechange', onGestureChange);
+      canvas.removeEventListener('gestureend', onGestureEnd);
       view.onMouseDown = null;
       view.onMouseMove = null;
       view.onMouseDrag = null;
