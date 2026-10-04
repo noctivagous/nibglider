@@ -528,6 +528,17 @@ function SectionIconMenu({
   );
 }
 
+// Background watermark label for a section title button. Single word per
+// section (snapping abbreviates to snap); circle/rect keys split across the
+// top and bottom edges.
+function titleSegBgLines(title: string): string[] {
+  const t = title.toLowerCase();
+  if (t === 'snapping') return ['snap'];
+  if (t === 'circle keys') return ['circle', 'keys'];
+  if (t === 'rect keys') return ['rect', 'keys'];
+  return [t];
+}
+
 // Clickable section title: opens the section's icon menu.
 function SectionTitleButton({
   sectionId,
@@ -552,6 +563,19 @@ function SectionTitleButton({
       aria-label={`${title} menu`}
       onClick={(e) => onOpen(sectionId, e.currentTarget)}
     >
+      <span
+        className={
+          'title-seg-bg' +
+          (titleSegBgLines(title).length > 1 ? ' title-seg-bg-split' : '')
+        }
+        aria-hidden="true"
+      >
+        {titleSegBgLines(title).map((line) => (
+          <span key={line} className="title-seg-bg-line">
+            {line}
+          </span>
+        ))}
+      </span>
       {children}
     </button>
   );

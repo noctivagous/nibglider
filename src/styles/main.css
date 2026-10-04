@@ -3484,9 +3484,40 @@ kbd,
    Snapping and History carry items for now; the rest show an empty
    state. Square corners and recessed rows match the panel chrome. */
 #controlPanel button.title-seg {
+  position: relative;
+  overflow: hidden;
   font: inherit;
   color: inherit;
   cursor: pointer;
+}
+
+/* Background watermark label inside each section title button. Absolutely
+   positioned so it never affects layout flow; foreground icons stay above. */
+#controlPanel button.title-seg .title-seg-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  color: rgba(232, 237, 243, 0.22);
+  white-space: nowrap;
+}
+
+#controlPanel button.title-seg .title-seg-bg-split {
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1px 0;
+}
+
+#controlPanel button.title-seg > :not(.title-seg-bg) {
+  position: relative;
+  z-index: 1;
 }
 
 #controlPanel button.title-seg:hover {
