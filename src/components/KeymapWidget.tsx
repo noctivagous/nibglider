@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { keyboardPlatform, keyGroupForLabel } from '../engine/input/keymap';
 import { resolveKeyboardLayout } from '../engine/input/KeyboardLayoutResolver';
 import { buildChordRows } from '../ui/KeymapPresenter';
+import WidgetHandle from './WidgetHandle';
 import type { KeymapRow, NibGliderEngine } from '../engine/engine';
 
 function KeyCell({ row }: { row: KeymapRow }) {
@@ -37,6 +38,7 @@ export default function KeymapWidget({ engine }: { engine: NibGliderEngine }) {
   const adjust = rows.filter((r) => r.section === 'adjust');
   return (
     <div id="keymapWidget" aria-hidden="true">
+      <WidgetHandle widget="keymap" label="Keymap" />
       <table className="keymap-table">
         <tbody>
           {guide.map((r, i) => (

@@ -1,6 +1,7 @@
 // Widget-level move handle: grip affordance shared by the menus rail, the
-// panel sections box, and the on-screen keyboard. Foundation for draggable
-// widgets: stable data-widget hook and label; pointer dragging lands later.
+// keymap table, the panel sections box, and the on-screen keyboard.
+// Foundation for draggable widgets: stable data-widget hook and label;
+// pointer dragging lands later.
 export default function WidgetHandle({
   widget,
   label,

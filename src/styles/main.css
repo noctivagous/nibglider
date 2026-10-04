@@ -222,8 +222,18 @@ article {
 /* Keymap table widget: semitransparent dark-pro table mounted underneath
    the application menus. Display-only; pointer events fall through. */
 #controlPanel .panel-side #keymapWidget {
+  position: relative;
   width: 100%;
+  padding-left: 24px;
   pointer-events: none;
+}
+
+#controlPanel .panel-side #keymapWidget .widget-handle {
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  bottom: 4px;
+  pointer-events: auto;
 }
 
 #keymapWidget .keymap-table {
@@ -3112,8 +3122,8 @@ kbd,
 }
 
 /* Widget move handles: slim grip strips at the left of each widget box
-   (menus rail, panel sections, on-screen keyboard). Foundation for
-   draggable widgets via data-widget hooks; no dragging yet. */
+   (menus rail, keymap table, panel sections, on-screen keyboard).
+   Foundation for draggable widgets via data-widget hooks; no dragging yet. */
 .widget-handle {
   flex: none;
   display: inline-flex;
