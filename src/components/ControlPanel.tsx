@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { primaryShortcut } from '../engine/input/keymap';
+import { PANEL_GROUP_IDS, PanelsManager, sectionLabel, sectionLists } from '../ui/PanelsManager';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
 import NumericStepper from './NumericStepper';
@@ -151,117 +152,6 @@ function CheckIcon({ children }: { children: ReactNode }) {
       {children}
     </svg>
   );
-}
-
-// --- Panel section chrome: drag bar, collapse, remove/restore ---------------
-// Every panel section is wrapped in a PanelSection. The drag bar sits on
-// the left edge and stays visible when the section collapses to icon plus
-// bar only; clicking the bar toggles the collapse. The section icon opens
-// the icon menu, whose last item collapses or expands the section.
-// Right-click removes the section; removed sections are restored from the
-// rail's Sections box. Collapsed/removed/order state persists in localStorage.
-const PANEL_COLLAPSED_KEY = 'nibglider.panelCollapsed';
-const PANEL_REMOVED_KEY = 'nibglider.panelRemoved';
-const PANEL_ORDER_KEY = 'nibglider.panelOrder';
-
-function loadStringRecord(key: string): Record<string, boolean> {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const out: Record<string, boolean> = {};
-      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-        if (v === true) out[k] = true;
-      }
-      return out;
-    }
-  } catch {
-    /* ignore */
-  }
-  return {};
-}
-
-function loadStringList(key: string): string[] {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) return parsed.filter((v) => typeof v === 'string');
-  } catch {
-    /* ignore */
-  }
-  return [];
-}
-
-function loadOrderRecord(key: string): Record<string, string[]> {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const out: Record<string, string[]> = {};
-      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-        if (Array.isArray(v)) out[k] = v.filter((s) => typeof s === 'string');
-      }
-      return out;
-    }
-  } catch {
-    /* ignore */
-  }
-  return {};
-}
-
-const PANEL_SECTIONS: Array<{ id: string; label: string }> = [
-  { id: 'strokeControls', label: 'Stroke' },
-  { id: 'fillControls', label: 'Fill' },
-  { id: 'textControls', label: 'Text' },
-  { id: 'circleFrameControls', label: 'Circle Keys' },
-  { id: 'rectFrameControls', label: 'Rect Keys' },
-  { id: 'combinatoricsControls', label: 'Combinatorics' },
-  { id: 'historyControls', label: 'History' },
-  { id: 'gridControls', label: 'Grid' },
-  { id: 'snappingControls', label: 'Snapping' },
-];
-
-const PANEL_GROUP_IDS = ['paint', 'keys', 'snap'] as const;
-
-const DEFAULT_SECTION_GROUPS: Record<string, string[]> = {
-  paint: ['strokeControls', 'fillControls', 'textControls'],
-  keys: [
-    'circleFrameControls',
-    'rectFrameControls',
-    'combinatoricsControls',
-    'historyControls',
-  ],
-  snap: ['gridControls', 'snappingControls'],
-};
-
-function sectionLists(orderMap: Record<string, string[]>): Record<string, string[]> {
-  const next: Record<string, string[]> = {};
-  const placed = new Set<string>();
-  for (const group of PANEL_GROUP_IDS) {
-    const saved = orderMap[group];
-    const seed = saved && saved.length ? saved : DEFAULT_SECTION_GROUPS[group];
-    next[group] = [];
-    for (const id of seed) {
-      if (placed.has(id)) continue;
-      next[group].push(id);
-      placed.add(id);
-    }
-  }
-  for (const group of PANEL_GROUP_IDS) {
-    for (const id of DEFAULT_SECTION_GROUPS[group]) {
-      if (placed.has(id)) continue;
-      next[group].push(id);
-      placed.add(id);
-    }
-  }
-  return next;
-}
-
-function sectionLabel(id: string): string {
-  return PANEL_SECTIONS.find((s) => s.id === id)?.label ?? id;
 }
 
 function PanelSection({
@@ -2509,42 +2399,17 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     [paramsFlyout, dismissSelects],
   );
   // Panel section chrome: collapse, remove/restore, and drag-reorder.
-  // Persisted so the layout survives reloads.
-  const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>(
-    () => loadStringRecord(PANEL_COLLAPSED_KEY),
-  );
-  const [removedList, setRemovedList] = useState<string[]>(() =>
-    loadStringList(PANEL_REMOVED_KEY),
-  );
-  const [orderMap, setOrderMap] = useState<Record<string, string[]>>(() =>
-    loadOrderRecord(PANEL_ORDER_KEY),
-  );
+  // PanelsManager persists the layout.
+  const panels = useRef(new PanelsManager()).current;
+  useSyncExternalStore(panels.subscribe, panels.getVersion);
+  const collapsedMap = panels.collapsed;
+  const removedList = panels.removed;
+  const orderMap = panels.order;
   const [ctxMenu, setCtxMenu] = useState<{
     id: string;
     x: number;
     y: number;
   } | null>(null);
-  useEffect(() => {
-    try {
-      localStorage.setItem(PANEL_COLLAPSED_KEY, JSON.stringify(collapsedMap));
-    } catch {
-      /* ignore */
-    }
-  }, [collapsedMap]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(PANEL_REMOVED_KEY, JSON.stringify(removedList));
-    } catch {
-      /* ignore */
-    }
-  }, [removedList]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(orderMap));
-    } catch {
-      /* ignore */
-    }
-  }, [orderMap]);
   useEffect(() => {
     if (!ctxMenu) return;
     const close = () => setCtxMenu(null);
@@ -2556,47 +2421,18 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     };
   }, [ctxMenu]);
   const toggleCollapse = useCallback((id: string) => {
-    setCollapsedMap((prev) => ({ ...prev, [id]: !prev[id] }));
+    panels.toggleCollapse(id);
     // The title button and the collapsed icon swap, so a menu anchored
     // to either one would point at a detached node.
     setIconMenu((prev) => (prev?.id === id ? null : prev));
-  }, []);
+  }, [panels]);
   const removeSection = useCallback((id: string) => {
-    setRemovedList((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    panels.removeSection(id);
     setCtxMenu(null);
-  }, []);
+  }, [panels]);
   const restoreSection = useCallback((id: string) => {
-    setRemovedList((prev) => prev.filter((s) => s !== id));
-  }, []);
-  const moveSection = useCallback(
-    (
-      _fromGroup: string,
-      fromId: string,
-      toGroup: string,
-      toId: string,
-      after = false,
-    ) => {
-      setOrderMap((prev) => {
-        const before = sectionLists(prev);
-        const lists = sectionLists(prev);
-        for (const group of PANEL_GROUP_IDS) {
-          lists[group] = lists[group].filter((sid) => sid !== fromId);
-        }
-        const dest = lists[toGroup] ?? [];
-        lists[toGroup] = dest;
-        const at = toId ? dest.indexOf(toId) : -1;
-        if (at < 0) dest.push(fromId);
-        else dest.splice(after ? at + 1 : at, 0, fromId);
-        const same = PANEL_GROUP_IDS.every((group) => {
-          const a = before[group];
-          const b = lists[group];
-          return a.length === b.length && a.every((sid, i) => sid === b[i]);
-        });
-        return same ? prev : lists;
-      });
-    },
-    [],
-  );
+    panels.restoreSection(id);
+  }, [panels]);
   const dragRef = useRef<{ id: string; group: string } | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const groupHosts = useRef<Record<string, HTMLDivElement | null>>({});
@@ -2616,19 +2452,19 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     (overId: string, overGroup: string, after: boolean) => {
       const drag = dragRef.current;
       if (!drag || drag.id === overId) return;
-      moveSection(drag.group, drag.id, overGroup, overId, after);
+      panels.moveSection(drag.group, drag.id, overGroup, overId, after);
       drag.group = overGroup;
     },
-    [moveSection],
+    [panels],
   );
   const hoverGroup = useCallback(
     (overGroup: string) => {
       const drag = dragRef.current;
       if (!drag || drag.group === overGroup) return;
-      moveSection(drag.group, drag.id, overGroup, '', true);
+      panels.moveSection(drag.group, drag.id, overGroup, '', true);
       drag.group = overGroup;
     },
-    [moveSection],
+    [panels],
   );
   const isRemoved = useCallback((id: string) => removedList.includes(id), [removedList]);
   // Operations rail box: immediate entries act on the selection at once;

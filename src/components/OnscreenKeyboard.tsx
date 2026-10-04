@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore
 import { keyboardPlatform, type KeyCap } from '../engine/input/keymap';
 import { resolveKeyboardLayout, type ResolvedKeyCap } from '../engine/input/KeyboardLayoutResolver';
 import { schemaById } from '../engine/input/KeySettingsRegistry';
+import { keycapClick } from '../ui/KeyboardViewModel';
 import type { NibGliderEngine } from '../engine/engine';
 import KeySettingsPopover from './KeySettingsPopover';
 
@@ -357,7 +358,7 @@ function KeyButton({
   );
 }
 
-export default function Keyboard({
+export default function OnscreenKeyboard({
   engine,
   activeCode,
   showSpacebar,
@@ -396,12 +397,14 @@ export default function Keyboard({
       return null;
     });
   }, []);
-  const clickFor = (def: ResolvedKeyCap) =>
-    def.clickable && def.commandId && onCommand
-      ? () => onCommand(def.commandId as string)
+  const clickFor = (def: ResolvedKeyCap) => {
+    const commandId = def.commandId;
+    return keycapClick(def) === 'command' && commandId && onCommand
+      ? () => onCommand(commandId)
       : undefined;
+  };
   const settingsFor = (def: ResolvedKeyCap) => {
-    if (!def.settingsId || !def.settingsSummary || !schemaById(def.settingsId)) return null;
+    if (keycapClick(def) !== 'settings' || !def.settingsId || !def.settingsSummary) return null;
     return { id: def.settingsId, summary: def.settingsSummary };
   };
   const toggleSettings = (def: ResolvedKeyCap, anchor: HTMLButtonElement) => {

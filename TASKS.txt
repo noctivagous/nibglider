@@ -27,6 +27,21 @@ CURSOR STATES
 
 [ ] When the cursor hovers over a snapping point, it should change to indicate this.
 
+PANEL SECTION CONTROLS
+
+
+[ ] Hovering over the stroke stepper numeric text field  will show a vertical slider
+flyout popover.  a numeric text field with this attribute and accompanying
+attributes will do this.
+
+[ ] Hovering over a numeric text field and pressing [ or ] will decrement or increment.
+decrement-increment/step info will be stored in a gui control because for
+the stroke width, e.g., it will be in 2pt intervals until 10pt then 5pt intervals
+then 10pt.  Pressing F over a numeric field will start a line that draws
+to the cursor from the field that changes the value.  This line will extend
+from a square subcontrol to the right of the right stepper, so that it can be
+manually clicked.
+
 
 IN-DRAWING WIDGETS AND ACTOR OBJECTS
 

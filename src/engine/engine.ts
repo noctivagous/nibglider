@@ -26,7 +26,10 @@ import {
   PointerController,
   type PointerHost,
 } from './input/PointerController';
-import { commandKeycap, keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
+import { keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
+import { CombinatoricsManager } from './scene/CombinatoricsManager';
+import { DropController } from './document/DropController';
+import { buildStatusSchema } from '../ui/StatusPresenter';
 import { modifiersOf } from './input/ModifierStateTracker';
 import { PathTool } from './drawing/PathTool';
 import { CircleTool } from './drawing/CircleTool';
@@ -73,8 +76,6 @@ import type {
   ShapeType,
   SplineTextPlacement,
   StatusKeyGroup,
-  StatusLine,
-  StatusRun,
   StatusSchema,
   StrokeCap,
   StrokeJoin,
@@ -315,6 +316,8 @@ export class NibGliderEngine {
   // source data is retained; derived items are kept separately for identity.
   private readonly scene: SceneRepository;
   private readonly history: HistoryManager;
+  private readonly combinatorics: CombinatoricsManager;
+  private readonly drops: DropController;
   private readonly transforms: TransformManager;
   private readonly gridRenderer: GridRenderer;
   private readonly snapping: SnappingManager;
@@ -428,6 +431,44 @@ export class NibGliderEngine {
       () => this.documentManager.markEdited('scene'));
     this.selection = new SelectionManager(this.scene, this.history,
       (original, clone) => this.scene.retainClone(original, clone, (item) => this.shapePartOf(item)));
+    this.combinatorics = new CombinatoricsManager({
+      combineMode: () => this.combineMode,
+      setCombineNote: (note) => { this.lastCombineNote = note; },
+      selectedItems: () => this.selectedItems,
+      prependSelection: (item) => this.selection.prepend(item),
+      removeFromSelection: (item) => this.removeItemFromSelection(item),
+      addToSelection: (item) => this.addItemToSelection(item),
+      isSelected: (item) => this.selectedItems.indexOf(item) !== -1,
+      dropItem: (item) => this.dropItem(item),
+      shapePartOf: (item) => this.shapePartOf(item),
+      textModeEnabled: () => this.textModeEnabled,
+      withShapeText: (item) => this.withShapeText(item, false),
+      activeLayer: () => this.layers.activeLayer,
+      drawingPath: () => this.path,
+      quadPath: () => this.quadPath,
+      isNonContentItem: (item) => this.isNonContentItem(item),
+      layerChildren: () => [...this.layers.activeLayer.children],
+      capture: () => this.captureDeposit(),
+      commit: (label, snap, placed) => {
+        this.recordSceneCommand(label, snap.before, snap.selected, placed, snap.retained);
+      },
+      retain: (item) => {
+        if (item instanceof scope.Path || item instanceof scope.CompoundPath) this.scene.retain(item);
+      },
+      updateTextContent: () => this.updateTextContent(),
+      notify: () => this.notify(),
+    });
+    this.drops = new DropController({
+      scope: () => this.scope,
+      zoom: () => this.viewport.zoom,
+      clearSelection: () => this.clearOutSelection(),
+      selectedItems: () => this.selectedItems,
+      addToSelection: (item) => this.addItemToSelection(item),
+      setDropNote: (note) => { this.lastDropNote = note; },
+      recordDrop: (label, item, selectedBefore) => this.history.recordDrop(label, item, selectedBefore),
+      updateTextContent: () => this.updateTextContent(),
+      notify: () => this.notify(),
+    });
     this.transforms = new TransformManager(this.scene, this.selection, this.history);
     this.gridRenderer = new GridRenderer(scope);
     this.snapping = new SnappingManager(scope, () => ({
@@ -717,7 +758,7 @@ export class NibGliderEngine {
       onKeyHighlight: (event) => this.keyboard.reportKeyHighlight(event),
       onKeyUp: (event) => this.keyboard.reportKeyUp(event),
       onInputReset: () => this.resetKeyboardInput(),
-      onDrop: (event) => this.handleImageDrop(event),
+      onDrop: (event) => this.drops.handle(event),
       onWheel: (event) => this.onMouseWheel(event),
       onDocumentMouseUp: () => this.pointer.releasePointer(),
       onBeforePrint: this.onBeforePrint,
@@ -739,207 +780,6 @@ export class NibGliderEngine {
     this.viewport.endPan();
     this.input.detach();
     this.resetKeyboardInput();
-  }
-
-  private handleImageDrop(event: DragEvent): void {
-    event.preventDefault();
-    const files = event.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-    const scope = this.scope;
-    const view = scope.view;
-    const canvas = view.element as HTMLCanvasElement | null;
-    const rect = canvas ? canvas.getBoundingClientRect() : null;
-    // View (CSS) pixels -> project units, so the drop lands under the
-    // cursor at any zoom or pan. Falls back to the view center.
-    const base =
-      rect != null
-        ? view.viewToProject(
-            new scope.Point(
-              event.clientX - rect.left,
-              event.clientY - rect.top,
-            ),
-          )
-        : view.center.clone();
-    const cascade = 24 / this.viewport.zoom;
-    this.lastDropNote = '';
-    const selBefore = [...this.selectedItems];
-    this.clearOutSelection();
-    this.updateTextContent();
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const at = base.add(new scope.Point(cascade * i, cascade * i));
-      if (this.looksLikeSvg(file)) this.dropSvgFile(file, at, selBefore);
-      else if (this.looksLikeRaster(file))
-        this.dropRasterFile(file, at, selBefore);
-      else this.dropUnknownFile(file, at, selBefore);
-    }
-    this.notify();
-  }
-
-  private looksLikeSvg(file: File): boolean {
-    if (/svg/i.test(file.type)) return true;
-    return /\.svg$/i.test(file.name);
-  }
-
-  private looksLikeRaster(file: File): boolean {
-    if (/^image\//.test(file.type)) return true;
-    return /\.(png|jpe?g|gif|webp|bmp|avif|ico)$/i.test(file.name);
-  }
-
-  // Scale down only: items larger than 75% of the visible view in
-  // either dimension fit inside it, aspect preserved, about center.
-  private fitItemToView(item: AnyItem): void {
-    try {
-      const bounds = item.bounds;
-      const vb = this.scope.view.bounds;
-      if (!bounds || !vb) return;
-      if (!(bounds.width > 0 && bounds.height > 0)) return;
-      if (!(vb.width > 0 && vb.height > 0)) return;
-      const s = Math.min(
-        1,
-        (vb.width * 0.75) / bounds.width,
-        (vb.height * 0.75) / bounds.height,
-      );
-      if (s < 1) item.scale(s, bounds.center);
-    } catch {
-      // Best effort; a drop must never throw.
-    }
-  }
-
-  private noteDropFailure(note: string): void {
-    this.lastDropNote = note;
-    this.updateTextContent();
-    this.notify();
-  }
-
-  // One undoable entry per placed file: only that item is removed on
-  // undo, so drops interleaved with later drawing stay independent.
-  private recordDropCommand(
-    label: string,
-    item: AnyItem,
-    selBefore: AnyItem[],
-  ): void {
-    this.history.recordDrop(label, item, selBefore);
-  }
-
-  private placeDroppedItem(
-    label: string,
-    item: AnyItem,
-    at: AnyItem,
-    selBefore: AnyItem[],
-  ): void {
-    if (!item) {
-      this.noteDropFailure('Drop failed: could not read that file.');
-      return;
-    }
-    try {
-      item.position = at;
-    } catch {
-      // Keep the imported position.
-    }
-    this.fitItemToView(item);
-    this.addItemToSelection(item);
-    this.recordDropCommand(label, item, selBefore);
-    this.updateTextContent();
-    this.notify();
-  }
-
-  private importSvgText(
-    text: string,
-    fileName: string,
-    at: AnyItem,
-    selBefore: AnyItem[],
-  ): void {
-    try {
-      this.scope.project.importSVG(text, (imported: AnyItem) => {
-        if (!imported) {
-          this.noteDropFailure(`Drop failed: ${fileName} did not import.`);
-          return;
-        }
-        // Behave as one object in selection/move/group flows.
-        try {
-          imported.data.isUserGroup = true;
-        } catch {
-          // Optional; grouping just won't apply.
-        }
-        this.placeDroppedItem(`Deposit ${fileName}`, imported, at, selBefore);
-      });
-    } catch {
-      this.noteDropFailure(`Drop failed: ${fileName} did not import.`);
-    }
-  }
-
-  private dropSvgFile(file: File, at: AnyItem, selBefore: AnyItem[]): void {
-    const reader = new FileReader();
-    reader.onerror = () =>
-      this.noteDropFailure(`Drop failed: could not read ${file.name}.`);
-    reader.onload = (e) => {
-      const result = e.target?.result;
-      if (
-        typeof result !== 'string' ||
-        !/<svg[\s>]/i.test(result.slice(0, 4096))
-      ) {
-        this.noteDropFailure(`Drop failed: ${file.name} is not SVG.`);
-        return;
-      }
-      this.importSvgText(result, file.name, at, selBefore);
-    };
-    reader.readAsText(file);
-  }
-
-  private dropRasterFile(
-    file: File,
-    at: AnyItem,
-    selBefore: AnyItem[],
-  ): void {
-    const reader = new FileReader();
-    reader.onerror = () =>
-      this.noteDropFailure(`Drop failed: could not read ${file.name}.`);
-    reader.onload = (e) => {
-      const result = e.target?.result;
-      if (typeof result !== 'string') {
-        this.noteDropFailure(`Drop failed: could not read ${file.name}.`);
-        return;
-      }
-      const image = new Image();
-      image.onerror = () =>
-        this.noteDropFailure(`Drop failed: ${file.name} did not decode.`);
-      image.onload = () => {
-        let raster: AnyItem = null;
-        try {
-          raster = new this.scope.Raster(image);
-        } catch {
-          raster = null;
-        }
-        this.placeDroppedItem(`Deposit ${file.name}`, raster, at, selBefore);
-      };
-      image.src = result;
-    };
-    reader.readAsDataURL(file);
-  }
-
-  private dropUnknownFile(
-    file: File,
-    at: AnyItem,
-    selBefore: AnyItem[],
-  ): void {
-    const reader = new FileReader();
-    reader.onerror = () =>
-      this.noteDropFailure(
-        `Drop skipped: ${file.name} is not an image.`,
-      );
-    reader.onload = (e) => {
-      const result = e.target?.result;
-      if (
-        typeof result === 'string' &&
-        /<svg[\s>]/i.test(result.slice(0, 4096))
-      ) {
-        this.importSvgText(result, file.name, at, selBefore);
-        return;
-      }
-      this.noteDropFailure(`Drop skipped: ${file.name} is not an image.`);
-    };
-    reader.readAsText(file);
   }
 
   // --- Control-panel setters (replace registerEventListeners wiring) ---
@@ -1375,56 +1215,13 @@ export class NibGliderEngine {
   // Operand order is selection order: base = first-selected, tool =
   // second-selected. Subtract is non-commutative, so the panel tooltips
   // say so.
-  private combinePair(mode: CombineMode): boolean {
-    const base = this.selectedItems[0];
-    const tool = this.selectedItems[1];
-    if (!base || !tool) return false;
-    // Paper.js spells the union method "unite".
-    const op = mode === 'union' ? base.unite : base[mode];
-    if (typeof op !== 'function') return false;
-    let result: AnyItem = null;
-    try {
-      result = op.call(base, tool, { insert: true });
-    } catch {
-      result = null;
-    }
-    if (!result) return false;
-    this.removeItemFromSelection(base);
-    this.removeItemFromSelection(tool);
-    base.remove();
-    tool.remove();
-    this.selection.prepend(result);
-    return true;
-  }
-
   canCombineSelection(): boolean {
-    if (this.selectedItems.length < 2) return false;
-    const base = this.selectedItems[0];
-    const tool = this.selectedItems[1];
-    return (
-      !!base &&
-      !!tool &&
-      typeof base.unite === 'function' &&
-      typeof base.subtract === 'function' &&
-      typeof base.intersect === 'function'
-    );
+    return this.combinatorics.canCombineSelection();
   }
 
   combineSelection(mode: CombineMode): void {
     if (mode !== 'union' && mode !== 'subtract' && mode !== 'intersect') return;
-    if (!this.canCombineSelection()) {
-      this.lastCombineNote = 'Select two shapes first.';
-      this.updateTextContent();
-      this.notify();
-      return;
-    }
-    const ok = this.combinePair(mode);
-    if (ok) this.documentManager.markEdited('scene');
-    this.lastCombineNote = ok
-      ? ''
-      : 'No result — shapes may not overlap.';
-    this.updateTextContent();
-    this.notify();
+    this.combinatorics.combineSelection(mode);
   }
 
   setCombineMode(m: CombineMode | 'none'): void {
@@ -1434,45 +1231,6 @@ export class NibGliderEngine {
     this.updatePreviewBox();
     this.updateTextContent();
     this.notify();
-  }
-
-  // Do two shapes touch (overlap, edge-touch, or containment either
-  // way)? intersects() only sees curve crossings, so a shape fully
-  // inside another needs the containment checks. Unknown shapes count
-  // as touching (attempt the op) rather than risk skipping a real cut.
-  private somePointOn(item: AnyItem): AnyItem | null {
-    try {
-      if (item.segments && item.segments.length > 0)
-        return item.segments[0].point;
-      if (Array.isArray(item.children)) {
-        for (const c of item.children) {
-          const p = this.somePointOn(c);
-          if (p) return p;
-        }
-      }
-      if (item.bounds) return item.bounds.center;
-    } catch {
-      // Fall through to null.
-    }
-    return null;
-  }
-
-  private containsPoint(boundary: AnyItem, pt: AnyItem): boolean {
-    try { return !!boundary.contains(pt); } catch { return false; }
-  }
-
-  private shapesTouch(a: AnyItem, b: AnyItem): boolean {
-    try {
-      if (a && b && typeof a.intersects === 'function' && a.intersects(b))
-        return true;
-      const pa = this.somePointOn(a);
-      const pb = this.somePointOn(b);
-      if (pa && this.containsPoint(b, pa)) return true;
-      if (pb && this.containsPoint(a, pb)) return true;
-      return false;
-    } catch {
-      return true;
-    }
   }
 
   // Remove a layer item entirely: out of the selection and off the
@@ -1488,127 +1246,10 @@ export class NibGliderEngine {
     }
   }
 
-  // Fresh shape text for a boolean result when Text Mode is on. Falls
-  // back to the bare geometry when derivation fails (e.g. compounds
-  // paper cannot walk for glyphs).
-  private retextResult(geo: AnyItem): AnyItem {
-    if (!this.textModeEnabled) return geo;
-    try {
-      return this.withShapeText(geo, false);
-    } catch {
-      return geo;
-    }
+  depositWithCombine(deposited: AnyItem): AnyItem | null {
+    return this.combinatorics.depositWithCombine(deposited);
   }
 
-  // Deposit-time combinatorics: a deposited shape combines with every
-  // combinable shape it touches, using the persistent combine mode —
-  // no selection needed. Union merges everything touched plus the
-  // deposit into one shape (deposit paint wins); subtract cuts the
-  // deposit out of each touched shape and consumes the deposit itself
-  // (returns null: nothing to place); intersect keeps the deposit's
-  // overlap with the union of what it touches. Returns the item to
-  // place on the layer, the input untouched when the mode is 'none',
-  // nothing is touched, or an op fails. Shape+text groups combine by
-  // geometry and get fresh text re-derived from the result when Text
-  // Mode is on. Callers place a non-null return; consumed operands are
-  // already removed. Results stay unselected, matching plain deposits.
-  depositWithCombine(deposited: AnyItem): AnyItem | null {
-    if (!deposited || this.combineMode === 'none') return deposited;
-    const opName = this.combineMode === 'union' ? 'unite' : this.combineMode;
-    const depositGeo = this.shapePartOf(deposited);
-    if (!depositGeo || typeof depositGeo[opName] !== 'function') {
-      return deposited;
-    }
-    // Touching = top-level active-layer art the deposit overlaps.
-    // Live drawing state, previews, cursors, and the grid are never
-    // targets (mirrors isNonContentItem plus the in-progress stroke).
-    const targets: Array<{ geo: AnyItem; container: AnyItem }> = [];
-    const layer = this.layers.activeLayer;
-    for (const item of [...layer.children]) {
-      if (!item || item === deposited) continue;
-      if (item === this.path || item === this.quadPath) continue;
-      if (this.isNonContentItem(item)) continue;
-      const geo = this.shapePartOf(item);
-      if (!geo || geo === depositGeo || typeof geo[opName] !== 'function')
-        continue;
-      if (!this.shapesTouch(depositGeo, geo)) continue;
-      targets.push({ geo, container: item });
-    }
-    if (targets.length === 0) return deposited;
-    // insert:false keeps intermediates off the layer throughout.
-    try {
-      if (this.combineMode === 'subtract') {
-        // Two-phase: compute every cut detached first, so a throwing
-        // op cannot leave half the touched shapes modified.
-        const cuts: Array<{
-          container: AnyItem;
-          cut: AnyItem | null;
-          wasSelected: boolean;
-        }> = [];
-        for (const { geo, container } of targets) {
-          cuts.push({
-            container,
-            cut: geo.subtract(depositGeo, { insert: false }),
-            wasSelected: this.selectedItems.indexOf(container) !== -1,
-          });
-        }
-        for (const { container, cut, wasSelected } of cuts) {
-          this.dropItem(container);
-          // Fully covered base vanishes entirely; otherwise the cut
-          // replaces it, keeping its selection membership and paint
-          // (first-operand convention).
-          if (cut && Math.abs(cut.area || 0) > 1e-6) {
-            const replaced = this.retextResult(cut);
-            layer.addChild(replaced);
-            if (wasSelected) this.addItemToSelection(replaced);
-          }
-        }
-        // The deposit is the cutter: it never survives a subtract.
-        for (const doomed of new Set([deposited, depositGeo])) {
-          try {
-            if (doomed && doomed.parent != null) doomed.remove();
-          } catch {
-            // Detached already.
-          }
-        }
-        this.lastCombineNote = '';
-        return null;
-      }
-      // Union folds everything touched plus the deposit (deposit paint
-      // wins as the first operand); intersect keeps the deposit's
-      // overlap with the union of what it touches.
-      let acc: AnyItem = depositGeo;
-      if (this.combineMode === 'intersect') {
-        let union: AnyItem = targets[0].geo;
-        for (const { geo } of targets.slice(1)) {
-          union = union.unite(geo, { insert: false });
-          if (!union) throw new Error('empty union');
-        }
-        acc = depositGeo.intersect(union, { insert: false });
-      } else {
-        for (const { geo } of targets) {
-          acc = acc.unite(geo, { insert: false });
-          if (!acc) throw new Error('empty union');
-        }
-      }
-      if (!acc || !(Math.abs(acc.area || 0) > 1e-6)) {
-        throw new Error('empty boolean result');
-      }
-      for (const { container } of targets) this.dropItem(container);
-      for (const doomed of new Set([deposited, depositGeo])) {
-        try {
-          if (doomed && doomed.parent != null) doomed.remove();
-        } catch {
-          // Detached already.
-        }
-      }
-      this.lastCombineNote = '';
-      return this.retextResult(acc);
-    } catch {
-      this.lastCombineNote = 'No result — shapes may not overlap.';
-      return deposited;
-    }
-  }
 
   // Parallelogram / trapezoid interior angle. 180° is a line; keep a
   // usable wedge on either side of 90°.
@@ -1730,29 +1371,8 @@ export class NibGliderEngine {
       type, params, previewFrame, this.rectangleOrientation, this.polygonRadiusMode,
     );
   }
-  updatePreviewBox(): void {
-    const circleSvg = document.getElementById('shapePreviewPath');
-    if (circleSvg) {
-      circleSvg.setAttribute(
-        'd',
-        this.innerShapePreviewPath(
-          this.circleInnerShapeType,
-          this.circleInnerShapeParams,
-        ),
-      );
-    }
-    const rectSvg = document.getElementById('rectShapePreviewPath');
-    if (rectSvg) {
-      rectSvg.setAttribute(
-        'd',
-        this.innerShapePreviewPath(
-          this.rectangleInnerShapeType,
-          this.rectangleInnerShapeParams,
-          'rect',
-        ),
-      );
-    }
-  }
+  // Preview wells are written by PreviewBoxPresenter. Setters still notify.
+  updatePreviewBox(): void {}
 
   // --- Grid (drawingProperties.js) ---
   // Dots, not lines: one small low-alpha dot per lattice point. Diamond is
@@ -2949,258 +2569,43 @@ export class NibGliderEngine {
   }
 
   // --- Canvas status overlay (NibGliderApp.js updateTextContent) ---
+  private liveStatusHints(): Array<{ label: string; keys: string[] }> {
+    if (!this.isLiveDrawing) return [];
+    const liveByLabel = new Map<string, string[]>();
+    for (const binding of this.keyboard.liveBindings()) {
+      if (!binding.applies()) continue;
+      const keys = liveByLabel.get(binding.label) ?? [];
+      for (const key of binding.keys) {
+        if (!keys.includes(key)) keys.push(key);
+      }
+      liveByLabel.set(binding.label, keys);
+    }
+    return [...liveByLabel].map(([label, keys]) => ({ label, keys }));
+  }
+
   updateTextContent(): void {
-    const T = (s: string): StatusRun => ({ t: 'text', s });
-    const K = (id: string): StatusRun => {
-      const s = commandKeycap(id);
-      return { t: 'key', s, g: keyGroupForLabel(s) };
-    };
-    const state: StatusLine[] = [];
-    const steps: StatusLine[] = [];
-    const L = (kind: StatusLine['kind'], runs: StatusRun[]): StatusLine => ({
-      kind,
-      runs,
-    });
-    const selectedCount = this.selectedItems.length;
-    if (this.isGridEnabled) {
-      state.push(
-        L('meta', [
-          T(`Grid: ON · ${this.gridType === 'diamond' ? 'Diamond' : 'Square'} (`),
-          K('toggle-status'),
-          T(' to toggle)'),
-        ]),
-      );
-    }
-    if (this.lastDropNote) {
-      state.push(L('meta', [T(this.lastDropNote)]));
-    }
-    if (selectedCount) {
-      state.push(L('title', [T('Selected Objects: ' + selectedCount)]));
-      if (this.isInDragLock === false) {
-        steps.push(L('hint', [K('drag-lock'), T(' to begin Drag-Lock')]));
-        steps.push(
-          L('hint', [
-            K('scale-down'),
-            T(' and '),
-            K('scale-up'),
-            T(' to Scale, '),
-            K('rotate-ccw'),
-            T(' and '),
-            K('rotate-cw'),
-            T(' to Rotate'),
-          ]),
-        );
-      }
-    }
-    if (this.isInDragLock) {
-      state.push(L('title', [T('Drag-Lock On ')]));
-      steps.push(
-        L('hint', [
-          T('Move mouse to drag all selected.  '),
-          K('drag-lock'),
-          T(' to release.'),
-        ]),
-      );
-      steps.push(
-        L('hint', [
-          K('stamp'),
-          T(' to Stamp, '),
-          K('scale-down'),
-          T(' and '),
-          K('scale-up'),
-          T(' to Scale, '),
-          K('rotate-ccw'),
-          T(' and '),
-          K('rotate-cw'),
-          T(' to Rotate'),
-        ]),
-      );
-    }
-    if (this.isDrawingPath) {
-      state.push(L('title', [T(this.compositePathTool.active ? 'Drawing Composite Path' : 'Drawing Path')]));
-      if (this.compositePathTool.active) {
-        steps.push(L('hint', [K('sharp-point'), T(' sharp, '), K('spline-point'), T(' B-spline, '),
-          K('rounded-point'), T(` rounded (${this.compositeCornerRadius}pt), `),
-          K('finish-r'), T(' close, '), K('finish-a'), T(' end, '), K('cancel'), T(' cancel')]));
-      } else {
-      steps.push(L('hint', [T('Move mouse to adjust path.')]));
-      steps.push(
-        L('hint', [
-          K('sharp-point'),
-          T(' = sharp point, '),
-          K('spline-point'),
-          T(' = spline (tension:' + this.splineTension.toFixed(1) + '), '),
-          K('finish-r'),
-          T(' = complete shape'),
-        ]),
-      );
-      steps.push(
-        L('hint', [K('finish-a'), T(' = end, '), K('tension-down'), T('/'), K('tension-up'), T('/'), K('tension-reset'), T(' = adjust tension')]),
-      );
-      steps.push(
-        L('hint', [T('A near own start closes · A near a path end joins it')]),
-      );
-      }
-    }
-    if (this.isDrawingShape) {
-      if (
-        this.shapeType === 'circle_radius' ||
-        this.shapeType === 'circle_diameter'
-      ) {
-        const mode = this.shapeType === 'circle_radius' ? 'radius' : 'diameter';
-        state.push(L('title', [T('Circle by (' + mode + ')')]));
-        if (this.shapeType === 'circle_radius' && this.circleRadiusAnchor !== 'origin') {
-          state.push(L('meta', [T('Start: circumference')]));
-        }
-      } else if (this.shapeType === 'circle_radial_stamp') {
-        state.push(L('title', [T('Circle Radial Stamp')]));
-        if (this.radialStampLockedRadius != null) {
-          state.push(
-            L('meta', [
-              T(
-                `Radius locked at ${Math.round(this.radialStampLockedRadius)}pt (0 to unlock)`,
-              ),
-            ]),
-          );
-        }
-      } else if (this.shapeType === 'rectangle_diagonal') {
-        state.push(L('title', [T('Rectangle by Diagonal')]));
-        if (this.rectDiagonalMode !== 'full') {
-          state.push(L('meta', [T(`Diagonal: ${this.rectDiagonalMode} rect`)]));
-        }
-      } else if (this.shapeType === 'rectangle_two_edges') {
-        state.push(L('title', [T('Rectangle by Two Edges')]));
-      } else if (this.shapeType === 'rectangle_centerline') {
-        state.push(L('title', [T('Rectangle by Centerline')]));
-        state.push(L('meta', [T('Width: ' + Math.round(this.shapeWidth) + 'pt')]));
-      }
-      const aspectLabel = this.liveRectAspectLabel();
-      if (aspectLabel) state.push(L('meta', [T('Aspect ' + aspectLabel)]));
-      if (this.shapeType != null && this.shapeType.startsWith('circle_')) {
-        if (this.shapeType === 'circle_radial_stamp') {
-          steps.push(
-            L('hint', [
-              T('Press '),
-              K('radial-stamp'),
-              T(' or '),
-              K('stamp'),
-              T(' to stamp. Move mouse to orbit the origin.'),
-            ]),
-          );
-          steps.push(
-            L('hint', [
-              K('finish-a'),
-              T(' / '),
-              K('finish-r'),
-              T(' to deposit + finish, '),
-              K('cancel'),
-              T(' to cancel.'),
-            ]),
-          );
-        } else {
-          const finishKey = this.shapeType === 'circle_diameter' ? 'circle-diameter' : 'circle-radius';
-          steps.push(
-            L('hint', [
-              T('Press '),
-              K(finishKey),
-              T(' to finish or '),
-              K('stamp'),
-              T(' to stamp.'),
-            ]),
-          );
-        }
-      } else if (this.shapeType === 'rectangle_diagonal') {
-        steps.push(
-          L('hint', [
-            T('Press '),
-            K('rect-diagonal'),
-            T(' to finish or '),
-            K('stamp'),
-            T(' to stamp.'),
-          ]),
-        );
-      } else if (this.shapeType === 'rectangle_two_edges') {
-        if (this.shapePt2 === null) {
-          steps.push(L('hint', [T('1. Move mouse to adjust this first edge.')]));
-          steps.push(
-            L('hint', [
-              T('2. Press '),
-              K('rect-two-edges'),
-              T(' again to start the second edge'),
-            ]),
-          );
-        } else {
-          steps.push(L('hint', [T('1. Move mouse to adjust the second edge.')]));
-          steps.push(
-            L('hint', [
-              T('2. Press '),
-              K('rect-two-edges'),
-              T(' to finish or '),
-              K('stamp'),
-              T(' to stamp.'),
-            ]),
-          );
-        }
-      } else if (this.shapeType === 'rectangle_centerline') {
-        steps.push(L('hint', [T('1. Move mouse to adjust the rectangle.')]));
-        steps.push(
-          L('hint', [
-            K('scale-down'),
-            T(': thin width, '),
-            K('scale-up'),
-            T(': thicken width,'),
-          ]),
-        );
-        steps.push(
-          L('hint', [
-            K('rect-centerline'),
-            T(': finish, '),
-            K('stamp'),
-            T(': stamp, '),
-            K('cancel'),
-            T(': cancel'),
-          ]),
-        );
-      }
-    }
-    if (this.isDrawingQuad) {
-      state.push(
-        L('title', [T('Drawing Quadrilateral (' + this.quadPointCount + '/4)')]),
-      );
-      steps.push(
-        L('hint', [
-          T('Press '),
-          K('quad'),
-          T(' to add next point. '),
-          K('cancel'),
-          T(': cancel'),
-        ]),
-      );
-    }
-    // Live key remaps, driven by the binding registry so future bindings
-    // (repeat counts, radius reference) appear here automatically.
-    if (this.isLiveDrawing) {
-      const liveByLabel = new Map<string, string[]>();
-      for (const b of this.keyboard.liveBindings()) {
-        if (!b.applies()) continue;
-        const keys = liveByLabel.get(b.label) ?? [];
-        for (const k of b.keys) {
-          if (!keys.includes(k)) keys.push(k);
-        }
-        liveByLabel.set(b.label, keys);
-      }
-      for (const [label, keys] of liveByLabel) {
-        const runs: StatusRun[] = [];
-        keys.forEach((k, i) => {
-          if (i > 0) runs.push(T(' / '));
-          runs.push(K(k));
-        });
-        runs.push(T(` ${label}`));
-        steps.push(L('hint', runs));
-      }
-    }
-    // Undo/redo labels are suspended here; the History panel still shows them.
-    this.setStatusSchema({ state, steps });
+    this.setStatusSchema(buildStatusSchema({
+      selectedCount: this.selectedItems.length,
+      gridEnabled: this.isGridEnabled,
+      gridType: this.gridType,
+      dropNote: this.lastDropNote,
+      dragLock: this.isInDragLock,
+      drawingPath: this.isDrawingPath,
+      composite: this.compositePathTool.active,
+      cornerRadius: this.compositeCornerRadius,
+      splineTension: this.splineTension,
+      drawingShape: this.isDrawingShape,
+      shapeType: this.shapeType,
+      circleRadiusAnchor: this.circleRadiusAnchor,
+      radialStampLockedRadius: this.radialStampLockedRadius,
+      rectDiagonalMode: this.rectDiagonalMode,
+      shapeWidth: this.shapeWidth,
+      aspectLabel: this.liveRectAspectLabel(),
+      hasSecondEdge: this.shapePt2 != null,
+      drawingQuad: this.isDrawingQuad,
+      quadPointCount: this.quadPointCount,
+      liveHints: this.liveStatusHints(),
+    }));
   }
 }
 

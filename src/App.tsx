@@ -1,79 +1,22 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import paper from 'paper';
 import { NibGliderEngine, type KeyActivity } from './engine/engine';
 import { isCommandAvailable, matchAppCommand } from './engine/input/keymap';
 import ControlPanel from './components/ControlPanel';
-import Keyboard from './components/Keyboard';
+import OnscreenKeyboard from './components/OnscreenKeyboard';
 import StatusOverlay from './components/StatusOverlay';
+import { GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
+import { writePreviewPaths } from './ui/PreviewBoxPresenter';
 
 // Section title labels in the panel are hidden; icons, keys, and hover
 // tooltips still identify each section.
 const HIDE_SECTION_TITLES = true;
-const KEYBOARD_WIDTH_DEFAULT = 920;
-const KEYBOARD_WIDTH_MIN = 480;
-const KEYBOARD_WIDTH_MAX = 1600;
-const KEYBOARD_WIDTH_KEY = 'nibglider.keyboardWidth';
-const KEYBOARD_VISIBLE_KEY = 'nibglider.keyboardVisible';
-const CONTROLS_VISIBLE_KEY = 'nibglider.controlsVisible';
-const STATUS_VISIBLE_KEY = 'nibglider.statusVisible';
-
-function loadKeyboardWidth(): number {
-  try {
-    const raw = localStorage.getItem(KEYBOARD_WIDTH_KEY);
-    if (raw == null || raw === '') return KEYBOARD_WIDTH_DEFAULT;
-    const n = Number(raw);
-    if (Number.isFinite(n) && n > 0) {
-      return Math.min(KEYBOARD_WIDTH_MAX, Math.max(KEYBOARD_WIDTH_MIN, n));
-    }
-  } catch {
-    /* ignore */
-  }
-  return KEYBOARD_WIDTH_DEFAULT;
-}
-
-function loadKeyboardVisible(): boolean {
-  try {
-    const raw = localStorage.getItem(KEYBOARD_VISIBLE_KEY);
-    if (raw == null || raw === '') return true;
-    return raw !== '0' && raw.toLowerCase() !== 'false';
-  } catch {
-    /* ignore */
-  }
-  return true;
-}
-
-function loadControlsVisible(): boolean {
-  try {
-    const raw = localStorage.getItem(CONTROLS_VISIBLE_KEY);
-    if (raw == null || raw === '') return true;
-    return raw !== '0' && raw.toLowerCase() !== 'false';
-  } catch {
-    /* ignore */
-  }
-  return true;
-}
-
-function loadStatusVisible(): boolean {
-  try {
-    const raw = localStorage.getItem(STATUS_VISIBLE_KEY);
-    if (raw == null || raw === '') return true;
-    return raw !== '0' && raw.toLowerCase() !== 'false';
-  } catch {
-    /* ignore */
-  }
-  return true;
-}
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [activeCode, setActiveCode] = useState<string | null>(null);
-  // Parity with the legacy showSpacebarKey=false default: the on-screen
-  // Space key starts hidden; the physical spacebar still toggles drag-lock.
-  const [showSpacebar, setShowSpacebar] = useState(false);
-  const [keyboardWidth, setKeyboardWidth] = useState(loadKeyboardWidth);
-  const [keyboardVisible, setKeyboardVisible] = useState(loadKeyboardVisible);
-  const [controlsVisible, setControlsVisible] = useState(loadControlsVisible);
-  const [statusVisible, setStatusVisible] = useState(loadStatusVisible);
+  const [gui] = useState(() => new GUIManager());
+  const ui = useSyncExternalStore(gui.subscribe, gui.getSnapshot);
   const [engine] = useState(
     () =>
       new NibGliderEngine(new paper.PaperScope(), (a: KeyActivity) =>
@@ -88,12 +31,23 @@ export default function App() {
     return () => engine.detach();
   }, [engine]);
 
+  useEffect(() => {
+    const paint = () => {
+      writePreviewPaths(document, {
+        circle: engine.innerShapePreviewPath(engine.circleInnerShapeType, engine.circleInnerShapeParams),
+        rect: engine.innerShapePreviewPath(engine.rectangleInnerShapeType, engine.rectangleInnerShapeParams, 'rect'),
+      });
+    };
+    paint();
+    return engine.subscribe(paint);
+  }, [engine]);
+
   // Console parity with the legacy global setSpacebarVisible():
   // window.setSpacebarVisible(true) reveals the on-screen Space key.
   useEffect(() => {
     (window as unknown as { setSpacebarVisible: (v: boolean) => void }).setSpacebarVisible =
-      setShowSpacebar;
-  }, []);
+      (visible) => gui.setShowSpacebar(visible);
+  }, [gui]);
 
   // K key toggles the on-screen keyboard with a slide. Listened here
   // (not in the engine) because the visible state lives in React.
@@ -104,24 +58,16 @@ export default function App() {
       if (matchAppCommand(event, { isDrawingPath: engine.isDrawingPath }) !== 'toggle-keyboard') {
         return;
       }
-      setKeyboardVisible((v) => !v);
+      gui.toggleKeyboard();
     };
     document.addEventListener('keydown', onToggleKeyboard);
     (
       window as unknown as { setKeyboardVisible: (v: boolean) => void }
-    ).setKeyboardVisible = setKeyboardVisible;
+    ).setKeyboardVisible = (visible) => gui.setKeyboardVisible(visible);
     return () => {
       document.removeEventListener('keydown', onToggleKeyboard);
     };
-  }, [engine]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(KEYBOARD_WIDTH_KEY, String(keyboardWidth));
-    } catch {
-      /* ignore */
-    }
-  }, [keyboardWidth]);
+  }, [engine, gui]);
 
   // J key toggles the controls bar overlay with a slide. Listened here
   // (not in the engine) because the visible state lives in React.
@@ -132,24 +78,16 @@ export default function App() {
       if (matchAppCommand(event, { isDrawingPath: engine.isDrawingPath }) !== 'toggle-panel') {
         return;
       }
-      setControlsVisible((v) => !v);
+      gui.toggleControls();
     };
     document.addEventListener('keydown', onToggleControls);
     (
       window as unknown as { setControlsVisible: (v: boolean) => void }
-    ).setControlsVisible = setControlsVisible;
+    ).setControlsVisible = (visible) => gui.setControlsVisible(visible);
     return () => {
       document.removeEventListener('keydown', onToggleControls);
     };
-  }, [engine]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(KEYBOARD_VISIBLE_KEY, keyboardVisible ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
-  }, [keyboardVisible]);
+  }, [engine, gui]);
 
   // L key toggles the status box overlay with a slide. Listened here
   // (not in the engine) because the visible state lives in React.
@@ -160,32 +98,16 @@ export default function App() {
       if (matchAppCommand(event, { isDrawingPath: engine.isDrawingPath }) !== 'toggle-status') {
         return;
       }
-      setStatusVisible((v) => !v);
+      gui.toggleStatus();
     };
     document.addEventListener('keydown', onToggleStatus);
     (
       window as unknown as { setStatusVisible: (v: boolean) => void }
-    ).setStatusVisible = setStatusVisible;
+    ).setStatusVisible = (visible) => gui.setStatusVisible(visible);
     return () => {
       document.removeEventListener('keydown', onToggleStatus);
     };
-  }, [engine]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(CONTROLS_VISIBLE_KEY, controlsVisible ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
-  }, [controlsVisible]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STATUS_VISIBLE_KEY, statusVisible ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
-  }, [statusVisible]);
+  }, [engine, gui]);
 
   return (
     <div id="mainLayout">
@@ -200,43 +122,43 @@ export default function App() {
           <div
             id="controlPanel"
             className={
-              (controlsVisible
+              (ui.controlsVisible
                 ? 'control-panel-fixed'
                 : 'control-panel-fixed panel-hidden') +
               (HIDE_SECTION_TITLES ? ' titles-hidden' : '')
             }
-            aria-hidden={!controlsVisible}
-            inert={!controlsVisible}
+            aria-hidden={!ui.controlsVisible}
+            inert={!ui.controlsVisible}
           >
             <ControlPanel engine={engine} />
           </div>
-          <StatusOverlay engine={engine} hidden={!statusVisible} />
+          <StatusOverlay engine={engine} hidden={!ui.statusVisible} />
         </div>
         <div className="corner-div">
           <div
             id="keyboardContainer"
             className={
               [
-                showSpacebar ? '' : 'no-spacebar',
-                keyboardVisible ? '' : 'kb-hidden',
+                ui.showSpacebar ? '' : 'no-spacebar',
+                ui.keyboardVisible ? '' : 'kb-hidden',
               ]
                 .filter(Boolean)
                 .join(' ') || undefined
             }
-            aria-hidden={!keyboardVisible}
+            aria-hidden={!ui.keyboardVisible}
             style={
               {
-                width: keyboardWidth,
-                '--kb-scale': keyboardWidth / KEYBOARD_WIDTH_DEFAULT,
+                width: ui.keyboardWidth,
+                '--kb-scale': ui.keyboardWidth / KEYBOARD_WIDTH_DEFAULT,
               } as CSSProperties
             }
           >
-            <Keyboard
+            <OnscreenKeyboard
               engine={engine}
               activeCode={activeCode}
-              showSpacebar={showSpacebar}
-              width={keyboardWidth}
-              onWidthChange={setKeyboardWidth}
+              showSpacebar={ui.showSpacebar}
+              width={ui.keyboardWidth}
+              onWidthChange={(width) => gui.setKeyboardWidth(width)}
               onCommand={(id) => {
                 if (
                   id === 'toggle-status' &&
@@ -244,7 +166,7 @@ export default function App() {
                     isDrawingPath: engine.isDrawingPath,
                   })
                 ) {
-                  setStatusVisible((v) => !v);
+                  gui.toggleStatus();
                 }
               }}
             />

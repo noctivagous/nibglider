@@ -252,7 +252,7 @@ individual deliverables and acceptance checks.
 - [ ] Phase 6: Snapping and grid
 - [ ] Phase 7: Drawing sessions and tools
 - [x] Phase 8: Geometry and appearance
-- [ ] Phase 9: Combinatorics, importing, and presenters
+- [x] Phase 9: Combinatorics, importing, and presenters
 - [ ] Phase 10: Reduce the facade
 
 ### Phase 0: Baseline and inventory
@@ -785,7 +785,7 @@ delegates composite-path semantics, interpolation, and live/final rendering to
 `PathDrawingSession`, the path resolver, and `PathRenderer`; it does not
 persist raw Paper.js segments as the only source of path truth.
 
-### Phase 8: Extract geometry and appearance
+[x] ### Phase 8: Extract geometry and appearance
 
 Create `ShapeFactory.ts`, `RectangleGeometry.ts`, and `pathResolver.ts` for
 semantic shape construction, unit-point calculations, supershapes, sectors,
@@ -806,7 +806,7 @@ metrics, and shape-text grouping.
 These modules should receive configuration and dependencies explicitly rather
 than reading unrelated engine fields.
 
-### Phase 9: Extract combinatorics, importing, and presenters
+[x] ### Phase 9: Extract combinatorics, importing, and presenters
 
 Create:
 
