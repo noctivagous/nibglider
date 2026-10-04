@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import paper from 'paper';
 import { NibGliderEngine, type KeyActivity } from './engine/engine';
 import { isCommandAvailable, matchAppCommand } from './engine/input/keymap';
@@ -7,7 +7,7 @@ import OnscreenKeyboard from './components/OnscreenKeyboard';
 import TutorialOverlay from './components/TutorialOverlay';
 import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
-import { GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
+import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
 import { TutorialRunner } from './tutorial/TutorialRunner';
@@ -17,6 +17,7 @@ import {
   emitTutorialCommand,
 } from './tutorial/completionDetectors';
 import { parseTutorialText } from './tutorial/tutorialLoader';
+import { markTutorialCompleted, shouldAutoShowTutorial } from './tutorial/tutorialProgress';
 import helloTutorialRaw from '../tutorials/hello-rectangle.tutorial.json?raw';
 
 // Section title labels in the panel are hidden; icons, keys, and hover
@@ -43,12 +44,24 @@ export default function App() {
   useEffect(() => bridgeEngineToRunner(engine, tutorialRunner), [engine, tutorialRunner]);
   useEffect(() => attachTutorialKeyListener(tutorialRunner), [tutorialRunner]);
 
-  const startTutorial = () => {
+  const startTutorial = useCallback(() => {
     const loaded = parseTutorialText(helloTutorialRaw);
     if (!loaded.ok || !loaded.tutorial) return;
     tutorialRunner.load(loaded.tutorial);
     tutorialRunner.start();
-  };
+  }, [tutorialRunner]);
+
+  // New users (config flag on, no completion recorded) land in the tutorial.
+  // startTutorial is idempotent, so StrictMode's double-effect is harmless.
+  useEffect(() => {
+    if (shouldAutoShowTutorial(browserStore())) startTutorial();
+  }, [startTutorial]);
+
+  // Finishing the last step records completion so it won't auto-show again.
+  // Ending early leaves the flag unset: the tutorial returns next load.
+  useEffect(() => {
+    if (tutorialSnap.status === 'done') markTutorialCompleted(browserStore());
+  }, [tutorialSnap.status]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

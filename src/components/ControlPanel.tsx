@@ -12,6 +12,7 @@ import {
 import { createPortal } from 'react-dom';
 import { primaryShortcut } from '../engine/input/keymap';
 import { PanelsManager, sectionLabel, sectionOrder } from '../ui/PanelsManager';
+import { clearNibGliderSettings } from '../tutorial/tutorialProgress';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import KeymapWidget from './KeymapWidget';
 import WidgetHandle from './WidgetHandle';
@@ -2797,10 +2798,7 @@ export default function ControlPanel({
     setDebugValue('debug-none');
     if (value !== 'debug-reset-settings') return;
     try {
-      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-        const key = localStorage.key(index);
-        if (key?.startsWith('nibglider.')) localStorage.removeItem(key);
-      }
+      clearNibGliderSettings(localStorage);
     } catch { /* Storage can be unavailable in private browsing. */ }
     window.location.reload();
   }, []);
