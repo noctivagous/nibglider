@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GUIManager, KEYBOARD_WIDTH_DEFAULT } from '../src/ui/GUIManager.ts';
-import { APPLICATION_MENUS, PanelsManager, sectionLists } from '../src/ui/PanelsManager.ts';
+import { APPLICATION_MENUS, PanelsManager, sectionOrder } from '../src/ui/PanelsManager.ts';
 import { buildStatusSchema } from '../src/ui/StatusPresenter.ts';
 import { writePreviewPaths } from '../src/ui/PreviewBoxPresenter.ts';
 import { keycapClick } from '../src/ui/KeyboardViewModel.ts';
@@ -45,10 +45,27 @@ test('keyboard width treats a blank store as the default and menu layout stays s
 test('panel order round-trips through the store', () => {
   const mem = store();
   const panels = new PanelsManager(mem);
-  panels.moveSection('paint', 'textControls', 'keys', 'circleFrameControls', false);
+  panels.moveSection('textControls', 'strokeControls');
   const again = new PanelsManager(mem);
-  assert.equal(sectionLists(again.order).keys[0], 'textControls');
-  assert.equal(sectionLists(again.order).paint.includes('textControls'), false);
+  assert.deepEqual(sectionOrder(again.order).slice(0, 4), [
+    'textControls', 'strokeControls', 'fillControls', 'circleFrameControls',
+  ]);
+  again.moveSection('textControls', 'gridControls', true);
+  assert.equal(sectionOrder(new PanelsManager(mem).order).at(-2), 'textControls');
+});
+
+test('legacy grouped panel layout becomes one ordered sequence', () => {
+  const mem = store();
+  mem.setItem('nibglider.panelOrder', JSON.stringify({
+    paint: ['fillControls', 'strokeControls', 'textControls'],
+    keys: ['historyControls', 'circleFrameControls', 'rectFrameControls', 'combinatoricsControls'],
+    snap: ['snappingControls', 'gridControls'],
+  }));
+  assert.deepEqual(sectionOrder(new PanelsManager(mem).order), [
+    'fillControls', 'strokeControls', 'textControls', 'historyControls',
+    'circleFrameControls', 'rectFrameControls', 'combinatoricsControls',
+    'snappingControls', 'gridControls',
+  ]);
 });
 
 test('status schema keeps a drop note and does not publish undo labels', () => {

@@ -97,6 +97,8 @@ export type SplineTextPlacement = 'above' | 'baseline' | 'below';
 
 export type StrokeCap = 'butt' | 'round' | 'square';
 export type StrokeJoin = 'miter' | 'round' | 'bevel';
+/** Alignment relative to the filled region of a closed path. */
+export type StrokePosition = 'center' | 'inside' | 'outside';
 
 export type FillType = 'solid' | 'linear' | 'radial';
 

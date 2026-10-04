@@ -4,7 +4,8 @@
 // Does not notify React or publish status. The facade does that after each setter.
 // Tested from tests/style-manager.test.mjs.
 import { clampStrokeWidth } from '../input/KeySettingsRegistry';
-import type { FillSpec, FillType, StrokeCap, StrokeJoin } from '../types';
+import type { FillSpec, FillType, StrokeCap, StrokeJoin, StrokePosition } from '../types';
+import { setStrokePosition, strokePositionOf } from './strokePosition';
 
 type Item = any;
 
@@ -19,6 +20,7 @@ export interface StyleState {
   globalFillInner: number;
   globalStrokeCap: StrokeCap;
   globalStrokeJoin: StrokeJoin;
+  globalStrokePosition: StrokePosition;
   globalMiterLimit: number;
   globalDashLength: number;
   globalGapLength: number;
@@ -32,6 +34,7 @@ export interface SelectionPaint {
   strokeWidth: number;
   strokeCap: StrokeCap;
   strokeJoin: StrokeJoin;
+  strokePosition: StrokePosition;
   miterLimit: number;
   dashLength: number;
   gapLength: number;
@@ -93,6 +96,13 @@ export class StyleManager {
     const state = this.host.state();
     if (this.host.hasSelection()) this.host.applyToSelection((item) => { item.strokeJoin = join; });
     else state.globalStrokeJoin = join;
+    this.updateCurrentDrawingStyles();
+  }
+
+  setStrokePosition(position: StrokePosition): void {
+    const state = this.host.state();
+    if (this.host.hasSelection()) this.host.applyToSelection((item) => { setStrokePosition(item, position); });
+    else state.globalStrokePosition = position;
     this.updateCurrentDrawingStyles();
   }
 
@@ -268,6 +278,7 @@ export class StyleManager {
     const state = this.host.state();
     item.strokeCap = state.globalStrokeCap;
     item.strokeJoin = state.globalStrokeJoin;
+    setStrokePosition(item, state.globalStrokePosition);
     item.miterLimit = state.globalMiterLimit;
   }
 
@@ -381,6 +392,7 @@ export class StyleManager {
       strokeWidth: Number.isFinite(w) && w > 0 ? w : state.globalStrokeWidth,
       strokeCap: cap,
       strokeJoin: join,
+      strokePosition: strokePositionOf(item),
       miterLimit: Number.isFinite(m) && m >= 1 ? m : state.globalMiterLimit,
       dashLength,
       gapLength,

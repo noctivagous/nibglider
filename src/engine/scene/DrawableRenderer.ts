@@ -5,6 +5,7 @@
 import type { NGDrawable } from '../model/NGDrawable';
 import type { ResolvedPath, ResolvedVectorGeometry } from '../model/geometryResolution';
 import { resolveDrawableGeometry } from '../geometry/pathResolver';
+import { installStrokePositionRenderer } from '../appearance/strokePosition';
 import type { SceneRepository } from './SceneRepository';
 
 export interface DrawableStyle {
@@ -25,6 +26,7 @@ export class DrawableRenderer {
 
   constructor(scope: paper.PaperScope, dependencies: DrawableRendererDependencies) {
     this.scope = scope;
+    installStrokePositionRenderer(scope);
     this.dependencies = dependencies;
   }
 

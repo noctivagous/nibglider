@@ -1,7 +1,7 @@
 // Panel section layout and application-menu definitions.
 // Owns collapsed, removed, and order records in the store passed in.
 // Reads menu layout from the same store GUIManager writes. Does not render.
-// Public: collapsed, removed, order, menuLayout, sectionLists, moveSection, menus.
+// Public: collapsed, removed, order, menuLayout, sectionOrder, moveSection, menus.
 // Tested from tests/ui-state.test.mjs.
 
 import { MENU_LAYOUT_KEY, type KeyValueStore, type MenuLayout, browserStore } from './GUIManager';
@@ -66,6 +66,19 @@ export function sectionLists(orderMap: Record<string, string[]>): Record<string,
     }
   }
   return next;
+}
+
+/** One visual sequence, with the former group layout used only to migrate saves. */
+export function sectionOrder(orderMap: Record<string, string[]>): string[] {
+  const saved = orderMap.all;
+  const legacy = sectionLists(orderMap);
+  const fallback = PANEL_GROUP_IDS.flatMap((group) => legacy[group]);
+  const known = new Set(PANEL_SECTIONS.map((section) => section.id));
+  const result: string[] = [];
+  for (const id of [...(saved ?? fallback), ...fallback]) {
+    if (known.has(id) && !result.includes(id)) result.push(id);
+  }
+  return result;
 }
 
 function loadRecord(store: KeyValueStore, key: string): Record<string, boolean> {
@@ -156,22 +169,15 @@ export class PanelsManager {
     this.emit();
   }
 
-  moveSection(_fromGroup: string, fromId: string, toGroup: string, toId: string, after = false): void {
-    const before = sectionLists(this.order);
-    const lists = sectionLists(this.order);
-    for (const group of PANEL_GROUP_IDS) lists[group] = lists[group].filter((id) => id !== fromId);
-    const dest = lists[toGroup] ?? [];
-    lists[toGroup] = dest;
-    const at = toId ? dest.indexOf(toId) : -1;
-    if (at < 0) dest.push(fromId);
-    else dest.splice(after ? at + 1 : at, 0, fromId);
-    const same = PANEL_GROUP_IDS.every((group) => {
-      const a = before[group];
-      const b = lists[group];
-      return a.length === b.length && a.every((id, i) => id === b[i]);
-    });
-    if (same) return;
-    this.order = lists;
+  moveSection(fromId: string, toId: string, after = false): void {
+    const before = sectionOrder(this.order);
+    if (!before.includes(fromId) || fromId === toId) return;
+    const next = before.filter((id) => id !== fromId);
+    const at = toId ? next.indexOf(toId) : -1;
+    if (at < 0) next.push(fromId);
+    else next.splice(after ? at + 1 : at, 0, fromId);
+    if (before.every((id, index) => id === next[index])) return;
+    this.order = { all: next };
     this.write(ORDER_KEY, JSON.stringify(this.order));
     this.emit();
   }

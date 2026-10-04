@@ -6,6 +6,7 @@
 // declarations (type positions only); the runtime value is never imported here.
 import { FontMetrics } from './fontMetrics';
 import { StyleManager, type StyleState } from './appearance/StyleManager';
+import { installStrokePositionRenderer } from './appearance/strokePosition';
 import { TextLayout, type TextLayoutConfig } from './appearance/TextLayout';
 import {
   ShapeFactory,
@@ -82,6 +83,7 @@ import type {
   StatusSchema,
   StrokeCap,
   StrokeJoin,
+  StrokePosition,
   TextJustification,
   TextMode,
   TextSpec,
@@ -113,6 +115,7 @@ export type {
   StatusSchema,
   StrokeCap,
   StrokeJoin,
+  StrokePosition,
   TextJustification,
   TextMode,
   TextSpec,
@@ -151,6 +154,7 @@ export class NibGliderEngine {
     globalFillInner: 0,
     globalStrokeCap: 'butt',
     globalStrokeJoin: 'miter',
+    globalStrokePosition: 'center',
     globalMiterLimit: 10,
     globalDashLength: 0,
     globalGapLength: 0,
@@ -177,6 +181,8 @@ export class NibGliderEngine {
   set globalStrokeCap(v: StrokeCap) { this.paint.globalStrokeCap = v; }
   get globalStrokeJoin(): StrokeJoin { return this.paint.globalStrokeJoin; }
   set globalStrokeJoin(v: StrokeJoin) { this.paint.globalStrokeJoin = v; }
+  get globalStrokePosition(): StrokePosition { return this.paint.globalStrokePosition; }
+  set globalStrokePosition(v: StrokePosition) { this.paint.globalStrokePosition = v; }
   get globalMiterLimit(): number { return this.paint.globalMiterLimit; }
   set globalMiterLimit(v: number) { this.paint.globalMiterLimit = v; }
   get globalDashLength(): number { return this.paint.globalDashLength; }
@@ -398,6 +404,7 @@ export class NibGliderEngine {
 
   constructor(scope: paper.PaperScope, onKeyActivity: (a: KeyActivity) => void) {
     this.context = new EngineContext(scope);
+    installStrokePositionRenderer(scope);
     this.onKeyActivity = onKeyActivity;
     this.context.styles = new StyleManager(scope, {
       state: () => this.paint,
@@ -693,6 +700,11 @@ export class NibGliderEngine {
 
   setStrokeJoin(join: StrokeJoin): void {
     this.styles.setStrokeJoin(join);
+    this.notify();
+  }
+
+  setStrokePosition(position: StrokePosition): void {
+    this.styles.setStrokePosition(position);
     this.notify();
   }
 

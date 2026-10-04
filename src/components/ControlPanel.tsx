@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { primaryShortcut } from '../engine/input/keymap';
-import { PANEL_GROUP_IDS, PanelsManager, sectionLabel, sectionLists } from '../ui/PanelsManager';
+import { PanelsManager, sectionLabel, sectionOrder } from '../ui/PanelsManager';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
 import NumericStepper from './NumericStepper';
@@ -27,6 +27,7 @@ import type {
   RectangleInnerShape,
   StrokeCap,
   StrokeJoin,
+  StrokePosition,
   TextJustification,
   TextSpec,
 } from '../engine/engine';
@@ -158,12 +159,10 @@ function PanelSection({
   id,
   label,
   icon,
-  group,
   collapsed,
   className,
   order,
   menuOpen,
-  host,
   dragging,
   onIconMenu,
   onToggleCollapse,
@@ -176,27 +175,42 @@ function PanelSection({
   id: string;
   label: string;
   icon: ReactNode;
-  group: string;
   collapsed: boolean;
   className?: string;
   order?: number;
   menuOpen: boolean;
-  host: HTMLElement | null;
   dragging: boolean;
   onIconMenu: (id: string, anchor: HTMLElement) => void;
   onToggleCollapse: (id: string) => void;
   onRemoveRequest: (id: string, x: number, y: number) => void;
-  onDragSessionStart: (id: string, group: string) => void;
+  onDragSessionStart: (id: string, size: { width: number; height: number }) => void;
   onDragSessionEnd: () => void;
-  onDragHover: (id: string, group: string, after: boolean) => void;
+  onDragHover: (id: string, after: boolean) => void;
   children: ReactNode;
 }) {
   const didDrag = useRef(false);
+  // Browser drag snapshots are inconsistent when the source is removed from
+  // layout during drag. Keep a real, full-size copy alive for the entire
+  // native drag so the cursor always carries the complete section.
+  const dragImage = useRef<HTMLElement | null>(null);
+  const clearDragImage = useCallback(() => {
+    dragImage.current?.remove();
+    dragImage.current = null;
+  }, []);
+  useEffect(() => {
+    // A drop can finish outside the panel, so release the preview globally.
+    window.addEventListener('drop', clearDragImage, true);
+    window.addEventListener('dragend', clearDragImage);
+    return () => {
+      window.removeEventListener('drop', clearDragImage, true);
+      window.removeEventListener('dragend', clearDragImage);
+      clearDragImage();
+    };
+  }, [clearDragImage]);
   const node = (
     <section
       id={id}
       aria-label={label}
-      data-panel-group={group}
       style={order !== undefined ? { order } : undefined}
       className={
         (className ?? 'panel-card') +
@@ -214,10 +228,13 @@ function PanelSection({
         e.stopPropagation();
         const rect = e.currentTarget.getBoundingClientRect();
         const after = e.clientX > rect.left + rect.width / 2;
-        onDragHover(id, group, after);
+        onDragHover(id, after);
       }}
       onDrop={(e) => {
+        if (!e.dataTransfer?.types.includes('text/panel-section')) return;
         e.preventDefault();
+        e.stopPropagation();
+        onDragSessionEnd();
       }}
     >
       <span
@@ -243,22 +260,60 @@ function PanelSection({
         onDragStart={(e) => {
           didDrag.current = true;
           const section = e.currentTarget.closest('section');
+          const rect = section?.getBoundingClientRect();
           const dt = e.dataTransfer;
           if (dt) {
             dt.effectAllowed = 'move';
             dt.setData('text/panel-section', id);
-            if (section) {
-              const rect = section.getBoundingClientRect();
+            if (section && rect) {
+              clearDragImage();
+              const image = section.cloneNode(true) as HTMLElement;
+              // Panel styles depend on both #controlPanel and section IDs.
+              // Capture them before moving the snapshot outside that scope.
+              const originals = [section, ...section.querySelectorAll('*')];
+              const copies = [image, ...image.querySelectorAll('*')];
+              originals.forEach((original, index) => {
+                const copy = copies[index];
+                if (copy instanceof HTMLElement || copy instanceof SVGElement) {
+                  const computed = getComputedStyle(original);
+                  for (const property of computed) {
+                    copy.style.setProperty(property, computed.getPropertyValue(property));
+                  }
+                }
+                copy.removeAttribute('id');
+              });
+              image.setAttribute('aria-hidden', 'true');
+              image.inert = true;
+              image.classList.remove('section-dragging');
+              Object.assign(image.style, {
+                position: 'fixed',
+                left: `${rect.left}px`,
+                top: `${rect.top}px`,
+                width: `${rect.width}px`,
+                height: `${rect.height}px`,
+                boxSizing: 'border-box',
+                zIndex: '-1',
+                margin: '0',
+                pointerEvents: 'none',
+              });
+              document.body.appendChild(image);
+              dragImage.current = image;
               dt.setDragImage(
-                section,
+                image,
                 e.clientX - rect.left,
                 e.clientY - rect.top,
               );
             }
           }
-          onDragSessionStart(id, group);
+          onDragSessionStart(id, {
+            width: rect?.width ?? 0,
+            height: rect?.height ?? 0,
+          });
         }}
-        onDragEnd={() => onDragSessionEnd()}
+        onDragEnd={() => {
+          clearDragImage();
+          onDragSessionEnd();
+        }}
       >
         <svg viewBox="0 0 8 16" width="8" height="16" aria-hidden="true">
           <circle cx="2.5" cy="3" r="1.1" fill="currentColor" />
@@ -286,7 +341,6 @@ function PanelSection({
       )}
     </section>
   );
-  if (host) return createPortal(node, host);
   return node;
 }
 
@@ -1025,6 +1079,37 @@ const JOIN_OPTIONS: Array<{ value: StrokeJoin; label: string; icon: string }> = 
   { value: 'round', label: 'Round', icon: 'M3 12 L8 7 A3 3 0 0 1 11 12' },
   { value: 'bevel', label: 'Bevel', icon: 'M3 12 L6 6 L12 6 L13 12' },
 ];
+const STROKE_POSITION_OPTIONS: Array<{ value: StrokePosition; label: string }> = [
+  { value: 'center', label: 'Center' },
+  { value: 'inside', label: 'Inside' },
+  { value: 'outside', label: 'Outside' },
+];
+
+function StrokePositionIcon({ position }: { position: StrokePosition }) {
+  // The dashed rectangle is the path. Four solid strips are the stroke band:
+  // wholly beyond it, straddling it, or wholly within it.
+  const pathBoundary = <rect x="3" y="2.5" width="10" height="7" rx="0.6" fill="none"
+    stroke="currentColor" strokeWidth="0.65" strokeDasharray="1.2 1" opacity="0.9" />;
+  const band = (top: number, left: number, right: number, bottom: number) => (
+    <g fill="currentColor">
+      <rect x={left} y={top} width={16 - left - right} height="1.5" rx="0.35" />
+      <rect x={left} y={12 - bottom - 1.5} width={16 - left - right} height="1.5" rx="0.35" />
+      <rect x={left} y={top} width="1.5" height={12 - top - bottom} rx="0.35" />
+      <rect x={16 - right - 1.5} y={top} width="1.5" height={12 - top - bottom} rx="0.35" />
+    </g>
+  );
+  const placement = position === 'outside'
+    ? band(0.5, 1, 1, 0.5)
+    : position === 'center'
+      ? band(1.75, 2.25, 2.25, 1.75)
+      : band(3, 3, 3, 2.5);
+  return (
+    <svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true">
+      {placement}
+      {pathBoundary}
+    </svg>
+  );
+}
 
 const DASH_PRESETS: Array<{ id: string; label: string; dash: number; gap: number }> = [
   { id: 'solid', label: 'Solid', dash: 0, gap: 0 },
@@ -1100,6 +1185,7 @@ function StrokeParams({
   gap,
   strokeCap,
   strokeJoin,
+  strokePosition,
   miterLimit,
 }: {
   engine: NibGliderEngine;
@@ -1108,6 +1194,7 @@ function StrokeParams({
   gap: number;
   strokeCap: StrokeCap;
   strokeJoin: StrokeJoin;
+  strokePosition: StrokePosition;
   miterLimit: number;
 }) {
   const presetId =
@@ -1140,6 +1227,22 @@ function StrokeParams({
             onCommit={(n) => engine.setStrokeWidth(n)}
           />
         </span>
+      </span>
+      <span className="param-item">
+        <label>Align</label>
+        <div className="seg-ctrl" role="group" aria-label="Stroke alignment">
+          {STROKE_POSITION_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              title={`${opt.label} stroke`}
+              className={strokePosition === opt.value ? 'active' : undefined}
+              onClick={() => engine.setStrokePosition(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </span>
       <div className="flyout-seg">
       <span className="param-item">
@@ -2433,36 +2536,48 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   const restoreSection = useCallback((id: string) => {
     panels.restoreSection(id);
   }, [panels]);
-  const dragRef = useRef<{ id: string; group: string } | null>(null);
+  const dragRef = useRef<{ id: string } | null>(null);
+  const dragStartFrame = useRef<number | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const groupHosts = useRef<Record<string, HTMLDivElement | null>>({});
-  const [hostsReady, setHostsReady] = useState(false);
-  useEffect(() => {
-    setHostsReady(true);
-  }, []);
-  const beginDrag = useCallback((id: string, group: string) => {
-    dragRef.current = { id, group };
-    requestAnimationFrame(() => setDraggingId(id));
+  const [dragPlaceholder, setDragPlaceholder] = useState<{
+    id: string;
+    width: number;
+    height: number;
+  } | null>(null);
+  const beginDrag = useCallback((id: string, size: { width: number; height: number }) => {
+    dragRef.current = { id };
+    // Hiding the draggable during dragstart aborts native dragging in some
+    // browsers. Wait until the browser has captured its drag image.
+    dragStartFrame.current = requestAnimationFrame(() => {
+      dragStartFrame.current = null;
+      if (dragRef.current?.id !== id) return;
+      setDraggingId(id);
+      setDragPlaceholder({ id, ...size });
+    });
   }, []);
   const endDrag = useCallback(() => {
+    if (dragStartFrame.current !== null) {
+      cancelAnimationFrame(dragStartFrame.current);
+      dragStartFrame.current = null;
+    }
     dragRef.current = null;
     setDraggingId(null);
+    setDragPlaceholder(null);
   }, []);
+  useEffect(() => {
+    window.addEventListener('drop', endDrag, true);
+    window.addEventListener('dragend', endDrag);
+    return () => {
+      window.removeEventListener('drop', endDrag, true);
+      window.removeEventListener('dragend', endDrag);
+      if (dragStartFrame.current !== null) cancelAnimationFrame(dragStartFrame.current);
+    };
+  }, [endDrag]);
   const hoverDrag = useCallback(
-    (overId: string, overGroup: string, after: boolean) => {
+    (overId: string, after: boolean) => {
       const drag = dragRef.current;
       if (!drag || drag.id === overId) return;
-      panels.moveSection(drag.group, drag.id, overGroup, overId, after);
-      drag.group = overGroup;
-    },
-    [panels],
-  );
-  const hoverGroup = useCallback(
-    (overGroup: string) => {
-      const drag = dragRef.current;
-      if (!drag || drag.group === overGroup) return;
-      panels.moveSection(drag.group, drag.id, overGroup, '', true);
-      drag.group = overGroup;
+      panels.moveSection(drag.id, overId, after);
     },
     [panels],
   );
@@ -2476,6 +2591,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     | null
   >(null);
   const [sectionsValue, setSectionsValue] = useState('sections-none');
+  const [debugValue, setDebugValue] = useState('debug-none');
   const openOpDialog = useCallback(
     (kind: 'scale' | 'rotate') => {
       if (!engine.canTransformSelection()) return;
@@ -2614,6 +2730,21 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         ]
       : []),
   ];
+  const DEBUG_OPTIONS: CustomSelectOption[] = [
+    { value: 'debug-none', label: 'Debug' },
+    { value: 'debug-reset-settings', label: 'Reset all settings' },
+  ];
+  const handleDebug = useCallback((value: string) => {
+    setDebugValue('debug-none');
+    if (value !== 'debug-reset-settings') return;
+    try {
+      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+        const key = localStorage.key(index);
+        if (key?.startsWith('nibglider.')) localStorage.removeItem(key);
+      }
+    } catch { /* Storage can be unavailable in private browsing. */ }
+    window.location.reload();
+  }, []);
   // Selection state: when items are selected the Stroke/Fill panels
   // reflect the selection (first selected item) instead of the globals.
   const sel = engine.selectionPaint();
@@ -2622,6 +2753,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
   const strokeWidth = sel ? sel.strokeWidth : engine.globalStrokeWidth;
   const strokeCap = sel ? sel.strokeCap : engine.globalStrokeCap;
   const strokeJoin = sel ? sel.strokeJoin : engine.globalStrokeJoin;
+  const strokePosition = sel ? sel.strokePosition : engine.globalStrokePosition;
   const miterLimit = sel ? sel.miterLimit : engine.globalMiterLimit;
   const dashLength = sel ? sel.dashLength : engine.globalDashLength;
   const gapLength = sel ? sel.gapLength : engine.globalGapLength;
@@ -2740,16 +2872,11 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     return null;
   };
 
-  const lists = sectionLists(orderMap);
-  const groupOf = (id: string) =>
-    PANEL_GROUP_IDS.find((group) => lists[group].includes(id)) ?? 'paint';
+  const orderedSections = sectionOrder(orderMap);
   const sectionProps = (id: string) => {
-    const group = groupOf(id);
     return {
-      group,
-      order: lists[group].indexOf(id),
+      order: orderedSections.indexOf(id),
       menuOpen: iconMenu?.id === id,
-      host: hostsReady ? groupHosts.current[group] ?? null : null,
       dragging: draggingId === id,
       onIconMenu: toggleIconMenu,
       onToggleCollapse: toggleCollapse,
@@ -2760,6 +2887,17 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
       onDragHover: hoverDrag,
     };
   };
+  const dragPlaceholderNode = dragPlaceholder && dragPlaceholder.width && dragPlaceholder.height
+    ? <div
+        className="section-drag-placeholder"
+        aria-hidden="true"
+        style={{
+          order: orderedSections.indexOf(dragPlaceholder.id),
+          width: dragPlaceholder.width,
+          height: dragPlaceholder.height,
+        }}
+      />
+    : null;
 
   return (
     <div className="panel-shell">
@@ -2771,6 +2909,18 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             value={opValue}
             options={OPERATIONS_OPTIONS}
             onChange={handleOperation}
+            openOnHover
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
+          />
+        </div>
+        <div className="rail-box" title="Debug settings">
+          <CustomSelect
+            id="panelDebugSelect"
+            ariaLabel="Debug settings"
+            value={debugValue}
+            options={DEBUG_OPTIONS}
+            onChange={handleDebug}
             openOnHover
             onHoverOpen={handleSelectHoverOpen}
             forceCloseKey={selectCloseKey}
@@ -2792,21 +2942,38 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
           />
         </div>
       </div>
-      <div className="panel-rows">
-      <div className="panel-row panel-row-main">
       <div
-        className="panel-group panel-group-paint"
+        className="panel-sections"
         role="group"
-        aria-label="Paint"
-        ref={(el) => {
-          groupHosts.current.paint = el;
-        }}
+        aria-label="Panel sections"
         onDragOver={(e) => {
           if (!e.dataTransfer?.types.includes('text/panel-section')) return;
           e.preventDefault();
-          if (e.target === e.currentTarget) hoverGroup('paint');
+          const dragged = dragRef.current;
+          if (e.target !== e.currentTarget || !dragged) return;
+          const placeholder = e.currentTarget.querySelector('.section-drag-placeholder');
+          const preview = placeholder?.getBoundingClientRect();
+          if (preview && e.clientX >= preview.left && e.clientX <= preview.right &&
+              e.clientY >= preview.top && e.clientY <= preview.bottom) return;
+          const sections = [...e.currentTarget.querySelectorAll(':scope > section:not(.section-dragging)')];
+          const nearest = sections.map((section) => {
+            const rect = section.getBoundingClientRect();
+            const dx = Math.max(rect.left - e.clientX, 0, e.clientX - rect.right);
+            const dy = Math.max(rect.top - e.clientY, 0, e.clientY - rect.bottom);
+            return { id: section.id, rect, distance: dx * dx + dy * dy };
+          }).sort((a, b) => a.distance - b.distance)[0];
+          if (nearest) {
+            panels.moveSection(dragged.id, nearest.id,
+              e.clientX > nearest.rect.left + nearest.rect.width / 2);
+          }
+        }}
+        onDrop={(e) => {
+          if (!e.dataTransfer?.types.includes('text/panel-section')) return;
+          e.preventDefault();
+          endDrag();
         }}
       >
+      {dragPlaceholderNode}
       {isRemoved('strokeControls') ? null : (
       <PanelSection
         id="strokeControls"
@@ -2857,6 +3024,25 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             title="Stroke width"
             onCommit={(n) => engine.setStrokeWidth(n)}
           />
+          <div
+            className="stroke-position-control"
+            role="group"
+            aria-label="Stroke alignment"
+          >
+            {STROKE_POSITION_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                title={`${opt.label} stroke`}
+                aria-label={`${opt.label} stroke`}
+                aria-pressed={strokePosition === opt.value}
+                className={strokePosition === opt.value ? 'active' : undefined}
+                onClick={() => engine.setStrokePosition(opt.value)}
+              >
+                <StrokePositionIcon position={opt.value} />
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             ref={strokePreviewRef}
@@ -2913,6 +3099,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               gap={gapLength}
               strokeCap={strokeCap}
               strokeJoin={strokeJoin}
+              strokePosition={strokePosition}
               miterLimit={miterLimit}
             />
           </ShapeParamsFlyout>
@@ -3064,20 +3251,6 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         </header>
       </PanelSection>
       )}
-      </div>
-      <div
-        className="panel-group panel-group-keys"
-        role="group"
-        aria-label="Shape keys"
-        ref={(el) => {
-          groupHosts.current.keys = el;
-        }}
-        onDragOver={(e) => {
-          if (!e.dataTransfer?.types.includes('text/panel-section')) return;
-          e.preventDefault();
-          if (e.target === e.currentTarget) hoverGroup('keys');
-        }}
-      >
 
       {isRemoved('circleFrameControls') ? null : (
       <PanelSection
@@ -3303,22 +3476,6 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         </header>
       </PanelSection>
       )}
-      </div>
-      </div>
-      <div className="panel-row panel-row-snap">
-      <div
-        className="panel-group panel-group-snapping"
-        role="group"
-        aria-label="Snapping"
-        ref={(el) => {
-          groupHosts.current.snap = el;
-        }}
-        onDragOver={(e) => {
-          if (!e.dataTransfer?.types.includes('text/panel-section')) return;
-          e.preventDefault();
-          if (e.target === e.currentTarget) hoverGroup('snap');
-        }}
-      >
       {isRemoved('gridControls') ? null : (
       <PanelSection
         id="gridControls"
@@ -3490,8 +3647,6 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
         </header>
       </PanelSection>
       )}
-      </div>
-      </div>
       </div>
       {ctxMenu
         ? createPortal(

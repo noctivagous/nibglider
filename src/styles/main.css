@@ -747,15 +747,14 @@ html, body {
   border-right: none !important;
 }
 
-#controlPanel .panel-row {
+#controlPanel .panel-sections {
   display: flex;
   flex-direction: row;
+  align-content: flex-start;
   align-items: stretch;
   flex-wrap: wrap;
   gap: 6px;
-  width: 100%;
-  max-width: 100%;
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   min-width: 0;
   padding: 0;
   border: none;
@@ -764,54 +763,12 @@ html, body {
   box-shadow: none;
 }
 
-#controlPanel .panel-group,
 #controlPanel .panel-card,
 #controlPanel .pane-titlebar.titlebar-single {
   flex-wrap: wrap;
   white-space: nowrap;
 }
 
-#controlPanel .panel-row-main {
-  overflow: visible;
-  padding: 0;
-  gap: 6px;
-}
-
-/* Emphasis containers grouping related cards. Square, hairline, minimal. */
-#controlPanel .panel-group {
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  gap: 0;
-  padding: 2px;
-  border: 1px solid var(--dp-border-soft);
-  border-radius: 0;
-  background: rgba(255, 255, 255, 0.015);
-  box-shadow: none;
-  flex: 0 1 auto;
-  width: max-content;
-  max-width: 100%;
-  min-width: 0;
-  overflow: visible;
-}
-
-#controlPanel .panel-group-keys {
-  border-color: rgba(120, 160, 200, 0.28);
-}
-
-#controlPanel .panel-group-snapping {
-  border-color: rgba(245, 166, 35, 0.32);
-}
-
-#controlPanel .panel-row-snap {
-  overflow: visible;
-  gap: 6px;
-}
-
-#controlPanel .panel-row-snap #snappingControls,
-#controlPanel .panel-row-snap #gridControls {
-  flex: 0 1 auto;
-}
 
 /* Fill runs a lot darker than the Stroke bevel. */
 #controlPanel #fillControls .pane-titlebar {
@@ -960,10 +917,6 @@ body {
   flex: 0 1 auto;
   min-width: min(100%, max-content);
   max-width: 100%;
-}
-
-#controlPanel .panel-row .panel-card + .panel-card {
-  border-left: 1px solid var(--dp-border-soft);
 }
 
 #controlPanel #circleInnerShapeSelect,
@@ -1149,7 +1102,9 @@ body {
 #controlPanel #circleFrameControls,
 #controlPanel #rectFrameControls {
   flex-wrap: nowrap;
-  flex: 1 1 16rem;
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: 100%;
   min-width: min(100%, 14rem);
 }
 
@@ -1986,6 +1941,48 @@ body {
   outline: 2px solid var(--dp-accent);
   outline-offset: 1px;
 }
+
+/* A compact duplicate of the flyout alignment control. It stays beside the
+   preview for fast access while the flyout remains the complete stroke UI. */
+#controlPanel .stroke-position-control {
+  display: inline-flex;
+  flex: none;
+  flex-direction: column;
+  align-self: stretch;
+  width: 29px;
+  overflow: hidden;
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  background: linear-gradient(to bottom, #10151b, #141b23);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#controlPanel .stroke-position-control button {
+  flex: 1 1 0;
+  min-height: 0;
+  appearance: none;
+  border: none;
+  border-bottom: 1px solid #0b0e12;
+  padding: 0;
+  background: linear-gradient(to bottom, #2b3542, #1f2732);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  color: var(--dp-text-2);
+  cursor: pointer;
+  font-family: var(--font-tech-label);
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+#controlPanel .stroke-position-control button:last-child { border-bottom: none; }
+#controlPanel .stroke-position-control button:hover { color: var(--dp-text-1); }
+#controlPanel .stroke-position-control button.active {
+  background: linear-gradient(to bottom, #5a6675, #454f5c);
+  color: #fff;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+#controlPanel .stroke-position-control svg { display: block; margin: auto; }
 
 /* Fill preview well: same treatment as the stroke preview well. */
 #controlPanel .fill-preview {
@@ -2876,10 +2873,8 @@ kbd,
 }
 
 /* ============ Panel section chrome: rail, drag bars, collapse ============
-   The rail sits left of the panel and spans both rows: one column with
-   the Operations and Sections boxes, both CustomSelects in the panel
-   idiom. Each section carries a drag bar on its left edge that stays
-   visible when the section collapses to icon plus bar only. */
+   The rail sits left of one wrapping section container. Each section carries
+   a drag bar that stays visible when the section collapses to an icon. */
 #controlPanel .panel-shell {
   display: flex;
   flex-direction: row;
@@ -2893,25 +2888,6 @@ kbd,
   padding: 0;
   gap: 0;
   flex-wrap: nowrap;
-}
-
-#controlPanel .panel-rows {
-  display: flex;
-  flex-direction: column;
-  flex-wrap: nowrap;
-  align-items: stretch;
-  flex: 1 1 auto;
-  min-width: 0;
-  background: none;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  padding: 0;
-  gap: 6px;
-}
-
-#controlPanel .panel-group:not(:has(section)) {
-  display: none;
 }
 
 #controlPanel .panel-rail {
@@ -2935,13 +2911,18 @@ kbd,
 }
 
 /* Drag bar: left edge of every section, persistent through collapse. */
-#controlPanel section[data-panel-group] {
+#controlPanel .panel-sections > section {
   display: flex;
   flex-direction: row;
   align-items: stretch;
+  min-height: 44px;
 }
 
-#controlPanel section[data-panel-group] > .pane-titlebar {
+#controlPanel .panel-sections > section.section-collapsed {
+  min-height: 0;
+}
+
+#controlPanel .panel-sections > section > .pane-titlebar {
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -2988,6 +2969,20 @@ kbd,
   opacity: 0 !important;
   pointer-events: none !important;
   border: 0 !important;
+}
+
+/* During a section drag, reserve the exact source footprint at its current
+   insertion point. It makes the prospective placement explicit while flex
+   reflows every neighboring section around it. */
+#controlPanel .section-drag-placeholder {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  border: 1px dashed var(--dp-accent);
+  background: rgba(79, 143, 247, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(79, 143, 247, 0.14);
+  pointer-events: none;
 }
 
 /* Collapsed: drag bar plus the section icon only. */

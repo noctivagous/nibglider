@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import paper from 'paper';
 import { StyleManager } from '../src/engine/appearance/StyleManager.ts';
+import { installStrokePositionRenderer } from '../src/engine/appearance/strokePosition.ts';
 
 function harness() {
   const scope = new paper.PaperScope();
@@ -10,6 +11,7 @@ function harness() {
     globalStrokeWidth: 4, maxStrokeWidth: 200, globalStrokeColor: '#107cff',
     globalFillColor: '#000000', globalFillType: 'solid', globalFillEndColor: '#ffffff',
     globalFillAngle: 0, globalFillInner: 0, globalStrokeCap: 'butt', globalStrokeJoin: 'miter',
+    globalStrokePosition: 'center',
     globalMiterLimit: 10, globalDashLength: 0, globalGapLength: 0,
     strokeEnabled: true, fillEnabled: false,
   };
@@ -61,5 +63,23 @@ test('fill inspection reads a linear angle and falls back to globals', () => {
     assert.equal(paint.strokeColor, state.globalStrokeColor);
     assert.equal(paint.strokeWidth, state.globalStrokeWidth);
     assert.equal(styles.selectionPaint(null), null);
+  } finally { scope.project.remove(); }
+});
+
+test('stroke position is global until selected and is stored on the Paper item', () => {
+  const { scope, state, selected, styles } = harness();
+  try {
+    styles.setStrokePosition('outside');
+    assert.equal(state.globalStrokePosition, 'outside');
+    const path = new scope.Path.Rectangle({ from: [0, 0], to: [40, 20] });
+    selected.push(path);
+    styles.setStrokePosition('inside');
+    assert.equal(state.globalStrokePosition, 'outside');
+    assert.equal(styles.selectionPaint(path).strokePosition, 'inside');
+    styles.applyCurrentStyles(path);
+    assert.equal(styles.selectionPaint(path).strokePosition, 'outside');
+    installStrokePositionRenderer(scope);
+    path.strokePosition = 'inside';
+    assert.equal(path.strokePosition, 'inside');
   } finally { scope.project.remove(); }
 });
