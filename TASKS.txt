@@ -1,3 +1,7 @@
+[ ] cmd/ctrl - and = zoom out and zoom in, cmd/ctrl 0 sets to 100%.
+
+---
+
 [ ] application menus, currently to the left of drawing control sections in the Panel should have two views, 
 stack (current), and grid.  still hover to show.  top left is File (icon), top right is Document and Settings,
   bottom left: Operations, bottom right:Layers and Obj.
@@ -29,7 +33,7 @@ Polygon > Regular Polygon.  when object changes, like has union, subtraction, in
 operations, path change, then it moves to regular Path.
 
 SUBDIVISION SECTION of Panel Widget
-  - subdivide rectangles
+  - subdivide rectangles and regular polygons
 
 CURSOR STATES 
 
@@ -55,26 +59,27 @@ manually clicked.
 
 IN-DRAWING WIDGETS AND ACTOR OBJECTS
 
-	[ ] REPLICATOR PORTALS
+	[ ] Rect Keys > In-Canvas Elements > REPLICATOR PORTALS
 	Placed on page with Rect Key (for rect repeats) or Circle Keys. 
 	As the person moves objects over the replicator portal
 	object, it replicates them according to the configured pattern,
 	stopping at the clip boundaries of the circle.
 	
 
-	[ ] FILTER COVERS
+	[ ] Rect Keys > In-Canvas Elements > FILTER COVERS
 	 Made from the outline of a shape or closed path, configured to 
 	 apply an image filter to what is underneath the shape.
 	 Examples include blend operations and image
 	 filters like blurs. Can be dragged around like 
 	 a regular shape.
 
-   [ ] CROP FRAME  - crops objects to the frame that
+   [ ]  Rect Keys > In-Canvas Elements > CROP FRAME  - crops objects to the frame that
    are contained in or intersect with it.
    
-  		 [ ] EXPORT FRAME - crops objects to the frame that
-          are contained in or intersect with it.  allows exporting
-          images within the document.  example: multiple icon
+  		 [ ]  Rect Keys > In-Canvas Elements > EXPORT FRAME - crops objects to the frame that
+          are contained in or intersect with it for export.  does not clip the elements.  
+          purpose is to establish permanent frames stored in the document for 
+          exporting images within the document.  example: multiple icon
           sizes are in a document but the document's purpose
           isn't for printing them individually on sheets of paper.  
           for this, the Export Frame can be configured
@@ -82,7 +87,7 @@ IN-DRAWING WIDGETS AND ACTOR OBJECTS
           
  
 
-	[ ] PROPERTY-ACTOR COVERS  
+	[ ]  Rect Keys > In-Canvas Elements > x PROPERTY-ACTOR COVERS  
 	Instead of acting on the image, will change configured properties,
 	especially effect properties, of objects on the page, like giving
 	the objects underneath it a drop shadow within its clipped bounds.

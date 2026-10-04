@@ -75,6 +75,29 @@ test('layer and viewport managers preserve active layer, cursor zoom, pan, and z
   } finally { s.project.remove(); }
 });
 
+test('cmd/ctrl - and = step viewport zoom, cmd/ctrl 0 resets to 100%', () => {
+  const s = scope(); const engine = new NibGliderEngine(s, () => {});
+  const chord = (code, key, mods) => ({
+    code, key, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false,
+    ...mods, target: null, getModifierState: () => false, preventDefault: () => {},
+  });
+  try {
+    assert.equal(s.view.zoom, 1);
+    engine.handleKeyDown(chord('Equal', '=', { metaKey: true }));
+    assert.equal(s.view.zoom, 1.25);
+    engine.handleKeyDown(chord('Minus', '-', { metaKey: true }));
+    assert.equal(s.view.zoom, 1);
+    engine.handleKeyDown(chord('Equal', '=', { ctrlKey: true }));
+    assert.equal(s.view.zoom, 1.25);
+    engine.handleKeyDown(chord('Digit0', '0', { ctrlKey: true }));
+    assert.equal(s.view.zoom, 1);
+    engine.handleKeyDown(chord('Equal', '+', { metaKey: true, shiftKey: true }));
+    assert.equal(s.view.zoom, 1.25);
+    engine.handleKeyDown(chord('Digit0', '0', { metaKey: true }));
+    assert.equal(s.view.zoom, 1);
+  } finally { engine.cancelCurrentDrawingOperation(); s.project.remove(); }
+});
+
 test('engine document revision follows committed scene edits, undo/redo, and page metadata', () => {
   const s = scope(); const engine = new NibGliderEngine(s, () => {});
   try {
