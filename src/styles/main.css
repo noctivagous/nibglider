@@ -3628,7 +3628,10 @@ kbd,
 .tutorial-overlay {
   position: fixed;
   inset: 0;
-  z-index: 400;
+  /* Above every app layer (panel container 600, keyboard 999+, select menus
+     up to 10100) so the spotlight and bubble never slip under widgets.
+     The overlay itself is click-through; only the bubble takes pointer events. */
+  z-index: 10200;
   pointer-events: none;
 }
 .tutorial-spotlight {
