@@ -3216,16 +3216,18 @@ export default function ControlPanel({
             </TitleIcon>
             <span className="pane-title-text">Stroke</span></span>
           </SectionTitleButton>
-          <kbd className="title-seg-kbd">S</kbd>
-<label className="toggle-switch square-knob">
-            <input
-              type="checkbox"
-              id="strokeEnabledCheckbox"
-              checked={strokeOn}
-              onChange={(e) => engine.setStrokeEnabled(e.target.checked)}
-            />
-            <span className="slider" />
-          </label>
+          <span className="key-switch-group">
+            <kbd className="title-seg-kbd">S</kbd>
+            <label className="toggle-switch square-knob">
+              <input
+                type="checkbox"
+                id="strokeEnabledCheckbox"
+                checked={strokeOn}
+                onChange={(e) => engine.setStrokeEnabled(e.target.checked)}
+              />
+              <span className="slider" />
+            </label>
+          </span>
           <input
             type="color"
             id="strokeColorWell"
@@ -3379,16 +3381,18 @@ export default function ControlPanel({
             </TitleIcon>
             <span className="pane-title-text">Fill</span></span>
           </SectionTitleButton>
-          <kbd className="title-seg-kbd">D</kbd>
-<label className="toggle-switch square-knob">
-            <input
-              type="checkbox"
-              id="fillEnabledCheckbox"
-              checked={fillOn}
-              onChange={(e) => engine.setFillEnabled(e.target.checked)}
-            />
-            <span className="slider" />
-          </label>
+          <span className="key-switch-group">
+            <kbd className="title-seg-kbd">D</kbd>
+            <label className="toggle-switch square-knob">
+              <input
+                type="checkbox"
+                id="fillEnabledCheckbox"
+                checked={fillOn}
+                onChange={(e) => engine.setFillEnabled(e.target.checked)}
+              />
+              <span className="slider" />
+            </label>
+          </span>
           <input
             type="color"
             id="fillColorWell"
@@ -3739,16 +3743,18 @@ export default function ControlPanel({
             </TitleIcon>
             <span className="pane-title-text">Grid</span></span>
           </SectionTitleButton>
-          <kbd className="title-seg-kbd">/</kbd>
-          <label className="toggle-switch square-knob">
-            <input
-              type="checkbox"
-              id="gridEnabledCheckbox"
-              checked={engine.isGridEnabled}
-              onChange={(e) => engine.setGridEnabled(e.target.checked)}
-            />
-            <span className="slider" />
-          </label>
+          <span className="key-switch-group">
+            <kbd className="title-seg-kbd">/</kbd>
+            <label className="toggle-switch square-knob">
+              <input
+                type="checkbox"
+                id="gridEnabledCheckbox"
+                checked={engine.isGridEnabled}
+                onChange={(e) => engine.setGridEnabled(e.target.checked)}
+              />
+              <span className="slider" />
+            </label>
+          </span>
           <CustomSelect
             id="gridTypeSelect"
             ariaLabel="Grid type"
