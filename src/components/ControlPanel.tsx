@@ -3214,8 +3214,9 @@ export default function ControlPanel({
             <TitleIcon>
               <path d="M2 12 L14 2" />
             </TitleIcon>
-            <span className="pane-title-text">Stroke</span></span> <kbd>S</kbd>
+            <span className="pane-title-text">Stroke</span></span>
           </SectionTitleButton>
+          <kbd className="title-seg-kbd">S</kbd>
 <label className="toggle-switch square-knob">
             <input
               type="checkbox"
@@ -3376,8 +3377,9 @@ export default function ControlPanel({
                 stroke="none"
               />
             </TitleIcon>
-            <span className="pane-title-text">Fill</span></span> <kbd>D</kbd>
+            <span className="pane-title-text">Fill</span></span>
           </SectionTitleButton>
+          <kbd className="title-seg-kbd">D</kbd>
 <label className="toggle-switch square-knob">
             <input
               type="checkbox"
@@ -3735,8 +3737,9 @@ export default function ControlPanel({
             <TitleIcon>
               <path d="M1 4 H11 M1 8 H11 M4 1 V11 M8 1 V11" />
             </TitleIcon>
-            <span className="pane-title-text">Grid</span></span> <kbd>/</kbd>
+            <span className="pane-title-text">Grid</span></span>
           </SectionTitleButton>
+          <kbd className="title-seg-kbd">/</kbd>
           <label className="toggle-switch square-knob">
             <input
               type="checkbox"

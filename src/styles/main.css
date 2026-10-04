@@ -3523,8 +3523,8 @@ kbd,
   z-index: 0;
 }
 
-/* Key hints (S, D, /) inside section title buttons stay square. */
-#controlPanel button.title-seg kbd {
+/* Key hints (S, D, /) just right of section title buttons stay square. */
+#controlPanel .pane-titlebar > kbd.title-seg-kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
