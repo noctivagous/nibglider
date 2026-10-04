@@ -18,6 +18,7 @@ import {
   currentId as galleryCurrentId,
   currentName as galleryCurrentName,
   deleteDocument as galleryDeleteDocument,
+  docDisplayName as galleryDisplayName,
   listDocuments as galleryListDocuments,
   renameDocument as galleryRenameDocument,
   saveDocument as gallerySaveDocument,
@@ -2860,6 +2861,14 @@ export default function ControlPanel({
     { value: 'hdr-file-learn', label: 'Learn', header: true },
     { value: 'file-tutorial', label: 'Tutorial', title: 'Start the guided tutorial' },
   ];
+  // Open document name for the page title and the rail label. The panel
+  // re-renders on every engine change, and every gallery mutation ends in
+  // a state update, so both stay fresh without a store subscription.
+  const docName = galleryDisplayName(browserStore());
+  const docDirty = engine.isDocumentDirty();
+  useEffect(() => {
+    document.title = `${docName}${docDirty ? ' •' : ''} — NibGlider`;
+  }, [docName, docDirty]);
   // Document gallery dialog state. Docs are re-read from the store on open
   // and after every mutation while the dialog is showing.
   const [galleryMode, setGalleryMode] = useState<GalleryMode | null>(null);
@@ -3286,6 +3295,14 @@ export default function ControlPanel({
               onHoverOpen={handleSelectHoverOpen}
               forceCloseKey={selectCloseKey}
             />
+          </div>
+          <div
+            className="doc-label"
+            title={docDirty ? `${docName} (unsaved changes)` : docName}
+            aria-live="polite"
+          >
+            {docName}
+            {docDirty ? ' •' : null}
           </div>
           <div className="rail-box" title="Document and Settings" data-tutorial-id="menu-document">
             <CustomSelect

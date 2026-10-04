@@ -151,3 +151,30 @@ export function setCurrent(store: KeyValueStore, id: string | null): void {
     else store.setItem(GALLERY_CURRENT_KEY, '');
   } catch { /* ignore */ }
 }
+
+/** Name for the title bar and panel label: the open document, or Untitled. */
+export function docDisplayName(store: KeyValueStore = browserStore()): string {
+  return currentName(store) ?? 'Untitled';
+}
+
+/** Minimal scene surface autosave needs. The engine satisfies this. */
+export interface AutosaveScene {
+  isDocumentDirty(): boolean;
+  exportSceneSVG(): string;
+  markDocumentClean(): void;
+}
+
+/** Persist dirty artwork to the gallery, creating the Untitled document on
+ * the first save. Returns false when there was nothing to save. */
+export function autosaveDocument(
+  scene: AutosaveScene,
+  store: KeyValueStore = browserStore(),
+): boolean {
+  if (!scene.isDocumentDirty()) return false;
+  const svg = scene.exportSceneSVG();
+  if (!svg || !svg.trim()) return false;
+  const id = currentId(store);
+  saveDocument(store, (id && currentName(store)) || 'Untitled', svg, id);
+  scene.markDocumentClean();
+  return true;
+}

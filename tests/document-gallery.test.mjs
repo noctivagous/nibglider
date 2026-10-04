@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  autosaveDocument,
   currentId,
   currentName,
   deleteDocument,
+  docDisplayName,
   getDocument,
   listDocuments,
   renameDocument,
@@ -88,6 +90,48 @@ test('reload starts blank when the current doc is gone or empty', () => {
   assert.equal(restorableDocument(mem), null);
   saveDocument(mem, 'Empty', '   ');
   assert.equal(restorableDocument(mem), null);
+});
+
+test('display name falls back to Untitled', () => {
+  const mem = store();
+  assert.equal(docDisplayName(mem), 'Untitled');
+  saveDocument(mem, 'Work', SVG);
+  assert.equal(docDisplayName(mem), 'Work');
+});
+
+test('autosave creates the Untitled document and clears dirty', () => {
+  const mem = store();
+  let dirty = true;
+  const scene = {
+    isDocumentDirty: () => dirty,
+    exportSceneSVG: () => SVG,
+    markDocumentClean: () => { dirty = false; },
+  };
+  assert.equal(autosaveDocument(scene, mem), true);
+  assert.equal(dirty, false);
+  assert.equal(docDisplayName(mem), 'Untitled');
+  assert.ok(restorableDocument(mem));
+  // A clean scene saves nothing.
+  assert.equal(autosaveDocument(scene, mem), false);
+});
+
+test('autosave keeps the existing name and skips empty exports', () => {
+  const mem = store();
+  saveDocument(mem, 'Work', SVG);
+  let svg = '   ';
+  let cleaned = 0;
+  const scene = {
+    isDocumentDirty: () => true,
+    exportSceneSVG: () => svg,
+    markDocumentClean: () => { cleaned += 1; },
+  };
+  assert.equal(autosaveDocument(scene, mem), false);
+  assert.equal(cleaned, 0);
+  svg = `${SVG}<!--2-->`;
+  assert.equal(autosaveDocument(scene, mem), true);
+  assert.equal(docDisplayName(mem), 'Work');
+  assert.equal(listDocuments(mem).length, 1);
+  assert.equal(cleaned, 1);
 });
 
 test('gallery tolerates corrupt store contents', () => {

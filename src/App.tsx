@@ -8,7 +8,7 @@ import TutorialOverlay from './components/TutorialOverlay';
 import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
-import { restorableDocument } from './ui/DocumentGallery';
+import { autosaveDocument, restorableDocument } from './ui/DocumentGallery';
 import { PanelsManager } from './ui/PanelsManager';
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
@@ -268,6 +268,39 @@ export default function App() {
       } catch { /* A bad save never blocks startup. */ }
     }
     return () => engine.detach();
+  }, [engine]);
+
+  // Autosave: persist dirty artwork to the gallery shortly after it
+  // settles, and synchronously on hide/close. The first save creates the
+  // Untitled document, so work is never lost before an explicit Save.
+  useEffect(() => {
+    let timer: number | null = null;
+    const save = (): void => {
+      try {
+        autosaveDocument(engine, browserStore());
+      } catch { /* Autosave never interrupts drawing. */ }
+    };
+    const schedule = (): void => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        save();
+      }, 1000);
+    };
+    const flush = (): void => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      save();
+    };
+    const unsubscribe = engine.subscribe(schedule);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('pagehide', flush);
+      if (timer !== null) window.clearTimeout(timer);
+    };
   }, [engine]);
 
   useEffect(() => {

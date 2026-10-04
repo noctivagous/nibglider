@@ -646,13 +646,55 @@ export class NibGliderEngine {
     this.updateTextContent(); this.notify();
   }
 
-  /** Serialize the active artwork (not cursors, previews, or grid) to SVG. */
+  /** Serialize the active artwork to SVG. Guide layers, snap/grid
+   * cursors, live previews, and the selection glow are hidden for the
+   * export (project.exportSVG omits none of them) and restored after. */
   exportSceneSVG(): string {
+    const hidden: AnyItem[] = [];
+    const hide = (item: AnyItem): void => {
+      try {
+        if (item && item.visible !== false && !hidden.includes(item)) {
+          item.visible = false;
+          hidden.push(item);
+        }
+      } catch { /* Detached already. */ }
+    };
     try {
-      const exported = this.scope.project.exportSVG({ asString: true });
+      const project = this.scope.project;
+      if (!project) return '';
+      for (const layer of (project.layers ?? []) as AnyItem[]) {
+        try {
+          if (layer && layer.guide) hide(layer);
+        } catch { /* ignore */ }
+      }
+      hide(this.gridLayer);
+      hide(this.guideLayer);
+      hide(this.gridCursor);
+      hide(this.pathSnapCursor);
+      hide(this.pointSnapCursor);
+      hide(this.previewInner);
+      hide(this.previewSplineText);
+      hide(this.previewShape);
+      hide(this.previewLine);
+      hide(this.previewPath);
+      hide(this.previewRect);
+      this.selection.suspendGlow();
+      const exported = project.exportSVG({ asString: true });
       return typeof exported === 'string' ? exported : '';
     } catch {
       return '';
+    } finally {
+      try {
+        this.selection.restoreGlow();
+      } catch { /* Headless. */ }
+      for (const item of hidden) {
+        try {
+          item.visible = true;
+        } catch { /* ignore */ }
+      }
+      try {
+        this.scope.view?.update();
+      } catch { /* Headless. */ }
     }
   }
 
