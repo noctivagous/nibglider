@@ -112,7 +112,7 @@ export class KeyboardController {
     this.modifiers.update(event);
     if (isTextEntryTarget(event)) return;
     const code = eventCode(event);
-    if (/^(Shift|Alt|Control|Meta)/.test(code)) return;
+    if (/^(Shift|Alt|Control|Meta|CapsLock)/.test(code)) return;
     const variants = resolveKeyVariants(code, modifiersOf(event), this.keyState());
     if (!variants.length) return;
     // Resolve against one pre-command context so finishing a path cannot
@@ -131,7 +131,7 @@ export class KeyboardController {
     if (isTextEntryTarget(event)) return;
     // Slash resets tension or toggles the grid and does not light a keycap.
     if (event.key.toLowerCase() === '/') return;
-    if (event.code && !/^(Shift|Alt|Control|Meta)/.test(event.code)) {
+    if (event.code && !/^(Shift|Alt|Control|Meta|CapsLock)/.test(event.code)) {
       this.host.onKeyActivity({ code: event.code, active: true });
     }
   }

@@ -450,7 +450,7 @@ export default function OnscreenKeyboard({
       : id === 'CapsLock' ? modifiers.capsLock
       : false;
   const isModifierCap = (id: string): boolean =>
-    /^(Shift|Alt|Control|Meta)/.test(id);
+    /^(Shift|Alt|Control|Meta|CapsLock)/.test(id);
   const row = (name: KeyCap['row']) =>
     layout.filter((cap) => cap.row === name && (!isModifierCap(cap.id) || modifierIsHeld(cap.id)));
   const renderCap = (def: ResolvedKeyCap) => {

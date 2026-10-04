@@ -248,8 +248,8 @@ test('adjust availability still gates dispatch variants', () => {
   assert.deepEqual(resolveKeyVariants('KeyJ', NO_MODS, idle).map((v) => v.commandId), ['toggle-panel']);
 });
 
-test('caps lock resolves to the selection rectangle command', () => {
-  assert.deepEqual(resolveKeyVariants('CapsLock', NO_MODS, keyState()).map((v) => v.commandId), ['select-rectangle']);
+test('z resolves to the selection rectangle command', () => {
+  assert.deepEqual(resolveKeyVariants('KeyZ', NO_MODS, keyState()).map((v) => v.commandId), ['select-rectangle']);
   const rows = buildKeymapRows(snap({ drawingShape: true, shapeType: 'rectangle_select' }));
   assert.ok(rows.some((r) => r.ids.includes('select-rectangle') && r.label === 'Finish selection'));
   assert.ok(rows.some((r) => r.ids.includes('cancel') && r.label === 'Cancel selection'));

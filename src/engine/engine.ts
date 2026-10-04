@@ -1748,7 +1748,7 @@ export class NibGliderEngine {
     this.finishOrBeginRect(() => this.rectangleTool.beginDiagonal());
   }
 
-  /** Caps Lock toggle: begin the selection marquee, or finalize it. */
+  /** Z toggle: begin the selection marquee, or finalize it. */
   selectionRectKC(): void {
     if (this.isDrawingShape && this.shapeType === 'rectangle_select') {
       this.finishSelectionRect();
