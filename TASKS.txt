@@ -28,6 +28,8 @@ description.  NGPath > Polygon > Quadrilateral > Parallelogram,  Polygon > Quadr
 Polygon > Regular Polygon.  when object changes, like has union, subtraction, intersection
 operations, path change, then it moves to regular Path.
 
+SUBDIVISION SECTION of Panel Widget
+  - subdivide rectangles
 
 CURSOR STATES 
 

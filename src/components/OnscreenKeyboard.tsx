@@ -303,6 +303,7 @@ function KeyButton({
       type="button"
       tabIndex={-1}
       data-key={def.dataKey}
+      data-tutorial-id={`key-${def.dataKey}`}
       id={def.id}
       className={
         def.className +

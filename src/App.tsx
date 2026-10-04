@@ -4,11 +4,20 @@ import { NibGliderEngine, type KeyActivity } from './engine/engine';
 import { isCommandAvailable, matchAppCommand } from './engine/input/keymap';
 import ControlPanel from './components/ControlPanel';
 import OnscreenKeyboard from './components/OnscreenKeyboard';
+import TutorialOverlay from './components/TutorialOverlay';
 import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
 import { GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
+import { TutorialRunner } from './tutorial/TutorialRunner';
+import {
+  attachTutorialKeyListener,
+  bridgeEngineToRunner,
+  emitTutorialCommand,
+} from './tutorial/completionDetectors';
+import { parseTutorialText } from './tutorial/tutorialLoader';
+import helloTutorialRaw from '../../tutorials/hello-rectangle.tutorial.json?raw';
 
 // Section title labels in the panel are hidden; icons, keys, and hover
 // tooltips still identify each section.
@@ -27,6 +36,19 @@ export default function App() {
         setActiveCode(a.active ? a.code : null),
       ),
   );
+  const [tutorialRunner] = useState(() => new TutorialRunner());
+  const tutorialSnap = useSyncExternalStore(tutorialRunner.subscribe, tutorialRunner.getSnapshot);
+
+  // Tutorial completion: physical keys and engine mutations feed the runner.
+  useEffect(() => bridgeEngineToRunner(engine, tutorialRunner), [engine, tutorialRunner]);
+  useEffect(() => attachTutorialKeyListener(tutorialRunner), [tutorialRunner]);
+
+  const startTutorial = () => {
+    const loaded = parseTutorialText(helloTutorialRaw);
+    if (!loaded.ok || !loaded.tutorial) return;
+    tutorialRunner.load(loaded.tutorial);
+    tutorialRunner.start();
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -89,6 +111,7 @@ export default function App() {
         return;
       }
       gui.toggleKeyboard();
+      emitTutorialCommand('toggle-keyboard');
     };
     document.addEventListener('keydown', onToggleKeyboard);
     (
@@ -109,6 +132,7 @@ export default function App() {
         return;
       }
       gui.toggleControls();
+      emitTutorialCommand('toggle-panel');
     };
     document.addEventListener('keydown', onToggleControls);
     (
@@ -129,6 +153,7 @@ export default function App() {
         return;
       }
       gui.toggleStatus();
+      emitTutorialCommand('toggle-status');
     };
     document.addEventListener('keydown', onToggleStatus);
     (
@@ -145,6 +170,7 @@ export default function App() {
         <canvas
           id="nibgliderCanvas"
           className="nibglider-canvas"
+          data-tutorial-id="canvas"
           tabIndex={0}
           ref={canvasRef}
         />
@@ -160,7 +186,7 @@ export default function App() {
             aria-hidden={!ui.controlsVisible}
             inert={!ui.controlsVisible}
           >
-            <ControlPanel engine={engine} />
+            <ControlPanel engine={engine} onTutorialRequest={startTutorial} />
           </div>
           <StatusOverlay
             engine={engine}
@@ -195,6 +221,7 @@ export default function App() {
               width={ui.keyboardWidth}
               onWidthChange={(width) => gui.setKeyboardWidth(width)}
               onCommand={(id) => {
+                emitTutorialCommand(id);
                 if (
                   id === 'toggle-status' &&
                   isCommandAvailable('toggle-status', {
@@ -208,6 +235,19 @@ export default function App() {
           </div>
         </div>
       </div>
+      {tutorialSnap.status === 'active' && tutorialRunner.currentStep && tutorialSnap.tutorial && (
+        <TutorialOverlay
+          key={tutorialRunner.currentStep.id}
+          tutorialTitle={tutorialSnap.tutorial.title}
+          step={tutorialRunner.currentStep}
+          stepIndex={tutorialSnap.stepIndex}
+          stepCount={tutorialSnap.tutorial.steps.length}
+          onNext={() => tutorialRunner.next()}
+          onBack={() => tutorialRunner.back()}
+          onSkip={() => tutorialRunner.skip()}
+          onEnd={() => tutorialRunner.abort()}
+        />
+      )}
     </div>
   );
 }

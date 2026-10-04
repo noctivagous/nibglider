@@ -3591,3 +3591,76 @@ kbd,
   color: var(--dp-text-2);
   white-space: nowrap;
 }
+
+/* Tutorial spotlight + bubble overlay. Plain panel styling. */
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  pointer-events: none;
+}
+.tutorial-spotlight {
+  position: fixed;
+  border: 2px solid var(--dp-text-1);
+  border-radius: 6px;
+  box-shadow: 0 0 0 9999px rgba(8, 10, 14, 0.45);
+}
+.tutorial-bubble {
+  position: fixed;
+  width: 320px;
+  max-width: calc(100vw - 20px);
+  pointer-events: auto;
+  background: #fff;
+  color: #1c2230;
+  border: 1px solid #26303f;
+  border-radius: 8px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 24px rgba(8, 10, 14, 0.3);
+}
+.tutorial-centered {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.tutorial-kicker {
+  font-size: 0.6875rem;
+  color: #5a6577;
+  margin-bottom: 4px;
+}
+.tutorial-title {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+.tutorial-body {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  margin: 0 0 8px;
+}
+.tutorial-hint {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  margin: 0 0 8px;
+  color: #3c4657;
+}
+.tutorial-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.tutorial-btn {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border: 1px solid #26303f;
+  border-radius: 6px;
+  background: #fff;
+  color: #1c2230;
+  cursor: pointer;
+}
+.tutorial-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.tutorial-primary {
+  background: #26303f;
+  color: #fff;
+}

@@ -54,6 +54,7 @@ export default function StatusOverlay({
   return (
     <div
       id="statusOverlay"
+      data-tutorial-id="status"
       className={hidden ? 'status-hidden' : undefined}
       aria-hidden="true"
       style={shiftX ? { marginLeft: shiftX } : undefined}

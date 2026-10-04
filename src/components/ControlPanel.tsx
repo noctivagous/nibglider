@@ -213,6 +213,7 @@ function PanelSection({
     <section
       id={id}
       aria-label={label}
+      data-tutorial-id={`section-${id}`}
       style={order !== undefined ? { order } : undefined}
       className={
         (className ?? 'panel-card') +
@@ -2390,7 +2391,13 @@ const RECT_OPTION_TREE: CustomSelectOption[] = [
   shapeLeaf('supershape', RECT_SHAPE_LABELS),
 ];
 
-export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
+export default function ControlPanel({
+  engine,
+  onTutorialRequest,
+}: {
+  engine: NibGliderEngine;
+  onTutorialRequest?: () => void;
+}) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
     'circle' | 'rect' | 'stroke' | 'fill' | 'text' | null
@@ -2729,16 +2736,19 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
     { value: 'file-export', label: 'Export…', disabled: true, title: 'Export is not available yet' },
     { value: 'file-import', label: 'Import…', disabled: true, title: 'Import is not available yet' },
     { value: 'hdr-file-learn', label: 'Learn', header: true },
-    { value: 'file-tutorial', label: 'Tutorial', disabled: true, title: 'The tutorial arrives in a future release' },
+    { value: 'file-tutorial', label: 'Tutorial', title: 'Start the guided tutorial' },
   ];
   const handleFile = useCallback(
     (v: string) => {
       if (v === 'file-none') return;
       dismissSelects();
-      // All entries are disabled stubs for now; stay on the placeholder.
+      if (v === 'file-tutorial') {
+        onTutorialRequest?.();
+      }
+      // Remaining entries are disabled stubs for now; stay on the placeholder.
       setFileValue('file-none');
     },
-    [dismissSelects],
+    [dismissSelects, onTutorialRequest],
   );
   // Document and Settings menu: document controls only. Section restore
   // and settings reset live in the Sections and Debug menus below.
@@ -3016,7 +3026,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
       <div className="panel-side">
         <div className="panel-rail" role="group" aria-label="Panel tools">
           <WidgetHandle widget="menus" label="Application menus" />
-          <div className="rail-box" title="File: documents, import, export">
+          <div className="rail-box" title="File: documents, import, export" data-tutorial-id="menu-file">
             <CustomSelect
               id="panelFileSelect"
               ariaLabel="File"
@@ -3030,7 +3040,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               forceCloseKey={selectCloseKey}
             />
           </div>
-          <div className="rail-box" title="Document and Settings">
+          <div className="rail-box" title="Document and Settings" data-tutorial-id="menu-document">
             <CustomSelect
               id="panelDocumentSelect"
               ariaLabel="Document and Settings"
@@ -3044,7 +3054,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               forceCloseKey={selectCloseKey}
             />
           </div>
-          <div className="rail-box" title="Operations on the selection">
+          <div className="rail-box" title="Operations on the selection" data-tutorial-id="menu-operations">
             <CustomSelect
               id="panelOperationsSelect"
               ariaLabel="Operations on the selection"
@@ -3058,7 +3068,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               forceCloseKey={selectCloseKey}
             />
           </div>
-          <div className="rail-box" title="Layers and Objects">
+          <div className="rail-box" title="Layers and Objects" data-tutorial-id="menu-layers">
             <CustomSelect
               id="panelLayersSelect"
               ariaLabel="Layers and Objects"
@@ -3072,7 +3082,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               forceCloseKey={selectCloseKey}
             />
           </div>
-          <div className="rail-box" title="Panel sections">
+          <div className="rail-box" title="Panel sections" data-tutorial-id="menu-sections">
             <CustomSelect
               id="panelSectionsSelect"
               ariaLabel="Panel sections"
@@ -3089,7 +3099,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
               forceCloseKey={selectCloseKey}
             />
           </div>
-          <div className="rail-box" title="Debug settings">
+          <div className="rail-box" title="Debug settings" data-tutorial-id="menu-debug">
             <CustomSelect
               id="panelDebugSelect"
               ariaLabel="Debug settings"

@@ -1,0 +1,56 @@
+{
+  "id": "hello-rectangle",
+  "title": "Hello Rectangle",
+  "description": "Point at the File menu, the Rect Keys panel section, and the Rect-by-Diagonal key, then draw your first rectangle.",
+  "steps": [
+    {
+      "id": "welcome",
+      "bubble": {
+        "title": "Welcome to NibGlider",
+        "body": "The mouse steers the cursor, but keys do the clicking. This tour points at the controls you will need.",
+        "placement": "center"
+      },
+      "expect": { "kind": "none" }
+    },
+    {
+      "id": "file-menu",
+      "target": "menu-file",
+      "bubble": {
+        "title": "File menu",
+        "body": "Documents, import, export, and more tutorials live here. Hover to open it.",
+        "placement": "right"
+      },
+      "expect": { "kind": "none" }
+    },
+    {
+      "id": "rect-section",
+      "target": "section-rectFrameControls",
+      "bubble": {
+        "title": "Rect Keys",
+        "body": "Rectangle tools live in this panel section. Collapsed sections hide their targets, and the bubble will center instead.",
+        "placement": "left"
+      },
+      "expect": { "kind": "none" }
+    },
+    {
+      "id": "press-diagonal-key",
+      "target": "key-i",
+      "bubble": {
+        "title": "Rect by Diagonal",
+        "body": "Press the I key now. The runner watches real key presses and advances when you do.",
+        "placement": "above"
+      },
+      "expect": { "kind": "press-key", "key": "i" }
+    },
+    {
+      "id": "canvas",
+      "target": "canvas",
+      "bubble": {
+        "title": "Draw on the canvas",
+        "body": "Steer the mouse and press keys to place points. Any engine change completes this step.",
+        "placement": "center"
+      },
+      "expect": { "kind": "scene-changed" }
+    }
+  ]
+}
