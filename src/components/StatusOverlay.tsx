@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import WidgetHandle from './WidgetHandle';
 import type {
   NibGliderEngine,
   StatusLine,
@@ -57,6 +58,7 @@ export default function StatusOverlay({
       aria-hidden="true"
       style={shiftX ? { marginLeft: shiftX } : undefined}
     >
+      <WidgetHandle widget="status" label="Status" />
       <div className="status-table">
         <Section lines={schema.state} />
         {schema.state.length > 0 && schema.steps.length > 0 && (

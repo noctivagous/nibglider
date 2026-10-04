@@ -129,7 +129,7 @@ article {
   font-family: Monospace, monospace;
   font-size: 12px;
   color: #e8edf3;
-  padding: 5px 10px;
+  padding: 5px 10px 5px 24px;
   text-align: left;
   white-space: normal;
   overflow: visible;
@@ -525,13 +525,21 @@ article {
 }
 
 #canvasContainer #topOverlayStack #statusOverlay {
-  position: static;
+  position: relative;
   top: auto;
   left: auto;
   z-index: auto;
   max-width: 100%;
   align-self: flex-start;
   transition: transform 0.32s ease, opacity 0.32s ease;
+}
+
+#canvasContainer #topOverlayStack #statusOverlay .widget-handle {
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  bottom: 4px;
+  pointer-events: auto;
 }
 
 #canvasContainer #topOverlayStack #statusOverlay.status-hidden {
@@ -3123,8 +3131,9 @@ kbd,
 }
 
 /* Widget move handles: slim grip strips at the left of each widget box
-   (menus rail, keymap table, panel sections, on-screen keyboard).
-   Foundation for draggable widgets via data-widget hooks; no dragging yet. */
+   (menus rail, keymap table, status overlay, panel sections, on-screen
+   keyboard). Foundation for draggable widgets via data-widget hooks; no
+   dragging yet. */
 .widget-handle {
   flex: none;
   display: inline-flex;
