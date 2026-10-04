@@ -104,7 +104,7 @@ test('autosave creates the Untitled document and clears dirty', () => {
   let dirty = true;
   const scene = {
     isDocumentDirty: () => dirty,
-    exportSceneSVG: () => SVG,
+    exportScene: () => SVG,
     markDocumentClean: () => { dirty = false; },
   };
   assert.equal(autosaveDocument(scene, mem), true);
@@ -122,7 +122,7 @@ test('autosave keeps the existing name and skips empty exports', () => {
   let cleaned = 0;
   const scene = {
     isDocumentDirty: () => true,
-    exportSceneSVG: () => svg,
+    exportScene: () => svg,
     markDocumentClean: () => { cleaned += 1; },
   };
   assert.equal(autosaveDocument(scene, mem), false);

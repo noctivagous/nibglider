@@ -10,6 +10,7 @@ import { browserStore, type KeyValueStore } from './GUIManager';
 export interface GalleryDoc {
   id: string;
   name: string;
+  /** Scene payload: nibglider-scene JSON, or legacy SVG. */
   svg: string;
   updatedAt: number;
 }
@@ -160,7 +161,7 @@ export function docDisplayName(store: KeyValueStore = browserStore()): string {
 /** Minimal scene surface autosave needs. The engine satisfies this. */
 export interface AutosaveScene {
   isDocumentDirty(): boolean;
-  exportSceneSVG(): string;
+  exportScene(): string;
   markDocumentClean(): void;
 }
 
@@ -171,10 +172,10 @@ export function autosaveDocument(
   store: KeyValueStore = browserStore(),
 ): boolean {
   if (!scene.isDocumentDirty()) return false;
-  const svg = scene.exportSceneSVG();
-  if (!svg || !svg.trim()) return false;
+  const payload = scene.exportScene();
+  if (!payload || !payload.trim()) return false;
   const id = currentId(store);
-  saveDocument(store, (id && currentName(store)) || 'Untitled', svg, id);
+  saveDocument(store, (id && currentName(store)) || 'Untitled', payload, id);
   scene.markDocumentClean();
   return true;
 }

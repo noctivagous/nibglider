@@ -31,6 +31,14 @@ import {
 import { keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
 import { CombinatoricsManager } from './scene/CombinatoricsManager';
 import { DropController } from './document/DropController';
+import {
+  clearTransient,
+  decodeSceneItems,
+  encodeSceneItems,
+  isSceneJson,
+  isSvgMarkup,
+  stripSvgClips,
+} from './document/SceneIO';
 import { buildStatusSchema } from './appearance/statusSchema';
 import { buildKeymapRows } from './appearance/keymapSchema';
 import { EngineContext } from './EngineContext';
@@ -628,6 +636,8 @@ export class NibGliderEngine {
     return this.documentManager.subscribe(listener);
   }
   markDocumentClean(): void { this.documentManager.markClean(); }
+  /** True when the active layer holds artwork (not overlays). */
+  hasContent(): boolean { return this.contentItems().length > 0; }
 
   // --- Document session: gallery new/open/save support + SVG transfer ---
   // All mutators record one undo entry and refresh paint/status bridges.
@@ -644,6 +654,24 @@ export class NibGliderEngine {
     this.scene.pruneRecords();
     this.recordSceneCommand('New document', before, selectedBefore, []);
     this.updateTextContent(); this.notify();
+  }
+
+  /** Native gallery payload: Paper JSON of artwork items only. Selection
+   * and glow are stripped for the write and restored after. */
+  exportScene(): string {
+    const items = this.contentItems();
+    const selected = this.selection.snapshot();
+    this.selection.suspendGlow();
+    try {
+      for (const item of items) clearTransient(item);
+      return encodeSceneItems(items);
+    } catch {
+      return '';
+    } finally {
+      try { this.selection.restore(selected, { quiet: true }); } catch { /* Headless. */ }
+      try { this.selection.restoreGlow(); } catch { /* Headless. */ }
+      try { this.scope.view?.update(); } catch { /* Headless. */ }
+    }
   }
 
   /** Serialize the active artwork to SVG. Guide layers, snap/grid
@@ -702,26 +730,56 @@ export class NibGliderEngine {
   importSceneSVG(svg: string, label = 'Import SVG'): boolean {
     if (this.isLiveDrawing) return false;
     const selectedBefore = [...this.selectedItems];
-    let placed: AnyItem | null = null;
-    try {
-      this.scope.project.importSVG(svg, (imported: AnyItem) => {
-        if (!imported) return;
-        try { imported.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
-        placed = imported;
-      });
-    } catch {
-      return false;
-    }
+    const placed = this.ingestSvg(svg);
     if (!placed) return false;
+    try { placed.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
     this.addItemToSelection(placed);
     this.history.recordDrop(label, placed, selectedBefore);
     this.updateTextContent(); this.notify();
     return true;
   }
 
-  /** Replace all artwork with an SVG document (gallery Open). One undo entry. */
-  replaceSceneWithSVG(label: string, svg: string): boolean {
+  /** Replace all artwork with a gallery payload (JSON or legacy SVG). */
+  replaceScene(label: string, blob: string, opts?: { history?: boolean }): boolean {
     if (this.isLiveDrawing) return false;
+    if (isSceneJson(blob)) return this.replaceWithItems(label, () => (
+      decodeSceneItems(this.scope.project, blob)
+    ), opts);
+    if (isSvgMarkup(blob)) {
+      return this.replaceWithItems(label, () => {
+        const imported = this.ingestSvg(blob);
+        return imported ? [imported] : [];
+      }, opts);
+    }
+    return false;
+  }
+
+  /** Replace all artwork with an SVG document (gallery Open). One undo entry. */
+  replaceSceneWithSVG(label: string, svg: string, opts?: { history?: boolean }): boolean {
+    return this.replaceScene(label, svg, opts);
+  }
+
+  private ingestSvg(svg: string): AnyItem | null {
+    let placed: AnyItem | null = null;
+    try {
+      this.scope.project.importSVG(svg, (imported: AnyItem) => {
+        if (!imported) return;
+        stripSvgClips(imported);
+        clearTransient(imported);
+        placed = imported;
+      });
+    } catch {
+      return null;
+    }
+    return placed;
+  }
+
+  private replaceWithItems(
+    label: string,
+    load: () => AnyItem[],
+    opts?: { history?: boolean },
+  ): boolean {
+    const recordHistory = opts?.history !== false;
     const before = this.contentItems();
     const selectedBefore = [...this.selectedItems];
     const retainedBefore = new Map(this.retainedPaths);
@@ -729,26 +787,16 @@ export class NibGliderEngine {
     for (const item of before) {
       try { item.remove(); } catch { /* Detached already. */ }
     }
-    let placed: AnyItem | null = null;
+    let placed: AnyItem[] = [];
     try {
-      this.scope.project.importSVG(svg, (imported: AnyItem) => {
-        if (!imported) return;
-        try { imported.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
-        placed = imported;
-      });
+      placed = load().filter(Boolean);
     } catch {
       return false;
     }
-    if (!placed) {
-      // Nothing imported: keep the cleared scene but record it so undo restores.
-      this.scene.pruneRecords();
-      this.recordSceneCommand(label, before, selectedBefore, []);
-      this.updateTextContent(); this.notify();
-      return true;
-    }
     this.scene.pruneRecords();
-    this.addItemToSelection(placed);
-    this.recordSceneCommand(label, before, selectedBefore, [placed], retainedBefore);
+    if (recordHistory) {
+      this.recordSceneCommand(label, before, selectedBefore, placed, retainedBefore);
+    }
     this.updateTextContent(); this.notify();
     return true;
   }
@@ -760,7 +808,13 @@ export class NibGliderEngine {
   // --- Lifecycle: canvas setup + event wiring (NibGliderApp init) ---
   attach(canvas: HTMLCanvasElement): void {
     const scope = this.scope;
-    scope.setup(canvas);
+    const bound = (scope.view as { element?: HTMLCanvasElement } | null)?.element;
+    // setup() replaces the project. StrictMode remounts this effect, so a
+    // second setup would drop restored artwork and leave stale pixels until
+    // the next mouse event redraws the empty view.
+    if (bound !== canvas) {
+      scope.setup(canvas);
+    }
     this.mousePt = new scope.Point(
       scope.view.size.width / 2,
       scope.view.size.height / 2,

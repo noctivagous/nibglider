@@ -2887,9 +2887,9 @@ export default function ControlPanel({
   );
   const saveSceneToGallery = useCallback(
     (name: string): boolean => {
-      const svg = engine.exportSceneSVG();
-      if (!svg) return false;
-      gallerySaveDocument(browserStore(), name, svg);
+      const payload = engine.exportScene();
+      if (!payload) return false;
+      gallerySaveDocument(browserStore(), name, payload);
       engine.markDocumentClean();
       return true;
     },
@@ -2903,7 +2903,7 @@ export default function ControlPanel({
       ) {
         return;
       }
-      if (engine.replaceSceneWithSVG(`Open ${doc.name}`, doc.svg)) {
+      if (engine.replaceScene(`Open ${doc.name}`, doc.svg)) {
         gallerySetCurrent(browserStore(), doc.id);
         engine.markDocumentClean();
       }

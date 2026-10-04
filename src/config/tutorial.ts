@@ -4,7 +4,7 @@
 // dropped straight into the guided tutorial on load.
 
 /** Auto-show the tutorial for users who have not completed it yet. */
-export const SHOW_TUTORIAL_FOR_NEW_USERS = true;
+export const SHOW_TUTORIAL_FOR_NEW_USERS = false;
 
 /** Browser-storage key recording that the user went through the tutorial. */
 export const TUTORIAL_COMPLETED_KEY = 'nibglider.tutorialCompleted';

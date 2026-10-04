@@ -1,3 +1,6 @@
+
+[ ] JSON serialization of the scene graph — walk the paper.project tree and JSON.stringify each item's properties (path segments, styles, transforms, etc.), then reconstruct on load. This is the most common approach for a "native" save format in Paper.js-based editors
+
 [x] cmd/ctrl - and = zoom out and zoom in, cmd/ctrl 0 sets to 100%.
 
 [ ]  When selected, shapes should reveal their centroids or circle origins. 

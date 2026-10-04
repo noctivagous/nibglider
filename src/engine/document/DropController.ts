@@ -1,3 +1,5 @@
+import { stripSvgClips } from './SceneIO';
+
 // SVG and raster drops.
 // Owns no selection or history. Reads the drop event, the view, and zoom.
 // Mutates the scene only through host place, select, and recordDrop callbacks.
@@ -106,6 +108,7 @@ export class DropController {
           return;
         }
         try { imported.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
+        stripSvgClips(imported);
         this.place(`Deposit ${fileName}`, imported, at, selBefore);
       });
     } catch {

@@ -250,23 +250,20 @@ export default function App() {
     if (tutorialSnap.status === 'done') markTutorialCompleted(browserStore());
   }, [tutorialSnap.status]);
 
-  // Restores the open gallery document once per engine lifetime, so a
-  // reload lands back on the saved scene. StrictMode remounts the attach
-  // effect without recreating the engine, hence the guard.
-  const restoredRef = useRef(false);
+  // Restores the open gallery document when the scene is empty. attach()
+  // keeps the Paper project across StrictMode remounts, so a second pass
+  // sees the restored artwork and skips this.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     engine.attach(canvas);
-    if (!restoredRef.current) {
-      restoredRef.current = true;
-      try {
-        const doc = restorableDocument(browserStore());
-        if (doc && engine.replaceSceneWithSVG(`Open ${doc.name}`, doc.svg)) {
-          engine.markDocumentClean();
-        }
-      } catch { /* A bad save never blocks startup. */ }
-    }
+    try {
+      const doc = restorableDocument(browserStore());
+      if (doc && !engine.hasContent()
+        && engine.replaceScene(`Open ${doc.name}`, doc.svg, { history: false })) {
+        engine.markDocumentClean();
+      }
+    } catch { /* A bad save never blocks startup. */ }
     return () => engine.detach();
   }, [engine]);
 
