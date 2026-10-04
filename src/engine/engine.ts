@@ -627,6 +627,89 @@ export class NibGliderEngine {
   subscribeDocumentChanges(listener: (change: DocumentChange) => void): () => void {
     return this.documentManager.subscribe(listener);
   }
+  markDocumentClean(): void { this.documentManager.markClean(); }
+
+  // --- Document session: gallery new/open/save support + SVG transfer ---
+  // All mutators record one undo entry and refresh paint/status bridges.
+  /** Remove every artwork item and clear the selection (New document). */
+  newDocument(): void {
+    if (this.isLiveDrawing) return;
+    const before = this.contentItems();
+    const selectedBefore = [...this.selectedItems];
+    if (before.length === 0) return;
+    this.clearOutSelection();
+    for (const item of before) {
+      try { item.remove(); } catch { /* Detached already. */ }
+    }
+    this.scene.pruneRecords();
+    this.recordSceneCommand('New document', before, selectedBefore, []);
+    this.updateTextContent(); this.notify();
+  }
+
+  /** Serialize the active artwork (not cursors, previews, or grid) to SVG. */
+  exportSceneSVG(): string {
+    try {
+      const exported = this.scope.project.exportSVG({ asString: true });
+      return typeof exported === 'string' ? exported : '';
+    } catch {
+      return '';
+    }
+  }
+
+  /** Deposit an SVG document into the scene without replacing artwork. */
+  importSceneSVG(svg: string, label = 'Import SVG'): boolean {
+    if (this.isLiveDrawing) return false;
+    const selectedBefore = [...this.selectedItems];
+    let placed: AnyItem | null = null;
+    try {
+      this.scope.project.importSVG(svg, (imported: AnyItem) => {
+        if (!imported) return;
+        try { imported.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
+        placed = imported;
+      });
+    } catch {
+      return false;
+    }
+    if (!placed) return false;
+    this.addItemToSelection(placed);
+    this.history.recordDrop(label, placed, selectedBefore);
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  /** Replace all artwork with an SVG document (gallery Open). One undo entry. */
+  replaceSceneWithSVG(label: string, svg: string): boolean {
+    if (this.isLiveDrawing) return false;
+    const before = this.contentItems();
+    const selectedBefore = [...this.selectedItems];
+    const retainedBefore = new Map(this.retainedPaths);
+    this.clearOutSelection();
+    for (const item of before) {
+      try { item.remove(); } catch { /* Detached already. */ }
+    }
+    let placed: AnyItem | null = null;
+    try {
+      this.scope.project.importSVG(svg, (imported: AnyItem) => {
+        if (!imported) return;
+        try { imported.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
+        placed = imported;
+      });
+    } catch {
+      return false;
+    }
+    if (!placed) {
+      // Nothing imported: keep the cleared scene but record it so undo restores.
+      this.scene.pruneRecords();
+      this.recordSceneCommand(label, before, selectedBefore, []);
+      this.updateTextContent(); this.notify();
+      return true;
+    }
+    this.scene.pruneRecords();
+    this.addItemToSelection(placed);
+    this.recordSceneCommand(label, before, selectedBefore, [placed], retainedBefore);
+    this.updateTextContent(); this.notify();
+    return true;
+  }
 
   private notify(): void {
     this.context.notify();

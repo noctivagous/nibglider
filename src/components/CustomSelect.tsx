@@ -24,6 +24,10 @@ export interface CustomSelectOption {
   disabled?: boolean;
   /** Native tooltip for the row (e.g. why a future item is disabled). */
   title?: string;
+  /** Card rows render as beveled grid buttons under the preceding header. */
+  card?: boolean;
+  /** On a header: column count for the card grid that follows it. */
+  columns?: number;
 }
 
 interface FlatRow {
@@ -436,17 +440,8 @@ export default function CustomSelect({
               scheduleHoverClose();
             }}
           >
-            {rows.map((row, i) =>
-              row.isHeader ? (
-                <div
-                  key={row.option.value}
-                  role="presentation"
-                  className="cs-group"
-                  style={{ paddingLeft: 8 + row.depth * 16 }}
-                >
-                  <span className="cs-group-label">{row.option.label}</span>
-                </div>
-              ) : (
+            {(() => {
+              const renderItem = (row: FlatRow, i: number) => (
                 <div
                   key={row.option.value}
                   role="treeitem"
@@ -460,13 +455,14 @@ export default function CustomSelect({
                   className={
                     'cs-item' +
                     (row.isParent ? ' cs-parent' : '') +
+                    (row.option.card ? ' cs-card' : '') +
                     (!row.isParent && row.option.value === value
                       ? ' selected'
                       : '') +
                     (i === focusIdx ? ' focused' : '') +
                     (row.option.disabled ? ' disabled' : '')
                   }
-                  style={{ paddingLeft: 8 + row.depth * 16 }}
+                  style={row.option.card ? undefined : { paddingLeft: 8 + row.depth * 16 }}
                   onMouseEnter={() => setFocusIdx(i)}
                   onClick={() => activateRow(i)}
                 >
@@ -491,8 +487,54 @@ export default function CustomSelect({
                     </span>
                   )}
                 </div>
-              ),
-            )}
+              );
+              // Consecutive card leaves share one grid whose column count
+              // comes from the nearest preceding header (default 2).
+              const nodes: ReactNode[] = [];
+              let cards: Array<{ row: FlatRow; i: number }> = [];
+              let gridCols = 2;
+              const flushCards = () => {
+                if (cards.length === 0) return;
+                nodes.push(
+                  <div
+                    key={`cards-${cards[0].i}`}
+                    className="cs-card-grid"
+                    role="group"
+                    style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}
+                  >
+                    {cards.map(({ row, i }) => renderItem(row, i))}
+                  </div>,
+                );
+                cards = [];
+              };
+              rows.forEach((row, i) => {
+                if (row.isHeader) {
+                  flushCards();
+                  if (typeof row.option.columns === 'number' && row.option.columns > 0) {
+                    gridCols = Math.min(4, Math.floor(row.option.columns));
+                  }
+                  nodes.push(
+                    <div
+                      key={row.option.value}
+                      role="presentation"
+                      className="cs-group"
+                      style={{ paddingLeft: 8 + row.depth * 16 }}
+                    >
+                      <span className="cs-group-label">{row.option.label}</span>
+                    </div>,
+                  );
+                  return;
+                }
+                if (row.option.card && !row.isParent) {
+                  cards.push({ row, i });
+                  return;
+                }
+                flushCards();
+                nodes.push(renderItem(row, i));
+              });
+              flushCards();
+              return nodes;
+            })()}
           </div>,
           document.body,
         )}

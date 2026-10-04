@@ -6,14 +6,27 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ChangeEvent,
   type ReactNode,
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { primaryShortcut } from '../engine/input/keymap';
 import { PanelsManager, sectionLabel, sectionOrder } from '../ui/PanelsManager';
+import { browserStore } from '../ui/GUIManager';
+import {
+  currentId as galleryCurrentId,
+  currentName as galleryCurrentName,
+  deleteDocument as galleryDeleteDocument,
+  listDocuments as galleryListDocuments,
+  renameDocument as galleryRenameDocument,
+  saveDocument as gallerySaveDocument,
+  setCurrent as gallerySetCurrent,
+  type GalleryDoc,
+} from '../ui/DocumentGallery';
 import { clearNibGliderSettings } from '../tutorial/tutorialProgress';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
+import DocumentGallery, { type GalleryMode } from './DocumentGallery';
 import KeymapWidget from './KeymapWidget';
 import WidgetHandle from './WidgetHandle';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
@@ -155,6 +168,80 @@ function CheckIcon({ children }: { children: ReactNode }) {
     >
       {children}
     </svg>
+  );
+}
+
+// Glyph for a File menu card button: icon stacked above a short label.
+function FileCardIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function OpenCardIcon() {
+  return (
+    <FileCardIcon>
+      <path d="M3 7 h6 l2 2 h10 v9 H3 Z" />
+      <path d="M3 7 v10" />
+    </FileCardIcon>
+  );
+}
+
+function NewCardIcon() {
+  return (
+    <FileCardIcon>
+      <path d="M7 3 h7 l4 4 v14 H7 Z" />
+      <path d="M12 11 v6 M9 14 h6" />
+    </FileCardIcon>
+  );
+}
+
+function SaveCardIcon() {
+  return (
+    <FileCardIcon>
+      <path d="M5 4 h11 l3 3 v13 H5 Z" />
+      <path d="M8 4 v5 h7 V4" />
+      <path d="M8 20 v-6 h8 v6" />
+    </FileCardIcon>
+  );
+}
+
+function RenameCardIcon() {
+  return (
+    <FileCardIcon>
+      <path d="M4 20 l1 -4 L16 5 l3 3 L8 19 Z" />
+      <path d="M14 7 l3 3" />
+    </FileCardIcon>
+  );
+}
+
+function ExportCardIcon() {
+  return (
+    <FileCardIcon>
+      <path d="M4 14 v6 h16 v-6" />
+      <path d="M12 3 v10 M8 7 l4 -4 4 4" />
+    </FileCardIcon>
+  );
+}
+
+function ImportCardIcon() {
+  return (
+    <FileCardIcon>
+      <path d="M4 14 v6 h16 v-6" />
+      <path d="M12 4 v10 M8 10 l4 4 4 -4" />
+    </FileCardIcon>
   );
 }
 
@@ -2757,31 +2844,161 @@ export default function ControlPanel({
     }
     setOpDialog(null);
   }, [engine, opDialog]);
-  // File menu: document gallery, transfer, and learning. Nothing here has a
-  // backing store yet, so every entry is a disabled stub with a tooltip.
+  // File menu: Document cards (Open, New, Save, Rename) and Transfer
+  // cards (Export, Import) render as beveled grid buttons; Learn stays a
+  // plain row. All cards are backed by the gallery store and the engine's
+  // document-session API.
   const FILE_OPTIONS: CustomSelectOption[] = [
-    { value: 'hdr-file-doc', label: 'Document', header: true },
-    { value: 'file-open', label: 'Open Document (Gallery)', disabled: true, title: 'The document gallery is not available yet' },
-    { value: 'file-new', label: 'New Document', disabled: true, title: 'New documents are not available yet' },
-    { value: 'file-save', label: 'Save (Gallery)', disabled: true, title: 'The document gallery is not available yet' },
-    { value: 'file-rename', label: 'Rename…', disabled: true, title: 'Renaming is not available yet' },
-    { value: 'hdr-file-transfer', label: 'Transfer', header: true },
-    { value: 'file-export', label: 'Export…', disabled: true, title: 'Export is not available yet' },
-    { value: 'file-import', label: 'Import…', disabled: true, title: 'Import is not available yet' },
+    { value: 'hdr-file-doc', label: 'Document', header: true, columns: 2 },
+    { value: 'file-open', label: 'Open', card: true, image: <OpenCardIcon />, title: 'Open a document from the gallery' },
+    { value: 'file-new', label: 'New', card: true, image: <NewCardIcon />, title: 'Start a new document' },
+    { value: 'file-save', label: 'Save', card: true, image: <SaveCardIcon />, title: 'Save to the gallery' },
+    { value: 'file-rename', label: 'Rename', card: true, image: <RenameCardIcon />, title: 'Rename the open document' },
+    { value: 'hdr-file-transfer', label: 'Transfer', header: true, columns: 2 },
+    { value: 'file-export', label: 'Export', card: true, image: <ExportCardIcon />, title: 'Download the scene as SVG' },
+    { value: 'file-import', label: 'Import', card: true, image: <ImportCardIcon />, title: 'Import an SVG file into the scene' },
     { value: 'hdr-file-learn', label: 'Learn', header: true },
     { value: 'file-tutorial', label: 'Tutorial', title: 'Start the guided tutorial' },
   ];
+  // Document gallery dialog state. Docs are re-read from the store on open
+  // and after every mutation while the dialog is showing.
+  const [galleryMode, setGalleryMode] = useState<GalleryMode | null>(null);
+  const [galleryDocs, setGalleryDocs] = useState<GalleryDoc[]>([]);
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const refreshGallery = useCallback(() => {
+    setGalleryDocs(galleryListDocuments(browserStore()));
+  }, []);
+  const openGallery = useCallback(
+    (mode: GalleryMode) => {
+      dismissSelects();
+      refreshGallery();
+      setGalleryMode(mode);
+    },
+    [dismissSelects, refreshGallery],
+  );
+  const saveSceneToGallery = useCallback(
+    (name: string): boolean => {
+      const svg = engine.exportSceneSVG();
+      if (!svg) return false;
+      gallerySaveDocument(browserStore(), name, svg);
+      engine.markDocumentClean();
+      return true;
+    },
+    [engine],
+  );
+  const handleGalleryOpen = useCallback(
+    (doc: GalleryDoc) => {
+      if (
+        engine.isDocumentDirty() &&
+        !window.confirm(`Open "${doc.name}"? Unsaved changes will be lost.`)
+      ) {
+        return;
+      }
+      if (engine.replaceSceneWithSVG(`Open ${doc.name}`, doc.svg)) {
+        gallerySetCurrent(browserStore(), doc.id);
+        engine.markDocumentClean();
+      }
+      setGalleryMode(null);
+      refreshGallery();
+    },
+    [engine, refreshGallery],
+  );
+  const handleGallerySave = useCallback(
+    (name: string) => {
+      saveSceneToGallery(name);
+      setGalleryMode(null);
+      refreshGallery();
+    },
+    [saveSceneToGallery, refreshGallery],
+  );
+  const handleGalleryRename = useCallback(
+    (name: string) => {
+      const id = galleryCurrentId(browserStore());
+      if (id) galleryRenameDocument(browserStore(), id, name);
+      setGalleryMode(null);
+      refreshGallery();
+    },
+    [refreshGallery],
+  );
+  const handleGalleryDelete = useCallback(
+    (id: string) => {
+      galleryDeleteDocument(browserStore(), id);
+      refreshGallery();
+    },
+    [refreshGallery],
+  );
+  const handleImportFile = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onerror = () => { /* A failed read imports nothing. */ };
+      reader.onload = () => {
+        const text = reader.result;
+        if (typeof text !== 'string' || !/<svg[\s>]/i.test(text.slice(0, 4096))) return;
+        engine.importSceneSVG(text, `Import ${file.name}`);
+      };
+      reader.readAsText(file);
+    },
+    [engine],
+  );
   const handleFile = useCallback(
     (v: string) => {
       if (v === 'file-none') return;
       dismissSelects();
-      if (v === 'file-tutorial') {
-        onTutorialRequest?.();
+      switch (v) {
+        case 'file-tutorial':
+          onTutorialRequest?.();
+          break;
+        case 'file-open':
+          openGallery('open');
+          break;
+        case 'file-new':
+          if (
+            engine.isDocumentDirty() &&
+            !window.confirm('Start a new document? Unsaved changes will be lost.')
+          ) {
+            break;
+          }
+          engine.newDocument();
+          gallerySetCurrent(browserStore(), null);
+          engine.markDocumentClean();
+          break;
+        case 'file-save': {
+          const id = galleryCurrentId(browserStore());
+          if (id) saveSceneToGallery(galleryCurrentName(browserStore()) ?? 'Untitled');
+          else openGallery('save');
+          break;
+        }
+        case 'file-rename':
+          if (galleryCurrentId(browserStore())) openGallery('rename');
+          else openGallery('save');
+          break;
+        case 'file-export': {
+          const svg = engine.exportSceneSVG();
+          if (!svg) break;
+          const name = galleryCurrentName(browserStore()) ?? 'untitled';
+          const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.download = `${name}.svg`;
+          document.body.appendChild(anchor);
+          anchor.click();
+          anchor.remove();
+          window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+          break;
+        }
+        case 'file-import':
+          importInputRef.current?.click();
+          break;
+        default:
+          break;
       }
-      // Remaining entries are disabled stubs for now; stay on the placeholder.
+      // Reset to the placeholder label after acting.
       setFileValue('file-none');
     },
-    [dismissSelects, onTutorialRequest],
+    [dismissSelects, engine, onTutorialRequest, openGallery, saveSceneToGallery],
   );
   // Document and Settings menu: document controls only. Section restore
   // and settings reset live in the Sections and Debug menus below.
@@ -3976,6 +4193,29 @@ export default function ControlPanel({
         >
           {iconMenuBody(iconMenu.id)}
         </SectionIconMenu>
+      ) : null}
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".svg,image/svg+xml"
+        hidden
+        aria-hidden="true"
+        tabIndex={-1}
+        onChange={handleImportFile}
+      />
+      {galleryMode ? (
+        <DocumentGallery
+          mode={galleryMode}
+          docs={galleryDocs}
+          openId={galleryCurrentId(browserStore())}
+          initialName={galleryCurrentName(browserStore()) ?? 'Untitled'}
+          saveLabel="Save"
+          onOpen={handleGalleryOpen}
+          onSave={handleGallerySave}
+          onRename={handleGalleryRename}
+          onDelete={handleGalleryDelete}
+          onClose={() => setGalleryMode(null)}
+        />
       ) : null}
     </div>
   );

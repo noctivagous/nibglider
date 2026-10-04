@@ -1709,6 +1709,268 @@ body {
   white-space: nowrap;
 }
 
+/* Card areas in application menus: consecutive card rows share one grid
+   (column count comes from the preceding header). Cards are beveled
+   buttons with the icon stacked above a short label. */
+.custom-select-menu .cs-card-grid {
+  display: grid;
+  gap: 6px;
+  padding: 4px;
+}
+
+.custom-select-menu .cs-item.cs-card {
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  min-height: 64px;
+  padding: 9px 6px 7px;
+  text-align: center;
+  white-space: normal;
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0) 45%),
+    linear-gradient(to bottom, #2c3846, #1d2530);
+  border: 1px solid var(--dp-border);
+  border-left: 1px solid var(--dp-border);
+  border-radius: 7px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 2px 5px rgba(0, 0, 0, 0.45);
+}
+
+.custom-select-menu .cs-item.cs-card:hover,
+.custom-select-menu .cs-item.cs-card.focused {
+  border-color: var(--dp-accent);
+  color: var(--dp-text-1);
+}
+
+.custom-select-menu .cs-item.cs-card:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.custom-select-menu .cs-item.cs-card .cs-image {
+  width: 22px;
+  height: 22px;
+}
+
+.custom-select-menu .cs-item.cs-card .cs-image svg {
+  width: 22px;
+  height: 22px;
+}
+
+.custom-select-menu .cs-item.cs-card .cs-label {
+  font-family: var(--font-tech-label);
+  font-size: 0.6875rem;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+}
+
+.custom-select-menu .cs-item.cs-card .cs-shortcut {
+  margin-left: 0;
+  padding-left: 0;
+}
+
+/* Document gallery dialog: centered above canvas and panel. */
+.gallery-overlay {
+  position: fixed;
+  inset: 0;
+  /* Above menus (10100) but below the tutorial overlay (10200), which
+     must top every layer. */
+  z-index: 10150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 12, 17, 0.6);
+}
+
+.gallery-dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(480px, calc(100vh - 64px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 22%),
+    linear-gradient(to bottom, #242e3a, #161c24);
+  border: 1px solid var(--dp-border);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 12px 32px rgba(0, 0, 0, 0.65);
+  font-family: var(--font-tech-mono);
+  font-size: 0.8125rem;
+  color: var(--dp-text-2);
+}
+
+.gallery-dialog:focus {
+  outline: none;
+}
+
+.gallery-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gallery-title {
+  font-family: var(--font-tech-label);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dp-text-1);
+}
+
+.gallery-x {
+  background: none;
+  border: none;
+  color: var(--dp-text-3);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.gallery-x:hover {
+  color: var(--dp-text-1);
+}
+
+.gallery-row {
+  display: flex;
+  gap: 8px;
+}
+
+.gallery-name {
+  flex: 1;
+  min-width: 0;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  color: var(--dp-text-1);
+  font: inherit;
+  padding: 6px 8px;
+}
+
+.gallery-primary {
+  flex: none;
+  background: var(--dp-accent-soft);
+  border: 1px solid var(--dp-accent);
+  border-radius: 5px;
+  color: #fff;
+  font: inherit;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.gallery-primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.gallery-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 60px;
+}
+
+.gallery-empty {
+  color: var(--dp-text-3);
+  padding: 12px 4px;
+  text-align: center;
+}
+
+.gallery-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+}
+
+.gallery-item:hover {
+  background: var(--dp-accent-soft);
+}
+
+.gallery-item.open {
+  border-color: var(--dp-accent);
+}
+
+.gallery-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dp-text-1);
+}
+
+.gallery-open-tag {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dp-text-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: 6px;
+}
+
+.gallery-item-date {
+  flex: none;
+  font-size: 0.6875rem;
+  color: var(--dp-text-3);
+}
+
+.gallery-open {
+  flex: none;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 4px;
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.gallery-open:hover {
+  border-color: var(--dp-accent);
+}
+
+.gallery-confirm {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.gallery-danger {
+  background: rgba(200, 60, 60, 0.2);
+  border: 1px solid rgba(200, 60, 60, 0.6);
+  border-radius: 4px;
+  color: #f0a0a0;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.gallery-quiet {
+  background: none;
+  border: none;
+  color: var(--dp-text-3);
+  font: inherit;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.gallery-quiet:hover {
+  color: var(--dp-text-1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   #controlPanel .custom-select-trigger .cs-caret,
   #controlPanel .font-select-trigger .cs-caret,
