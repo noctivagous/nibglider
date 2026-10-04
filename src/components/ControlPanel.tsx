@@ -3201,7 +3201,7 @@ export default function ControlPanel({
         label="Stroke"
         icon={
           <TitleIcon>
-            <path d="M2 12 L14 2" />
+            <path d="M10.8 2.2 L13.8 5.2 L7 12 L3.5 13 L4.5 9.5 Z" />
           </TitleIcon>
         }
         collapsed={!!collapsedMap['strokeControls']}
@@ -3212,12 +3212,11 @@ export default function ControlPanel({
           
           <SectionTitleButton sectionId="strokeControls" title="Stroke" menuOpen={iconMenu?.id === 'strokeControls'} onOpen={toggleIconMenu}><span className="pane-title">
             <TitleIcon>
-              <path d="M2 12 L14 2" />
+              <path d="M10.8 2.2 L13.8 5.2 L7 12 L3.5 13 L4.5 9.5 Z" />
             </TitleIcon>
             <span className="pane-title-text">Stroke</span></span>
           </SectionTitleButton>
           <span className="key-switch-group">
-            <kbd className="title-seg-kbd">S</kbd>
             <label className="toggle-switch square-knob">
               <input
                 type="checkbox"
@@ -3227,6 +3226,7 @@ export default function ControlPanel({
               />
               <span className="slider" />
             </label>
+            <kbd className="title-seg-kbd">S</kbd>
           </span>
           <input
             type="color"
@@ -3382,7 +3382,6 @@ export default function ControlPanel({
             <span className="pane-title-text">Fill</span></span>
           </SectionTitleButton>
           <span className="key-switch-group">
-            <kbd className="title-seg-kbd">D</kbd>
             <label className="toggle-switch square-knob">
               <input
                 type="checkbox"
@@ -3392,6 +3391,7 @@ export default function ControlPanel({
               />
               <span className="slider" />
             </label>
+            <kbd className="title-seg-kbd">D</kbd>
           </span>
           <input
             type="color"
@@ -3730,7 +3730,15 @@ export default function ControlPanel({
         label="Grid"
         icon={
           <TitleIcon>
-            <path d="M1 4 H11 M1 8 H11 M4 1 V11 M8 1 V11" />
+            <circle cx="3" cy="2.5" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="8" cy="2.5" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="13" cy="2.5" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="3" cy="7" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="8" cy="7" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="13" cy="7" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="3" cy="11.5" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="8" cy="11.5" r="1.4" fill="currentColor" stroke="none" />
+            <circle cx="13" cy="11.5" r="1.4" fill="currentColor" stroke="none" />
           </TitleIcon>
         }
         collapsed={!!collapsedMap['gridControls']}
@@ -3739,12 +3747,19 @@ export default function ControlPanel({
         <header className="pane-titlebar titlebar-single">
           <SectionTitleButton sectionId="gridControls" title="Grid" menuOpen={iconMenu?.id === 'gridControls'} onOpen={toggleIconMenu}><span className="pane-title">
             <TitleIcon>
-              <path d="M1 4 H11 M1 8 H11 M4 1 V11 M8 1 V11" />
+              <circle cx="3" cy="2.5" r="1.4" fill="currentColor" stroke="none" />
+              <circle cx="8" cy="2.5" r="1.4" fill="currentColor" stroke="none" />
+              <circle cx="13" cy="2.5" r="1.4" fill="currentColor" stroke="none" />
+              <circle cx="3" cy="7" r="1.4" fill="currentColor" stroke="none" />
+              <circle cx="8" cy="7" r="1.4" fill="currentColor" stroke="none" />
+              <circle cx="13" cy="7" r="1.4" fill="currentColor" stroke="none" />
+              <circle cx="3" cy="11.5" r="1.4" fill="currentColor" stroke="none" />
+              <circle cx="8" cy="11.5" r="1.4" fill="currentColor" stroke="none" />
+              <circle cx="13" cy="11.5" r="1.4" fill="currentColor" stroke="none" />
             </TitleIcon>
             <span className="pane-title-text">Grid</span></span>
           </SectionTitleButton>
           <span className="key-switch-group">
-            <kbd className="title-seg-kbd">/</kbd>
             <label className="toggle-switch square-knob">
               <input
                 type="checkbox"
@@ -3754,6 +3769,7 @@ export default function ControlPanel({
               />
               <span className="slider" />
             </label>
+            <kbd className="title-seg-kbd">/</kbd>
           </span>
           <CustomSelect
             id="gridTypeSelect"
@@ -3799,7 +3815,15 @@ export default function ControlPanel({
             pressed={engine.isGridSnappingEnabled}
             onToggle={(next) => engine.setGridSnappingEnabled(next)}
           >
-            <path d="M1 4 H11 M1 8 H11 M4 1 V11 M8 1 V11" />
+            <circle cx="2.5" cy="2.5" r="1.1" fill="currentColor" stroke="none" />
+            <circle cx="6" cy="2.5" r="1.1" fill="currentColor" stroke="none" />
+            <circle cx="9.5" cy="2.5" r="1.1" fill="currentColor" stroke="none" />
+            <circle cx="2.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
+            <circle cx="6" cy="6" r="1.1" fill="currentColor" stroke="none" />
+            <circle cx="9.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
+            <circle cx="2.5" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+            <circle cx="6" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+            <circle cx="9.5" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
           </SnapToggle>
           ) : null}
           {snapVisible.path !== false ? (
