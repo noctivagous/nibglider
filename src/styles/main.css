@@ -3491,11 +3491,12 @@ kbd,
   cursor: pointer;
 }
 
-/* Background watermark label inside each section title button. Absolutely
-   positioned so it never affects layout flow; foreground icons stay above. */
+/* Overlay label inside each section title button. Absolutely positioned
+   so it never affects layout flow; it paints above the icons. */
 #controlPanel button.title-seg .title-seg-bg {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -3519,7 +3520,7 @@ kbd,
 
 #controlPanel button.title-seg > :not(.title-seg-bg) {
   position: relative;
-  z-index: 1;
+  z-index: 0;
 }
 
 /* Key hints (S, D, /) inside section title buttons stay square. */
