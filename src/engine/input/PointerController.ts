@@ -40,6 +40,7 @@ export interface PointerHost {
   lastMousePt(): Item;
   setLastMousePt(v: Item): void;
   isPanning(): boolean;
+  isPanLocked(): boolean;
   beginPan(point: Item): void;
   panTo(point: Item, delta: Item): void;
   endPan(): void;
@@ -93,6 +94,14 @@ export class PointerController {
     const originalPoint = event.point;
     const shapeType = host.shapeType();
     host.setMousePt(host.snapToGrid(event.point));
+    if (host.isPanLocked()) {
+      // Pan-Lock: the canvas point under the cursor stays glued to it.
+      // This reuses the drag-pan anchor math; the delta is unused there.
+      host.panTo(originalPoint, originalPoint);
+      host.setLastMousePt(host.mousePt());
+      host.updateGridCursor();
+      return;
+    }
     if (host.isAngleSnappingEnabled() || host.isLengthSnappingEnabled()) {
       let snapBase: Item = null;
       if (host.isDrawingPath()) {

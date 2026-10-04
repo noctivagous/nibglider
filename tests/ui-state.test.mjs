@@ -18,7 +18,7 @@ function store() {
 
 function snap(over = {}) {
   return {
-    selectedCount: 0, gridEnabled: false, gridType: 'square', dropNote: '', dragLock: false,
+    selectedCount: 0, gridEnabled: false, gridType: 'square', dropNote: '', dragLock: false, panLock: false,
     drawingPath: false, composite: false, cornerRadius: 12, splineTension: 0.4,
     drawingShape: false, shapeType: null, circleRadiusAnchor: 'origin', radialStampLockedRadius: null,
     rectDiagonalMode: 'full', shapeWidth: 40, aspectLabel: null, hasSecondEdge: false,
@@ -266,6 +266,15 @@ test('marquee selection suppresses idle-selection messaging', () => {
   assert.ok(schema.includes('Selected Objects: 2'));
   assert.ok(!schema.includes('Begin Drag-Lock to move all selected.'));
   assert.ok(!schema.includes('Scale or rotate the selection.'));
+});
+
+test('x pan-locks the canvas and advertises release', () => {
+  assert.deepEqual(resolveKeyVariants('KeyX', NO_MODS, keyState()).map((v) => v.commandId), ['pan-lock']);
+  const rows = buildKeymapRows(snap({ panLock: true }));
+  assert.ok(rows.some((r) => r.ids.includes('pan-lock') && r.label === 'Release Pan-Lock'));
+  const schema = JSON.stringify(buildStatusSchema(snap({ panLock: true })));
+  assert.ok(schema.includes('Pan-Lock On'));
+  assert.ok(schema.includes('Press any key to release.'));
 });
 
 test('chord rows still surface uncovered primary-modifier commands', () => {

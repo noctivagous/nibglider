@@ -120,6 +120,31 @@ test('engine document revision follows committed scene edits, undo/redo, and pag
   } finally { s.project.remove(); }
 });
 
+test('x pan-lock glues the canvas to the cursor until any key', () => {
+  const s = scope(); const engine = new NibGliderEngine(s, () => {});
+  const key = (code, k, mods = {}) => ({
+    code, key: k, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false,
+    ...mods, target: null, getModifierState: () => false, preventDefault: () => {},
+  });
+  try {
+    engine.mousePt = new s.Point(100, 100);
+    engine.handleKeyDown(key('KeyX', 'x'));
+    assert.equal(engine.isPanLocked, true);
+    const before = s.view.center.clone();
+    engine.pointer.onMouseMove({ point: new s.Point(120, 100) });
+    assert.equal(s.view.center.x, before.x - 20);
+    assert.equal(s.view.center.y, before.y);
+    assert.equal(engine.documentRevision(), 0);
+    engine.handleKeyDown(key('KeyI', 'i'));
+    assert.equal(engine.isPanLocked, false);
+    assert.equal(engine.isDrawingShape, false);
+    engine.handleKeyDown(key('KeyX', 'x'));
+    assert.equal(engine.isPanLocked, true);
+    engine.handleKeyDown(key('Escape', 'Escape'));
+    assert.equal(engine.isPanLocked, false);
+  } finally { engine.cancelCurrentDrawingOperation(); s.project.remove(); }
+});
+
 test('engine pointer pan delegates to viewport and does not dirty document', () => {
   const s = scope(); const engine = new NibGliderEngine(s, () => {});
   try {

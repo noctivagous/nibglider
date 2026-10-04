@@ -15,6 +15,7 @@ export interface StatusSnapshot {
   gridType: GridType;
   dropNote: string;
   dragLock: boolean;
+  panLock: boolean;
   drawingPath: boolean;
   composite: boolean;
   cornerRadius: number;
@@ -61,6 +62,10 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
     steps.push(L('hint', [T('Move mouse to drag all selected. Release Drag-Lock to drop them.')]));
     steps.push(L('hint', [T('Stamp, scale, or rotate the selection.')]));
     adjustCovered = true;
+  }
+  if (snap.panLock) {
+    state.push(L('title', [T('Pan-Lock On')]));
+    steps.push(L('hint', [T('Move mouse to pan. Press any key to release.')]));
   }
   if (snap.drawingPath) {
     state.push(L('title', [T(snap.composite ? 'Drawing Composite Path' : 'Drawing Path')]));

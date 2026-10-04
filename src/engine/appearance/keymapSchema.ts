@@ -66,6 +66,9 @@ export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
     emitAction('scale');
     emitAction('rotate');
   }
+  if (snap.panLock) {
+    rows.push(row(['pan-lock'], 'Release Pan-Lock'));
+  }
   if (snap.drawingPath) {
     if (snap.composite) {
       rows.push(row(['sharp-point'], 'Sharp point'));

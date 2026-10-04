@@ -44,6 +44,8 @@ export interface KeyboardHost {
   setSplineTension(v: number): void;
   clearSelection(): void;
   liveAdjustApplies(): boolean;
+  isPanLocked(): boolean;
+  setPanLocked(on: boolean): void;
   resetZoom(): void;
   stepZoom(dir: 1 | -1): void;
   undo(): void;
@@ -111,6 +113,13 @@ export class KeyboardController {
   handleKeyDown(event: KeyboardEvent): void {
     this.modifiers.update(event);
     if (isTextEntryTarget(event)) return;
+    if (this.host.isPanLocked()) {
+      // Any key releases Pan-Lock, and the key itself is swallowed so the
+      // press that releases it cannot trigger an unrelated command.
+      event.preventDefault();
+      this.host.setPanLocked(false);
+      return;
+    }
     const code = eventCode(event);
     if (/^(Shift|Alt|Control|Meta|CapsLock)/.test(code)) return;
     const variants = resolveKeyVariants(code, modifiersOf(event), this.keyState());
@@ -203,6 +212,10 @@ export class KeyboardController {
         return;
       case 'drag-lock':
         host.setIsInDragLock(!host.isInDragLock());
+        return;
+      case 'pan-lock':
+        event.preventDefault();
+        host.setPanLocked(true);
         return;
       case 'delete-selection':
         host.removeAllSelectedItemsAndReset();

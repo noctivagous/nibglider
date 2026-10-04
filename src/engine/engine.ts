@@ -399,6 +399,7 @@ export class NibGliderEngine {
   private get selection(): SelectionManager { return this.context.selection; }
   get selectedItems(): AnyItem[] { return this.selection.selectedItems; }
   isInDragLock = false;
+  isPanLocked = false;
 
   private statusSchema: StatusSchema = { state: [], steps: [] };
   private keymapRows: KeymapRow[] = [];
@@ -1402,6 +1403,30 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  /** Pan-Lock (X): the canvas point under the cursor stays glued to it
+   * until any key is pressed, like a button-free drag-pan. Pan changes
+   * view state only, never document state. */
+  setPanLocked(on: boolean): void {
+    if (on === this.isPanLocked) return;
+    if (on) {
+      if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad || !this.mousePt) return;
+      this.lastMousePt = null;
+      this.viewport.beginPan(this.mousePt.clone());
+      this.setCanvasCursor('grabbing');
+    } else {
+      this.viewport.endPan();
+      this.setCanvasCursor('');
+    }
+    this.isPanLocked = on;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  private setCanvasCursor(cursor: string): void {
+    const el = this.scope.view?.element as HTMLElement | null;
+    if (el) el.style.cursor = cursor;
+  }
+
   hasSelection(): boolean {
     return this.selection.hasSelection;
   }
@@ -2218,6 +2243,7 @@ export class NibGliderEngine {
       gridType: this.gridType,
       dropNote: this.lastDropNote,
       dragLock: this.isInDragLock,
+      panLock: this.isPanLocked,
       drawingPath: this.isDrawingPath,
       composite: this.compositePathTool.active,
       cornerRadius: this.compositeCornerRadius,
