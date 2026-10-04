@@ -165,6 +165,7 @@ export function createKeyboardHost(engine: Surface): KeyboardHost {
     rectCenterlineKC: () => engine.rectCenterlineKC(),
     rectDiagonalKC: () => engine.rectDiagonalKC(),
     rectTwoEdgesKC: () => engine.rectTwoEdgesKC(),
+    selectionRectKC: () => engine.selectionRectKC(),
     polyLineKC: () => engine.polyLineKC(),
     splinePointKC: () => engine.splinePointKC(),
     roundedPointKC: () => engine.roundedPointKC(),

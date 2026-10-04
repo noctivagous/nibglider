@@ -74,6 +74,26 @@ export class RectangleTool {
     return 'started';
   }
 
+  beginSelect(): RectStart {
+    const session = this.host.session;
+    if (session.shapeType === 'rectangle_select') return 'finish';
+    if (session.isDrawingShape || !session.mousePt) return 'noop';
+    const scope = this.host.scope();
+    session.resetLiveAdjust();
+    session.shapeStartPoint = session.mousePt.clone();
+    session.shapeType = 'rectangle_select';
+    session.isDrawingShape = true;
+    session.previewShape = new scope.Shape.Rectangle(session.shapeStartPoint, new scope.Size(0, 0));
+    this.host.stylePreviewFrame(session.previewShape, 1);
+    this.host.addToActive(session.previewShape);
+    session.previewLine = new scope.Path({
+      segments: [session.shapeStartPoint, session.shapeStartPoint],
+      strokeColor: new scope.Color(0.5), strokeWidth: 1, strokeDasharray: [4, 4],
+    });
+    this.host.addToActive(session.previewLine);
+    return 'started';
+  }
+
   beginDiagonal(): RectStart {
     const session = this.host.session;
     if (session.shapeType === 'rectangle_diagonal') return 'finish';
@@ -131,8 +151,8 @@ export class RectangleTool {
       ], session.previewRect);
       return;
     }
-    if (session.shapeType !== 'rectangle_diagonal') return;
-    const k = this.host.rectDiagonalScale();
+    if (session.shapeType !== 'rectangle_diagonal' && session.shapeType !== 'rectangle_select') return;
+    const k = session.shapeType === 'rectangle_select' ? 1 : this.host.rectDiagonalScale();
     const dx = (session.mousePt.x - session.shapeStartPoint.x) * k;
     const dy = (session.mousePt.y - session.shapeStartPoint.y) * k;
     const farPt = session.shapeStartPoint.add(new scope.Point(dx, dy));

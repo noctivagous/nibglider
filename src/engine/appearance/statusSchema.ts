@@ -97,6 +97,8 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
     } else if (shapeType === 'rectangle_centerline') {
       state.push(L('title', [T('Rectangle by Centerline')]));
       state.push(L('meta', [T('Width: ' + Math.round(snap.shapeWidth) + 'pt')]));
+    } else if (shapeType === 'rectangle_select') {
+      state.push(L('title', [T('Selection Rectangle')]));
     }
     if (snap.aspectLabel) state.push(L('meta', [T('Aspect ' + snap.aspectLabel)]));
     if (shapeType != null && shapeType.startsWith('circle_')) {
@@ -120,6 +122,9 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
       steps.push(L('hint', [T('1. Move mouse to adjust the rectangle.')]));
       steps.push(L('hint', [T('Thin or thicken the width.')]));
       steps.push(L('hint', [T('Finish, stamp, or cancel.')]));
+    } else if (shapeType === 'rectangle_select') {
+      steps.push(L('hint', [T('Move mouse to adjust the selection.')]));
+      steps.push(L('hint', [T('Finish the selection, or cancel.')]));
     }
   }
   if (snap.drawingQuad) {

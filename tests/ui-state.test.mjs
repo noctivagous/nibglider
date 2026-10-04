@@ -248,6 +248,13 @@ test('adjust availability still gates dispatch variants', () => {
   assert.deepEqual(resolveKeyVariants('KeyJ', NO_MODS, idle).map((v) => v.commandId), ['toggle-panel']);
 });
 
+test('caps lock resolves to the selection rectangle command', () => {
+  assert.deepEqual(resolveKeyVariants('CapsLock', NO_MODS, keyState()).map((v) => v.commandId), ['select-rectangle']);
+  const rows = buildKeymapRows(snap({ drawingShape: true, shapeType: 'rectangle_select' }));
+  assert.ok(rows.some((r) => r.ids.includes('select-rectangle') && r.label === 'Finish selection'));
+  assert.ok(rows.some((r) => r.ids.includes('cancel') && r.label === 'Cancel selection'));
+});
+
 test('chord rows still surface uncovered primary-modifier commands', () => {
   const withMeta = { ...NO_MODS, meta: true };
   const resolved = resolveKeyboardLayout(withMeta, 'other', keyState({ selectedCount: 2 }));

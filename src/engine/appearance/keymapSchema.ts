@@ -109,6 +109,9 @@ export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
       rows.push(row(['rect-centerline'], 'Finish drawing'));
       rows.push(row(['stamp'], 'Stamp'));
       rows.push(row(['cancel'], 'Cancel drawing'));
+    } else if (shapeType === 'rectangle_select') {
+      rows.push(row(['select-rectangle'], 'Finish selection'));
+      rows.push(row(['cancel'], 'Cancel selection'));
     }
   }
   if (snap.drawingQuad) {

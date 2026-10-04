@@ -1,4 +1,4 @@
-[ ] cmd/ctrl - and = zoom out and zoom in, cmd/ctrl 0 sets to 100%.
+[x] cmd/ctrl - and = zoom out and zoom in, cmd/ctrl 0 sets to 100%.
 
 ---
 
@@ -87,16 +87,16 @@ IN-DRAWING WIDGETS AND ACTOR OBJECTS
           
  
 
-	[ ]  Rect Keys > In-Canvas Elements > x PROPERTY-ACTOR COVERS  
+	[ ]  Rect Keys > In-Canvas Elements > PROPERTY-ACTOR COVERS  
 	Instead of acting on the image, will change configured properties,
 	especially effect properties, of objects on the page, like giving
 	the objects underneath it a drop shadow within its clipped bounds.
 	Can be dragged around like a regular shape.
 
 ACTIVE OBJECTS
+
    
-   
-   
+   [Rect Keys & Circle Keys] > In-Canvas Elements > 
 	[ ] VOID SHAPES AND VOID MASKS FOR NEGATIVE AREA SURROUND OBJECTS  (NON-DESTRUCTIVE)
 	 If a shape has void-shape property on it will make
 	 objects underneath it disappear non-destructively 

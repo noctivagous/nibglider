@@ -63,6 +63,7 @@ export interface KeyboardHost {
   rectCenterlineKC(): void;
   rectDiagonalKC(): void;
   rectTwoEdgesKC(): void;
+  selectionRectKC(): void;
   polyLineKC(): void;
   splinePointKC(): void;
   roundedPointKC(): void;
@@ -111,7 +112,7 @@ export class KeyboardController {
     this.modifiers.update(event);
     if (isTextEntryTarget(event)) return;
     const code = eventCode(event);
-    if (/^(Shift|Alt|Control|Meta|CapsLock)/.test(code)) return;
+    if (/^(Shift|Alt|Control|Meta)/.test(code)) return;
     const variants = resolveKeyVariants(code, modifiersOf(event), this.keyState());
     if (!variants.length) return;
     // Resolve against one pre-command context so finishing a path cannot
@@ -130,7 +131,7 @@ export class KeyboardController {
     if (isTextEntryTarget(event)) return;
     // Slash resets tension or toggles the grid and does not light a keycap.
     if (event.key.toLowerCase() === '/') return;
-    if (event.code && !/^(Shift|Alt|Control|Meta|CapsLock)/.test(event.code)) {
+    if (event.code && !/^(Shift|Alt|Control|Meta)/.test(event.code)) {
       this.host.onKeyActivity({ code: event.code, active: true });
     }
   }
@@ -157,6 +158,15 @@ export class KeyboardController {
 
   private perform(action: string, event: KeyboardEvent): void {
     const host = this.host;
+    // While the selection marquee is live, only finishing or cancelling
+    // dispatches; every other key is swallowed like Floating Marker's
+    // rectangle-select mode.
+    if (
+      host.isDrawingShape() && host.shapeType() === 'rectangle_select' &&
+      action !== 'select-rectangle' && action !== 'cancel'
+    ) {
+      return;
+    }
     switch (action) {
       case 'reset-zoom':
         event.preventDefault();
@@ -281,6 +291,10 @@ export class KeyboardController {
         return;
       case 'select':
         this.selectUnderCursor(event);
+        return;
+      case 'select-rectangle':
+        event.preventDefault();
+        host.selectionRectKC();
         return;
       default:
         return;

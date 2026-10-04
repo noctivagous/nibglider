@@ -17,7 +17,8 @@ export type ShapeType =
   | 'circle_radial_stamp'
   | 'rectangle_diagonal'
   | 'rectangle_two_edges'
-  | 'rectangle_centerline';
+  | 'rectangle_centerline'
+  | 'rectangle_select';
 
 /** How the Circle by Radius tool anchors its preview: press point is the
  * center (origin), or a fixed circumference point with the cursor as center. */

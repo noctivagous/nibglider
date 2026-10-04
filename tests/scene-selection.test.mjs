@@ -144,3 +144,40 @@ test('engine operations delegate scene and selection intents without changing co
     engine.undo(); assert.equal(engine.selectedItems[0].data.isUserGroup, true);
   } finally { scope.project.remove(); }
 });
+
+test('caps lock marquee selects intersecting items live, commits, and esc restores', () => {
+  const scope = new paper.PaperScope(); scope.setup(new scope.Size(400, 300));
+  const engine = new NibGliderEngine(scope, () => {});
+  const key = (code, k, mods = {}) => ({
+    code, key: k, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false,
+    ...mods, target: null, getModifierState: () => false, preventDefault: () => {},
+  });
+  try {
+    const inside = new scope.Path.Rectangle({ from: [50, 50], to: [80, 80] });
+    const crossing = new scope.Path.Rectangle({ from: [90, 90], to: [200, 200] });
+    const outside = new scope.Path.Rectangle({ from: [300, 200], to: [350, 250] });
+    engine.mousePt = new scope.Point(40, 40);
+    engine.handleKeyDown(key('CapsLock', 'CapsLock'));
+    assert.equal(engine.isDrawingShape, true);
+    assert.equal(engine.shapeType, 'rectangle_select');
+    engine.mousePt = new scope.Point(150, 150);
+    engine.pointer.onMouseMove({ point: engine.mousePt });
+    assert.deepEqual(engine.selectedItems, [inside, crossing]);
+    engine.handleKeyDown(key('KeyI', 'i'));
+    assert.equal(engine.shapeType, 'rectangle_select');
+    engine.handleKeyDown(key('CapsLock', 'CapsLock'));
+    assert.equal(engine.isDrawingShape, false);
+    assert.deepEqual(engine.selectedItems, [inside, crossing]);
+    assert.equal(engine.documentRevision(), 0);
+    engine.clearOutSelection();
+    engine.addItemToSelection(outside);
+    engine.mousePt = new scope.Point(40, 40);
+    engine.handleKeyDown(key('CapsLock', 'CapsLock'));
+    engine.mousePt = new scope.Point(150, 150);
+    engine.pointer.onMouseMove({ point: engine.mousePt });
+    assert.deepEqual(engine.selectedItems, [inside, crossing]);
+    engine.handleKeyDown(key('Escape', 'Escape'));
+    assert.equal(engine.isDrawingShape, false);
+    assert.deepEqual(engine.selectedItems, [outside]);
+  } finally { engine.cancelCurrentDrawingOperation(); scope.project.remove(); }
+});

@@ -319,6 +319,8 @@ export class NibGliderEngine {
   // --- Drawing mode / shape state (drawingToolsAndFunctions.js) ---
   pathDrawingMode: 'legacy' | 'ngComposite' = 'legacy';
   private readonly drawing = new DrawingSession();
+  /** Pre-marquee selection, restored when Esc cancels the selection rectangle. */
+  private selectionRectSnapshot: AnyItem[] | null = null;
   private get compositePathTool(): PathTool { return this.context.compositePathTool; }
   private get circleTool(): CircleTool { return this.context.circleTool; }
   private get rectangleTool(): RectangleTool { return this.context.rectangleTool; }
@@ -1581,12 +1583,20 @@ export class NibGliderEngine {
   }
 
   cancelCurrentDrawingOperation(): void {
+    const restoreSelection = this.isDrawingShape && this.shapeType === 'rectangle_select'
+      ? this.selectionRectSnapshot
+      : null;
     this.compositePathTool.cancel();
     this.circleTool.cancel();
     this.rectangleTool.cancel();
     this.quadTool.cancel();
     // Clears anything a tool did not claim, and resets live scale/rotation.
     this.drawing.cancel();
+    if (restoreSelection) {
+      this.selection.restore(restoreSelection);
+      this.selectionRectSnapshot = null;
+      this.updateTextContent();
+    }
     // Cancel (Q / Escape) also releases drag-lock, like Space does.
     this.setIsInDragLock(false);
     this.notify();
@@ -1736,6 +1746,52 @@ export class NibGliderEngine {
 
   rectDiagonalKC(): void {
     this.finishOrBeginRect(() => this.rectangleTool.beginDiagonal());
+  }
+
+  /** Caps Lock toggle: begin the selection marquee, or finalize it. */
+  selectionRectKC(): void {
+    if (this.isDrawingShape && this.shapeType === 'rectangle_select') {
+      this.finishSelectionRect();
+      return;
+    }
+    if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad) return;
+    if (!this.mousePt) return;
+    if (this.rectangleTool.beginSelect() !== 'started') return;
+    this.selectionRectSnapshot = [...this.selectedItems];
+    this.updateSelectionRectLive();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  private finishSelectionRect(): void {
+    this.updateSelectionRectLive();
+    this.selectionRectSnapshot = null;
+    this.drawing.clearShape();
+    this.drawing.resetLiveAdjust();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** Live Floating Marker behavior: the marquee reselects as it moves. */
+  private updateSelectionRectLive(): void {
+    if (!this.isDrawingShape || this.shapeType !== 'rectangle_select') return;
+    const start = this.drawing.shapeStartPoint;
+    const current = this.mousePt ?? start;
+    if (!start || !current) return;
+    const rect = new this.scope.Rectangle(start, current);
+    const hits: AnyItem[] = [];
+    for (const item of this.contentItems()) {
+      try {
+        if (!item.bounds || !item.bounds.intersects(rect)) continue;
+      } catch { continue; }
+      const top = this.topUserGroupOf(item);
+      if (top && !hits.includes(top)) hits.push(top);
+    }
+    const selected = this.selectedItems;
+    if (selected.length === hits.length && hits.every((item) => selected.includes(item))) return;
+    this.selection.restore(hits);
+    this.updateTextContent();
+    this.notify();
   }
 
   private finishOrBeginRect(begin: () => 'finish' | 'advance' | 'started' | 'noop'): void {
@@ -2068,6 +2124,7 @@ export class NibGliderEngine {
     const type = this.shapeType;
     if (type != null && type.startsWith('rectangle_')) this.rectangleTool.update();
     else if (type != null && type.startsWith('circle_')) this.circleTool.update();
+    if (type === 'rectangle_select') this.updateSelectionRectLive();
   }
 
   /** Physical keyboard entry. Decisions live in KeyboardController. */
