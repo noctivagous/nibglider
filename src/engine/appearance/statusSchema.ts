@@ -1,11 +1,13 @@
 // Status schema for the canvas overlay.
 // Owns nothing. Reads the snapshot the engine passes in.
-// Does not touch the DOM, modifiers, or undo labels. Chord hints stay in StatusOverlay.
+// Emits state (what is true) plus plain-text instruction steps. It carries
+// no key references; keys live in the keymap table (see keymapSchema).
+// Does not touch the DOM, modifiers, or undo labels.
 // Public: buildStatusSchema.
 // Tested from tests/ui-state.test.mjs. The ui module re-exports this file.
 
-import { commandKeycap, keyGroupForLabel } from '../input/keymap';
-import type { CircleRadiusAnchor, GridType, RectDiagonalMode, ShapeType, StatusLine, StatusRun, StatusSchema } from '../types';
+import type { StatusLine, StatusRun, StatusSchema } from '../types';
+import type { CircleRadiusAnchor, GridType, RectDiagonalMode, ShapeType } from '../types';
 
 export interface StatusSnapshot {
   selectedCount: number;
@@ -32,60 +34,43 @@ export interface StatusSnapshot {
 
 export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
   const T = (s: string): StatusRun => ({ t: 'text', s });
-  const K = (id: string): StatusRun => {
-    const s = commandKeycap(id);
-    return { t: 'key', s, g: keyGroupForLabel(s) };
-  };
   const state: StatusLine[] = [];
   const steps: StatusLine[] = [];
-  // True once the short degree-free Scale/Rotate line is emitted; a
+  // True once the scale/rotate guidance moves to the keymap table; a
   // degree-ful live Rotate hint would restate it, so it is dropped below.
-  let adjustEmitted = false;
+  let adjustCovered = false;
   const L = (kind: StatusLine['kind'], runs: StatusRun[]): StatusLine => ({ kind, runs });
   if (snap.gridEnabled) {
     state.push(L('meta', [
-      T(`Grid: ON · ${snap.gridType === 'diamond' ? 'Diamond' : 'Square'} (`),
-      K('toggle-status'),
-      T(' to toggle)'),
+      T(`Grid: ON · ${snap.gridType === 'diamond' ? 'Diamond' : 'Square'}`),
     ]));
   }
   if (snap.dropNote) state.push(L('meta', [T(snap.dropNote)]));
   if (snap.selectedCount) {
     state.push(L('title', [T('Selected Objects: ' + snap.selectedCount)]));
     if (snap.dragLock === false) {
-      steps.push(L('hint', [K('drag-lock'), T(' to begin Drag-Lock')]));
-      steps.push(L('adjust', [
-        K('scale-down'), T(' and '), K('scale-up'), T(' to Scale, '),
-        K('rotate-ccw'), T(' and '), K('rotate-cw'), T(' to Rotate'),
-      ]));
-      adjustEmitted = true;
+      steps.push(L('hint', [T('Begin Drag-Lock to move all selected.')]));
+      steps.push(L('hint', [T('Scale or rotate the selection.')]));
+      adjustCovered = true;
     }
   }
   if (snap.dragLock) {
     state.push(L('title', [T('Drag-Lock On ')]));
-    steps.push(L('hint', [T('Move mouse to drag all selected.  '), K('drag-lock'), T(' to release.')]));
-    steps.push(L('adjust', [
-      K('stamp'), T(' to Stamp, '), K('scale-down'), T(' and '), K('scale-up'), T(' to Scale, '),
-      K('rotate-ccw'), T(' and '), K('rotate-cw'), T(' to Rotate'),
-    ]));
-    adjustEmitted = true;
+    steps.push(L('hint', [T('Move mouse to drag all selected. Release Drag-Lock to drop them.')]));
+    steps.push(L('hint', [T('Stamp, scale, or rotate the selection.')]));
+    adjustCovered = true;
   }
   if (snap.drawingPath) {
     state.push(L('title', [T(snap.composite ? 'Drawing Composite Path' : 'Drawing Path')]));
     if (snap.composite) {
-      steps.push(L('hint', [
-        K('sharp-point'), T(' sharp, '), K('spline-point'), T(' B-spline, '),
-        K('rounded-point'), T(` rounded (${snap.cornerRadius}pt), `),
-        K('finish-r'), T(' close, '), K('finish-a'), T(' end, '), K('cancel'), T(' cancel'),
-      ]));
+      steps.push(L('hint', [T('Add sharp, spline, or rounded points to the path.')]));
+      steps.push(L('hint', [T(`Rounded corners use ${snap.cornerRadius}pt. Close the shape, end the drawing, or cancel.`)]));
     } else {
       steps.push(L('hint', [T('Move mouse to adjust path.')]));
-      steps.push(L('hint', [
-        K('sharp-point'), T(' = sharp point, '),
-        K('spline-point'), T(' = spline (tension:' + snap.splineTension.toFixed(1) + '), '),
-        K('finish-r'), T(' = complete shape'),
-      ]));
-      steps.push(L('hint', [K('finish-a'), T(' = end, '), K('tension-down'), T('/'), K('tension-up'), T('/'), K('tension-reset'), T(' = adjust tension')]));
+      steps.push(L('hint', [T(
+        'Add a sharp point, a spline point (tension ' + snap.splineTension.toFixed(1) + '), or complete the shape.',
+      )]));
+      steps.push(L('hint', [T('Adjust tension, or end the drawing.')]));
       steps.push(L('hint', [T('A near own start closes · A near a path end joins it')]));
     }
   }
@@ -100,7 +85,7 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
     } else if (shapeType === 'circle_radial_stamp') {
       state.push(L('title', [T('Circle Radial Stamp')]));
       if (snap.radialStampLockedRadius != null) {
-        state.push(L('meta', [T(`Radius locked at ${Math.round(snap.radialStampLockedRadius)}pt (0 to unlock)`)]));
+        state.push(L('meta', [T(`Radius locked at ${Math.round(snap.radialStampLockedRadius)}pt`)]));
       }
     } else if (shapeType === 'rectangle_diagonal') {
       state.push(L('title', [T('Rectangle by Diagonal')]));
@@ -116,41 +101,34 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
     if (snap.aspectLabel) state.push(L('meta', [T('Aspect ' + snap.aspectLabel)]));
     if (shapeType != null && shapeType.startsWith('circle_')) {
       if (shapeType === 'circle_radial_stamp') {
-        steps.push(L('hint', [T('Press '), K('radial-stamp'), T(' or '), K('stamp'), T(' to stamp. Move mouse to orbit the origin.')]));
-        steps.push(L('hint', [K('finish-a'), T(' / '), K('finish-r'), T(' to deposit + finish, '), K('cancel'), T(' to cancel.')]));
+        steps.push(L('hint', [T('Move mouse to orbit the origin. Stamp to deposit.')]));
+        steps.push(L('hint', [T('Deposit and finish, or cancel.')]));
       } else {
-        const finishKey = shapeType === 'circle_diameter' ? 'circle-diameter' : 'circle-radius';
-        steps.push(L('hint', [T('Press '), K(finishKey), T(' to finish or '), K('stamp'), T(' to stamp.')]));
+        steps.push(L('hint', [T('Finish the circle, or stamp it.')]));
       }
     } else if (shapeType === 'rectangle_diagonal') {
-      steps.push(L('hint', [T('Press '), K('rect-diagonal'), T(' to finish or '), K('stamp'), T(' to stamp.')]));
+      steps.push(L('hint', [T('Finish the rectangle, or stamp it.')]));
     } else if (shapeType === 'rectangle_two_edges') {
       if (!snap.hasSecondEdge) {
         steps.push(L('hint', [T('1. Move mouse to adjust this first edge.')]));
-        steps.push(L('hint', [T('2. Press '), K('rect-two-edges'), T(' again to start the second edge')]));
+        steps.push(L('hint', [T('2. Start the second edge.')]));
       } else {
         steps.push(L('hint', [T('1. Move mouse to adjust the second edge.')]));
-        steps.push(L('hint', [T('2. Press '), K('rect-two-edges'), T(' to finish or '), K('stamp'), T(' to stamp.')]));
+        steps.push(L('hint', [T('2. Finish the rectangle, or stamp it.')]));
       }
     } else if (shapeType === 'rectangle_centerline') {
       steps.push(L('hint', [T('1. Move mouse to adjust the rectangle.')]));
-      steps.push(L('hint', [K('scale-down'), T(': thin width, '), K('scale-up'), T(': thicken width,')]));
-      steps.push(L('hint', [K('rect-centerline'), T(': finish, '), K('stamp'), T(': stamp, '), K('cancel'), T(': cancel')]));
+      steps.push(L('hint', [T('Thin or thicken the width.')]));
+      steps.push(L('hint', [T('Finish, stamp, or cancel.')]));
     }
   }
   if (snap.drawingQuad) {
     state.push(L('title', [T('Drawing Quadrilateral (' + snap.quadPointCount + '/4)')]));
-    steps.push(L('hint', [T('Press '), K('quad'), T(' to add next point. '), K('cancel'), T(': cancel')]));
+    steps.push(L('hint', [T('Add points to the quadrilateral, or cancel.')]));
   }
   for (const hint of snap.liveHints) {
-    if (adjustEmitted && hint.label.includes('°') && /rotate/i.test(hint.label)) continue;
-    const runs: StatusRun[] = [];
-    hint.keys.forEach((key, i) => {
-      if (i > 0) runs.push(T(' / '));
-      runs.push(K(key));
-    });
-    runs.push(T(` ${hint.label}`));
-    steps.push(L('hint', runs));
+    if (adjustCovered && hint.label.includes('°') && /rotate/i.test(hint.label)) continue;
+    steps.push(L('hint', [T(hint.label)]));
   }
   return { state, steps };
 }

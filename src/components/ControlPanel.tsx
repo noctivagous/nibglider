@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import { primaryShortcut } from '../engine/input/keymap';
 import { PanelsManager, sectionLabel, sectionOrder } from '../ui/PanelsManager';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
+import KeymapWidget from './KeymapWidget';
 import WidgetHandle from './WidgetHandle';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
 import NumericStepper from './NumericStepper';
@@ -3101,6 +3102,7 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
             forceCloseKey={selectCloseKey}
           />
         </div>
+        <KeymapWidget engine={engine} />
       </div>
       <div
         className="panel-sections"

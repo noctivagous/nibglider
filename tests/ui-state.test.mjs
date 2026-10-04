@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { GUIManager, KEYBOARD_WIDTH_DEFAULT } from '../src/ui/GUIManager.ts';
 import { WidgetLayout, statusShiftX } from '../src/ui/WidgetLayout.ts';
 import { APPLICATION_MENUS, PanelsManager, sectionOrder } from '../src/ui/PanelsManager.ts';
-import { buildStatusSchema } from '../src/ui/StatusPresenter.ts';
+import { buildKeymapRows, buildStatusSchema } from '../src/ui/StatusPresenter.ts';
 import { writePreviewPaths } from '../src/ui/PreviewBoxPresenter.ts';
 import { keycapClick } from '../src/ui/KeyboardViewModel.ts';
 import { NibGliderEngine } from '../src/engine/engine.ts';
@@ -141,26 +141,43 @@ test('status schema keeps a drop note and does not publish undo labels', () => {
   assert.equal(text.includes('Undo'), false);
 });
 
-test('status schema breaks scale/rotate into an adjust section', () => {
-  const schema = buildStatusSchema(snap({ selectedCount: 2 }));
-  const adjust = schema.steps.filter((l) => l.kind === 'adjust');
-  assert.equal(adjust.length, 1);
-  assert.ok(JSON.stringify(adjust[0]).includes('to Rotate'));
-  assert.ok(schema.steps.some((l) => l.kind === 'hint' && JSON.stringify(l).includes('Drag-Lock')));
-  const locked = buildStatusSchema(snap({ selectedCount: 2, dragLock: true }));
-  assert.equal(locked.steps.filter((l) => l.kind === 'adjust').length, 1);
+test('status schema carries state and instructions but no key references', () => {
+  const schema = buildStatusSchema(snap({ selectedCount: 2, gridEnabled: true, gridType: 'square' }));
+  assert.equal(JSON.stringify(schema).includes('"t":"key"'), false);
+  assert.ok(schema.state.some((l) => JSON.stringify(l).includes('Selected Objects: 2')));
+  assert.ok(schema.steps.some((l) => JSON.stringify(l).includes('Drag-Lock')));
+  assert.ok(schema.steps.some((l) => JSON.stringify(l).includes('Scale or rotate')));
 });
 
-test('status schema prefers the short rotate line over a degree-ful live hint', () => {
-  const withSel = buildStatusSchema(snap({
+test('keymap rows break scale/rotate into an adjust section', () => {
+  const rows = buildKeymapRows(snap({ selectedCount: 2 }));
+  const adjust = rows.filter((r) => r.section === 'adjust');
+  assert.equal(adjust.length, 2);
+  assert.ok(adjust.some((r) => r.label === 'Scale' && r.keys.join('') === '[]'));
+  assert.ok(adjust.some((r) => r.label === 'Rotate'));
+  assert.ok(rows.some((r) => r.label === 'Begin Drag-Lock' && r.keys.join('') === 'Space'));
+  const locked = buildKeymapRows(snap({ selectedCount: 2, dragLock: true }));
+  assert.equal(locked.filter((r) => r.section === 'adjust').length, 2);
+  assert.ok(locked.some((r) => r.label === 'Stamp'));
+});
+
+test('keymap rows prefer the short rotate row over a degree-ful live hint', () => {
+  const withSel = buildKeymapRows(snap({
     selectedCount: 2, liveHints: [{ label: 'Rotate selection by 15°', keys: ['rotate-cw'] }],
   }));
-  assert.ok(JSON.stringify(withSel).includes('to Rotate'));
-  assert.equal(JSON.stringify(withSel).includes('Rotate selection by 15°'), false);
-  const solo = buildStatusSchema(snap({
+  assert.ok(withSel.some((r) => r.label === 'Rotate'));
+  assert.equal(withSel.some((r) => r.label.includes('15°')), false);
+  const solo = buildKeymapRows(snap({
     liveHints: [{ label: 'Rotate selection by 15°', keys: ['rotate-cw'] }],
   }));
-  assert.ok(JSON.stringify(solo).includes('Rotate selection by 15°'));
+  assert.ok(solo.some((r) => r.label.includes('15°')));
+});
+
+test('keymap rows carry the grid toggle the status box no longer names', () => {
+  const schema = buildStatusSchema(snap({ gridEnabled: true, gridType: 'square' }));
+  assert.equal(JSON.stringify(schema).includes('"t":"key"'), false);
+  const rows = buildKeymapRows(snap({ gridEnabled: true, gridType: 'square' }));
+  assert.ok(rows.some((r) => r.label === 'Toggle the grid' && r.keys.join('') === '/'));
 });
 
 test('preview presenter writes circle and rect path data', () => {

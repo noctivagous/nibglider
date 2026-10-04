@@ -155,8 +155,8 @@ export interface KeyActivity {
 }
 
 // Overlay schema: state lines (what is true) plus step lines (what to do
-// next). Text runs render plain; key runs render as keycaps in the key's
-// keyboard-group color.
+// next, as plain instruction text). The status overlay carries no key
+// references; keys live in the keymap table widget (see KeymapRow).
 export type StatusKeyGroup = 'circle' | 'rect' | 'quad' | 'op' | 'end' | 'neutral';
 export type StatusRun =
   | { t: 'text'; s: string }
@@ -168,4 +168,17 @@ export type StatusLine = {
 export interface StatusSchema {
   state: StatusLine[];
   steps: StatusLine[];
+}
+/** One row of the keymap table widget: keys plus the action they perform. */
+export interface KeymapRow {
+  /** Keycap labels, e.g. ['[', ']']. */
+  keys: string[];
+  /** Plain-language action, e.g. 'Scale the selection'. */
+  label: string;
+  /** Keyboard-group color for the keycaps. */
+  group: StatusKeyGroup;
+  /** Command ids backing this row, for grouping and dedupe. */
+  ids: string[];
+  /** The recurring scale/rotate cluster renders as its own table section. */
+  section: 'guide' | 'adjust';
 }

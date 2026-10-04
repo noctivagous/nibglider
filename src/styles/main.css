@@ -219,6 +219,88 @@ article {
   color: #e0a3a3;
 }
 
+/* Keymap table widget: semitransparent dark-pro table mounted underneath
+   the application menus. Display-only; pointer events fall through. */
+#controlPanel .panel-rail #keymapWidget {
+  width: 100%;
+  pointer-events: none;
+}
+
+#keymapWidget .keymap-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(13, 17, 22, 0.78);
+  border: 1px solid #0b0e12;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 4px 14px rgba(0, 0, 0, 0.5);
+  font-family: Monospace, monospace;
+  font-size: 11px;
+  color: #e8edf3;
+}
+
+#keymapWidget .keymap-table td {
+  padding: 2px 6px;
+  vertical-align: middle;
+  text-align: left;
+}
+
+#keymapWidget .km-keys {
+  white-space: nowrap;
+  width: 1%;
+}
+
+#keymapWidget .km-action {
+  color: var(--dp-text-1);
+  overflow-wrap: break-word;
+}
+
+/* Recurring adjust cluster (scale/rotate keys): its own section at the
+   bottom of the table, visually off the contextual rows above it. */
+#keymapWidget tbody.km-adjust {
+  border-top: 1px solid var(--dp-border-soft);
+}
+
+#keymapWidget kbd.km-key {
+  display: inline-block;
+  margin: 0 2px;
+  padding: 0 5px;
+  font-family: Monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #e8edf3;
+  background: linear-gradient(to bottom, #2b3542, #1d242e);
+  border: 1px solid #8fa3bd;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 0 rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+#keymapWidget kbd.km-key.circle {
+  border-color: #4f8ff7;
+  color: #bcd6fd;
+}
+
+#keymapWidget kbd.km-key.rect {
+  border-color: #2dd4bf;
+  color: #b8f0e8;
+}
+
+#keymapWidget kbd.km-key.quad {
+  border-color: #f5a623;
+  color: #f7ddae;
+}
+
+#keymapWidget kbd.km-key.op {
+  border-color: #a86ef0;
+  color: #d9c2f7;
+}
+
+#keymapWidget kbd.km-key.end {
+  border-color: #e06565;
+  color: #e0a3a3;
+}
+
 /* Control panel */
 #controlPanel {
   position: absolute;

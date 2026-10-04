@@ -32,6 +32,7 @@ import { keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
 import { CombinatoricsManager } from './scene/CombinatoricsManager';
 import { DropController } from './document/DropController';
 import { buildStatusSchema } from './appearance/statusSchema';
+import { buildKeymapRows } from './appearance/keymapSchema';
 import { EngineContext } from './EngineContext';
 import { createDrawingHost, createKeyboardHost, createPointerHost } from './hosts';
 import { modifiersOf } from './input/ModifierStateTracker';
@@ -72,6 +73,7 @@ import type {
   GridType,
   InnerShapeParams,
   KeyActivity,
+  KeymapRow,
   LengthUnit,
   LiveKeyBinding,
   PolygonRadiusMode,
@@ -102,6 +104,7 @@ export type {
   GridType,
   InnerShapeParams,
   KeyActivity,
+  KeymapRow,
   LengthUnit,
   LiveKeyBinding,
   PolygonRadiusMode,
@@ -396,10 +399,15 @@ export class NibGliderEngine {
   isInDragLock = false;
 
   private statusSchema: StatusSchema = { state: [], steps: [] };
+  private keymapRows: KeymapRow[] = [];
   private lastStatusKey = '';
 
   getStatusSchema(): StatusSchema {
     return this.statusSchema;
+  }
+
+  getKeymapRows(): KeymapRow[] {
+    return this.keymapRows;
   }
 
   constructor(scope: paper.PaperScope, onKeyActivity: (a: KeyActivity) => void) {
@@ -1989,13 +1997,14 @@ export class NibGliderEngine {
     return keyGroupForLabel(key);
   }
 
-  // Publish only when the schema changes (this runs on hot paths like
+  // Publish only when the schemas change (this runs on hot paths like
   // mousemove); the HTML overlay re-renders off the version counter.
-  private setStatusSchema(schema: StatusSchema): void {
-    const key = JSON.stringify(schema);
+  private setStatusSchema(schema: StatusSchema, rows: KeymapRow[]): void {
+    const key = JSON.stringify([schema, rows]);
     if (key === this.lastStatusKey) return;
     this.lastStatusKey = key;
     this.statusSchema = schema;
+    this.keymapRows = rows;
     this.notify();
   }
 
@@ -2096,7 +2105,7 @@ export class NibGliderEngine {
   }
 
   updateTextContent(): void {
-    this.setStatusSchema(buildStatusSchema({
+    const snapshot = {
       selectedCount: this.selectedItems.length,
       gridEnabled: this.isGridEnabled,
       gridType: this.gridType,
@@ -2117,7 +2126,8 @@ export class NibGliderEngine {
       drawingQuad: this.isDrawingQuad,
       quadPointCount: this.quadPointCount,
       liveHints: this.liveStatusHints(),
-    }));
+    };
+    this.setStatusSchema(buildStatusSchema(snapshot), buildKeymapRows(snapshot));
   }
 }
 
