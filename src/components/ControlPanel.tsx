@@ -1097,6 +1097,7 @@ const STROKE_POSITION_OPTIONS: Array<{ value: StrokePosition; label: string }> =
   { value: 'inside', label: 'Inside' },
   { value: 'outside', label: 'Outside' },
 ];
+const STROKE_WIDTH_PRESETS = [1, 3, 5, 10, 20];
 
 function StrokePositionIcon({ position }: { position: StrokePosition }) {
   // The stroke band (filled rect) stays fixed in position and width.
@@ -3203,18 +3204,39 @@ export default function ControlPanel({
             title="Stroke Color"
             onChange={(e) => engine.setStrokeColor(e.target.value)}
           />
-          <NumericStepper
-            id="strokeWidthDisplay"
-            size="compact"
-            value={strokeWidth}
-            min={1}
-            max={200}
-            step={1}
-            unit="pt"
-            ariaLabel="Stroke width in points"
-            title="Stroke width"
-            onCommit={(n) => engine.setStrokeWidth(n)}
-          />
+          <span className="stroke-width-stack">
+            <NumericStepper
+              id="strokeWidthDisplay"
+              size="compact"
+              value={strokeWidth}
+              min={1}
+              max={200}
+              step={1}
+              unit="pt"
+              ariaLabel="Stroke width in points"
+              title="Stroke width"
+              onCommit={(n) => engine.setStrokeWidth(n)}
+            />
+            <div
+              className="seg-ctrl seg-text stroke-presets"
+              role="group"
+              aria-label="Stroke width presets"
+            >
+              {STROKE_WIDTH_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  title={`Stroke width ${preset} pt`}
+                  aria-label={`Stroke width ${preset} points`}
+                  aria-pressed={strokeWidth === preset}
+                  className={strokeWidth === preset ? 'active' : undefined}
+                  onClick={() => engine.setStrokeWidth(preset)}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+          </span>
           <div
             className="stroke-position-control"
             role="group"

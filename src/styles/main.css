@@ -2190,6 +2190,38 @@ body {
 
 #controlPanel .stroke-position-control svg { display: block; margin: auto; }
 
+/* Stroke width preset row: sits directly under the titlebar stepper in a
+   tight column so the legend bar keeps its single-strip height. The micro
+   buttons match the stepper width and reuse the seg-ctrl bevel idiom. */
+#controlPanel .stroke-width-stack {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+  align-items: stretch;
+  min-width: 0;
+}
+#controlPanel .stroke-width-stack .num-stepper-compact .num-stepper-input {
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+#controlPanel #strokeControls .pane-titlebar {
+  row-gap: 2px;
+}
+#controlPanel .stroke-presets {
+  align-self: stretch;
+  display: flex;
+}
+#controlPanel .stroke-presets button {
+  flex: 1 1 0;
+  min-width: 0;
+  font-family: var(--font-tech-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 1px 2px;
+}
+
 /* Fill preview well: same treatment as the stroke preview well. */
 #controlPanel .fill-preview {
   background: var(--dp-bg-1);
