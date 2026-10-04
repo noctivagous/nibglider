@@ -1,7 +1,9 @@
 // Body text, boundary glyphs, and shape+text grouping.
 // Owns no text settings. Reads TextLayoutConfig and FontMetrics supplied by
 // the caller. Mutates only the Paper items it creates (and opacity on fade/reset).
-// Preview parenting stays on the engine. Font measurement stays in FontMetrics.
+// Spline preview refresh removes and replaces the caller's preview item.
+// Parenting (shadow and active layer) stays with the callbacks passed in.
+// Font measurement stays in FontMetrics.
 // Tested from tests/text-layout.test.mjs and tests/display-text-layout.test.mjs.
 import type { FontMetrics } from '../fontMetrics';
 import type {
@@ -91,6 +93,45 @@ export class TextLayout {
     if (!item) return;
     item.opacity = 1;
     if (Array.isArray(item.children)) item.children.forEach((c: Item) => this.resetStampedText(c));
+  }
+
+  refreshSplinePreview(input: {
+    isDrawingPath: boolean;
+    path: Item | null;
+    textModeEnabled: boolean;
+    textMode: string;
+    getPreview(): Item | null;
+    setPreview(item: Item | null): void;
+    addPreviewShadow(item: Item): void;
+    addToActive(item: Item): void;
+  }): void {
+    const current = input.getPreview();
+    if (current) current.remove();
+    input.setPreview(null);
+    if (!input.isDrawingPath || !input.path || !input.textModeEnabled) return;
+    if (input.path.segments.length < 2) return;
+    let text: Item = null;
+    try {
+      text = input.textMode === 'body'
+        ? this.createBodyTextFor(input.path)
+        : this.createBoundaryText(input.path);
+    } catch {
+      text = null;
+    }
+    if (!text) return;
+    this.fadeShapeText(text);
+    input.addPreviewShadow(text);
+    input.setPreview(text);
+    input.addToActive(text);
+  }
+
+  clearSplinePreview(input: {
+    getPreview(): Item | null;
+    setPreview(item: Item | null): void;
+  }): void {
+    const current = input.getPreview();
+    if (current) current.remove();
+    input.setPreview(null);
   }
 
   layoutBodyLines(spec: TextSpec, maxWidth: number, content?: string): string[] {

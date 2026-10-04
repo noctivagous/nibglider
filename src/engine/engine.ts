@@ -11,6 +11,7 @@ import {
   ShapeFactory,
   sectorPreviewPath as sectorPreviewD,
   segmentPreviewPath as segmentPreviewD,
+  type InnerFrameDraw,
 } from './geometry/ShapeFactory';
 import {
   circleInnerShapeUnitPoints as circleUnitPoints,
@@ -29,7 +30,9 @@ import {
 import { keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
 import { CombinatoricsManager } from './scene/CombinatoricsManager';
 import { DropController } from './document/DropController';
-import { buildStatusSchema } from '../ui/StatusPresenter';
+import { buildStatusSchema } from './appearance/statusSchema';
+import { EngineContext } from './EngineContext';
+import { createDrawingHost, createKeyboardHost, createPointerHost } from './hosts';
 import { modifiersOf } from './input/ModifierStateTracker';
 import { PathTool } from './drawing/PathTool';
 import { CircleTool } from './drawing/CircleTool';
@@ -127,13 +130,12 @@ export {
 type AnyItem = any;
 
 export class NibGliderEngine {
-  private scope: paper.PaperScope;
-  private styles!: StyleManager;
-  private textLayout!: TextLayout;
-  private shapes!: ShapeFactory;
+  readonly context: EngineContext;
+  private get scope(): paper.PaperScope { return this.context.scope; }
+  private get styles(): StyleManager { return this.context.styles; }
+  private get textLayout(): TextLayout { return this.context.textLayout; }
+  private get shapes(): ShapeFactory { return this.context.shapes; }
   private input = new InputManager();
-  private listeners = new Set<() => void>();
-  private version = 0;
   private onKeyActivity: (a: KeyActivity) => void;
 
   // --- Stroke / style config (drawingProperties.js) ---
@@ -308,23 +310,22 @@ export class NibGliderEngine {
   // --- Drawing mode / shape state (drawingToolsAndFunctions.js) ---
   pathDrawingMode: 'legacy' | 'ngComposite' = 'legacy';
   private readonly drawing = new DrawingSession();
-  private compositePathTool: PathTool;
-  private circleTool: CircleTool;
-  private rectangleTool: RectangleTool;
-  private quadTool: QuadTool;
-  // Compatibility bridge until document/scene/history extraction. Only plain
-  // source data is retained; derived items are kept separately for identity.
-  private readonly scene: SceneRepository;
-  private readonly history: HistoryManager;
-  private readonly combinatorics: CombinatoricsManager;
-  private readonly drops: DropController;
-  private readonly transforms: TransformManager;
-  private readonly gridRenderer: GridRenderer;
-  private readonly snapping: SnappingManager;
-  private readonly layers: LayerManager;
+  private get compositePathTool(): PathTool { return this.context.compositePathTool; }
+  private get circleTool(): CircleTool { return this.context.circleTool; }
+  private get rectangleTool(): RectangleTool { return this.context.rectangleTool; }
+  private get quadTool(): QuadTool { return this.context.quadTool; }
+  // Services live on EngineContext. These getters keep the existing call sites.
+  private get scene(): SceneRepository { return this.context.scene; }
+  private get history(): HistoryManager { return this.context.history; }
+  private get combinatorics(): CombinatoricsManager { return this.context.combinatorics; }
+  private get drops(): DropController { return this.context.drops; }
+  private get transforms(): TransformManager { return this.context.transforms; }
+  private get gridRenderer(): GridRenderer { return this.context.gridRenderer; }
+  private get snapping(): SnappingManager { return this.context.snapping; }
+  private get layers(): LayerManager { return this.context.layers; }
   private readonly coordinates = new CoordinateManager();
-  private readonly viewport: ViewportManager;
-  private readonly documentManager = new DocumentManager();
+  private get viewport(): ViewportManager { return this.context.viewport; }
+  private get documentManager(): DocumentManager { return this.context.documentManager; }
   private get retainedPaths(): Map<string, RetainedPath> { return this.scene.records; }
   private set retainedPaths(value: Map<string, RetainedPath>) { this.scene.restoreRecords(value); }
   maxShapeWidth = 200;
@@ -384,7 +385,7 @@ export class NibGliderEngine {
   }
 
   // --- Selection (selectionFunctions.js) ---
-  private readonly selection: SelectionManager;
+  private get selection(): SelectionManager { return this.context.selection; }
   get selectedItems(): AnyItem[] { return this.selection.selectedItems; }
   isInDragLock = false;
 
@@ -396,9 +397,9 @@ export class NibGliderEngine {
   }
 
   constructor(scope: paper.PaperScope, onKeyActivity: (a: KeyActivity) => void) {
-    this.scope = scope;
+    this.context = new EngineContext(scope);
     this.onKeyActivity = onKeyActivity;
-    this.styles = new StyleManager(scope, {
+    this.context.styles = new StyleManager(scope, {
       state: () => this.paint,
       hasSelection: () => this.hasSelection(),
       applyToSelection: (fn) => this.applyToSelection(fn),
@@ -407,8 +408,8 @@ export class NibGliderEngine {
       isDrawingShape: () => this.isDrawingShape,
       updateShapePreview: () => this.updateShapePreview(),
     });
-    this.textLayout = new TextLayout(scope, () => this.textLayoutConfig(), this.textMetrics);
-    this.shapes = new ShapeFactory(scope, {
+    this.context.textLayout = new TextLayout(scope, () => this.textLayoutConfig(), this.textMetrics);
+    this.context.shapes = new ShapeFactory(scope, {
       applyStrokeGeometry: (item) => this.styles.applyStrokeGeometry(item),
       applyStrokeDash: (item) => this.styles.applyStrokeDash(item),
       applyFill: (item) => this.styles.applyFillSpec(item),
@@ -418,20 +419,21 @@ export class NibGliderEngine {
       globalStrokeWidth: () => this.globalStrokeWidth,
       textModeEnabled: () => this.textModeEnabled,
     });
-    this.layers = new LayerManager(scope);
-    this.viewport = new ViewportManager(scope, () => this.afterViewChange());
+    this.context.layers = new LayerManager(scope);
+    this.context.viewport = new ViewportManager(scope, () => this.afterViewChange());
+    this.context.documentManager = new DocumentManager();
     this.documentManager.subscribe(() => this.notify());
-    this.scene = new SceneRepository(scope, () => ({
+    this.context.scene = new SceneRepository(scope, () => ({
       gridLayer: this.gridLayer,
       cursors: [this.pathSnapCursor, this.pointSnapCursor, this.gridCursor],
       previews: [this.previewInner, this.previewSplineText, this.previewShape,
         this.previewLine, this.previewPath, this.previewRect],
     }), this.layers);
-    this.history = new HistoryManager(this.scene, () => this.selection,
+    this.context.history = new HistoryManager(this.scene, () => this.selection,
       () => this.documentManager.markEdited('scene'));
-    this.selection = new SelectionManager(this.scene, this.history,
+    this.context.selection = new SelectionManager(this.scene, this.history,
       (original, clone) => this.scene.retainClone(original, clone, (item) => this.shapePartOf(item)));
-    this.combinatorics = new CombinatoricsManager({
+    this.context.combinatorics = new CombinatoricsManager({
       combineMode: () => this.combineMode,
       setCombineNote: (note) => { this.lastCombineNote = note; },
       selectedItems: () => this.selectedItems,
@@ -458,7 +460,7 @@ export class NibGliderEngine {
       updateTextContent: () => this.updateTextContent(),
       notify: () => this.notify(),
     });
-    this.drops = new DropController({
+    this.context.drops = new DropController({
       scope: () => this.scope,
       zoom: () => this.viewport.zoom,
       clearSelection: () => this.clearOutSelection(),
@@ -469,9 +471,9 @@ export class NibGliderEngine {
       updateTextContent: () => this.updateTextContent(),
       notify: () => this.notify(),
     });
-    this.transforms = new TransformManager(this.scene, this.selection, this.history);
-    this.gridRenderer = new GridRenderer(scope);
-    this.snapping = new SnappingManager(scope, () => ({
+    this.context.transforms = new TransformManager(this.scene, this.selection, this.history);
+    this.context.gridRenderer = new GridRenderer(scope);
+    this.context.snapping = new SnappingManager(scope, () => ({
       gridEnabled: this.isGridEnabled, gridSnapping: this.isGridSnappingEnabled,
       gridType: this.gridType, gridSpacing: this.gridSpacing,
       path: this.isPathSnappingEnabled, point: this.isPointSnappingEnabled,
@@ -483,7 +485,7 @@ export class NibGliderEngine {
       pathCursor: (item) => { this.pathSnapCursor = item; },
       pointCursor: (item) => { this.pointSnapCursor = item; },
     });
-    this.compositePathTool = new PathTool(scope, (item) => {
+    this.context.compositePathTool = new PathTool(scope, (item) => {
       this.applyCurrentStyles(item);
       item.fillColor = null;
       if (!item.parent) this.layers.addToActive(item);
@@ -491,67 +493,35 @@ export class NibGliderEngine {
     });
     const host = this.drawingHost();
     this.compositePathTool.bind(host);
-    this.circleTool = new CircleTool(host);
-    this.rectangleTool = new RectangleTool(host);
-    this.quadTool = new QuadTool(host);
+    this.context.circleTool = new CircleTool(host);
+    this.context.rectangleTool = new RectangleTool(host);
+    this.context.quadTool = new QuadTool(host);
+    this.retainHostCallbacks();
+  }
+
+  // hosts.ts calls these through the untyped surface. The references keep
+  // the private methods live for noUnusedLocals.
+  private retainHostCallbacks(): void {
+    void this.placeDeposited;
+    void this.topUserGroupOf;
+    void this.retainCompositeResult;
+    void this.fadeShapeText;
+    void this.clearSplineTextPreview;
+    void this.resetStampedText;
+    void this.liveAdjustApplies;
+    void this.applyLiveScale;
+    void this.applyLiveRotate;
+    void this.stepZoom;
+    void this.resetZoom;
+    void this.stylePreviewFrame;
+    void this.clearShadow;
+    void this.nudgeSelection;
+    void this.scaleSelection;
+    void this.rotateSelection;
   }
 
   private drawingHost(): DrawingHost {
-    return {
-      session: this.drawing,
-      scope: () => this.scope,
-      pathDrawingMode: () => this.pathDrawingMode,
-      splineTension: () => this.splineTension,
-      fillEnabled: () => this.fillEnabled,
-      strokeEnabled: () => this.strokeEnabled,
-      globalStrokeColor: () => this.globalStrokeColor,
-      globalStrokeWidth: () => this.globalStrokeWidth,
-      depositPointMode: () => this.depositPointMode,
-      circleRadiusAnchor: () => this.circleRadiusAnchor,
-      rectangleInnerShapeType: () => this.rectangleInnerShapeType,
-      innerShapeType: () => this.innerShapeType,
-      endpointTolerance: () => this.endpointTolerance(),
-      rectDiagonalScale: () => this.rectDiagonalScale(),
-      centerlineWidthForLength: (length) => this.centerlineWidthForLength(length),
-      lastCenterlineWidth: () => this.lastCenterlineWidth,
-      setLastCenterlineWidth: (width) => { this.lastCenterlineWidth = width; },
-      layerChildren: () => [...this.layers.activeLayer.children],
-      isNonContentItem: (item) => this.isNonContentItem(item),
-      addToActive: (item) => this.layers.addToActive(item),
-      applyStrokeGeometry: (item) => this.applyStrokeGeometry(item),
-      applyStrokeDash: (item) => this.applyStrokeDash(item),
-      applyCurrentStyles: (item) => this.applyCurrentStyles(item),
-      applyFill: (item) => this.applyFillSpec(item, this.fillSpec()),
-      stylePreviewFrame: (item, brightness) => this.stylePreviewFrame(item, brightness),
-      addPreviewShadow: (item) => this.addPreviewShadow(item),
-      clearShadow: (item) => this.clearShadow(item),
-      withShapeText: (item, isPreview) => this.withShapeText(item, isPreview),
-      resetStampedText: (item) => this.resetStampedText(item),
-      shapePartOf: (item) => this.shapePartOf(item),
-      createInnerShape: (center, radius, style, rotation) => this.createInnerShape(center, radius, style, rotation),
-      createRectFrameShape: (style) => this.createRectFrameShape(style),
-      drawInnerShape: (frame, style) => this.drawInnerShape(frame, style),
-      refreshSplineText: () => this.refreshSplineTextPreview(),
-      clearSplineText: () => this.clearSplineTextPreview(),
-      findOpenEndpointNear: (point) => this.findOpenEndpointNear(point),
-      removeFromSelection: (item) => this.selection.remove(item),
-      dropItem: (item) => this.dropItem(item),
-      place: (item, opts) => this.placeDeposited(item, opts),
-      capture: () => this.captureDeposit(),
-      commit: (label, snap, placed, retain) => {
-        this.recordSceneCommand(label, snap.before, snap.selected, placed, retain ? snap.retained : undefined);
-      },
-      isRetained: (shape) => {
-        const id = shape?.data?.drawableId;
-        return typeof id === 'string' && this.retainedPaths.get(id)?.item === shape;
-      },
-      bezierSource: (item) => this.scene.bezierSource(item),
-      retainResult: (item, source) => this.retainCompositeResult(item, source),
-      pruneRecords: () => this.scene.pruneRecords(),
-      updateTextContent: () => this.updateTextContent(),
-      notify: () => this.notify(),
-      cancelDrawing: () => this.cancelCurrentDrawingOperation(),
-    };
+    return createDrawingHost(this);
   }
 
   private placeDeposited(item: AnyItem, opts?: { front?: boolean; opacity?: number }): AnyItem | null {
@@ -572,134 +542,11 @@ export class NibGliderEngine {
   }
 
   private pointerApi(): PointerHost {
-    return {
-      scope: () => this.scope,
-      isDrawingPath: () => this.isDrawingPath,
-      isDrawingShape: () => this.isDrawingShape,
-      isDrawingQuad: () => this.isDrawingQuad,
-      shapeType: () => this.shapeType,
-      shapeStartPoint: () => this.shapeStartPoint,
-      shapePt2: () => this.shapePt2,
-      isAngleSnappingEnabled: () => this.isAngleSnappingEnabled,
-      isLengthSnappingEnabled: () => this.isLengthSnappingEnabled,
-      isAspectSnappingEnabled: () => this.isAspectSnappingEnabled,
-      path: () => this.path,
-      pathSnapBase: () => {
-        const base = this.compositePathTool.snapBase;
-        if (base) return new this.scope.Point(base.x, base.y);
-        const segments = this.path?.segments;
-        return segments?.length ? segments[segments.length === 1 ? 0 : segments.length - 2].point : null;
-      },
-      updateLivePath: (point) => this.compositePathTool.track(point),
-      updateLiveQuad: () => this.quadTool.track(),
-      isCompositePathDrawing: () => this.compositePathTool.active,
-      quadPath: () => this.quadPath,
-      selectedItems: () => this.selectedItems,
-      moveSelectionBy: (delta) => this.transforms.moveSelectionBy(delta),
-      toggleSelection: (item) => this.selection.toggle(item),
-      isInDragLock: () => this.isInDragLock,
-      mousePt: () => this.mousePt,
-      setMousePt: (v) => {
-        this.mousePt = v;
-      },
-      lastMousePt: () => this.lastMousePt,
-      setLastMousePt: (v) => {
-        this.lastMousePt = v;
-      },
-      isPanning: () => this.viewport.isPanning,
-      beginPan: (point) => this.viewport.beginPan(point),
-      panTo: (point, delta) => this.viewport.panTo(point, delta),
-      endPan: () => this.viewport.endPan(),
-      snapToGrid: (point) => this.snapToGrid(point),
-      applyAngleSnapping: (base, target) => this.applyAngleSnapping(base, target),
-      applyLengthSnapping: (base, target) => this.applyLengthSnapping(base, target),
-      applyPathSnapping: (original) => this.applyPathSnapping(original),
-      applyPointSnapping: (original) => this.applyPointSnapping(original),
-      applyAspectSnapping: (base, target) => this.applyAspectSnapping(base, target),
-      snapAspectSecond: (first, second) => this.snapAspectSecond(first, second),
-      updateGridCursor: () => this.updateGridCursor(),
-      refreshSplineTextPreview: () => this.refreshSplineTextPreview(),
-      updateShapePreview: () => this.updateShapePreview(),
-      updateTextContent: () => this.updateTextContent(),
-      notify: () => this.notify(),
-      clearOutSelection: () => this.clearOutSelection(),
-      beginMoveGesture: () => this.beginMoveGesture(),
-      commitMoveGesture: () => this.commitMoveGesture(),
-      clearMoveGesture: () => {
-        this.transforms.cancelDrag();
-      },
-      topUserGroupOf: (item) => this.topUserGroupOf(item),
-      isNonContentItem: (item) => this.isNonContentItem(item),
-    };
+    return createPointerHost(this);
   }
 
   private keyboardApi(): KeyboardHost {
-    return {
-      isDrawingPath: () => this.isDrawingPath,
-      isDrawingShape: () => this.isDrawingShape,
-      isDrawingQuad: () => this.isDrawingQuad,
-      isLiveDrawing: () => this.isLiveDrawing,
-      shapeType: () => this.shapeType,
-      selectedItems: () => this.selectedItems,
-      globalStrokeWidth: () => this.globalStrokeWidth,
-      maxShapeWidth: () => this.maxShapeWidth,
-      maxStrokeWidth: () => this.maxStrokeWidth,
-      splineTensionDefault: () => this.splineTensionDefault,
-      strokeEnabled: () => this.strokeEnabled,
-      fillEnabled: () => this.fillEnabled,
-      isInDragLock: () => this.isInDragLock,
-      shapeWidth: () => this.shapeWidth,
-      setShapeWidth: (v) => {
-        this.shapeWidth = v;
-      },
-      splineTension: () => this.splineTension,
-      setSplineTension: (v) => {
-        this.setSplineTension(v);
-      },
-      clearSelection: () => this.clearOutSelection(),
-      liveAdjustApplies: () => this.liveAdjustApplies(),
-      resetZoom: () => this.resetZoom(),
-      stepZoom: (dir) => this.stepZoom(dir),
-      undo: () => this.undo(),
-      redo: () => this.redo(),
-      groupSelection: () => this.groupSelection(),
-      ungroupSelected: () => this.ungroupSelected(),
-      nudgeSelection: (dx, dy) => this.nudgeSelection(dx, dy),
-      scaleSelection: (factor) => this.scaleSelection(factor),
-      rotateSelection: (degrees) => this.rotateSelection(degrees),
-      updateTextContent: () => this.updateTextContent(),
-      updateShapePreview: () => this.updateShapePreview(),
-      notify: () => this.notify(),
-      setIsInDragLock: (on) => this.setIsInDragLock(on),
-      removeAllSelectedItemsAndReset: () => this.removeAllSelectedItemsAndReset(),
-      stampCurrentPreview: () => this.stampCurrentPreview(),
-      stampItems: (items) => this.stampItems(items),
-      rectCenterlineKC: () => this.rectCenterlineKC(),
-      rectDiagonalKC: () => this.rectDiagonalKC(),
-      rectTwoEdgesKC: () => this.rectTwoEdgesKC(),
-      polyLineKC: () => this.polyLineKC(),
-      splinePointKC: () => this.splinePointKC(),
-      roundedPointKC: () => this.roundedPointKC(),
-      compositePathEnabled: () => this.pathDrawingMode === 'ngComposite',
-      circleKC: (mode) => this.circleKC(mode),
-      radialStampKC: () => this.radialStampKC(),
-      quadPointKC: () => this.quadPointKC(),
-      toggleGrid: () => this.toggleGrid(),
-      thinStrokeWidth: () => this.thinStrokeWidth(),
-      thickenStrokeWidth: () => this.thickenStrokeWidth(),
-      finishRadialStamp: () => this.finishRadialStamp(),
-      completeShapeWithSpline: () => this.completeShapeWithSpline(),
-      endPathOrShape: () => this.endPathOrShape(),
-      selectionPaint: () => this.selectionPaint(),
-      setStrokeEnabled: (on) => this.setStrokeEnabled(on),
-      setFillEnabled: (on) => this.setFillEnabled(on),
-      cancelCurrentDrawingOperation: () => this.cancelCurrentDrawingOperation(),
-      hitTestUnderCursor: () => this.pointer.hitTestUnderCursor(),
-      applyLiveScale: (event, dir) => this.applyLiveScale(event, dir),
-      applyLiveRotate: (event, dir) => this.applyLiveRotate(event, dir),
-      toggleRadialStampRadiusLock: () => this.toggleRadialStampRadiusLock(),
-      onKeyActivity: (activity) => this.onKeyActivity(activity),
-    };
+    return createKeyboardHost(this);
   }
 
   // UI consumers share the controller's authoritative input/context snapshots.
@@ -713,14 +560,9 @@ export class NibGliderEngine {
   }
 
   // --- React bridge: version counter + subscription ---
-  subscribe = (fn: () => void): (() => void) => {
-    this.listeners.add(fn);
-    return () => {
-      this.listeners.delete(fn);
-    };
-  };
+  subscribe = (fn: () => void): (() => void) => this.context.subscribe(fn);
 
-  getVersion = (): number => this.version;
+  getVersion = (): number => this.context.getVersion();
 
   getPageSettings(): PageSettings { return this.documentManager.pageSettings; }
   isDocumentDirty(): boolean { return this.documentManager.isDirty; }
@@ -734,8 +576,7 @@ export class NibGliderEngine {
   }
 
   private notify(): void {
-    this.version++;
-    this.listeners.forEach((fn) => fn());
+    this.context.notify();
   }
 
   // --- Lifecycle: canvas setup + event wiring (NibGliderApp init) ---
@@ -1409,148 +1250,6 @@ export class NibGliderEngine {
     this.pointSnapCursor = this.snapping.pointIndicator;
   }
 
-  legacyDrawGrid(): void {
-    const scope = this.scope;
-    const active = this.layers.activeLayer;
-    if (!this.gridLayer) {
-      this.gridLayer = new scope.Layer();
-      this.gridLayer.name = 'gridLayer';
-      scope.project.addLayer(this.gridLayer);
-    }
-    // Lattice dots are drawing aids. guide skips hit-testing; locked
-    // disables mouse interaction for the whole layer.
-    this.gridLayer.guide = true;
-    this.gridLayer.locked = true;
-    this.gridLayer.activate();
-    this.gridLayer.removeChildren();
-    const viewBounds = scope.view.bounds;
-    const s = this.gridSpacing;
-    const radius = 1.5 / (scope.view.zoom || 1);
-    const dotColor = new scope.Color(0.55, 0.62, 0.72, 0.55);
-    const addDot = (x: number, y: number): void => {
-      const dot: AnyItem = new scope.Shape.Circle(new scope.Point(x, y), radius);
-      dot.fillColor = dotColor;
-      dot.strokeColor = null;
-      dot.guide = true;
-      dot.locked = true;
-      this.gridLayer.addChild(dot);
-    };
-    if (this.gridType === 'diamond') {
-      // Basis e1=(d,d), e2=(d,-d) with d=s/sqrt(2): neighbors are s apart.
-      const d = s / Math.SQRT2;
-      const step = s * Math.SQRT2;
-      const minX = viewBounds.x;
-      const maxX = viewBounds.x + viewBounds.width;
-      const minY = viewBounds.y;
-      const maxY = viewBounds.y + viewBounds.height;
-      const iMin = Math.floor((minX + minY) / step);
-      const iMax = Math.ceil((maxX + maxY) / step);
-      const jMin = Math.floor((minX - maxY) / step);
-      const jMax = Math.ceil((maxX - minY) / step);
-      for (let i = iMin; i <= iMax; i++) {
-        for (let j = jMin; j <= jMax; j++) {
-          addDot((i + j) * d, (i - j) * d);
-        }
-      }
-    } else {
-      const startX = Math.floor(viewBounds.x / s) * s;
-      const endX = Math.ceil((viewBounds.x + viewBounds.width) / s) * s;
-      const startY = Math.floor(viewBounds.y / s) * s;
-      const endY = Math.ceil((viewBounds.y + viewBounds.height) / s) * s;
-      for (let x = startX; x <= endX; x += s) {
-        for (let y = startY; y <= endY; y += s) {
-          addDot(x, y);
-        }
-      }
-    }
-    this.gridLayer.sendToBack();
-    if (active && active !== this.gridLayer) active.activate();
-    scope.view.update();
-  }
-
-  legacyClearGrid(): void {
-    if (this.gridLayer) this.gridLayer.removeChildren();
-    if (this.gridCursor) this.gridCursor.visible = false;
-    this.scope.view.update();
-  }
-
-  legacySnapToGrid(point: AnyItem): AnyItem {
-    if (!this.isGridSnappingEnabled) return point;
-    const scope = this.scope;
-    const s = this.gridSpacing;
-    if (this.gridType === 'diamond') {
-      const d = s / Math.SQRT2;
-      const step = s * Math.SQRT2;
-      const i = Math.round((point.x + point.y) / step);
-      const j = Math.round((point.x - point.y) / step);
-      return new scope.Point((i + j) * d, (i - j) * d);
-    }
-    return new scope.Point(
-      Math.round(point.x / s) * s,
-      Math.round(point.y / s) * s,
-    );
-  }
-
-  legacyUpdateGridCursor(): void {
-    const scope = this.scope;
-    // The red dot is a snap indicator, not a grid-visible indicator: it
-    // shows only while grid snapping is on (and the grid itself is shown).
-    if (!this.isGridEnabled || !this.isGridSnappingEnabled) {
-      if (this.gridCursor) this.gridCursor.visible = false;
-      return;
-    }
-    if (!this.gridCursor) {
-      this.gridCursor = new scope.Shape.Circle(this.mousePt, 5);
-      this.gridCursor.fillColor = new scope.Color(1, 0, 0, 0.9);
-      this.gridCursor.strokeColor = new scope.Color(0, 0, 0, 1.0);
-      this.gridCursor.strokeWidth = 2;
-    }
-    this.gridCursor.position = this.mousePt;
-    this.gridCursor.visible = true;
-    this.mountSnapIndicator(this.gridCursor);
-  }
-
-  legacyApplyAngleSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
-    const scope = this.scope;
-    if (!this.isAngleSnappingEnabled || !basePoint || !targetPoint) {
-      return targetPoint;
-    }
-    const dx = targetPoint.x - basePoint.x;
-    const dy = targetPoint.y - basePoint.y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len === 0) return targetPoint;
-    const angleRad = Math.atan2(dy, dx);
-    const stepDeg =
-      Number.isFinite(this.angleSnapDegrees) && this.angleSnapDegrees > 0
-        ? this.angleSnapDegrees
-        : 15;
-    const stepRad = (stepDeg * Math.PI) / 180;
-    const snappedAngle = Math.round(angleRad / stepRad) * stepRad;
-    return new scope.Point(
-      basePoint.x + Math.cos(snappedAngle) * len,
-      basePoint.y + Math.sin(snappedAngle) * len,
-    );
-  }
-
-  legacyApplyLengthSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
-    const scope = this.scope;
-    if (!this.isLengthSnappingEnabled || !basePoint || !targetPoint) {
-      return targetPoint;
-    }
-    const step =
-      Number.isFinite(this.lengthSnapStep) && this.lengthSnapStep > 0
-        ? this.lengthSnapStep
-        : 10;
-    const dx = targetPoint.x - basePoint.x;
-    const dy = targetPoint.y - basePoint.y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len === 0) return targetPoint;
-    const snappedLen = Math.max(step, Math.round(len / step) * step);
-    return new scope.Point(
-      basePoint.x + (dx / len) * snappedLen,
-      basePoint.y + (dy / len) * snappedLen,
-    );
-  }
 
   // Ordered pair of the configured ratio, smaller first. 3:4 and 4:3 share
   // {lo:3, hi:4}; orientation is chosen from the live width vs height.
@@ -1566,21 +1265,6 @@ export class NibGliderEngine {
     return this.snapping.aspectSecond(first, second);
   }
 
-  // Axis-aligned opposite corner: width:height stays the selected A:B.
-  legacyApplyAspectSnapping(basePoint: AnyItem, targetPoint: AnyItem): AnyItem {
-    const scope = this.scope;
-    if (!this.isAspectSnappingEnabled || !basePoint || !targetPoint) {
-      return targetPoint;
-    }
-    const dx = targetPoint.x - basePoint.x;
-    const dy = targetPoint.y - basePoint.y;
-    if (dx === 0 && dy === 0) return targetPoint;
-    const { w: aw, h: ah } = this.aspectWH();
-    const sx = dx === 0 ? 1 : Math.sign(dx);
-    const sy = dy === 0 ? 1 : Math.sign(dy);
-    const k = Math.max(Math.abs(dx) / aw, Math.abs(dy) / ah);
-    return new scope.Point(basePoint.x + sx * aw * k, basePoint.y + sy * ah * k);
-  }
 
   private centerlineWidthForLength(length: number): number {
     if (!this.isAspectSnappingEnabled) return this.shapeWidth;
@@ -1596,155 +1280,6 @@ export class NibGliderEngine {
     return `${w}:${h}`;
   }
 
-  legacyApplyPathSnapping(originalPoint: AnyItem): void {
-    const scope = this.scope;
-    if (!this.isPathSnappingEnabled || !originalPoint) {
-      if (this.pathSnapCursor) this.pathSnapCursor.visible = false;
-      return;
-    }
-    const ignoredItems = new Set([
-      this.path,
-      this.previewPath,
-      this.previewShape,
-      this.previewRect,
-      this.quadPath,
-      this.pathSnapCursor,
-      this.pointSnapCursor,
-      this.previewLine,
-      this.previewInner,
-      this.previewSplineText,
-    ]);
-    let bestPoint: AnyItem = null;
-    let bestDist = Infinity;
-    const maxSnapDistance = 12;
-    const items: AnyItem[] = scope.project.getItems({
-      match: (item: AnyItem) => {
-        if (!item || !item.visible || this.isGuideItem(item)) return false;
-        if (ignoredItems.has(item)) return false;
-        return (
-          typeof item.getNearestPoint === 'function' || item.segments || item.curves
-        );
-      },
-    });
-    items.forEach((item) => {
-      const candidatePoint =
-        typeof item.getNearestPoint === 'function'
-          ? item.localToGlobal(item.getNearestPoint(item.globalToLocal(originalPoint)))
-          : item.position || null;
-      if (!candidatePoint) return;
-      const dist = candidatePoint.getDistance(originalPoint);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestPoint = candidatePoint;
-      }
-    });
-    if (bestPoint && bestDist <= maxSnapDistance) {
-      this.mousePt = bestPoint;
-      if (!this.pathSnapCursor) {
-        this.pathSnapCursor = new scope.Shape.Circle(bestPoint, 4);
-        this.pathSnapCursor.fillColor = new scope.Color(1, 0, 0, 0.9);
-        this.pathSnapCursor.strokeColor = new scope.Color(0, 0, 0, 1.0);
-        this.pathSnapCursor.strokeWidth = 2;
-      }
-      this.pathSnapCursor.position = bestPoint;
-      this.pathSnapCursor.visible = true;
-      this.mountSnapIndicator(this.pathSnapCursor);
-    } else if (this.pathSnapCursor) {
-      this.pathSnapCursor.visible = false;
-    }
-  }
-
-  // Snap to vector-shape points: segment endpoints, segment midpoints,
-  // and closed-shape centroids. Nearest candidate wins and the indicator
-  // dot takes the winning kind's color.
-  legacyApplyPointSnapping(originalPoint: AnyItem): void {
-    const scope = this.scope;
-    if (!this.isPointSnappingEnabled || !originalPoint) {
-      if (this.pointSnapCursor) this.pointSnapCursor.visible = false;
-      return;
-    }
-    const ignoredItems = new Set([
-      this.path,
-      this.previewPath,
-      this.previewShape,
-      this.previewRect,
-      this.previewLine,
-      this.previewInner,
-      this.previewSplineText,
-      this.quadPath,
-      this.pathSnapCursor,
-      this.pointSnapCursor,
-      this.gridCursor,
-    ]);
-    type PointSnapKind = 'point' | 'midpoint' | 'centroid';
-    const SNAP_COLORS: Record<PointSnapKind, string> = {
-      point: '#ffd43b',
-      midpoint: '#4dabf7',
-      centroid: '#69db7c',
-    };
-    let bestPoint: AnyItem = null;
-    let bestKind: PointSnapKind = 'point';
-    let bestDist = Infinity;
-    const maxSnapDistance = 12;
-    const consider = (candidate: AnyItem, kind: PointSnapKind): void => {
-      if (!candidate) return;
-      const dist = candidate.getDistance(originalPoint);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestPoint = candidate;
-        bestKind = kind;
-      }
-    };
-    const collect = (item: AnyItem): void => {
-      if (!item || !item.visible || ignoredItems.has(item)) return;
-      const children = item.children;
-      if (children && children.length > 0) {
-        children.forEach(collect);
-        return;
-      }
-      const segments = item.segments;
-      if (!segments || segments.length === 0) return;
-      segments.forEach((seg: AnyItem) => consider(item.localToGlobal(seg.point), 'point'));
-      const curves = item.curves;
-      if (curves) {
-        curves.forEach((curve: AnyItem) =>
-          consider(item.localToGlobal(curve.getPointAt(curve.length / 2)), 'midpoint'),
-        );
-      }
-      if (item.closed) {
-        consider(item.localToGlobal(item.internalBounds.center), 'centroid');
-      }
-    };
-    const items: AnyItem[] = scope.project.getItems({
-      match: (item: AnyItem) => {
-        if (!item || !item.visible || this.isGuideItem(item)) return false;
-        if (ignoredItems.has(item)) return false;
-        return !!(
-          item.segments ||
-          item.curves ||
-          (item.children && item.children.length > 0)
-        );
-      },
-    });
-    items.forEach(collect);
-    if (bestPoint && bestDist <= maxSnapDistance) {
-      // Fresh point: never alias a live segment point of document geometry.
-      const snapped = new scope.Point(bestPoint.x, bestPoint.y);
-      this.mousePt = snapped;
-      const color = SNAP_COLORS[bestKind];
-      if (!this.pointSnapCursor) {
-        this.pointSnapCursor = new scope.Shape.Circle(snapped, 4);
-        this.pointSnapCursor.strokeColor = new scope.Color(0, 0, 0, 1.0);
-        this.pointSnapCursor.strokeWidth = 2;
-      }
-      this.pointSnapCursor.position = snapped;
-      this.pointSnapCursor.fillColor = new scope.Color(color);
-      this.pointSnapCursor.visible = true;
-      this.mountSnapIndicator(this.pointSnapCursor);
-    } else if (this.pointSnapCursor) {
-      this.pointSnapCursor.visible = false;
-    }
-  }
 
   // Screen-space endpoint tolerance in project units.
   private endpointTolerance(): number {
@@ -2091,33 +1626,23 @@ export class NibGliderEngine {
   }
 
   private refreshSplineTextPreview(): void {
-    if (this.previewSplineText) {
-      this.previewSplineText.remove();
-      this.previewSplineText = null;
-    }
-    if (!this.isDrawingPath || !this.path || !this.textModeEnabled) return;
-    if (this.path.segments.length < 2) return;
-    let text: AnyItem = null;
-    try {
-      text =
-        this.textMode === 'body'
-          ? this.createBodyTextFor(this.path)
-          : this.createBoundaryText(this.path);
-    } catch {
-      text = null;
-    }
-    if (!text) return;
-    this.fadeShapeText(text);
-    this.addPreviewShadow(text);
-    this.previewSplineText = text;
-    this.layers.activeLayer.addChild(text);
+    this.textLayout.refreshSplinePreview({
+      isDrawingPath: this.isDrawingPath,
+      path: this.path,
+      textModeEnabled: this.textModeEnabled,
+      textMode: this.textMode,
+      getPreview: () => this.previewSplineText,
+      setPreview: (item) => { this.previewSplineText = item; },
+      addPreviewShadow: (item) => this.addPreviewShadow(item),
+      addToActive: (item) => this.layers.activeLayer.addChild(item),
+    });
   }
 
   private clearSplineTextPreview(): void {
-    if (this.previewSplineText) {
-      this.previewSplineText.remove();
-      this.previewSplineText = null;
-    }
+    this.textLayout.clearSplinePreview({
+      getPreview: () => this.previewSplineText,
+      setPreview: (item) => { this.previewSplineText = item; },
+    });
   }
 
   /** Clear preview fading after a preview group is stamped/finalized. */
@@ -2148,46 +1673,21 @@ export class NibGliderEngine {
   }
 
   drawInnerShape(frameItem: AnyItem, style: string): void {
-    const scope = this.scope;
-    if (
-      (this.shapeType != null &&
-        this.shapeType.startsWith('rectangle_') &&
-        this.rectangleInnerShapeType === 'rectangle') ||
-      (!this.shapeType && this.innerShapeType === 'none') ||
-      this.quadPath
-    ) {
-      return;
-    }
-    const strokeW = frameItem.strokeWidth || this.globalStrokeWidth;
-    let center: AnyItem;
-    let iradius: number;
-    if (typeof frameItem.radius !== 'undefined') {
-      center = frameItem.position;
-      iradius = Math.max(0, frameItem.radius - strokeW / 2);
-      const innerPath = this.createInnerShape(center, iradius, style, this.shapeGuideAngle);
-      if (innerPath) {
-        innerPath.selected = false;
-        this.layers.activeLayer.addChild(innerPath);
-      }
-      return;
-    }
-    const bounds = frameItem.bounds;
-    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
-    const inset = strokeW * 1.5;
-    const innerBounds = new scope.Rectangle(
-      bounds.x + inset,
-      bounds.y + inset,
-      bounds.width - 2 * inset,
-      bounds.height - 2 * inset,
-    );
-    if (innerBounds.width <= 0 || innerBounds.height <= 0) return;
-    center = innerBounds.center;
-    iradius = (Math.min(innerBounds.width, innerBounds.height) / 2) * 0.9;
-    const innerPath = this.createInnerShape(center, iradius, style, this.shapeGuideAngle);
-    if (innerPath) {
-      innerPath.selected = false;
-      this.layers.activeLayer.addChild(innerPath);
-    }
+    this.shapes.drawInnerShape(frameItem, style, this.innerFrameDraw());
+  }
+
+  private innerFrameDraw(): InnerFrameDraw {
+    return {
+      shapeType: this.shapeType,
+      rectangleInnerShapeType: this.rectangleInnerShapeType,
+      innerShapeType: this.innerShapeType,
+      quadActive: !!this.quadPath,
+      guideAngle: this.shapeGuideAngle,
+      globalStrokeWidth: this.globalStrokeWidth,
+      buildInner: (center: AnyItem, radius: number, style: string, rotation: number) =>
+        this.createInnerShape(center, radius, style, rotation),
+      addToActive: (item: AnyItem) => this.layers.activeLayer.addChild(item),
+    };
   }
 
   // --- Rect-frame shapes: the selected Rect Keys shape fitted to the rect

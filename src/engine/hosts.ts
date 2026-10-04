@@ -1,0 +1,191 @@
+// Host objects the facade hands to drawing tools and input controllers.
+// Owns nothing. Reads the facade surface passed in. The returned closures
+// call back into that surface; they do not import NibGliderEngine.
+// Public: createDrawingHost, createPointerHost, createKeyboardHost.
+// Tested through the drawing, pointer, and keyboard suites.
+
+import type { DrawingHost } from './drawing/DrawingHost';
+import type { KeyboardHost } from './input/KeyboardController';
+import type { PointerHost } from './input/PointerController';
+
+type Item = any;
+type Surface = any;
+
+export function createDrawingHost(engine: Surface): DrawingHost {
+  return {
+    session: engine.drawing,
+    scope: () => engine.scope,
+    pathDrawingMode: () => engine.pathDrawingMode,
+    splineTension: () => engine.splineTension,
+    fillEnabled: () => engine.fillEnabled,
+    strokeEnabled: () => engine.strokeEnabled,
+    globalStrokeColor: () => engine.globalStrokeColor,
+    globalStrokeWidth: () => engine.globalStrokeWidth,
+    depositPointMode: () => engine.depositPointMode,
+    circleRadiusAnchor: () => engine.circleRadiusAnchor,
+    rectangleInnerShapeType: () => engine.rectangleInnerShapeType,
+    innerShapeType: () => engine.innerShapeType,
+    endpointTolerance: () => engine.endpointTolerance(),
+    rectDiagonalScale: () => engine.rectDiagonalScale(),
+    centerlineWidthForLength: (length) => engine.centerlineWidthForLength(length),
+    lastCenterlineWidth: () => engine.lastCenterlineWidth,
+    setLastCenterlineWidth: (width) => { engine.lastCenterlineWidth = width; },
+    layerChildren: () => [...engine.layers.activeLayer.children],
+    isNonContentItem: (item) => engine.isNonContentItem(item),
+    addToActive: (item) => engine.layers.addToActive(item),
+    applyStrokeGeometry: (item) => engine.applyStrokeGeometry(item),
+    applyStrokeDash: (item) => engine.applyStrokeDash(item),
+    applyCurrentStyles: (item) => engine.applyCurrentStyles(item),
+    applyFill: (item) => engine.applyFillSpec(item, engine.fillSpec()),
+    stylePreviewFrame: (item, brightness) => engine.stylePreviewFrame(item, brightness),
+    addPreviewShadow: (item) => engine.addPreviewShadow(item),
+    clearShadow: (item) => engine.clearShadow(item),
+    withShapeText: (item, isPreview) => engine.withShapeText(item, isPreview),
+    resetStampedText: (item) => engine.resetStampedText(item),
+    shapePartOf: (item) => engine.shapePartOf(item),
+    createInnerShape: (center, radius, style, rotation) => engine.createInnerShape(center, radius, style, rotation),
+    createRectFrameShape: (style) => engine.createRectFrameShape(style),
+    drawInnerShape: (frame, style) => engine.drawInnerShape(frame, style),
+    refreshSplineText: () => engine.refreshSplineTextPreview(),
+    clearSplineText: () => engine.clearSplineTextPreview(),
+    findOpenEndpointNear: (point) => engine.findOpenEndpointNear(point),
+    removeFromSelection: (item) => engine.selection.remove(item),
+    dropItem: (item) => engine.dropItem(item),
+    place: (item, opts) => engine.placeDeposited(item, opts),
+    capture: () => engine.captureDeposit(),
+    commit: (label: string, snap: { before: Item[]; selected: Item[]; retained: Map<string, unknown> }, placed: Item[], retain?: boolean) => {
+      engine.recordSceneCommand(label, snap.before, snap.selected, placed, retain ? snap.retained : undefined);
+    },
+    isRetained: (shape) => {
+      const id = shape?.data?.drawableId;
+      return typeof id === 'string' && engine.retainedPaths.get(id)?.item === shape;
+    },
+    bezierSource: (item) => engine.scene.bezierSource(item),
+    retainResult: (item, source) => engine.retainCompositeResult(item, source),
+    pruneRecords: () => engine.scene.pruneRecords(),
+    updateTextContent: () => engine.updateTextContent(),
+    notify: () => engine.notify(),
+    cancelDrawing: () => engine.cancelCurrentDrawingOperation(),
+  };
+}
+
+export function createPointerHost(engine: Surface): PointerHost {
+  return {
+    scope: () => engine.scope,
+    isDrawingPath: () => engine.isDrawingPath,
+    isDrawingShape: () => engine.isDrawingShape,
+    isDrawingQuad: () => engine.isDrawingQuad,
+    shapeType: () => engine.shapeType,
+    shapeStartPoint: () => engine.shapeStartPoint,
+    shapePt2: () => engine.shapePt2,
+    isAngleSnappingEnabled: () => engine.isAngleSnappingEnabled,
+    isLengthSnappingEnabled: () => engine.isLengthSnappingEnabled,
+    isAspectSnappingEnabled: () => engine.isAspectSnappingEnabled,
+    path: () => engine.path,
+    pathSnapBase: () => {
+      const base = engine.compositePathTool.snapBase;
+      if (base) return new engine.scope.Point(base.x, base.y);
+      const segments = engine.path?.segments;
+      return segments?.length ? segments[segments.length === 1 ? 0 : segments.length - 2].point : null;
+    },
+    updateLivePath: (point) => engine.compositePathTool.track(point),
+    updateLiveQuad: () => engine.quadTool.track(),
+    isCompositePathDrawing: () => engine.compositePathTool.active,
+    quadPath: () => engine.quadPath,
+    selectedItems: () => engine.selectedItems,
+    moveSelectionBy: (delta) => engine.transforms.moveSelectionBy(delta),
+    toggleSelection: (item) => engine.selection.toggle(item),
+    isInDragLock: () => engine.isInDragLock,
+    mousePt: () => engine.mousePt,
+    setMousePt: (v) => { engine.mousePt = v; },
+    lastMousePt: () => engine.lastMousePt,
+    setLastMousePt: (v) => { engine.lastMousePt = v; },
+    isPanning: () => engine.viewport.isPanning,
+    beginPan: (point) => engine.viewport.beginPan(point),
+    panTo: (point, delta) => engine.viewport.panTo(point, delta),
+    endPan: () => engine.viewport.endPan(),
+    snapToGrid: (point) => engine.snapToGrid(point),
+    applyAngleSnapping: (base, target) => engine.applyAngleSnapping(base, target),
+    applyLengthSnapping: (base, target) => engine.applyLengthSnapping(base, target),
+    applyPathSnapping: (original) => engine.applyPathSnapping(original),
+    applyPointSnapping: (original) => engine.applyPointSnapping(original),
+    applyAspectSnapping: (base, target) => engine.applyAspectSnapping(base, target),
+    snapAspectSecond: (first, second) => engine.snapAspectSecond(first, second),
+    updateGridCursor: () => engine.updateGridCursor(),
+    refreshSplineTextPreview: () => engine.refreshSplineTextPreview(),
+    updateShapePreview: () => engine.updateShapePreview(),
+    updateTextContent: () => engine.updateTextContent(),
+    notify: () => engine.notify(),
+    clearOutSelection: () => engine.clearOutSelection(),
+    beginMoveGesture: () => engine.beginMoveGesture(),
+    commitMoveGesture: () => engine.commitMoveGesture(),
+    clearMoveGesture: () => { engine.transforms.cancelDrag(); },
+    topUserGroupOf: (item) => engine.topUserGroupOf(item),
+    isNonContentItem: (item) => engine.isNonContentItem(item),
+  };
+}
+
+export function createKeyboardHost(engine: Surface): KeyboardHost {
+  return {
+    isDrawingPath: () => engine.isDrawingPath,
+    isDrawingShape: () => engine.isDrawingShape,
+    isDrawingQuad: () => engine.isDrawingQuad,
+    isLiveDrawing: () => engine.isLiveDrawing,
+    shapeType: () => engine.shapeType,
+    selectedItems: () => engine.selectedItems,
+    globalStrokeWidth: () => engine.globalStrokeWidth,
+    maxShapeWidth: () => engine.maxShapeWidth,
+    maxStrokeWidth: () => engine.maxStrokeWidth,
+    splineTensionDefault: () => engine.splineTensionDefault,
+    strokeEnabled: () => engine.strokeEnabled,
+    fillEnabled: () => engine.fillEnabled,
+    isInDragLock: () => engine.isInDragLock,
+    shapeWidth: () => engine.shapeWidth,
+    setShapeWidth: (v) => { engine.shapeWidth = v; },
+    splineTension: () => engine.splineTension,
+    setSplineTension: (v) => { engine.setSplineTension(v); },
+    clearSelection: () => engine.clearOutSelection(),
+    liveAdjustApplies: () => engine.liveAdjustApplies(),
+    resetZoom: () => engine.resetZoom(),
+    stepZoom: (dir) => engine.stepZoom(dir),
+    undo: () => engine.undo(),
+    redo: () => engine.redo(),
+    groupSelection: () => engine.groupSelection(),
+    ungroupSelected: () => engine.ungroupSelected(),
+    nudgeSelection: (dx, dy) => engine.nudgeSelection(dx, dy),
+    scaleSelection: (factor) => engine.scaleSelection(factor),
+    rotateSelection: (degrees) => engine.rotateSelection(degrees),
+    updateTextContent: () => engine.updateTextContent(),
+    updateShapePreview: () => engine.updateShapePreview(),
+    notify: () => engine.notify(),
+    setIsInDragLock: (on) => engine.setIsInDragLock(on),
+    removeAllSelectedItemsAndReset: () => engine.removeAllSelectedItemsAndReset(),
+    stampCurrentPreview: () => engine.stampCurrentPreview(),
+    stampItems: (items) => engine.stampItems(items),
+    rectCenterlineKC: () => engine.rectCenterlineKC(),
+    rectDiagonalKC: () => engine.rectDiagonalKC(),
+    rectTwoEdgesKC: () => engine.rectTwoEdgesKC(),
+    polyLineKC: () => engine.polyLineKC(),
+    splinePointKC: () => engine.splinePointKC(),
+    roundedPointKC: () => engine.roundedPointKC(),
+    compositePathEnabled: () => engine.pathDrawingMode === 'ngComposite',
+    circleKC: (mode) => engine.circleKC(mode),
+    radialStampKC: () => engine.radialStampKC(),
+    quadPointKC: () => engine.quadPointKC(),
+    toggleGrid: () => engine.toggleGrid(),
+    thinStrokeWidth: () => engine.thinStrokeWidth(),
+    thickenStrokeWidth: () => engine.thickenStrokeWidth(),
+    finishRadialStamp: () => engine.finishRadialStamp(),
+    completeShapeWithSpline: () => engine.completeShapeWithSpline(),
+    endPathOrShape: () => engine.endPathOrShape(),
+    selectionPaint: () => engine.selectionPaint(),
+    setStrokeEnabled: (on) => engine.setStrokeEnabled(on),
+    setFillEnabled: (on) => engine.setFillEnabled(on),
+    cancelCurrentDrawingOperation: () => engine.cancelCurrentDrawingOperation(),
+    hitTestUnderCursor: () => engine.pointer.hitTestUnderCursor(),
+    applyLiveScale: (event, dir) => engine.applyLiveScale(event, dir),
+    applyLiveRotate: (event, dir) => engine.applyLiveRotate(event, dir),
+    toggleRadialStampRadiusLock: () => engine.toggleRadialStampRadiusLock(),
+    onKeyActivity: (activity) => engine.onKeyActivity(activity),
+  };
+}

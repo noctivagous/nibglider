@@ -7,6 +7,9 @@
 // drops the semantic record (null) because the fit breaks those invariants.
 // Live circles stay Path.Circle and sectors stay arcTo. Supershape samples
 // use SUPERSHAPE_STEPS from pathResolver, inclusive of the closing vertex.
+// drawInnerShape places an inner figure in a circle or other frame.
+// Circle frames inset by strokeWidth / 2. Other frames inset by
+// strokeWidth * 1.5 and then scale the fit by 0.9.
 // Tested from tests/shape-geometry.test.mjs and the engine drawing tests.
 import { clampSectorAngle } from '../input/KeySettingsRegistry';
 import type { NGShape } from '../model/NGShape';
@@ -55,6 +58,17 @@ export interface InnerShapeBuild {
   innerShapeType: string;
   innerShapeParams: InnerShapeParams;
   polygonRadiusMode: PolygonRadiusMode;
+}
+
+export interface InnerFrameDraw {
+  shapeType: string | null;
+  rectangleInnerShapeType: string;
+  innerShapeType: string;
+  quadActive: boolean;
+  guideAngle: number;
+  globalStrokeWidth: number;
+  buildInner(center: Item, radius: number, style: string, rotation: number): Item;
+  addToActive(item: Item): void;
 }
 
 export interface RectFrameBuild {
@@ -408,6 +422,49 @@ export class ShapeFactory {
     for (const [s, t] of fitted) path.add(P(s, t));
     path.closed = true;
     return path;
+  }
+
+  drawInnerShape(frameItem: Item, style: string, draw: InnerFrameDraw): void {
+    const scope = this.scope;
+    if (
+      (draw.shapeType != null &&
+        draw.shapeType.startsWith('rectangle_') &&
+        draw.rectangleInnerShapeType === 'rectangle') ||
+      (!draw.shapeType && draw.innerShapeType === 'none') ||
+      draw.quadActive
+    ) {
+      return;
+    }
+    const strokeW = frameItem.strokeWidth || draw.globalStrokeWidth;
+    let center: Item;
+    let iradius: number;
+    if (typeof frameItem.radius !== 'undefined') {
+      center = frameItem.position;
+      iradius = Math.max(0, frameItem.radius - strokeW / 2);
+      const innerPath = draw.buildInner(center, iradius, style, draw.guideAngle);
+      if (innerPath) {
+        innerPath.selected = false;
+        draw.addToActive(innerPath);
+      }
+      return;
+    }
+    const bounds = frameItem.bounds;
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
+    const inset = strokeW * 1.5;
+    const innerBounds = new scope.Rectangle(
+      bounds.x + inset,
+      bounds.y + inset,
+      bounds.width - 2 * inset,
+      bounds.height - 2 * inset,
+    );
+    if (innerBounds.width <= 0 || innerBounds.height <= 0) return;
+    center = innerBounds.center;
+    iradius = (Math.min(innerBounds.width, innerBounds.height) / 2) * 0.9;
+    const innerPath = draw.buildInner(center, iradius, style, draw.guideAngle);
+    if (innerPath) {
+      innerPath.selected = false;
+      draw.addToActive(innerPath);
+    }
   }
 }
 

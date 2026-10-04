@@ -253,7 +253,7 @@ individual deliverables and acceptance checks.
 - [ ] Phase 7: Drawing sessions and tools
 - [x] Phase 8: Geometry and appearance
 - [x] Phase 9: Combinatorics, importing, and presenters
-- [ ] Phase 10: Reduce the facade
+- [x] Phase 10: Reduce the facade
 
 ### Phase 0: Baseline and inventory
 
@@ -836,7 +836,7 @@ Create:
 The engine should no longer directly query DOM elements such as
 `shapePreviewPath`; the presenter should receive data and update the view.
 
-### Phase 10: Reduce the facade
+[x] ### Phase 10: Reduce the facade
 
 At the end, `engine.ts` should primarily:
 
