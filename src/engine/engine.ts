@@ -1593,7 +1593,7 @@ export class NibGliderEngine {
     // Clears anything a tool did not claim, and resets live scale/rotation.
     this.drawing.cancel();
     if (restoreSelection) {
-      this.selection.restore(restoreSelection);
+      this.selection.restore(restoreSelection, { quiet: true });
       this.selectionRectSnapshot = null;
       this.updateTextContent();
     }
@@ -1765,6 +1765,7 @@ export class NibGliderEngine {
 
   private finishSelectionRect(): void {
     this.updateSelectionRectLive();
+    this.selection.pulse();
     this.selectionRectSnapshot = null;
     this.drawing.clearShape();
     this.drawing.resetLiveAdjust();
@@ -1789,7 +1790,7 @@ export class NibGliderEngine {
     }
     const selected = this.selectedItems;
     if (selected.length === hits.length && hits.every((item) => selected.includes(item))) return;
-    this.selection.restore(hits);
+    this.selection.restore(hits, { quiet: true });
     this.updateTextContent();
     this.notify();
   }

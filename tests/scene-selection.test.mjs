@@ -182,26 +182,37 @@ test('z marquee selects intersecting items live, commits, and esc restores', () 
   } finally { engine.cancelCurrentDrawingOperation(); scope.project.remove(); }
 });
 
-test('selected drawables carry a glow halo that suspends for print', () => {
+test('selected drawables carry a two-tone halo with settle pulse', async () => {
   const { selection, rect, cleanup } = setup();
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   try {
     const a = rect(10); const b = rect(80);
     selection.add(a);
     assert.equal(a.selected, true);
+    assert.ok(a.selectedColor);
     assert.ok(a.shadowColor);
+    assert.equal(a.shadowBlur, 14);
+    await sleep(400);
     assert.equal(a.shadowBlur, 7);
-    selection.add(b);
     selection.remove(a);
     assert.equal(a.selected, false);
     assert.equal(a.shadowColor, null);
     assert.equal(a.shadowBlur, 0);
+    selection.restore([a, b], { quiet: true });
+    assert.deepEqual(selection.selectedItems, [a, b]);
+    assert.equal(a.shadowBlur, 7);
+    selection.pulse();
+    assert.equal(a.shadowBlur, 14);
+    await sleep(400);
+    assert.equal(a.shadowBlur, 7);
     selection.suspendGlow();
-    assert.equal(b.shadowColor, null);
-    assert.deepEqual(selection.selectedItems, [b]);
+    assert.equal(a.shadowColor, null);
+    assert.deepEqual(selection.selectedItems, [a, b]);
     selection.restoreGlow();
-    assert.ok(b.shadowColor);
+    assert.ok(a.shadowColor);
+    assert.equal(a.shadowBlur, 7);
     selection.clear();
-    assert.equal(b.shadowColor, null);
+    assert.equal(a.shadowColor, null);
     assert.deepEqual(selection.selectedItems, []);
   } finally { cleanup(); }
 });

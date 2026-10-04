@@ -4,9 +4,23 @@ import { SceneRepository } from './SceneRepository';
 
 type Item = any;
 
-/** Floating Marker parity: selected drawables carry a soft glow halo so the
- * selection reads on any background, unlike a single flat outline color. */
+/** Floating Marker parity: selected drawables carry a two-tone halo — a light
+ * Paper selection outline over a dark blurred glow — so the selection reads
+ * on any background, unlike a single flat outline color. See
+ * refs/selection-halo-options.md for the alternatives considered. */
 const SELECTION_GLOW_BLUR = 7;
+/** Hot blur while the settle pulse fires on a discrete selection commit. */
+const SELECTION_PULSE_BLUR = 14;
+/** Settle delay before the pulse decays to the steady halo. */
+const SELECTION_PULSE_MS = 280;
+
+function prefersReducedMotion(): boolean {
+  try {
+    return typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
 
 export class SelectionManager {
   private items: Item[] = [];
@@ -26,6 +40,7 @@ export class SelectionManager {
   add(item: Item): void {
     if (!item || this.scene.isNonContentItem(item) || this.items.includes(item)) return;
     this.mark(item, true); this.items.push(item);
+    this.firePulse();
   }
   remove(item: Item): void {
     const index = this.items.indexOf(item);
@@ -38,12 +53,19 @@ export class SelectionManager {
     }
     this.items = [];
   }
-  restore(items: Item[]): void {
+  restore(items: Item[], opts?: { quiet?: boolean }): void {
     this.clear();
     for (const item of items) {
       if (!item || !this.scene.isInScene(item) || this.items.includes(item)) continue;
       try { this.mark(item, true); this.items.push(item); } catch { /* Already gone. */ }
     }
+    // Continuous updates (marquee live-select, Esc) stay quiet so dragging
+    // never shimmers; discrete commits fire the settle pulse.
+    if (!opts?.quiet && this.items.length > 0) this.firePulse();
+  }
+  /** Re-fire the settle pulse on the current selection (e.g. marquee commit). */
+  pulse(): void {
+    if (this.items.length > 0) this.firePulse();
   }
   toggle(item: Item): void { if (this.items.includes(item)) this.remove(item); else this.add(item); }
   prepend(item: Item): void {
@@ -54,30 +76,57 @@ export class SelectionManager {
   /** Drop the glow (print/export) without changing membership. */
   suspendGlow(): void {
     this.glowSuspended = true;
+    this.pulseGeneration += 1;
     for (const item of this.items) {
       try { this.clearGlow(item); } catch { /* Already gone. */ }
     }
+    this.refresh();
   }
   /** Re-apply the glow after suspendGlow. */
   restoreGlow(): void {
     this.glowSuspended = false;
     for (const item of this.items) {
-      try { this.applyGlow(item); } catch { /* Already gone. */ }
+      try { this.applyGlow(item, SELECTION_GLOW_BLUR); } catch { /* Already gone. */ }
     }
+    this.refresh();
   }
   private mark(item: Item, on: boolean): void {
     item.selected = on;
-    if (on && !this.glowSuspended) this.applyGlow(item);
+    if (on && !this.glowSuspended) this.applyGlow(item, SELECTION_GLOW_BLUR);
     else if (!on) this.clearGlow(item);
   }
-  private applyGlow(item: Item): void {
-    item.shadowColor = new this.scene.scope.Color(0.2, 0.5, 1);
-    item.shadowBlur = SELECTION_GLOW_BLUR;
+  private applyGlow(item: Item, blur: number): void {
+    item.selectedColor = new this.scene.scope.Color(1, 1, 1);
+    item.shadowColor = new this.scene.scope.Color(0, 0, 0, 0.85);
+    item.shadowBlur = blur;
     item.shadowOffset = new this.scene.scope.Point(0, 0);
   }
   private clearGlow(item: Item): void {
     item.shadowColor = null;
     item.shadowBlur = 0;
+  }
+  /**
+   * Settle pulse: the glow fires hot, then decays to steady. A generation
+   * counter retires stale timers from rapid re-selection or suspends.
+   */
+  private pulseGeneration = 0;
+  private firePulse(): void {
+    if (this.glowSuspended || prefersReducedMotion()) return;
+    const generation = ++this.pulseGeneration;
+    for (const item of this.items) {
+      try { this.applyGlow(item, SELECTION_PULSE_BLUR); } catch { /* Already gone. */ }
+    }
+    this.refresh();
+    setTimeout(() => {
+      if (generation !== this.pulseGeneration || this.glowSuspended) return;
+      for (const item of this.items) {
+        try { this.applyGlow(item, SELECTION_GLOW_BLUR); } catch { /* Already gone. */ }
+      }
+      this.refresh();
+    }, SELECTION_PULSE_MS);
+  }
+  private refresh(): void {
+    try { this.scene.scope.view?.update(); } catch { /* Headless. */ }
   }
   removeAll(): Item[] {
     const before = this.snapshot();
