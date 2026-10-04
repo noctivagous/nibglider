@@ -156,6 +156,9 @@ test('wheel gestures route pinch, trackpad pan, and notched zoom', () => {
   assert.equal(classifyWheel(wheel({ deltaY: 6 })), 'pan');
   assert.equal(classifyWheel(wheel({ deltaY: 100 })), 'zoom');
   assert.equal(classifyWheel(wheel({ deltaY: 4, wheelDeltaY: 120 })), 'zoom');
+  assert.equal(classifyWheel(wheel({ deltaY: 137, wheelDeltaY: -411 })), 'pan');
+  assert.equal(classifyWheel(wheel({ deltaY: 100 }), true), 'pan');
+  assert.equal(classifyWheel(wheel({ deltaY: 100 }), false), 'zoom');
 });
 
 test('trackpad pan shifts the view and pinch zooms without dirtying', () => {

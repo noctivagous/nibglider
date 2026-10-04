@@ -139,27 +139,32 @@ export type WheelGesture = 'pinch' | 'pan' | 'zoom';
 /** Pinch deltas arrive much smaller than wheel notches; this gain keeps the
  * trackpad pinch zoom pace comparable to the scroll-wheel pace. */
 export const TRACKPAD_PINCH_GAIN = 3;
+/** A notch-like spike shortly after trackpad input is momentum tail, not a
+ * wheel notch. Tunable; momentum decays on roughly this timescale. */
+export const TRACKPAD_STICKY_MS = 400;
 
 /**
- * Route a wheel event: ctrl+wheel is a trackpad pinch, small or
- * sideways pixel deltas are a two-finger pan, and notched (or
- * line-mode) deltas are a classic scroll wheel.
+ * Route a wheel event: ctrl+wheel is a trackpad pinch, small, sideways, or
+ * continuous pixel deltas are a two-finger pan, and notched (or
+ * line-mode) deltas are a classic scroll wheel. Fast trackpad flings can
+ * spike like notches, so a recent trackpad stream (recentTrackpad) keeps
+ * them panning instead of flapping into zoom mid-gesture.
  */
 export function classifyWheel(event: Pick<WheelEvent, 'deltaX' | 'deltaY' | 'deltaMode' | 'ctrlKey'> & {
   wheelDeltaY?: number;
-}): WheelGesture {
+}, recentTrackpad = false): WheelGesture {
   if (event.ctrlKey) return 'pinch';
   if (event.deltaMode !== 0) return 'zoom';
   if (event.deltaX !== 0) return 'pan';
   if (event.deltaY === 0) return 'pan';
   if (
     typeof event.wheelDeltaY === 'number' && event.wheelDeltaY !== 0 &&
-    event.wheelDeltaY % 120 === 0
+    event.wheelDeltaY % 120 !== 0
   ) {
-    return 'zoom';
+    return 'pan';
   }
-  if (Number.isInteger(event.deltaY) && Math.abs(event.deltaY) >= 50) return 'zoom';
-  return 'pan';
+  if (!Number.isInteger(event.deltaY) || Math.abs(event.deltaY) < 50) return 'pan';
+  return recentTrackpad ? 'pan' : 'zoom';
 }
 
 export class NibGliderEngine {
@@ -2132,12 +2137,16 @@ export class NibGliderEngine {
     this.viewport.resetZoom();
   }
 
+  private lastTrackpadPanAt = 0;
+
   private onMouseWheel(event: WheelEvent): void {
     // Always swallowed: browsers treat ctrl+wheel as page zoom, and the
     // canvas owns every wheel gesture that reaches it.
     event.preventDefault();
     if (event.deltaY === 0 && event.deltaX === 0) return;
-    if (classifyWheel(event) === 'pan') {
+    const recentTrackpad = Date.now() - this.lastTrackpadPanAt < TRACKPAD_STICKY_MS;
+    if (classifyWheel(event, recentTrackpad) === 'pan') {
+      this.lastTrackpadPanAt = Date.now();
       this.viewport.panByScreen(event.deltaX, event.deltaY);
       return;
     }
