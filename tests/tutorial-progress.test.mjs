@@ -1,10 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SHOW_TUTORIAL_FOR_NEW_USERS, TUTORIAL_COMPLETED_KEY } from '../src/config/tutorial.ts';
+import {
+  SHOW_TUTORIAL_FOR_NEW_USERS,
+  TUTORIAL_COMPLETED_KEY,
+  TUTORIAL_DISMISSED_KEY,
+} from '../src/config/tutorial.ts';
 import {
   clearNibGliderSettings,
   hasCompletedTutorial,
+  hasDismissedTutorial,
+  hasSeenTutorial,
   markTutorialCompleted,
+  markTutorialDismissed,
   shouldAutoShowTutorial,
 } from '../src/tutorial/tutorialProgress.ts';
 
@@ -46,11 +53,35 @@ test('completion flag drives auto-show', () => {
 test('reset-all-settings clears the tutorial flag and keeps foreign keys', () => {
   const store = fakeStorage({
     [TUTORIAL_COMPLETED_KEY]: '1',
+    [TUTORIAL_DISMISSED_KEY]: '1',
     'nibglider.keyboardVisible': '0',
     'other-app.theme': 'dark',
   });
   clearNibGliderSettings(store);
   assert.equal(store.getItem(TUTORIAL_COMPLETED_KEY), null);
+  assert.equal(store.getItem(TUTORIAL_DISMISSED_KEY), null);
   assert.equal(store.getItem('nibglider.keyboardVisible'), null);
   assert.equal(store.getItem('other-app.theme'), 'dark');
+});
+
+test('dismissing the tutorial suppresses auto-show without marking completion', () => {
+  const store = fakeStorage();
+  assert.equal(shouldAutoShowTutorial(store), true);
+  markTutorialDismissed(store);
+  assert.equal(hasDismissedTutorial(store), true);
+  assert.equal(hasCompletedTutorial(store), false);
+  assert.equal(hasSeenTutorial(store), true);
+  assert.equal(shouldAutoShowTutorial(store), false);
+});
+
+test('completion and dismissal are tracked independently', () => {
+  assert.notEqual(TUTORIAL_COMPLETED_KEY, TUTORIAL_DISMISSED_KEY);
+  const completedOnly = fakeStorage({ [TUTORIAL_COMPLETED_KEY]: '1' });
+  assert.equal(hasCompletedTutorial(completedOnly), true);
+  assert.equal(hasDismissedTutorial(completedOnly), false);
+  assert.equal(shouldAutoShowTutorial(completedOnly), false);
+  const dismissedOnly = fakeStorage({ [TUTORIAL_DISMISSED_KEY]: '1' });
+  assert.equal(hasCompletedTutorial(dismissedOnly), false);
+  assert.equal(hasDismissedTutorial(dismissedOnly), true);
+  assert.equal(shouldAutoShowTutorial(dismissedOnly), false);
 });

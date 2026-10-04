@@ -22,7 +22,11 @@ import {
   emitTutorialCommand,
 } from './tutorial/completionDetectors';
 import { parseTutorialText } from './tutorial/tutorialLoader';
-import { markTutorialCompleted, shouldAutoShowTutorial } from './tutorial/tutorialProgress';
+import {
+  markTutorialCompleted,
+  markTutorialDismissed,
+  shouldAutoShowTutorial,
+} from './tutorial/tutorialProgress';
 import helloTutorialRaw from '../tutorials/hello-rectangle.tutorial.json?raw';
 
 // Section title labels in the panel are hidden; icons, keys, and hover
@@ -233,8 +237,14 @@ export default function App() {
     if (shouldAutoShowTutorial(browserStore())) startTutorial();
   }, [startTutorial]);
 
+  const endTutorial = useCallback(() => {
+    markTutorialDismissed(browserStore());
+    tutorialRunner.abort();
+  }, [tutorialRunner]);
+
   // Finishing the last step records completion so it won't auto-show again.
-  // Ending early leaves the flag unset: the tutorial returns next load.
+  // Ending early records dismissal (distinct from completion) so the
+  // tutorial stays closed on the next load.
   useEffect(() => {
     if (tutorialSnap.status === 'done') markTutorialCompleted(browserStore());
   }, [tutorialSnap.status]);
@@ -435,7 +445,7 @@ export default function App() {
           onNext={() => tutorialRunner.next()}
           onBack={() => tutorialRunner.back()}
           onSkip={() => tutorialRunner.skip()}
-          onEnd={() => tutorialRunner.abort()}
+          onEnd={endTutorial}
           demoAvailable={!!tutorialRunner.currentStep.demo}
           demoPlaying={demoStepActive}
           demoNarration={demoStepActive ? demoSnap.narration : null}
