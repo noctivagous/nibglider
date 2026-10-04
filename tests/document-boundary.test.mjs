@@ -217,7 +217,12 @@ test('pan deltas are capped per event and clamped to content', () => {
     assert.equal(s.view.center.y, before.y + 200);
     const small = new s.Path.Rectangle({ from: [0, 0], to: [100, 100] });
     viewport.panByScreen(30, 0);
-    assert.deepEqual([s.view.center.x, s.view.center.y], [50, 50]);
+    assert.deepEqual([s.view.center.x, s.view.center.y], [-30, 210]);
+    const dragBefore = s.view.center.clone();
+    viewport.beginPan(new s.Point(200, 150));
+    viewport.panTo(new s.Point(220, 150), new s.Point(20, 0));
+    assert.ok(s.view.center.x < dragBefore.x);
+    viewport.endPan();
     small.remove();
     const wide = new s.Path.Rectangle({ from: [0, 0], to: [1000, 1000] });
     for (let i = 0; i < 30; i++) viewport.panByScreen(200, 0);

@@ -26,9 +26,11 @@ ctrl+wheel pinch convention (Auchenberg) and page-zoom detection notes
    pans by a few pixels.
 6. **Bound the pan.** A trackpad flick carries momentum; unbounded pan
    lands on an empty stage with nothing saying which way to scroll back.
-   Rule: an axis the content does not fill stays centered; an overflowed
-   axis keeps a margin of content on screen. Applies to drag, keys, and
-   scroll alike.
+   Rule adapted for a drawing canvas: every pan keeps a margin of the
+   artwork on screen, but small artwork is NOT pinned centered — panning
+   into empty space to draw must stay possible. Applies to drag, Pan-Lock,
+   and scroll alike. (Pinning small axes, as viewers do, froze all panning
+   whenever the art was smaller than the viewport.)
 7. **Session the gesture.** Lock interpretation per burst so a pan
    zigzag cannot flap into zoom mid-stream (our sticky window is the
    time-based version of this).
@@ -41,6 +43,7 @@ ctrl+wheel pinch convention (Auchenberg) and page-zoom detection notes
 - Every zoom step is capped per event (`MAX_ZOOM_STEP`); every pan
   delta is capped per axis (`MAX_PAN_STEP_PX`).
 - Pan clamps to content (`PAN_EDGE_MARGIN` of artwork kept on screen;
-  small axes stay centered; empty canvas pans free).
+  empty canvas pans free; small artwork is never pinned, so panning into
+  empty space still works).
 - Pinch uses `TRACKPAD_PINCH_GAIN`; all three constants are tunable in
   one place.

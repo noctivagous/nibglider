@@ -8,12 +8,14 @@ export const MAX_PAN_STEP_PX = 200;
 /** Pan keeps at least this much artwork (project points) on screen. */
 export const PAN_EDGE_MARGIN = 40;
 
-/** Clamp one center axis: a range the view does not fill pins to its
- * middle, otherwise at least margin m of [lo, hi] stays on screen. */
+/** Clamp one center axis so at least margin m of [lo, hi] stays on screen.
+ * Deliberately not pinned when the content is smaller than the view: this
+ * is a drawing canvas, and panning into empty space to draw must stay
+ * possible. Reachability (never losing the artwork) is what is kept. */
 function clampAxis(c: number, lo: number, hi: number, v: number, m: number): number {
-  if (hi - lo <= v) return (lo + hi) / 2;
   const min = lo + m - v / 2;
   const max = hi - m + v / 2;
+  if (min >= max) return (lo + hi) / 2;
   return Math.min(max, Math.max(min, c));
 }
 
@@ -91,9 +93,9 @@ export class ViewportManager {
     return true;
   }
   /**
-   * Keep artwork reachable: an axis the content does not fill stays
-   * centered, and an overflowed axis keeps PAN_EDGE_MARGIN on screen. An
-   * empty canvas pans free.
+   * Keep artwork reachable: panning (drag, Pan-Lock, trackpad) always
+   * leaves PAN_EDGE_MARGIN of the artwork on screen. An empty canvas
+   * pans free.
    */
   private clampCenter(): void {
     if (!this.contentBounds) return;
