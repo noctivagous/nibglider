@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { keyboardPlatform, type KeyCap } from '../engine/input/keymap';
 import { resolveKeyboardLayout, type ResolvedKeyCap } from '../engine/input/KeyboardLayoutResolver';
 import { schemaById } from '../engine/input/KeySettingsRegistry';
@@ -366,6 +366,7 @@ export default function OnscreenKeyboard({
   width,
   onWidthChange,
   onCommand,
+  demoSettingsKey,
 }: {
   engine: NibGliderEngine;
   activeCode: string | null;
@@ -374,9 +375,14 @@ export default function OnscreenKeyboard({
   onWidthChange: (w: number) => void;
   /** Invoked only for keycaps marked clickable, with that cap's command id. */
   onCommand?: (commandId: string) => void;
+  /** Live-demonstration control: a cap dataKey (e.g. "i") whose settings
+   * popover the demo opens through the same state as a manual cap click.
+   * Null closes a demo-opened popover; a manually opened one is untouched. */
+  demoSettingsKey?: string | null;
 }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [open, setOpen] = useState<{ id: string; settingsId: string; anchor: HTMLButtonElement } | null>(null);
+  const demoOpenedId = useRef<string | null>(null);
   const [modifiers, setModifiers] = useState(engine.getModifiers);
   useEffect(
     () =>
@@ -411,6 +417,28 @@ export default function OnscreenKeyboard({
   const toggleSettings = (def: ResolvedKeyCap, anchor: HTMLButtonElement) => {
     setOpen((current) => (current?.id === def.id ? null : { id: def.id, settingsId: def.settingsId!, anchor }));
   };
+  // Live demonstration: open/close a key's settings through the same
+  // state as a manual cap click, anchored to the real cap element.
+  // Syncs the external demo driver into local popover state by design.
+  useEffect(() => {
+    if (demoSettingsKey == null) {
+      if (demoOpenedId.current && open?.id === demoOpenedId.current) {
+        demoOpenedId.current = null;
+        setOpen(null);
+      }
+      return;
+    }
+    const cap = layout.find((entry) => entry.dataKey === demoSettingsKey);
+    if (!cap || !cap.settingsId) return;
+    // Already open (manually or from a prior run): leave ownership alone
+    // so close-popover never dismisses the user's own popover.
+    if (open?.id === cap.id) return;
+    const anchor = document.getElementById(cap.id) as HTMLButtonElement | null;
+    if (!anchor) return;
+    demoOpenedId.current = cap.id;
+    // eslint-disable-next-line react/set-state-in-effect
+    setOpen({ id: cap.id, settingsId: cap.settingsId, anchor });
+  }, [demoSettingsKey, layout, open]);
   const openCap = open ? layout.find((cap) => cap.id === open.id) : undefined;
   const openSettings = openCap ? settingsFor(openCap) : null;
   const openSchema = openSettings && openSettings.id === open?.settingsId ? schemaById(openSettings.id) : null;

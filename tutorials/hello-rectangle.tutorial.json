@@ -33,6 +33,33 @@
       "expect": { "kind": "none" }
     },
     {
+      "id": "watch-diagonal",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch it draw first",
+        "body": "Press Watch demo: the program steers the cursor itself and presses I twice to draw a rectangle, live on the canvas.",
+        "placement": "center"
+      },
+      "expect": { "kind": "none" },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "expandSections": ["rectFrameControls"],
+        "cancelDrawing": true
+      },
+      "demo": [
+        { "kind": "narrate", "title": "First corner", "body": "Steering to the first corner of the diagonal." },
+        { "kind": "move-cursor-xy", "x": 0.35, "y": 0.4, "durationMs": 900 },
+        { "kind": "press-key", "key": "i", "holdMs": 150 },
+        { "kind": "narrate", "title": "Second corner", "body": "The I key starts Rect by Diagonal. Now steering to the opposite corner." },
+        { "kind": "move-cursor-xy", "x": 0.65, "y": 0.6, "durationMs": 1200 },
+        { "kind": "press-key", "key": "i", "holdMs": 150 },
+        { "kind": "wait", "ms": 400 },
+        { "kind": "narrate", "title": "Done", "body": "The second I press deposits the rectangle, exactly as your own key presses would." }
+      ]
+    },
+    {
       "id": "press-diagonal-key",
       "target": "key-i",
       "bubble": {

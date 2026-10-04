@@ -3677,6 +3677,15 @@ kbd,
   margin: 0 0 8px;
   color: #3c4657;
 }
+.tutorial-demo-narration {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  background: #eef2f7;
+  border-radius: 6px;
+  color: #1c2230;
+}
 .tutorial-actions {
   display: flex;
   gap: 8px;
@@ -3698,4 +3707,66 @@ kbd,
 .tutorial-primary {
   background: #26303f;
   color: #fff;
+}
+
+/* Live-demonstration pointer layer. Click-through: the tutorial bubble
+ * keeps all interaction. Rendered inside the tutorial overlay's stacking
+ * context (after the bubble) so the ghost cursor and arrow paint above
+ * the tutorial dim without outranking the bubble layer itself. */
+.demo-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+.demo-spotlight {
+  position: fixed;
+  border: 2px dashed #ffd34d;
+  border-radius: 6px;
+  box-shadow: 0 0 0 9999px rgba(8, 10, 14, 0.25);
+}
+.demo-arrow-layer {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.demo-arrow-line {
+  stroke: #ffd34d;
+  stroke-width: 2.5;
+}
+.demo-arrow-head {
+  fill: #ffd34d;
+}
+.demo-arrow-label {
+  position: fixed;
+  max-width: 250px;
+  background: #26303f;
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.demo-ghost {
+  position: fixed;
+  width: 0;
+  height: 0;
+  will-change: left, top;
+}
+.demo-ghost-ring {
+  display: block;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 2px solid #ffd34d;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
+}
+.demo-ghost-dot {
+  display: block;
+  width: 4px;
+  height: 4px;
+  margin: -13px 0 0 -2px;
+  background: #ffd34d;
+  border-radius: 50%;
 }

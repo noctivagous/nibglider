@@ -39,6 +39,7 @@ export class TutorialRunner {
   private tutorial: Tutorial | null = null;
   private stepIndex = 0;
   private status: TutorialStatus = 'idle';
+  private suspended = false;
   private snapshot: TutorialSnapshot = { status: 'idle', tutorial: null, stepIndex: 0 };
   private readonly listeners = new Set<() => void>();
 
@@ -100,7 +101,20 @@ export class TutorialRunner {
     if (this.status === 'idle') return;
     this.status = 'idle';
     this.stepIndex = 0;
+    this.suspended = false;
     this.emit();
+  }
+
+  /**
+   * While suspended (a demonstration is playing its own scripted actions),
+   * observed events are ignored so the demo cannot complete its own step.
+   */
+  setSuspended(suspended: boolean): void {
+    this.suspended = suspended;
+  }
+
+  get isSuspended(): boolean {
+    return this.suspended;
   }
 
   /**
@@ -108,6 +122,7 @@ export class TutorialRunner {
    * satisfied the current step and advanced the tutorial.
    */
   notify(event: TutorialEvent): boolean {
+    if (this.suspended) return false;
     const step = this.currentStep;
     if (!step) return false;
     if (!matches(step.expect, event)) return false;

@@ -1,0 +1,67 @@
+{
+  "id": "demo-rectangle",
+  "title": "Watch: Rect by Diagonal",
+  "description": "The program draws a rectangle live while the tutorial window stays open: cursor motion, key presses, and the Rect by Diagonal popover.",
+  "steps": [
+    {
+      "id": "welcome",
+      "bubble": {
+        "title": "Watch NibGlider draw",
+        "body": "This demonstration performs the drawing itself in real time. Press Watch demo and observe the cursor, the keyboard, and the canvas.",
+        "placement": "center"
+      },
+      "expect": { "kind": "none" }
+    },
+    {
+      "id": "watch-diagonal",
+      "target": "canvas",
+      "bubble": {
+        "title": "Here is how to draw a rectangle",
+        "body": "The ghost cursor steers to the first corner, presses I, steers to the opposite corner, and presses I again to finish.",
+        "placement": "center"
+      },
+      "expect": { "kind": "none" },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "expandSections": ["rectFrameControls"],
+        "cancelDrawing": true
+      },
+      "demo": [
+        { "kind": "narrate", "title": "First corner", "body": "Steering to the first corner of the diagonal." },
+        { "kind": "move-cursor-xy", "x": 0.35, "y": 0.4, "durationMs": 900 },
+        { "kind": "press-key", "key": "i", "holdMs": 150 },
+        { "kind": "narrate", "title": "Second corner", "body": "The I key starts Rect by Diagonal. Now steering to the opposite corner." },
+        { "kind": "move-cursor-xy", "x": 0.65, "y": 0.6, "durationMs": 1200 },
+        { "kind": "press-key", "key": "i", "holdMs": 150 },
+        { "kind": "wait", "ms": 500 },
+        { "kind": "narrate", "title": "Done", "body": "The second I press deposits the rectangle, exactly as your own key presses would." }
+      ]
+    },
+    {
+      "id": "watch-popover",
+      "target": "key-i",
+      "bubble": {
+        "title": "Here is the Diagonal setting",
+        "body": "The demo opens the I key's popover, points at it, and confirms the Diagonal mode without changing your work.",
+        "placement": "above"
+      },
+      "expect": { "kind": "none" },
+      "preconditions": {
+        "showKeyboard": true,
+        "showPanel": true
+      },
+      "demo": [
+        { "kind": "narrate", "title": "Opening settings", "body": "Opening the Rect by Diagonal popover, as if the keycap was clicked." },
+        { "kind": "open-popover", "key": "i" },
+        { "kind": "wait", "ms": 400 },
+        { "kind": "point-at", "target": "key-i", "label": "Diagonal mode lives in this popover" },
+        { "kind": "set-param", "settingsId": "rect-diagonal-tool", "field": "rect-diagonal-mode", "value": "full" },
+        { "kind": "wait", "ms": 900 },
+        { "kind": "close-popover" },
+        { "kind": "narrate", "title": "Closed", "body": "Popover closed. Your turn: steer the mouse and press I to draw your own." }
+      ]
+    }
+  ]
+}

@@ -2396,9 +2396,14 @@ const RECT_OPTION_TREE: CustomSelectOption[] = [
 export default function ControlPanel({
   engine,
   onTutorialRequest,
+  panels: panelsProp,
 }: {
   engine: NibGliderEngine;
   onTutorialRequest?: () => void;
+  /** Shared layout manager. When omitted the panel owns one internally.
+   * App passes its own instance so live demonstrations can expand the
+   * sections their scripts point at. */
+  panels?: PanelsManager;
 }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
@@ -2523,7 +2528,9 @@ export default function ControlPanel({
   );
   // Panel section chrome: collapse, remove/restore, and drag-reorder.
   // PanelsManager persists the layout.
-  const panels = useRef(new PanelsManager()).current;
+  const fallbackPanels = useRef<PanelsManager | null>(null);
+  if (fallbackPanels.current === null) fallbackPanels.current = new PanelsManager();
+  const panels = panelsProp ?? fallbackPanels.current;
   useSyncExternalStore(panels.subscribe, panels.getVersion);
   const collapsedMap = panels.collapsed;
   const removedList = panels.removed;

@@ -8,9 +8,14 @@ import TutorialOverlay from './components/TutorialOverlay';
 import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
+import { PanelsManager } from './ui/PanelsManager';
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
 import { TutorialRunner } from './tutorial/TutorialRunner';
+import { DemonstrationPlayer, type DemoHooks, type DemoWorkspace } from './tutorial/demonstrationPlayer';
+import { getTutorialTargetRect } from './tutorial/TargetResolver';
+import { schemaById } from './engine/input/KeySettingsRegistry';
+import { settingsView } from './engine/input/KeySettingsViewModel';
 import {
   attachTutorialKeyListener,
   bridgeEngineToRunner,
@@ -39,10 +44,181 @@ export default function App() {
   );
   const [tutorialRunner] = useState(() => new TutorialRunner());
   const tutorialSnap = useSyncExternalStore(tutorialRunner.subscribe, tutorialRunner.getSnapshot);
+  // Shared with ControlPanel so demonstrations can expand scripted sections.
+  const [panels] = useState(() => new PanelsManager());
+  const [demoPlayer] = useState(
+    () => new DemonstrationPlayer((suspended) => tutorialRunner.setSuspended(suspended)),
+  );
+  const demoSnap = useSyncExternalStore(demoPlayer.subscribe, demoPlayer.getSnapshot);
+  const [demoCursor, setDemoCursor] = useState<{ x: number; y: number } | null>(null);
+  const [demoPointAt, setDemoPointAt] = useState<{ target: string; label?: string } | null>(null);
+  const [demoSettingsKey, setDemoSettingsKey] = useState<string | null>(null);
+  const demoCursorRef = useRef<{ x: number; y: number } | null>(null);
+  const setGhost = useCallback((pos: { x: number; y: number } | null) => {
+    demoCursorRef.current = pos;
+    setDemoCursor(pos);
+  }, []);
 
   // Tutorial completion: physical keys and engine mutations feed the runner.
   useEffect(() => bridgeEngineToRunner(engine, tutorialRunner), [engine, tutorialRunner]);
   useEffect(() => attachTutorialKeyListener(tutorialRunner), [tutorialRunner]);
+
+  const canvasClientPoint = useCallback((fx: number, fy: number): { x: number; y: number } | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return { x: rect.left + fx * rect.width, y: rect.top + fy * rect.height };
+  }, []);
+
+  const animateGhost = useCallback(
+    (to: { x: number; y: number }, durationMs: number, onFrame?: (pos: { x: number; y: number }) => void) => {
+      const from = demoCursorRef.current ?? to;
+      return new Promise<void>((resolve) => {
+        if (durationMs <= 0 || (from.x === to.x && from.y === to.y)) {
+          setGhost(to);
+          onFrame?.(to);
+          resolve();
+          return;
+        }
+        const start = performance.now();
+        const tick = (now: number) => {
+          // Takeover aborts the motion where it stands; the player loop
+          // exits on its generation check right after this hook resolves.
+          if (!demoPlayer.isPlaying) {
+            resolve();
+            return;
+          }
+          const t = Math.min(1, (now - start) / durationMs);
+          const pos = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };
+          setGhost(pos);
+          onFrame?.(pos);
+          if (t < 1) requestAnimationFrame(tick);
+          else resolve();
+        };
+        requestAnimationFrame(tick);
+      });
+    },
+    [demoPlayer, setGhost],
+  );
+
+  const demoWorkspace = useCallback(
+    (): DemoWorkspace => ({
+      resetZoom: () => engine.resetZoomForDemo(),
+      cancelDrawing: () => engine.cancelCurrentDrawingOperation(),
+      setKeyboardVisible: (visible) => gui.setKeyboardVisible(visible),
+      setPanelVisible: (visible) => gui.setControlsVisible(visible),
+      setStatusVisible: (visible) => gui.setStatusVisible(visible),
+      expandSections: (ids) => {
+        for (const id of ids) {
+          if (panels.collapsed[id]) panels.toggleCollapse(id);
+        }
+      },
+    }),
+    [engine, gui, panels],
+  );
+
+  const demoHooks = useCallback(
+    (): DemoHooks => ({
+      pressKey: async (key, holdMs) => {
+        engine.demoKeyDown(key);
+        await new Promise((resolve) => setTimeout(resolve, Math.max(0, holdMs)));
+        engine.demoKeyUp(key);
+      },
+      moveCursorToTarget: async (target, durationMs) => {
+        if (target === 'canvas') {
+          const dest = canvasClientPoint(0.5, 0.5);
+          if (!dest) return;
+          await animateGhost(dest, durationMs, (pos) => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              engine.demoMoveCursorToFraction((pos.x - rect.left) / rect.width, (pos.y - rect.top) / rect.height);
+            }
+          });
+          return;
+        }
+        const rect = getTutorialTargetRect(target);
+        if (!rect) return;
+        await animateGhost({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }, durationMs);
+      },
+      moveCursorToXY: async (x, y, durationMs) => {
+        const dest = canvasClientPoint(x, y);
+        if (!dest) return;
+        await animateGhost(dest, durationMs, (pos) => {
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const rect = canvas.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            engine.demoMoveCursorToFraction((pos.x - rect.left) / rect.width, (pos.y - rect.top) / rect.height);
+          }
+        });
+      },
+      openPopover: async (key) => {
+        setDemoSettingsKey(key);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      },
+      pointAt: (target, label) => {
+        setDemoPointAt(target ? { target, label } : null);
+      },
+      setParam: (settingsId, field, value) => {
+        const schema = schemaById(settingsId);
+        if (!schema) return;
+        const control = settingsView(schema, engine).controls.find((entry) => entry.id === field);
+        if (!control) return;
+        (control as unknown as { commit: (v: unknown) => void }).commit(value);
+      },
+      closePopover: () => {
+        setDemoSettingsKey(null);
+        setDemoPointAt(null);
+      },
+      showNarration: () => {
+        // Narration renders from the player snapshot; nothing to do here.
+      },
+    }),
+    [animateGhost, canvasClientPoint, engine],
+  );
+
+  const playDemo = useCallback(() => {
+    const step = tutorialRunner.currentStep;
+    if (!step?.demo || demoPlayer.isPlaying) return;
+    setGhost(null);
+    setDemoPointAt(null);
+    void demoPlayer.play(step, demoHooks(), demoWorkspace()).then(() => {
+      setGhost(null);
+      setDemoPointAt(null);
+      setDemoSettingsKey(null);
+    });
+  }, [demoHooks, demoPlayer, demoWorkspace, setGhost, tutorialRunner]);
+
+  const stopDemo = useCallback(() => {
+    demoPlayer.stop();
+  }, [demoPlayer]);
+
+  // Any physical input during playback hands control back to the user.
+  // Capture phase runs before the engine's own document handlers, so the
+  // keypress or click both stops the demo and takes its normal effect.
+  // Every tutorial exit (Next/Back/Skip/End, physical keys, canvas clicks)
+  // passes through such input, so a stopped player always settles through
+  // play()'s then() above — no separate step-change cleanup is needed.
+  const demoPlaying = demoSnap.status === 'playing';
+  useEffect(() => {
+    if (!demoPlaying) return;
+    const takeOver = () => demoPlayer.stop();
+    document.addEventListener('keydown', takeOver, true);
+    document.addEventListener('mousedown', takeOver, true);
+    return () => {
+      document.removeEventListener('keydown', takeOver, true);
+      document.removeEventListener('mousedown', takeOver, true);
+    };
+  }, [demoPlaying, demoPlayer]);
+
+  // Gate the demo layer on the step that started it: stale ghost, arrow,
+  // narration, or popover state never leaks onto another step.
+  const demoStepActive =
+    demoPlaying &&
+    tutorialSnap.status === 'active' &&
+    demoSnap.stepId === tutorialRunner.currentStep?.id;
 
   const startTutorial = useCallback(() => {
     const loaded = parseTutorialText(helloTutorialRaw);
@@ -199,7 +375,7 @@ export default function App() {
             aria-hidden={!ui.controlsVisible}
             inert={!ui.controlsVisible}
           >
-            <ControlPanel engine={engine} onTutorialRequest={startTutorial} />
+            <ControlPanel engine={engine} onTutorialRequest={startTutorial} panels={panels} />
           </div>
           <StatusOverlay
             engine={engine}
@@ -232,6 +408,7 @@ export default function App() {
               activeCode={activeCode}
               showSpacebar={ui.showSpacebar}
               width={ui.keyboardWidth}
+              demoSettingsKey={demoStepActive ? demoSettingsKey : null}
               onWidthChange={(width) => gui.setKeyboardWidth(width)}
               onCommand={(id) => {
                 emitTutorialCommand(id);
@@ -259,6 +436,13 @@ export default function App() {
           onBack={() => tutorialRunner.back()}
           onSkip={() => tutorialRunner.skip()}
           onEnd={() => tutorialRunner.abort()}
+          demoAvailable={!!tutorialRunner.currentStep.demo}
+          demoPlaying={demoStepActive}
+          demoNarration={demoStepActive ? demoSnap.narration : null}
+          onPlayDemo={playDemo}
+          onStopDemo={stopDemo}
+          demoCursor={demoStepActive ? demoCursor : null}
+          demoPointAt={demoStepActive ? demoPointAt : null}
         />
       )}
     </div>

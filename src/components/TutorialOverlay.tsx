@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { getTutorialTargetRect, type TutorialTargetRect } from '../tutorial/TargetResolver';
 import type { TutorialStep } from '../tutorial/tutorialSchema';
+import DemoOverlay, { type DemoCursor, type DemoPointAt } from './DemoOverlay';
 
 const BUBBLE_WIDTH = 320;
 const GAP = 10;
@@ -65,6 +66,13 @@ export default function TutorialOverlay({
   onBack,
   onSkip,
   onEnd,
+  demoAvailable,
+  demoPlaying,
+  demoNarration,
+  onPlayDemo,
+  onStopDemo,
+  demoCursor,
+  demoPointAt,
 }: {
   tutorialTitle: string;
   step: TutorialStep;
@@ -74,6 +82,16 @@ export default function TutorialOverlay({
   onBack: () => void;
   onSkip: () => void;
   onEnd: () => void;
+  /** Live demonstration: the step carries a playable script. */
+  demoAvailable?: boolean;
+  demoPlaying?: boolean;
+  demoNarration?: { title: string; body: string } | null;
+  onPlayDemo?: () => void;
+  onStopDemo?: () => void;
+  /** Live ghost cursor + arrow, painted inside this overlay's stacking
+   * context so it stays above the dim without outranking the bubble. */
+  demoCursor?: DemoCursor | null;
+  demoPointAt?: DemoPointAt | null;
 }) {
   const [rect, setRect] = useState<TutorialTargetRect | null>(() =>
     step.target ? getTutorialTargetRect(step.target) : null,
@@ -127,11 +145,29 @@ export default function TutorialOverlay({
         </div>
         <h2 className="tutorial-title">{step.bubble.title}</h2>
         <p className="tutorial-body">{step.bubble.body}</p>
-        {hint && <p className="tutorial-hint">{hint}</p>}
+        {demoNarration && (
+          <p className="tutorial-demo-narration">
+            <strong>{demoNarration.title}</strong> — {demoNarration.body}
+          </p>
+        )}
+        {hint && !demoPlaying && <p className="tutorial-hint">{hint}</p>}
+        {demoPlaying && (
+          <p className="tutorial-hint">Demo playing — press any key or click the canvas to take over.</p>
+        )}
         {!rect && step.target && (
           <p className="tutorial-hint">Its target is hidden right now, so this tip is centered.</p>
         )}
         <div className="tutorial-actions">
+          {demoAvailable && !demoPlaying && onPlayDemo && (
+            <button type="button" className="tutorial-btn tutorial-primary" onClick={onPlayDemo}>
+              Watch demo
+            </button>
+          )}
+          {demoPlaying && onStopDemo && (
+            <button type="button" className="tutorial-btn" onClick={onStopDemo}>
+              Stop demo
+            </button>
+          )}
           <button type="button" className="tutorial-btn" onClick={onBack} disabled={stepIndex === 0}>
             Back
           </button>
@@ -148,6 +184,13 @@ export default function TutorialOverlay({
           </button>
         </div>
       </div>
+      {demoPlaying && (demoCursor || demoPointAt) && (
+        <DemoOverlay
+          key={demoPointAt?.target ?? 'cursor'}
+          cursor={demoCursor ?? null}
+          pointAt={demoPointAt ?? null}
+        />
+      )}
     </div>
   );
 }

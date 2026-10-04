@@ -2075,6 +2075,52 @@ export class NibGliderEngine {
     this.keyboard.handleKeyDown(event);
   }
 
+  /** Demonstration entries: same controller path as physical input, so
+   * the document, previews, and on-screen keycap highlights behave
+   * identically. The DemonstrationPlayer drives these; user code and
+   * tests should prefer real KeyboardEvents through handleKeyDown. */
+  resetZoomForDemo(): void {
+    this.viewport.resetZoom();
+  }
+
+  demoKeyDown(key: string): void {
+    const event = this.demoKeyEvent(key);
+    this.keyboard.handleKeyDown(event);
+    this.keyboard.reportKeyHighlight(event);
+  }
+
+  demoKeyUp(key: string): void {
+    this.keyboard.reportKeyUp(this.demoKeyEvent(key));
+  }
+
+  demoMoveCursorToFraction(fx: number, fy: number): void {
+    const view = this.scope.view;
+    if (!view || !Number.isFinite(fx) || !Number.isFinite(fy)) return;
+    const cx = Math.min(1, Math.max(0, fx));
+    const cy = Math.min(1, Math.max(0, fy));
+    const viewPoint = new this.scope.Point(cx * view.size.width, cy * view.size.height);
+    this.pointer.onMouseMove({ point: view.viewToProject(viewPoint) } as paper.MouseEvent);
+  }
+
+  private demoCodeFor(key: string): string {
+    if (/^[a-zA-Z]$/.test(key)) return `Key${key.toUpperCase()}`;
+    if (/^[0-9]$/.test(key)) return `Digit${key}`;
+    const named: Record<string, string> = { Escape: 'Escape', Enter: 'Enter', Tab: 'Tab', ' ': 'Space' };
+    return named[key] ?? key;
+  }
+
+  private demoKeyEvent(key: string): KeyboardEvent {
+    return {
+      key,
+      code: this.demoCodeFor(key),
+      shiftKey: false,
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      preventDefault: () => {},
+    } as unknown as KeyboardEvent;
+  }
+
   private nudgeSelection(dx: number, dy: number): void {
     this.transforms.nudge(dx, dy);
     this.updateTextContent();
