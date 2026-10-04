@@ -3206,6 +3206,9 @@ kbd,
   min-width: 0;
 }
 
+/* Section drag bars get a recessed dark-pro grip channel (groove shading
+   over a near-black well) so they read differently from the plain widget
+   move handles, which carry no background texture. */
 #controlPanel .section-drag {
   display: inline-flex;
   align-items: center;
@@ -3214,15 +3217,20 @@ kbd,
   align-self: stretch;
   width: 14px;
   color: var(--dp-text-3);
-  background: linear-gradient(to bottom, #0d1218, #141b24);
+  background:
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 6px),
+    linear-gradient(to bottom, #07090d 0%, #0e1319 100%);
   border-right: 1px solid #0b0e12;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.65);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.8), inset 0 -1px 0 rgba(255, 255, 255, 0.04);
   cursor: grab;
   white-space: nowrap;
 }
 
 #controlPanel .section-drag:hover {
   color: var(--dp-text-1);
+  background:
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.09) 0 1px, transparent 1px 6px),
+    linear-gradient(to bottom, #0b0f15 0%, #141a22 100%);
 }
 
 #controlPanel .section-drag:active {
