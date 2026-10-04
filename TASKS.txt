@@ -1,5 +1,13 @@
 [x] cmd/ctrl - and = zoom out and zoom in, cmd/ctrl 0 sets to 100%.
 
+[ ]  When selected, shapes should reveal their centroids or circle origins. 
+[ ] for Point snapping, shapes should respond with point hits on their centroids.  a regular polygon or
+circle should have point snaps on circle origins.
+
+---
+
+[ ]  menu item under grid section menu:  Sync Grid Snapping to Grid Visibility
+
 ---
 
 [ ] application menus, currently to the left of drawing control sections in the Panel should have two views, 
@@ -111,9 +119,9 @@ ACTIVE OBJECTS
 	
 COMBINATORICS
 [ ] If Combinatorics mode is on, the Stamp (W) key should use it too.
-[ ] If combinatorics is on and set to subtract, an open path will act to slice paths and shapes (closed paths).
+[ ] If combinatorics is on and set to subtract, an open path, e.g. a line with just a segment, will act to slice paths and shapes (closed and open paths) that it intersects.
 [ ] with the Shape keys (Circle, Rect keys), the outcome is previewed lived while drawing shapes .
-[ ] shape margin.
+[ ] shape subtract op margin (subtracting margin).  requires the Polygon Offsetting sequence as seen in Clipper c++ library.
 
 
   [x] the menu that appears when clicking on the icon for any panel section should have
@@ -150,7 +158,7 @@ they can be clicked by the user, might be printed.
 
 
 [ ] - Type At Cursor / Type Text - P key.  press and if no selection of objects, starts typing
-on single line that follows cursor.  Begins capturing keyboard input for type. 
+on single line that follows cursor.  alt+W key stamps it.  Begins capturing keyboard input for type. 
 Press Return/Enter to finalize.  Follows Text mode settings.
 
 
@@ -275,6 +283,8 @@ or selected shape that follows cursor and stamp (W) will stamp it.
 A polygon's points will snap to any shape's as the Radial Stamp is on.
 Related: Moving-Point-Snap, Moving-Edge-Snap: as user moves shape, its points will snap
 to other edges or points.
+
+
 
 
 ROTATE AND SCALE KEYS
