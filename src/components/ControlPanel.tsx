@@ -3282,6 +3282,30 @@ export default function ControlPanel({
       <div className="panel-side">
         <div className="panel-rail" role="group" aria-label="Panel tools">
           <WidgetHandle widget="menus" label="Application menus" />
+          <div
+            className="doc-label"
+            title={docDirty ? `${docName} (unsaved changes)` : docName}
+            aria-live="polite"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="12"
+              height="12"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 1.5 h5.5 L13 5 v9.5 H4 Z" />
+              <path d="M9.5 1.5 V5 H13" />
+            </svg>
+            <span className="doc-label-name">
+              {docName}
+              {docDirty ? ' •' : null}
+            </span>
+          </div>
           <div className="rail-box" title="File: documents, import, export" data-tutorial-id="menu-file">
             <CustomSelect
               id="panelFileSelect"
@@ -3295,14 +3319,6 @@ export default function ControlPanel({
               onHoverOpen={handleSelectHoverOpen}
               forceCloseKey={selectCloseKey}
             />
-          </div>
-          <div
-            className="doc-label"
-            title={docDirty ? `${docName} (unsaved changes)` : docName}
-            aria-live="polite"
-          >
-            {docName}
-            {docDirty ? ' •' : null}
           </div>
           <div className="rail-box" title="Document and Settings" data-tutorial-id="menu-document">
             <CustomSelect

@@ -3479,19 +3479,31 @@ kbd,
   min-width: 7.5rem;
 }
 
-/* Open document name under the File menu: plain dimmed label, truncated
-   with a tooltip carrying the full name. */
+/* Open document name above the File menu: icon plus a plain dimmed label,
+   truncated with a tooltip carrying the full name. */
 #controlPanel .doc-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   min-width: 7.5rem;
   max-width: 11rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-family: var(--font-tech-label);
   font-size: 0.6875rem;
   letter-spacing: 0.03em;
   color: var(--dp-text-3);
   padding: 0 2px;
+}
+
+#controlPanel .doc-label svg {
+  flex: none;
+}
+
+#controlPanel .doc-label-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #controlPanel .rail-box .custom-select {
