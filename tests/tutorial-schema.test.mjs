@@ -18,6 +18,14 @@ test('example hello-rectangle tutorial parses and validates', () => {
   assert.ok(loaded.tutorial.steps.every((step) => step.bubble.title && step.bubble.body));
 });
 
+test('example tutorial resolves at the path App.tsx imports', () => {
+  // Guards the src/App.tsx ?raw import: it must stay one level up from src/.
+  const fromSrc = new URL('../src/../tutorials/hello-rectangle.tutorial.json', import.meta.url);
+  const loaded = parseTutorialText(readFileSync(fromSrc, 'utf8'));
+  assert.equal(loaded.ok, true);
+  assert.ok(loaded.tutorial);
+});
+
 test('validator rejects a non-object, empty steps, and bad placement', () => {
   assert.equal(validateTutorial(null).ok, false);
   const empty = validateTutorial({ id: 'x', title: 'X', steps: [] });

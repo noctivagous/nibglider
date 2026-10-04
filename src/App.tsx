@@ -17,7 +17,7 @@ import {
   emitTutorialCommand,
 } from './tutorial/completionDetectors';
 import { parseTutorialText } from './tutorial/tutorialLoader';
-import helloTutorialRaw from '../../tutorials/hello-rectangle.tutorial.json?raw';
+import helloTutorialRaw from '../tutorials/hello-rectangle.tutorial.json?raw';
 
 // Section title labels in the panel are hidden; icons, keys, and hover
 // tooltips still identify each section.
