@@ -145,7 +145,7 @@ test('engine operations delegate scene and selection intents without changing co
   } finally { scope.project.remove(); }
 });
 
-test('z marquee selects intersecting items live, commits, and esc restores', () => {
+test('x marquee selects intersecting items live, commits, and esc restores', () => {
   const scope = new paper.PaperScope(); scope.setup(new scope.Size(400, 300));
   const engine = new NibGliderEngine(scope, () => {});
   const key = (code, k, mods = {}) => ({
@@ -157,7 +157,7 @@ test('z marquee selects intersecting items live, commits, and esc restores', () 
     const crossing = new scope.Path.Rectangle({ from: [90, 90], to: [200, 200] });
     const outside = new scope.Path.Rectangle({ from: [300, 200], to: [350, 250] });
     engine.mousePt = new scope.Point(40, 40);
-    engine.handleKeyDown(key('KeyZ', 'z'));
+    engine.handleKeyDown(key('KeyX', 'x'));
     assert.equal(engine.isDrawingShape, true);
     assert.equal(engine.shapeType, 'rectangle_select');
     engine.mousePt = new scope.Point(150, 150);
@@ -165,14 +165,14 @@ test('z marquee selects intersecting items live, commits, and esc restores', () 
     assert.deepEqual(engine.selectedItems, [inside, crossing]);
     engine.handleKeyDown(key('KeyI', 'i'));
     assert.equal(engine.shapeType, 'rectangle_select');
-    engine.handleKeyDown(key('KeyZ', 'z'));
+    engine.handleKeyDown(key('KeyX', 'x'));
     assert.equal(engine.isDrawingShape, false);
     assert.deepEqual(engine.selectedItems, [inside, crossing]);
     assert.equal(engine.documentRevision(), 0);
     engine.clearOutSelection();
     engine.addItemToSelection(outside);
     engine.mousePt = new scope.Point(40, 40);
-    engine.handleKeyDown(key('KeyZ', 'z'));
+    engine.handleKeyDown(key('KeyX', 'x'));
     engine.mousePt = new scope.Point(150, 150);
     engine.pointer.onMouseMove({ point: engine.mousePt });
     assert.deepEqual(engine.selectedItems, [inside, crossing]);

@@ -248,8 +248,8 @@ test('adjust availability still gates dispatch variants', () => {
   assert.deepEqual(resolveKeyVariants('KeyJ', NO_MODS, idle).map((v) => v.commandId), ['toggle-panel']);
 });
 
-test('z resolves to the selection rectangle command', () => {
-  assert.deepEqual(resolveKeyVariants('KeyZ', NO_MODS, keyState()).map((v) => v.commandId), ['select-rectangle']);
+test('x resolves to the selection rectangle command', () => {
+  assert.deepEqual(resolveKeyVariants('KeyX', NO_MODS, keyState()).map((v) => v.commandId), ['select-rectangle']);
   const rows = buildKeymapRows(snap({ drawingShape: true, shapeType: 'rectangle_select' }));
   assert.ok(rows.some((r) => r.ids.includes('select-rectangle') && r.label === 'Finish selection'));
   assert.ok(rows.some((r) => r.ids.includes('cancel') && r.label === 'Cancel selection'));
@@ -268,8 +268,8 @@ test('marquee selection suppresses idle-selection messaging', () => {
   assert.ok(!schema.includes('Scale or rotate the selection.'));
 });
 
-test('x pan-locks the canvas and advertises release', () => {
-  assert.deepEqual(resolveKeyVariants('KeyX', NO_MODS, keyState()).map((v) => v.commandId), ['pan-lock']);
+test('z pan-locks the canvas and advertises release', () => {
+  assert.deepEqual(resolveKeyVariants('KeyZ', NO_MODS, keyState()).map((v) => v.commandId), ['pan-lock']);
   const rows = buildKeymapRows(snap({ panLock: true }));
   assert.ok(rows.some((r) => r.ids.includes('pan-lock') && r.label === 'Release Pan-Lock'));
   const schema = JSON.stringify(buildStatusSchema(snap({ panLock: true })));
