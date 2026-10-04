@@ -141,6 +141,28 @@ test('status schema keeps a drop note and does not publish undo labels', () => {
   assert.equal(text.includes('Undo'), false);
 });
 
+test('status schema breaks scale/rotate into an adjust section', () => {
+  const schema = buildStatusSchema(snap({ selectedCount: 2 }));
+  const adjust = schema.steps.filter((l) => l.kind === 'adjust');
+  assert.equal(adjust.length, 1);
+  assert.ok(JSON.stringify(adjust[0]).includes('to Rotate'));
+  assert.ok(schema.steps.some((l) => l.kind === 'hint' && JSON.stringify(l).includes('Drag-Lock')));
+  const locked = buildStatusSchema(snap({ selectedCount: 2, dragLock: true }));
+  assert.equal(locked.steps.filter((l) => l.kind === 'adjust').length, 1);
+});
+
+test('status schema prefers the short rotate line over a degree-ful live hint', () => {
+  const withSel = buildStatusSchema(snap({
+    selectedCount: 2, liveHints: [{ label: 'Rotate selection by 15°', keys: ['rotate-cw'] }],
+  }));
+  assert.ok(JSON.stringify(withSel).includes('to Rotate'));
+  assert.equal(JSON.stringify(withSel).includes('Rotate selection by 15°'), false);
+  const solo = buildStatusSchema(snap({
+    liveHints: [{ label: 'Rotate selection by 15°', keys: ['rotate-cw'] }],
+  }));
+  assert.ok(JSON.stringify(solo).includes('Rotate selection by 15°'));
+});
+
 test('preview presenter writes circle and rect path data', () => {
   const s = new paper.PaperScope();
   s.setup(new s.Size(100, 100));

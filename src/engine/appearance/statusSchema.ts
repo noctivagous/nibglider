@@ -38,6 +38,9 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
   };
   const state: StatusLine[] = [];
   const steps: StatusLine[] = [];
+  // True once the short degree-free Scale/Rotate line is emitted; a
+  // degree-ful live Rotate hint would restate it, so it is dropped below.
+  let adjustEmitted = false;
   const L = (kind: StatusLine['kind'], runs: StatusRun[]): StatusLine => ({ kind, runs });
   if (snap.gridEnabled) {
     state.push(L('meta', [
@@ -51,19 +54,21 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
     state.push(L('title', [T('Selected Objects: ' + snap.selectedCount)]));
     if (snap.dragLock === false) {
       steps.push(L('hint', [K('drag-lock'), T(' to begin Drag-Lock')]));
-      steps.push(L('hint', [
+      steps.push(L('adjust', [
         K('scale-down'), T(' and '), K('scale-up'), T(' to Scale, '),
         K('rotate-ccw'), T(' and '), K('rotate-cw'), T(' to Rotate'),
       ]));
+      adjustEmitted = true;
     }
   }
   if (snap.dragLock) {
     state.push(L('title', [T('Drag-Lock On ')]));
     steps.push(L('hint', [T('Move mouse to drag all selected.  '), K('drag-lock'), T(' to release.')]));
-    steps.push(L('hint', [
+    steps.push(L('adjust', [
       K('stamp'), T(' to Stamp, '), K('scale-down'), T(' and '), K('scale-up'), T(' to Scale, '),
       K('rotate-ccw'), T(' and '), K('rotate-cw'), T(' to Rotate'),
     ]));
+    adjustEmitted = true;
   }
   if (snap.drawingPath) {
     state.push(L('title', [T(snap.composite ? 'Drawing Composite Path' : 'Drawing Path')]));
@@ -138,6 +143,7 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
     steps.push(L('hint', [T('Press '), K('quad'), T(' to add next point. '), K('cancel'), T(': cancel')]));
   }
   for (const hint of snap.liveHints) {
+    if (adjustEmitted && hint.label.includes('°') && /rotate/i.test(hint.label)) continue;
     const runs: StatusRun[] = [];
     hint.keys.forEach((key, i) => {
       if (i > 0) runs.push(T(' / '));

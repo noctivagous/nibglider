@@ -155,6 +155,21 @@ article {
   color: #a7b1bd;
 }
 
+#statusOverlay .st-line-hint {
+  color: var(--dp-text-1);
+}
+
+/* Recurring adjust cluster (scale/rotate keys): its own recessed row at the
+   bottom of the box, visually off the reason + guidance flow above it. */
+#statusOverlay .st-adjust-row {
+  flex: 1 1 100%;
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid var(--dp-border-soft);
+  font-size: 11px;
+  color: var(--dp-text-2);
+}
+
 #statusOverlay .st-sep {
   color: #7d8894;
 }

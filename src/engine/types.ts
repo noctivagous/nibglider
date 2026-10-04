@@ -162,7 +162,7 @@ export type StatusRun =
   | { t: 'text'; s: string }
   | { t: 'key'; s: string; g: StatusKeyGroup };
 export type StatusLine = {
-  kind: 'title' | 'meta' | 'hint';
+  kind: 'title' | 'meta' | 'hint' | 'adjust';
   runs: StatusRun[];
 };
 export interface StatusSchema {
