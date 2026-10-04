@@ -135,6 +135,33 @@ export {
 // bundled declarations model more narrowly.
 type AnyItem = any;
 
+export type WheelGesture = 'pinch' | 'pan' | 'zoom';
+/** Pinch deltas arrive much smaller than wheel notches; this gain keeps the
+ * trackpad pinch zoom pace comparable to the scroll-wheel pace. */
+export const TRACKPAD_PINCH_GAIN = 2;
+
+/**
+ * Route a wheel event: ctrl+wheel is a trackpad pinch, small or
+ * sideways pixel deltas are a two-finger pan, and notched (or
+ * line-mode) deltas are a classic scroll wheel.
+ */
+export function classifyWheel(event: Pick<WheelEvent, 'deltaX' | 'deltaY' | 'deltaMode' | 'ctrlKey'> & {
+  wheelDeltaY?: number;
+}): WheelGesture {
+  if (event.ctrlKey) return 'pinch';
+  if (event.deltaMode !== 0) return 'zoom';
+  if (event.deltaX !== 0) return 'pan';
+  if (event.deltaY === 0) return 'pan';
+  if (
+    typeof event.wheelDeltaY === 'number' && event.wheelDeltaY !== 0 &&
+    event.wheelDeltaY % 120 === 0
+  ) {
+    return 'zoom';
+  }
+  if (Number.isInteger(event.deltaY) && Math.abs(event.deltaY) >= 50) return 'zoom';
+  return 'pan';
+}
+
 export class NibGliderEngine {
   readonly context: EngineContext;
   private get scope(): paper.PaperScope { return this.context.scope; }
@@ -2106,16 +2133,24 @@ export class NibGliderEngine {
   }
 
   private onMouseWheel(event: WheelEvent): void {
+    // Always swallowed: browsers treat ctrl+wheel as page zoom, and the
+    // canvas owns every wheel gesture that reaches it.
     event.preventDefault();
-    if (event.deltaY === 0) return;
+    if (event.deltaY === 0 && event.deltaX === 0) return;
+    if (classifyWheel(event) === 'pan') {
+      this.viewport.panByScreen(event.deltaX, event.deltaY);
+      return;
+    }
     const view = this.scope.view;
-    const canvas = view.element as HTMLCanvasElement;
-    const rect = canvas.getBoundingClientRect();
-    const viewPoint = new this.scope.Point(
-      event.clientX - rect.left,
-      event.clientY - rect.top,
-    );
-    this.viewport.zoomForWheel(event.deltaY, viewPoint);
+    const el = view.element as HTMLCanvasElement | null;
+    const viewPoint = el && typeof el.getBoundingClientRect === 'function'
+      ? (() => {
+        const rect = el.getBoundingClientRect();
+        return new this.scope.Point(event.clientX - rect.left, event.clientY - rect.top);
+      })()
+      : view.center.clone();
+    const deltaY = event.ctrlKey ? event.deltaY * TRACKPAD_PINCH_GAIN : event.deltaY;
+    if (deltaY !== 0) this.viewport.zoomForWheel(deltaY, viewPoint);
   }
 
   /** Select the content item under the cursor. */

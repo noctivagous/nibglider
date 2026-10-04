@@ -5,7 +5,7 @@ import { CoordinateManager, PT_PER_INCH } from '../src/engine/document/Coordinat
 import { DocumentManager } from '../src/engine/document/DocumentManager.ts';
 import { LayerManager } from '../src/engine/document/LayerManager.ts';
 import { ViewportManager } from '../src/engine/document/ViewportManager.ts';
-import { NibGliderEngine } from '../src/engine/engine.ts';
+import { NibGliderEngine, classifyWheel } from '../src/engine/engine.ts';
 
 function scope() { const s = new paper.PaperScope(); s.setup(new s.Size(400, 300)); return s; }
 
@@ -143,6 +143,40 @@ test('x pan-lock glues the canvas to the cursor until any key', () => {
     engine.handleKeyDown(key('Escape', 'Escape'));
     assert.equal(engine.isPanLocked, false);
   } finally { engine.cancelCurrentDrawingOperation(); s.project.remove(); }
+});
+
+test('wheel gestures route pinch, trackpad pan, and notched zoom', () => {
+  const wheel = (over = {}) => ({
+    deltaX: 0, deltaY: 0, deltaMode: 0, ctrlKey: false, clientX: 0, clientY: 0,
+    preventDefault: () => {}, ...over,
+  });
+  assert.equal(classifyWheel(wheel({ ctrlKey: true, deltaY: 8 })), 'pinch');
+  assert.equal(classifyWheel(wheel({ deltaMode: 1, deltaY: 3 })), 'zoom');
+  assert.equal(classifyWheel(wheel({ deltaX: 12, deltaY: 4 })), 'pan');
+  assert.equal(classifyWheel(wheel({ deltaY: 6 })), 'pan');
+  assert.equal(classifyWheel(wheel({ deltaY: 100 })), 'zoom');
+  assert.equal(classifyWheel(wheel({ deltaY: 4, wheelDeltaY: 120 })), 'zoom');
+});
+
+test('trackpad pan shifts the view and pinch zooms without dirtying', () => {
+  const s = scope(); const engine = new NibGliderEngine(s, () => {});
+  const wheel = (over = {}) => ({
+    deltaX: 0, deltaY: 0, deltaMode: 0, ctrlKey: false, clientX: 0, clientY: 0,
+    preventDefault: () => {}, ...over,
+  });
+  try {
+    const before = s.view.center.clone();
+    engine['onMouseWheel'](wheel({ deltaX: 20, deltaY: 10 }));
+    assert.equal(s.view.center.x, before.x - 20);
+    assert.equal(s.view.center.y, before.y - 10);
+    assert.equal(s.view.zoom, 1);
+    engine['onMouseWheel'](wheel({ deltaY: 100 }));
+    assert.equal(s.view.zoom, Math.exp(-0.2));
+    engine['onMouseWheel'](wheel({ ctrlKey: true, deltaY: -10 }));
+    assert.ok(Math.abs(s.view.zoom - Math.exp(-0.2) * Math.exp(0.04)) < 1e-9);
+    assert.equal(engine.documentRevision(), 0);
+    assert.equal(engine.isDocumentDirty(), false);
+  } finally { s.project.remove(); }
 });
 
 test('engine pointer pan delegates to viewport and does not dirty document', () => {

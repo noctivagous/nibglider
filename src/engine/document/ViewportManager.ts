@@ -47,6 +47,15 @@ export class ViewportManager {
     this.changed();
   }
   endPan(): void { this.panning = false; this.panCenter = null; this.panPoint = null; }
+  /** Two-finger trackpad pan: screen-pixel deltas shift the view, honoring
+   * zoom. Content follows the fingers, like drag-pan without the button. */
+  panByScreen(dx: number, dy: number): boolean {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy) || (dx === 0 && dy === 0)) return false;
+    const view = this.scope.view;
+    view.center = view.center.subtract(new this.scope.Point(dx / this.zoom, dy / this.zoom));
+    this.changed();
+    return true;
+  }
   private setZoom(value: number): boolean {
     const next = this.clamp(value);
     if (next === this.zoom) return false;

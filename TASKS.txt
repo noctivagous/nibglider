@@ -23,7 +23,7 @@ and inches to feet for English Units.
 [ ] Shift + stroke thicken and stroke thin (C and V) should increase by a larger increment like how
 scale and rotate keys go up when Shift is pressed.
 
-[ ] Selection Rectangle key for Caps Lock.  Pressing it starts selection rectangle
+[x] Selection Rectangle key for Caps Lock.  Pressing it starts selection rectangle
 pressing it a second time finalizes the selection.  selects what is contained
 by or intersects rectangle.  Esc will cancel.  Same mechanism as Rect By Diagonal.
 
@@ -342,7 +342,7 @@ plus angle offset.  for Circum. 2 Lines it will have will wrap two different ent
 text around the adding configured gap plus angle offset. 
 
 
-[ ] V for Pan (anchors at point, mouse move pans)
+[x] Z for Pan (anchors at point, mouse move pans)
 [ ] hook up trackpad gestures for pan and zoom on canvas
 
 [ ] presets dropdown for supershape, with it switching to "Custom" if the user moves a value after selecting a preset.
