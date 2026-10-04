@@ -805,9 +805,10 @@ export const ADJUST_ACTIONS: AdjustAction[] = [
     label: 'Scale',
     section: 'adjust',
     when: (s) =>
-      (s.isDrawingShape && s.shapeType === 'rectangle_centerline') ||
-      (s.isLiveDrawing && s.liveAdjustApplies) ||
-      s.selectedCount > 0,
+      s.shapeType !== 'rectangle_select' &&
+      ((s.isDrawingShape && s.shapeType === 'rectangle_centerline') ||
+        (s.isLiveDrawing && s.liveAdjustApplies) ||
+        s.selectedCount > 0),
   },
   {
     id: 'rotate',
@@ -815,7 +816,8 @@ export const ADJUST_ACTIONS: AdjustAction[] = [
     label: 'Rotate',
     section: 'adjust',
     when: (s) =>
-      (s.isLiveDrawing && s.liveAdjustApplies) || s.selectedCount > 0,
+      s.shapeType !== 'rectangle_select' &&
+      ((s.isLiveDrawing && s.liveAdjustApplies) || s.selectedCount > 0),
   },
   {
     id: 'tension',

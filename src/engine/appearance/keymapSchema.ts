@@ -53,7 +53,9 @@ export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
   if (snap.gridEnabled) {
     rows.push(row(['grid-toggle'], 'Toggle the grid'));
   }
-  if (snap.selectedCount && snap.dragLock === false) {
+  // The selection marquee live-selects, but its selection is not an idle
+  // one: scale/rotate/drag-lock keys are swallowed while it is active.
+  if (snap.selectedCount && snap.dragLock === false && snap.shapeType !== 'rectangle_select') {
     rows.push(row(['drag-lock'], 'Begin Drag-Lock'));
     emitAction('scale');
     emitAction('rotate');

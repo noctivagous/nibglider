@@ -255,6 +255,19 @@ test('z resolves to the selection rectangle command', () => {
   assert.ok(rows.some((r) => r.ids.includes('cancel') && r.label === 'Cancel selection'));
 });
 
+test('marquee selection suppresses idle-selection messaging', () => {
+  const marquee = keyState({ isDrawingShape: true, shapeType: 'rectangle_select', selectedCount: 2 });
+  assert.deepEqual(resolveKeyVariants('BracketLeft', NO_MODS, marquee), []);
+  assert.deepEqual(resolveKeyVariants('Semicolon', NO_MODS, marquee), []);
+  const rows = buildKeymapRows(snap({ drawingShape: true, shapeType: 'rectangle_select', selectedCount: 2 }));
+  assert.ok(rows.some((r) => r.ids.includes('select-rectangle')));
+  assert.ok(!rows.some((r) => r.ids.includes('drag-lock') || r.ids.includes('scale-down') || r.ids.includes('rotate-cw')));
+  const schema = JSON.stringify(buildStatusSchema(snap({ drawingShape: true, shapeType: 'rectangle_select', selectedCount: 2 })));
+  assert.ok(schema.includes('Selected Objects: 2'));
+  assert.ok(!schema.includes('Begin Drag-Lock to move all selected.'));
+  assert.ok(!schema.includes('Scale or rotate the selection.'));
+});
+
 test('chord rows still surface uncovered primary-modifier commands', () => {
   const withMeta = { ...NO_MODS, meta: true };
   const resolved = resolveKeyboardLayout(withMeta, 'other', keyState({ selectedCount: 2 }));

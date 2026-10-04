@@ -48,7 +48,9 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
   if (snap.dropNote) state.push(L('meta', [T(snap.dropNote)]));
   if (snap.selectedCount) {
     state.push(L('title', [T('Selected Objects: ' + snap.selectedCount)]));
-    if (snap.dragLock === false) {
+    // Same idle-selection rule as the keymap rows: while the selection
+    // marquee is live, its selection takes no scale/rotate/drag-lock keys.
+    if (snap.dragLock === false && snap.shapeType !== 'rectangle_select') {
       steps.push(L('hint', [T('Begin Drag-Lock to move all selected.')]));
       steps.push(L('hint', [T('Scale or rotate the selection.')]));
       adjustCovered = true;
