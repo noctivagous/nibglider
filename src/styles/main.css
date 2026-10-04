@@ -3522,6 +3522,17 @@ kbd,
   z-index: 1;
 }
 
+/* Key hints (S, D, /) inside section title buttons stay square. */
+#controlPanel button.title-seg kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  height: 1.25rem;
+  min-width: 1.25rem;
+  padding: 0;
+}
+
 #controlPanel button.title-seg:hover {
   border-color: #3d4a59;
 }
