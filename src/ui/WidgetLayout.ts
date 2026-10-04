@@ -56,7 +56,8 @@ function loadPositions(store: KeyValueStore): Record<string, { x: number; y: num
 /**
  * Phase-1 placement rule: the status box sits left-aligned under the panel,
  * so any widget hanging below the panel in that column (today: the floating
- * menus rail) pushes it right by the widget's width.
+ * side column with the menus rail and keymap table) pushes it right by the
+ * widget's width.
  */
 export function statusShiftX(
   panel: WidgetRect | undefined,

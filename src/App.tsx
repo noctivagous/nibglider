@@ -46,13 +46,14 @@ export default function App() {
     return engine.subscribe(paint);
   }, [engine]);
 
-  // Layout awareness: report the panel and floating menus-rail rects so the
-  // layout manager can keep the status box out from under the rail.
+  // Layout awareness: report the panel and floating side-column rects so
+  // the layout manager can keep the status box out from under the menus
+  // rail and the keymap table beneath it.
   // Measured synchronously on mount (before paint) so the first frame is
   // already placed; ResizeObserver picks up later changes.
   useEffect(() => {
     const panel = document.getElementById('controlPanel');
-    const rail = panel?.querySelector('.panel-rail');
+    const rail = panel?.querySelector('.panel-side') ?? panel?.querySelector('.panel-rail');
     if (!panel || !rail) return;
     const report = () => {
       const p = panel.getBoundingClientRect();

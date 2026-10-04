@@ -3013,97 +3013,99 @@ export default function ControlPanel({ engine }: { engine: NibGliderEngine }) {
 
   return (
     <div className="panel-shell">
-      <div className="panel-rail" role="group" aria-label="Panel tools">
-        <WidgetHandle widget="menus" label="Application menus" />
-        <div className="rail-box" title="File: documents, import, export">
-          <CustomSelect
-            id="panelFileSelect"
-            ariaLabel="File"
-            placeholder="File"
-            value={fileValue}
-            options={FILE_OPTIONS}
-            onChange={handleFile}
-            openOnHover
-            stickyOnClick
-            onHoverOpen={handleSelectHoverOpen}
-            forceCloseKey={selectCloseKey}
-          />
-        </div>
-        <div className="rail-box" title="Document and Settings">
-          <CustomSelect
-            id="panelDocumentSelect"
-            ariaLabel="Document and Settings"
-            placeholder="Document"
-            value={docValue}
-            options={DOCUMENT_OPTIONS}
-            onChange={handleDocument}
-            openOnHover
-            stickyOnClick
-            onHoverOpen={handleSelectHoverOpen}
-            forceCloseKey={selectCloseKey}
-          />
-        </div>
-        <div className="rail-box" title="Operations on the selection">
-          <CustomSelect
-            id="panelOperationsSelect"
-            ariaLabel="Operations on the selection"
-            placeholder="Operations"
-            value={opValue}
-            options={OPERATIONS_OPTIONS}
-            onChange={handleOperation}
-            openOnHover
-            stickyOnClick
-            onHoverOpen={handleSelectHoverOpen}
-            forceCloseKey={selectCloseKey}
-          />
-        </div>
-        <div className="rail-box" title="Layers and Objects">
-          <CustomSelect
-            id="panelLayersSelect"
-            ariaLabel="Layers and Objects"
-            placeholder="Layers"
-            value={layersValue}
-            options={LAYERS_OPTIONS}
-            onChange={handleLayers}
-            openOnHover
-            stickyOnClick
-            onHoverOpen={handleSelectHoverOpen}
-            forceCloseKey={selectCloseKey}
-          />
-        </div>
-        <div className="rail-box" title="Panel sections">
-          <CustomSelect
-            id="panelSectionsSelect"
-            ariaLabel="Panel sections"
-            placeholder="Sections"
-            value={sectionsValue}
-            options={removedOptions}
-            onChange={(v) => {
-              if (v.startsWith('restore:')) restoreSection(v.slice(8));
-              setSectionsValue('sections-none');
-            }}
-            openOnHover
-            stickyOnClick
-            onHoverOpen={handleSelectHoverOpen}
-            forceCloseKey={selectCloseKey}
-          />
-        </div>
-        <div className="rail-box" title="Debug settings">
-          <CustomSelect
-            id="panelDebugSelect"
-            ariaLabel="Debug settings"
-            placeholder="Debug"
-            value={debugValue}
-            options={DEBUG_OPTIONS}
-            onChange={handleDebug}
-            openOnHover
-            stickyOnClick
-            onHoverOpen={handleSelectHoverOpen}
-            forceCloseKey={selectCloseKey}
-          />
+      <div className="panel-side">
+        <div className="panel-rail" role="group" aria-label="Panel tools">
+          <WidgetHandle widget="menus" label="Application menus" />
+          <div className="rail-box" title="File: documents, import, export">
+            <CustomSelect
+              id="panelFileSelect"
+              ariaLabel="File"
+              placeholder="File"
+              value={fileValue}
+              options={FILE_OPTIONS}
+              onChange={handleFile}
+              openOnHover
+              stickyOnClick
+              onHoverOpen={handleSelectHoverOpen}
+              forceCloseKey={selectCloseKey}
+            />
+          </div>
+          <div className="rail-box" title="Document and Settings">
+            <CustomSelect
+              id="panelDocumentSelect"
+              ariaLabel="Document and Settings"
+              placeholder="Document"
+              value={docValue}
+              options={DOCUMENT_OPTIONS}
+              onChange={handleDocument}
+              openOnHover
+              stickyOnClick
+              onHoverOpen={handleSelectHoverOpen}
+              forceCloseKey={selectCloseKey}
+            />
+          </div>
+          <div className="rail-box" title="Operations on the selection">
+            <CustomSelect
+              id="panelOperationsSelect"
+              ariaLabel="Operations on the selection"
+              placeholder="Operations"
+              value={opValue}
+              options={OPERATIONS_OPTIONS}
+              onChange={handleOperation}
+              openOnHover
+              stickyOnClick
+              onHoverOpen={handleSelectHoverOpen}
+              forceCloseKey={selectCloseKey}
+            />
+          </div>
+          <div className="rail-box" title="Layers and Objects">
+            <CustomSelect
+              id="panelLayersSelect"
+              ariaLabel="Layers and Objects"
+              placeholder="Layers"
+              value={layersValue}
+              options={LAYERS_OPTIONS}
+              onChange={handleLayers}
+              openOnHover
+              stickyOnClick
+              onHoverOpen={handleSelectHoverOpen}
+              forceCloseKey={selectCloseKey}
+            />
+          </div>
+          <div className="rail-box" title="Panel sections">
+            <CustomSelect
+              id="panelSectionsSelect"
+              ariaLabel="Panel sections"
+              placeholder="Sections"
+              value={sectionsValue}
+              options={removedOptions}
+              onChange={(v) => {
+                if (v.startsWith('restore:')) restoreSection(v.slice(8));
+                setSectionsValue('sections-none');
+              }}
+              openOnHover
+              stickyOnClick
+              onHoverOpen={handleSelectHoverOpen}
+              forceCloseKey={selectCloseKey}
+            />
+          </div>
+          <div className="rail-box" title="Debug settings">
+            <CustomSelect
+              id="panelDebugSelect"
+              ariaLabel="Debug settings"
+              placeholder="Debug"
+              value={debugValue}
+              options={DEBUG_OPTIONS}
+              onChange={handleDebug}
+              openOnHover
+              stickyOnClick
+              onHoverOpen={handleSelectHoverOpen}
+              forceCloseKey={selectCloseKey}
+            />
+          </div>
         </div>
         <KeymapWidget engine={engine} />
-      </div>
+        </div>
       <div
         className="panel-sections"
         role="group"

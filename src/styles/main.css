@@ -221,7 +221,7 @@ article {
 
 /* Keymap table widget: semitransparent dark-pro table mounted underneath
    the application menus. Display-only; pointer events fall through. */
-#controlPanel .panel-rail #keymapWidget {
+#controlPanel .panel-side #keymapWidget {
   width: 100%;
   pointer-events: none;
 }
@@ -3083,17 +3083,27 @@ kbd,
   flex-wrap: nowrap;
 }
 
-#controlPanel .panel-rail {
+/* Side column: the application menus rail with the keymap table as a
+   separate element directly beneath it — same width, top edge flush with
+   the rail's bottom edge. The column floats outside the panel's height so
+   a growing menus list or keymap table never stretches the sections. */
+#controlPanel .panel-side {
   position: absolute;
   left: 0;
   top: 0;
   z-index: 60;
   display: flex;
   flex-direction: column;
+  flex: none;
+  width: var(--rail-width);
+}
+
+#controlPanel .panel-rail {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
   flex: none;
-  order: 0;
-  width: var(--rail-width);
+  width: 100%;
   padding: 4px 4px 4px 24px;
   background: linear-gradient(to bottom, #0d1218, #141b24);
   border-right: 1px solid #0b0e12;
