@@ -3,11 +3,17 @@ import { HistoryManager } from '../history/HistoryManager';
 import { SceneRepository } from './SceneRepository';
 
 type Item = any;
+
+/** Floating Marker parity: selected drawables carry a soft glow halo so the
+ * selection reads on any background, unlike a single flat outline color. */
+const SELECTION_GLOW_BLUR = 7;
+
 export class SelectionManager {
   private items: Item[] = [];
   private readonly scene: SceneRepository;
   private readonly history: HistoryManager;
   private readonly retainClone: (original: Item, clone: Item) => void;
+  private glowSuspended = false;
 
   constructor(scene: SceneRepository, history: HistoryManager,
     retainClone: (original: Item, clone: Item) => void) {
@@ -19,16 +25,16 @@ export class SelectionManager {
 
   add(item: Item): void {
     if (!item || this.scene.isNonContentItem(item) || this.items.includes(item)) return;
-    item.selected = true; this.items.push(item);
+    this.mark(item, true); this.items.push(item);
   }
   remove(item: Item): void {
     const index = this.items.indexOf(item);
     if (index < 0) return;
-    item.selected = false; this.items.splice(index, 1);
+    this.mark(item, false); this.items.splice(index, 1);
   }
   clear(): void {
     for (const item of this.items) {
-      try { item.selected = false; } catch { /* Already gone. */ }
+      try { this.mark(item, false); } catch { /* Already gone. */ }
     }
     this.items = [];
   }
@@ -36,14 +42,42 @@ export class SelectionManager {
     this.clear();
     for (const item of items) {
       if (!item || !this.scene.isInScene(item) || this.items.includes(item)) continue;
-      try { item.selected = true; this.items.push(item); } catch { /* Already gone. */ }
+      try { this.mark(item, true); this.items.push(item); } catch { /* Already gone. */ }
     }
   }
   toggle(item: Item): void { if (this.items.includes(item)) this.remove(item); else this.add(item); }
   prepend(item: Item): void {
     this.remove(item);
     if (!item || this.scene.isNonContentItem(item)) return;
-    item.selected = true; this.items.unshift(item);
+    this.mark(item, true); this.items.unshift(item);
+  }
+  /** Drop the glow (print/export) without changing membership. */
+  suspendGlow(): void {
+    this.glowSuspended = true;
+    for (const item of this.items) {
+      try { this.clearGlow(item); } catch { /* Already gone. */ }
+    }
+  }
+  /** Re-apply the glow after suspendGlow. */
+  restoreGlow(): void {
+    this.glowSuspended = false;
+    for (const item of this.items) {
+      try { this.applyGlow(item); } catch { /* Already gone. */ }
+    }
+  }
+  private mark(item: Item, on: boolean): void {
+    item.selected = on;
+    if (on && !this.glowSuspended) this.applyGlow(item);
+    else if (!on) this.clearGlow(item);
+  }
+  private applyGlow(item: Item): void {
+    item.shadowColor = new this.scene.scope.Color(0.2, 0.5, 1);
+    item.shadowBlur = SELECTION_GLOW_BLUR;
+    item.shadowOffset = new this.scene.scope.Point(0, 0);
+  }
+  private clearGlow(item: Item): void {
+    item.shadowColor = null;
+    item.shadowBlur = 0;
   }
   removeAll(): Item[] {
     const before = this.snapshot();

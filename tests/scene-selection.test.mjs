@@ -181,3 +181,27 @@ test('z marquee selects intersecting items live, commits, and esc restores', () 
     assert.deepEqual(engine.selectedItems, [outside]);
   } finally { engine.cancelCurrentDrawingOperation(); scope.project.remove(); }
 });
+
+test('selected drawables carry a glow halo that suspends for print', () => {
+  const { selection, rect, cleanup } = setup();
+  try {
+    const a = rect(10); const b = rect(80);
+    selection.add(a);
+    assert.equal(a.selected, true);
+    assert.ok(a.shadowColor);
+    assert.equal(a.shadowBlur, 7);
+    selection.add(b);
+    selection.remove(a);
+    assert.equal(a.selected, false);
+    assert.equal(a.shadowColor, null);
+    assert.equal(a.shadowBlur, 0);
+    selection.suspendGlow();
+    assert.equal(b.shadowColor, null);
+    assert.deepEqual(selection.selectedItems, [b]);
+    selection.restoreGlow();
+    assert.ok(b.shadowColor);
+    selection.clear();
+    assert.equal(b.shadowColor, null);
+    assert.deepEqual(selection.selectedItems, []);
+  } finally { cleanup(); }
+});

@@ -2037,9 +2037,11 @@ export class NibGliderEngine {
 
   private onBeforePrint = (): void => {
     this.setGuideLayersVisible(false);
+    this.selection.suspendGlow();
   };
 
   private onAfterPrint = (): void => {
+    this.selection.restoreGlow();
     this.setGuideLayersVisible(true);
   };
 
