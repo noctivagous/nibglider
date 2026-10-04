@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   SELECT_MENU_OPEN_EVENT,
@@ -101,6 +101,73 @@ export default function CustomSelect({
   const rootRef = useRef<HTMLSpanElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Custom scrollbar: the menu's rows scroll inside .cs-scroll while the
+  // track stays fixed on the positioned menu shell. Native scrollbars are
+  // hidden so this thumb is the only overflow affordance, always visible.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLDivElement>(null);
+  const thumbDrag = useRef<{ startY: number; startTop: number } | null>(null);
+
+  const updateScrollbar = useCallback(() => {
+    const scroller = scrollRef.current;
+    const track = trackRef.current;
+    const thumb = thumbRef.current;
+    if (!scroller || !track || !thumb) return;
+    const overflow = scroller.scrollHeight - scroller.clientHeight;
+    const visible = overflow > 1;
+    track.style.display = visible ? '' : 'none';
+    if (!visible) return;
+    const trackHeight = track.clientHeight;
+    const thumbHeight = Math.max(24, Math.floor(trackHeight * (scroller.clientHeight / scroller.scrollHeight)));
+    const travel = trackHeight - thumbHeight;
+    const thumbTop = travel > 0 ? (scroller.scrollTop / overflow) * travel : 0;
+    thumb.style.height = `${thumbHeight}px`;
+    thumb.style.transform = `translateY(${thumbTop}px)`;
+  }, []);
+
+  // Refresh the thumb after every render while open (row expansion changes
+  // content height); scrolling itself refreshes through onScroll.
+  useLayoutEffect(() => {
+    if (open) updateScrollbar();
+  });
+
+  const onThumbPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    thumbDrag.current = { startY: e.clientY, startTop: scroller.scrollTop };
+    try {
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch { /* Pointer capture is best-effort. */ }
+  };
+
+  const onThumbPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = thumbDrag.current;
+    const scroller = scrollRef.current;
+    const track = trackRef.current;
+    const thumb = thumbRef.current;
+    if (!drag || !scroller || !track || !thumb) return;
+    const overflow = scroller.scrollHeight - scroller.clientHeight;
+    const travel = track.clientHeight - thumb.clientHeight;
+    if (overflow <= 0 || travel <= 0) return;
+    scroller.scrollTop = drag.startTop + ((e.clientY - drag.startY) * overflow) / travel;
+  };
+
+  const onThumbPointerUp = () => {
+    thumbDrag.current = null;
+  };
+
+  const onTrackPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    // Thumb drags are handled above; a track click pages toward the click.
+    if (e.target !== trackRef.current) return;
+    const scroller = scrollRef.current;
+    const thumb = thumbRef.current;
+    if (!scroller || !thumb) return;
+    const thumbTop = thumb.getBoundingClientRect().top;
+    scroller.scrollTop += (e.clientY < thumbTop ? -1 : 1) * scroller.clientHeight * 0.9;
+  };
   // Remembers how the menu was opened so DOM focus only follows an explicit
   // keyboard open. Hover/click opens must not steal focus: the menu's
   // mouse-leave guard treats focus-inside as keyboard navigation holding the
@@ -248,7 +315,7 @@ export default function CustomSelect({
     // Keyboard opens move focus into the menu for arrow/Enter navigation
     // (and the focus-inside guard then holds it open past mouse slips).
     // Hover/click opens leave focus alone so cursor exit can dismiss.
-    if (openTriggerRef.current === 'keyboard') menuRef.current?.focus();
+    if (openTriggerRef.current === 'keyboard') scrollRef.current?.focus();
     const dismiss = () => {
       const next = selectMenuDismissed();
       setOpen(next.open);
@@ -278,7 +345,7 @@ export default function CustomSelect({
 
   useEffect(() => {
     if (!open) return;
-    menuRef.current
+    scrollRef.current
       ?.querySelector(`[data-idx="${focusIdx}"]`)
       ?.scrollIntoView({ block: 'nearest' });
   }, [open, focusIdx]);
@@ -411,15 +478,11 @@ export default function CustomSelect({
           <div
             ref={menuRef}
             className="custom-select-menu"
-            role="tree"
-            aria-label={ariaLabel}
-            tabIndex={-1}
             style={{
               left: menuPos.left,
               top: menuPos.top,
               minWidth: menuPos.minWidth,
             }}
-            onKeyDown={onMenuKeyDown}
             onMouseEnter={() => {
               if (openOnHover) cancelHoverClose();
             }}
@@ -440,6 +503,15 @@ export default function CustomSelect({
               scheduleHoverClose();
             }}
           >
+            <div
+              ref={scrollRef}
+              className="cs-scroll"
+              role="tree"
+              aria-label={ariaLabel}
+              tabIndex={-1}
+              onKeyDown={onMenuKeyDown}
+              onScroll={updateScrollbar}
+            >
             {(() => {
               const renderItem = (row: FlatRow, i: number) => (
                 <div
@@ -535,6 +607,22 @@ export default function CustomSelect({
               flushCards();
               return nodes;
             })()}
+            </div>
+            <div
+              ref={trackRef}
+              className="cs-scrollbar"
+              aria-hidden="true"
+              onPointerDown={onTrackPointerDown}
+            >
+              <div
+                ref={thumbRef}
+                className="cs-thumb"
+                onPointerDown={onThumbPointerDown}
+                onPointerMove={onThumbPointerMove}
+                onPointerUp={onThumbPointerUp}
+                onPointerCancel={onThumbPointerUp}
+              />
+            </div>
           </div>,
           document.body,
         )}
