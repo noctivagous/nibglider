@@ -432,6 +432,7 @@ export class KeyboardController {
     if (!down || !up || !ccw || !cw || !lock) return;
     this.register({
       id: 'live-scale-down',
+      actionId: 'scale',
       keys: [down.keycap],
       label: 'scale',
       match: down.match,
@@ -440,6 +441,7 @@ export class KeyboardController {
     });
     this.register({
       id: 'live-scale-up',
+      actionId: 'scale',
       keys: [up.keycap],
       label: 'scale',
       match: up.match,
@@ -448,6 +450,7 @@ export class KeyboardController {
     });
     this.register({
       id: 'live-rotate-down',
+      actionId: 'rotate',
       keys: [ccw.keycap],
       label: 'rotate',
       match: ccw.match,
@@ -456,6 +459,7 @@ export class KeyboardController {
     });
     this.register({
       id: 'live-rotate-up',
+      actionId: 'rotate',
       keys: [cw.keycap],
       label: 'rotate',
       match: cw.match,

@@ -41,7 +41,9 @@ export type PolygonRadiusMode = 'inradius' | 'circumradius';
 export interface LiveKeyBinding {
   /** Stable id, e.g. 'live-scale-down'. */
   id: string;
-  /** Keycap labels shown in the Status Box, e.g. ['[']. */
+  /** Adjust action this binding belongs to, e.g. 'scale'. Rows group by it. */
+  actionId?: string;
+  /** Keycap labels shown in the keymap table, e.g. ['[']. */
   keys: string[];
   /** Short status description, e.g. 'scale'. */
   label: string;

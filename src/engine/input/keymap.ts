@@ -160,21 +160,6 @@ export const KEY_COMMANDS: KeyCommand[] = [
     exclusive: true,
   },
   {
-    id: 'bracket-keys',
-    action: 'brackets',
-    keycap: '[',
-    group: 'op',
-    help: 'Centerline width, live scale, or selection scale',
-    match: (e) =>
-      codeOrKey('BracketLeft', '[')(e) || codeOrKey('BracketRight', ']')(e),
-    available: (s) =>
-      (s.isDrawingShape && s.shapeType === 'rectangle_centerline') ||
-      (s.isLiveDrawing && s.liveAdjustApplies) ||
-      s.selectedCount > 0,
-    exclusive: true,
-    alias: true,
-  },
-  {
     id: 'scale-down',
     action: 'brackets',
     keycap: '[',
@@ -195,18 +180,6 @@ export const KEY_COMMANDS: KeyCommand[] = [
     available: always,
     exclusive: false,
     dispatch: false,
-  },
-  {
-    id: 'rotate-keys',
-    action: 'rotate',
-    keycap: ';',
-    group: 'op',
-    help: 'Live or selection rotation',
-    match: (e) => codeOrKey('Semicolon', ';')(e) || codeOrKey('Quote', "'")(e),
-    available: (s) =>
-      (s.isLiveDrawing && s.liveAdjustApplies) || s.selectedCount > 0,
-    exclusive: true,
-    alias: true,
   },
   {
     id: 'rotate-ccw',
@@ -799,6 +772,54 @@ function presentation(command: KeyCommand, code: string, state: KeyState, chord:
   return { legend, description, group: command.group };
 }
 
+// Canonical adjust actions: one entry per physical action, not per key.
+// Dispatch variants, live bindings, and keymap rows all derive from these,
+// so scale/rotate/tension keys are described in exactly one place.
+export interface AdjustAction {
+  /** Stable action id: 'scale' | 'rotate' | 'tension'. */
+  id: string;
+  /** Per-key command ids backing this action, in display order. */
+  commandIds: string[];
+  /** Keymap table label for the action. */
+  label: string;
+  /** Keymap table section for the action's row. */
+  section: 'guide' | 'adjust';
+  /** When the action applies; shared by dispatch, live bindings, and rows. */
+  when: (state: KeyState) => boolean;
+}
+
+export const ADJUST_ACTIONS: AdjustAction[] = [
+  {
+    id: 'scale',
+    commandIds: ['scale-down', 'scale-up'],
+    label: 'Scale',
+    section: 'adjust',
+    when: (s) =>
+      (s.isDrawingShape && s.shapeType === 'rectangle_centerline') ||
+      (s.isLiveDrawing && s.liveAdjustApplies) ||
+      s.selectedCount > 0,
+  },
+  {
+    id: 'rotate',
+    commandIds: ['rotate-ccw', 'rotate-cw'],
+    label: 'Rotate',
+    section: 'adjust',
+    when: (s) =>
+      (s.isLiveDrawing && s.liveAdjustApplies) || s.selectedCount > 0,
+  },
+  {
+    id: 'tension',
+    commandIds: ['tension-down', 'tension-up', 'tension-reset'],
+    label: 'Adjust tension',
+    section: 'guide',
+    when: (s) => s.isDrawingPath && !s.isCompositePath,
+  },
+];
+
+export function adjustActionForCommand(id: string): AdjustAction | undefined {
+  return ADJUST_ACTIONS.find((a) => a.commandIds.includes(id));
+}
+
 // Compile existing ordered commands into exact typed physical chords. Both
 // dispatch and presentation consume this registry. No browser Event is needed
 // to resolve a layout, and Option-produced characters cannot move a keycap.
@@ -809,9 +830,8 @@ const variantCodes = [...new Set([
   'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
 ])];
 for (const command of KEY_COMMANDS) {
-  if (command.id === 'bracket-keys' || command.id === 'rotate-keys') continue;
-  const when = command.action === 'brackets' ? commandById('bracket-keys')!.available
-    : command.action === 'rotate' ? commandById('rotate-keys')!.available
+  const adjust = adjustActionForCommand(command.id);
+  const when = adjust ? adjust.when
     : command.action === 'nudge' ? (state: KeyState) => idle(state) && state.selectedCount > 0
     : command.id === 'radial-lock' ? (state: KeyState) => state.isDrawingShape && state.shapeType === 'circle_radial_stamp'
     : command.available;

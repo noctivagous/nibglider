@@ -2090,18 +2090,19 @@ export class NibGliderEngine {
   }
 
   // --- Canvas status overlay (NibGliderApp.js updateTextContent) ---
-  private liveStatusHints(): Array<{ label: string; keys: string[] }> {
+  private liveStatusHints(): Array<{ label: string; keys: string[]; actionId?: string }> {
     if (!this.isLiveDrawing) return [];
-    const liveByLabel = new Map<string, string[]>();
+    const liveByAction = new Map<string, { label: string; keys: string[]; actionId?: string }>();
     for (const binding of this.keyboard.liveBindings()) {
       if (!binding.applies()) continue;
-      const keys = liveByLabel.get(binding.label) ?? [];
+      const group = binding.actionId ?? binding.label;
+      const entry = liveByAction.get(group) ?? { label: binding.label, keys: [], actionId: binding.actionId };
       for (const key of binding.keys) {
-        if (!keys.includes(key)) keys.push(key);
+        if (!entry.keys.includes(key)) entry.keys.push(key);
       }
-      liveByLabel.set(binding.label, keys);
+      liveByAction.set(group, entry);
     }
-    return [...liveByLabel].map(([label, keys]) => ({ label, keys }));
+    return [...liveByAction.values()];
   }
 
   updateTextContent(): void {

@@ -29,7 +29,7 @@ export interface StatusSnapshot {
   hasSecondEdge: boolean;
   drawingQuad: boolean;
   quadPointCount: number;
-  liveHints: Array<{ label: string; keys: string[] }>;
+  liveHints: Array<{ label: string; keys: string[]; actionId?: string }>;
 }
 
 export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {

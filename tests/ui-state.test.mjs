@@ -4,6 +4,8 @@ import { GUIManager, KEYBOARD_WIDTH_DEFAULT } from '../src/ui/GUIManager.ts';
 import { WidgetLayout, statusShiftX } from '../src/ui/WidgetLayout.ts';
 import { APPLICATION_MENUS, PanelsManager, sectionOrder } from '../src/ui/PanelsManager.ts';
 import { buildKeymapRows, buildStatusSchema } from '../src/ui/StatusPresenter.ts';
+import { resolveKeyboardLayout, resolveKeyVariants } from '../src/engine/input/KeyboardLayoutResolver.ts';
+import { buildChordRows } from '../src/ui/KeymapPresenter.ts';
 import { writePreviewPaths } from '../src/ui/PreviewBoxPresenter.ts';
 import { keycapClick } from '../src/ui/KeyboardViewModel.ts';
 import { NibGliderEngine } from '../src/engine/engine.ts';
@@ -178,6 +180,84 @@ test('keymap rows carry the grid toggle the status box no longer names', () => {
   assert.equal(JSON.stringify(schema).includes('"t":"key"'), false);
   const rows = buildKeymapRows(snap({ gridEnabled: true, gridType: 'square' }));
   assert.ok(rows.some((r) => r.label === 'Toggle the grid' && r.keys.join('') === '/'));
+});
+
+function keyState(over = {}) {
+  return {
+    isDrawingPath: false, isDrawingShape: false, isDrawingQuad: false,
+    isLiveDrawing: false, shapeType: null, selectedCount: 0,
+    isInDragLock: false, liveAdjustApplies: false, ...over,
+  };
+}
+
+const NO_MODS = { shift: false, alt: false, control: false, meta: false, capsLock: false };
+
+test('each adjust command id appears in exactly one keymap row', () => {
+  const snapshots = [
+    snap({ selectedCount: 2 }),
+    snap({ selectedCount: 2, dragLock: true }),
+    snap({ drawingPath: true }),
+    snap({ drawingPath: true, composite: true }),
+    snap({ drawingShape: true, shapeType: 'circle_radius' }),
+    snap({ drawingShape: true, shapeType: 'circle_radial_stamp' }),
+    snap({ drawingShape: true, shapeType: 'rectangle_centerline' }),
+    snap({ drawingQuad: true }),
+    snap({ selectedCount: 2, liveHints: [
+      { label: 'scale', keys: ['[', ']'], actionId: 'scale' },
+      { label: 'rotate', keys: [';', "'"], actionId: 'rotate' },
+    ] }),
+    snap({ gridEnabled: true }),
+  ];
+  for (const s of snapshots) {
+    const ids = buildKeymapRows(s).flatMap((r) => r.ids);
+    assert.deepEqual(ids, [...new Set(ids)], JSON.stringify(s));
+  }
+});
+
+test('static adjust rows yield to live hints for the same action', () => {
+  const rows = buildKeymapRows(snap({ selectedCount: 2, liveHints: [
+    { label: 'scale', keys: ['[', ']'], actionId: 'scale' },
+  ] }));
+  assert.equal(rows.filter((r) => r.ids.includes('scale-down')).length, 1);
+  assert.ok(rows.some((r) => r.section === 'adjust' && r.label === 'Rotate'));
+});
+
+test('chord rows skip commands the schema rows already cover', () => {
+  const resolved = resolveKeyboardLayout(NO_MODS, 'other', keyState({ selectedCount: 2 }));
+  const uncovered = buildChordRows(resolved, { primary: false, coveredIds: [] });
+  assert.equal(uncovered.length, 4);
+  assert.ok(uncovered.every((r) => r.section === 'adjust'));
+  const schemaRows = buildKeymapRows(snap({ selectedCount: 2 }));
+  const coveredIds = schemaRows.flatMap((r) => r.ids);
+  assert.ok(coveredIds.includes('scale-down') && coveredIds.includes('rotate-cw'));
+  assert.deepEqual(buildChordRows(resolved, { primary: false, coveredIds }), []);
+  const merged = [...schemaRows, ...buildChordRows(resolved, { primary: false, coveredIds })];
+  const ids = merged.flatMap((r) => r.ids);
+  assert.deepEqual(ids, [...new Set(ids)]);
+});
+
+test('adjust availability still gates dispatch variants', () => {
+  const sel = keyState({ selectedCount: 2 });
+  const idle = keyState();
+  assert.deepEqual(resolveKeyVariants('BracketLeft', NO_MODS, sel).map((v) => v.commandId), ['scale-down']);
+  assert.deepEqual(resolveKeyVariants('BracketLeft', NO_MODS, idle), []);
+  assert.deepEqual(resolveKeyVariants('Semicolon', NO_MODS, sel).map((v) => v.commandId), ['rotate-ccw']);
+  assert.deepEqual(resolveKeyVariants('Semicolon', NO_MODS, idle), []);
+  const drawing = keyState({ isDrawingPath: true, isLiveDrawing: true });
+  assert.deepEqual(resolveKeyVariants('KeyJ', NO_MODS, drawing).map((v) => v.commandId), ['tension-down']);
+  assert.deepEqual(resolveKeyVariants('KeyJ', NO_MODS, idle).map((v) => v.commandId), ['toggle-panel']);
+});
+
+test('chord rows still surface uncovered primary-modifier commands', () => {
+  const withMeta = { ...NO_MODS, meta: true };
+  const resolved = resolveKeyboardLayout(withMeta, 'other', keyState({ selectedCount: 2 }));
+  const schemaRows = buildKeymapRows(snap({ selectedCount: 2 }));
+  const chords = buildChordRows(resolved, {
+    primary: true, coveredIds: schemaRows.flatMap((r) => r.ids),
+  });
+  assert.ok(chords.some((r) => r.ids.includes('undo')));
+  const ids = [...schemaRows, ...chords].flatMap((r) => r.ids);
+  assert.deepEqual(ids, [...new Set(ids)]);
 });
 
 test('preview presenter writes circle and rect path data', () => {
