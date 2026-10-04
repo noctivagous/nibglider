@@ -138,7 +138,7 @@ type AnyItem = any;
 export type WheelGesture = 'pinch' | 'pan' | 'zoom';
 /** Pinch deltas arrive much smaller than wheel notches; this gain keeps the
  * trackpad pinch zoom pace comparable to the scroll-wheel pace. */
-export const TRACKPAD_PINCH_GAIN = 2;
+export const TRACKPAD_PINCH_GAIN = 3;
 
 /**
  * Route a wheel event: ctrl+wheel is a trackpad pinch, small or

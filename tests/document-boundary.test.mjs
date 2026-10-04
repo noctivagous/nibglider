@@ -173,7 +173,7 @@ test('trackpad pan shifts the view and pinch zooms without dirtying', () => {
     engine['onMouseWheel'](wheel({ deltaY: 100 }));
     assert.equal(s.view.zoom, Math.exp(-0.2));
     engine['onMouseWheel'](wheel({ ctrlKey: true, deltaY: -10 }));
-    assert.ok(Math.abs(s.view.zoom - Math.exp(-0.2) * Math.exp(0.04)) < 1e-9);
+    assert.ok(Math.abs(s.view.zoom - Math.exp(-0.2) * Math.exp(0.06)) < 1e-9);
     assert.equal(engine.documentRevision(), 0);
     assert.equal(engine.isDocumentDirty(), false);
   } finally { s.project.remove(); }
