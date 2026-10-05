@@ -3870,10 +3870,11 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             forceCloseKey={selectCloseKey}
           />
         </header>
-        <span className="param-item">
+        <div className="pane-body pane-body-row">
           <label htmlFor="gridSpacingStepper">Spacing</label>
           <NumericStepper
             id="gridSpacingStepper"
+            size="compact"
             value={engine.gridSpacing}
             min={1}
             max={500}
@@ -3883,7 +3884,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             title="Grid spacing"
             onCommit={(n) => engine.setGridSpacing(n)}
           />
-        </span>
+        </div>
       </PanelSection>
       )}
       {isRemoved('snappingControls') ? null : (
