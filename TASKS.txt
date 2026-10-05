@@ -7,6 +7,15 @@
 [ ] for Point snapping, shapes should respond with point hits on their centroids.  a regular polygon or
 circle should have point snaps on circle origins.
 
+
+[x]  Bilinear warp of smooth shapes: circles/polygons become quad-warped rather than true inscribed ellipses. Though not 
+what we want, it is the direct analog of rect keys stretching a circle into a rectangle. Alternative: projective/perspective mapping — 
+    more "correct" for camera quads but unpredictable for drawing and harder to keep in sync with the existing affine rect behavior.
+    So we should make projective/perspective mapping the default setting but provide bilinear in the code still as alternative setting.
+    
+    note:  Projective's real win is narrow but genuine: perspective-correctness. Conic→conic means a fitted circle becomes a true ellipse,   
+    and lines stay lines — right when tracing a photographed rectangle and wanting its inscribed circle. That deserves to exist as an 
+    option, not as the default. 
 ---
 
 [ ]  menu item under grid section menu:  Sync Grid Snapping to Grid Visibility

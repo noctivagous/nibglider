@@ -1,0 +1,42 @@
+ Bilinear warp of smooth shapes: circles/polygons become quad-warped rather than true inscribed ellipses. Though not 
+what we want, it is the direct analog of rect keys stretching a circle into a rectangle. Alternative: projective/perspective mapping — 
+    more "correct" for camera quads but unpredictable for drawing and harder to keep in sync with the existing affine rect behavior.
+    So we should make projective/perspective mapping the default setting but provide bilinear in the code still as alternative setting.
+    
+    ---
+
+┌───────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │ case                  │ finding                                                                                                  │
+  ├───────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Parallelogram quad    │ gap 0.00pt everywhere — the maps are mathematically identical, so the default is irrelevant for all      │
+  │                       │ rect-keys frames and any rect-like quad                                                                  │
+  │ Perspective trapezoid │ edge-interior vertices shift up to ~25pt (e.g. (1, 0.5) lands 25.5pt apart); projective center =         │
+  │                       │ diagonal crossing exactly (100, 125), bilinear center = corner average (100, 100)                        │
+  │ Concave quad          │ projective breaks: min homogeneous w hits 0.0000 inside the frame, throwing mapped points 233–500pt      │
+  │                       │ outside the quad. Bilinear stays inside the corner hull by construction                                  │
+  └───────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                                                                                                      
+  Two corrections to my plan's framing: the maps differ not only for smooth shapes — any edge-interior vertex (rhombus midpoints, kite
+  thirds, trapezoid insets) shifts too; only the four corners always agree. And projective's center (diagonal crossing) is arguably   
+  the more "visual" center for perspective quads.                                                                                     
+                                                                                                                                      
+  Why bilinear should stay the default                                                                                                
+                                                                                                                                      
+  • Robust for arbitrary input. Bilinear is a convex combination of the corners: output is always bounded inside their hull, no       
+    singularities, no branches, works for concave and near-degenerate quads. Projective carries a vanishing line that can fall inside 
+    the frame (demonstrated above), so it needs a convexity/condition guard with a fallback — and the fallback is bilinear anyway.    
+  • Identical in every common case. Parallelogram quads (all rect keys, most hand-tapped quads) give bit-identical output, so most    
+    users would never see a difference from a default switch.                                                                         
+  • Cheaper and simpler. No 3×3 solve, no per-point divide. Projective's one structural advantage — closed-form inverse — doesn't     
+    matter because we only ever push unit points out to the canvas, never invert.                                                     
+  • Projective's real win is narrow but genuine: perspective-correctness. Conic→conic means a fitted circle becomes a true ellipse,   
+    and lines stay lines — right when tracing a photographed rectangle and wanting its inscribed circle. That deserves to exist as an 
+    option, not as the default.                                                                                                       
+                                                                                                                                      
+  Proposed shape of the work                                                                                                          
+                                                                                                                                      
+  Add a quadMapping: 'bilinear' | 'projective' switch in the pure geometry layer (next to quadFramePoint), defaulting to bilinear. The
+  projective path validates convex + well-conditioned (min|w| above epsilon) and falls back to bilinear otherwise. No Rect Keys       
+  popover setting yet — the difference is invisible for parallelogram quads, and a user-facing toggle is only worth the surface if    
+  someone actually does perspective tracing. Say the word if you want me to implement the projective branch now, or flip the default  
+  with the guard in place.            
