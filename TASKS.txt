@@ -1,7 +1,7 @@
 
 [ ] What other technical fonts or style resources would assist in making the app?
 
-[ ] The first thing the tutorial will do when it
+[ ] The first thing the tutorial will do when it opens is show the first slide.
 
 [ ]  menu item under grid section menu:  Sync Grid Snapping to Grid Visibility.
 turn on by default.  toggling on either turns the other on.
@@ -14,7 +14,7 @@ The goal is to add some structure and then some consequent clarity to the GUI sy
 because we will let the user drag some things around on screen to reposition them or resize them
 and adding new sections.
 
-[  ] real clipboard implementation, select-all engine support. (Edit menu).
+[- ] real clipboard implementation, select-all engine support. (Edit menu).
    Pasting should support pasting SVG into vectors on the page, pasting other image data types.
    Rich text, including markdown or RTF into a new EditableText element that can be set to Display Text (single line)
    or Body Text (multiline).  Anything the user can paste should be droppable onto the canvas as well
@@ -26,12 +26,12 @@ and adding new sections.
  		
 		[ ] In-Canvas Elements > Text Controls - will be reused by some for styling selected text.
  		
-We want to make a geometry element for grids.  This will be used in different parts of the
+[ ] We want to make a geometry element for grids.  This will be used in different parts of the
 app for a wide range of purposes.  It will have all of the setters and getters necessary.
 For repeating an element in a grid, it will be able to make use of any positioning point necessary
 from this grid geometry element. 
     -- for the clipboard, if the data is CSV, it pastes the data as a Data Table. 
-    -- for the 
+    -- for In-Canvas Elements > Page Layout > Modular Grids, Column Grids
 
 
  [x] The new document dialog should allow the user to select from different sizes, allows

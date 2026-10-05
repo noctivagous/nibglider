@@ -1,0 +1,17 @@
+◆ Confirmed from Paper's source: its canvas font string is built as fontWeight + size + fontFamily with no style slot (getFontStyle in
+  paper-full.js), so there is genuinely no channel for italics — canvas itself could fake it, but Paper never asks.                   
+                                                                                                                                      
+  Three options:                                                                                                                      
+                                                                                                                                      
+  • Keep the shear synthesis (my recommendation). It works with every typeface, needs no font files, toggling is idempotent via the   
+    tracked flag, and SVG export carries the slant as a transform. Downside is typographic honesty: it's a faux oblique, not the      
+    typeface's true italic face — noticeable in serif/display faces, invisible in most sans body copy.                                
+  • Resolve true italic faces. When italic turns on, swap the item's family to the real italic variant (e.g. Helvetica →              
+    Helvetica-Oblique) if one is loaded, falling back to shear otherwise. Correct typography, but it needs a family→italic-face       
+    registry, those faces loaded for canvas, and fallback rules per family — a medium feature, and it only pays off for faces that    
+    ship italics.                                                                                                                     
+  • Make italic metadata-only. Store the flag (panel loads it, it persists) but render nothing. Honest, smallest, but the toggle looks
+    dead on objects — I'd rather hide the control in that case than ship a dead one.                                                  
+                                                                                                                                      
+  I'd stay with the shear unless you're willing to fund the face registry — faux oblique is what canvas italic would have synthesized 
+  anyway. Want me to keep it, strip it to metadata-only, or scope out the true-face work?  
