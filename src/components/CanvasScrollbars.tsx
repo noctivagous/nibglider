@@ -1,14 +1,16 @@
 // Custom canvas scrollbars: always-visible right + bottom bars that pan
-// the Paper.js view over the DrawingBoard. Overlay inside
-// #canvasContainer (mounted by App); pointer events on the bars never
-// reach the canvas. Thumb geometry comes from scrollbarMath over the
-// board/view union, so thumbs stay on-track in empty space too.
+// the Paper.js view over the workspace (DrawingBoard + user page).
+// Overlay inside #canvasContainer (mounted by App); pointer events on
+// the bars never reach the canvas. Thumb geometry comes from
+// scrollbarMath over the content/view union, so thumbs stay on-track
+// in empty space too.
 import { useRef, useSyncExternalStore } from 'react';
 import type { NibGliderEngine, ViewState } from '../engine/engine';
 import {
   computeScrollGeometry,
   scrollCenterForOffset,
   scrollCenterForPage,
+  unionRects,
 } from '../engine/document/scrollbarMath';
 
 function useViewState(engine: NibGliderEngine): ViewState | null {
@@ -29,11 +31,12 @@ function AxisBar({
   const drag = useRef<{ startPx: number; startRatio: number } | null>(null);
   const horizontal = orientation === 'horizontal';
 
+  const content = state ? unionRects(state.board, state.page) : null;
   const viewCenter = state ? (horizontal ? state.centerX : state.centerY) : 0;
   const viewMin = viewCenter - (state ? (horizontal ? state.viewWidth : state.viewHeight) : 1) / 2;
   const viewSize = state ? (horizontal ? state.viewWidth : state.viewHeight) : 1;
-  const contentMin = state ? (horizontal ? state.board.x : state.board.y) : 0;
-  const contentSize = state ? (horizontal ? state.board.width : state.board.height) : 1;
+  const contentMin = content ? (horizontal ? content.x : content.y) : 0;
+  const contentSize = content ? (horizontal ? content.width : content.height) : 1;
   const geo = computeScrollGeometry(viewMin, viewSize, contentMin, contentSize);
   // Thumb fill and travel fractions of the track (travel = 1 - fill).
   const fill = geo.sizeRatio;

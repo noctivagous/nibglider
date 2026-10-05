@@ -6,6 +6,7 @@ import {
   computeScrollGeometry,
   scrollCenterForOffset,
   scrollCenterForPage,
+  unionRects,
   MIN_THUMB_RATIO,
 } from '../src/engine/document/scrollbarMath.ts';
 
@@ -67,6 +68,16 @@ test('offset round-trips through scrollCenterForOffset', () => {
   assert.equal(scrollCenterForOffset(1.5, 250, 0, 1000), 875);
 });
 
+test('unionRects spans both rects, null-safe', () => {
+  const both = unionRects(
+    { x: -100, y: -100, width: 200, height: 200 },
+    { x: 0, y: 0, width: 400, height: 100 },
+  );
+  assert.deepEqual(both, { x: -100, y: -100, width: 500, height: 200 });
+  const single = unionRects({ x: 1, y: 2, width: 3, height: 4 }, null);
+  assert.deepEqual(single, { x: 1, y: 2, width: 3, height: 4 });
+});
+
 test('paging moves by most of a viewport and clamps to the range', () => {
   assert.equal(scrollCenterForPage(500, 250, 1, 0, 1000), 500 + 225);
   assert.equal(scrollCenterForPage(900, 250, 1, 0, 1000), 875);
@@ -106,5 +117,18 @@ test('board resize flows into the next view snapshot', () => {
     const state = engine.getViewState();
     assert.ok(state);
     assert.equal(state.board.width, engine.drawingBoardRect().width);
+  } finally { cleanup(); }
+});
+
+test('user page flows into the view snapshot for scrollbar range', () => {
+  const { engine, cleanup } = openEngine();
+  try {
+    assert.equal(engine.getViewState()?.page, null);
+    engine.setPageDimensions(800, 600, 'pt');
+    const state = engine.getViewState();
+    assert.ok(state);
+    assert.deepEqual(state.page, { x: -400, y: -300, width: 800, height: 600 });
+    const content = unionRects(state.board, state.page);
+    assert.ok(content.width >= 800 && content.height >= 600);
   } finally { cleanup(); }
 });

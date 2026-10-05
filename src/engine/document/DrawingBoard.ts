@@ -1,8 +1,9 @@
-// DrawingBoard: the finite canvas bounds. A centered rectangle in
-// document points that the board outline, the scrollbars, and the
-// Settings window all read. Artwork may still live outside it (free
-// pan and export frames are unaffected); the board is a bounds
-// reference, not a clip.
+// DrawingBoard: the entire working space (the canvas). A centered
+// rectangle in document points that the workspace outline, the
+// scrollbars, and the Settings window all read. The user page (New
+// Document dimensions) renders as a sheet on top of it. Artwork may
+// still live outside both (free pan and export frames are unaffected);
+// neither is a clip.
 // Defaults: 1m x 1m for SI, 3ft x 3ft for English (project default).
 // Tested from tests/drawing-board.test.mjs.
 import type { LengthUnit } from '../types';

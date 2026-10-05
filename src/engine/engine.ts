@@ -202,6 +202,8 @@ export interface ViewState {
   viewWidth: number;
   viewHeight: number;
   board: BoardRect;
+  /** User page sheet; null until page dimensions are set. */
+  page: BoardRect | null;
 }
 /** Pinch deltas arrive much smaller than wheel notches; this gain keeps the
  * trackpad pinch zoom pace comparable to the scroll-wheel pace. */
@@ -318,10 +320,11 @@ export class NibGliderEngine {
   gridCursor: AnyItem = null;
   pathSnapCursor: AnyItem = null;
   pointSnapCursor: AnyItem = null;
-  // --- DrawingBoard (finite canvas bounds, centered on the origin) ---
+  // --- DrawingBoard (the working space) + user page (the sheet on top) ---
   readonly drawingBoard = new DrawingBoard();
   boardLayer: AnyItem = null;
   boardOutline: AnyItem = null;
+  pageOutline: AnyItem = null;
 
   // --- Snapping flags ---
   isGridSnappingEnabled = false;
@@ -732,6 +735,16 @@ export class NibGliderEngine {
   documentRevision(): number { return this.documentManager.revisionNumber; }
   setPageDimensions(width: number, height: number, unit: LengthUnit = 'pt'): void {
     this.documentManager.setPageSize(width, height, unit);
+    // documentManager.subscribe already notifies; repaint the page sheet.
+    this.drawWorkspace();
+  }
+
+  /** User page rect, centered on the project origin like the board. Null
+   * until New Document (or setPageDimensions) assigns page dimensions. */
+  pageRect(): BoardRect | null {
+    const page = this.documentManager.pageSettings;
+    if (!(page.widthPt != null && page.heightPt != null)) return null;
+    return { x: -page.widthPt / 2, y: -page.heightPt / 2, width: page.widthPt, height: page.heightPt };
   }
   setPageDisplayUnit(unit: LengthUnit): void { this.documentManager.setDisplayUnit(unit); }
   subscribeDocumentChanges(listener: (change: DocumentChange) => void): () => void {
@@ -1231,9 +1244,9 @@ export class NibGliderEngine {
       if (this.isDrawingShape) this.updateShapePreview();
     });
 
-    // setup() replaces the project, so the board outline is repainted on
-    // every attach (StrictMode remounts included).
-    this.drawBoard();
+    // setup() replaces the project, so the workspace (board + page) is
+    // repainted on every attach (StrictMode remounts included).
+    this.drawWorkspace();
     this.updatePreviewBox();
     this.updateTextContent();
   }
@@ -2198,60 +2211,95 @@ export class NibGliderEngine {
       const scope = this.scope;
       const project = scope.project;
       if (!project) return null;
+      // Capture before creating: new Layer() activates itself, and
+      // sendToBack() on the active layer hands activation elsewhere.
+      const active = this.layers.activeOrNull;
       let layer = this.boardLayer;
       if (!layer || layer.project !== project) {
         layer = new scope.Layer();
         layer.name = 'boardLayer';
         this.boardLayer = layer;
         this.boardOutline = null;
+        this.pageOutline = null;
       }
       layer.guide = true;
       layer.locked = true;
       layer.sendToBack();
-      const active = this.layers.activeLayer;
-      if (active && active !== layer) active.activate();
+      if (active && active !== layer && active.project === project) active.activate();
       return layer;
     } catch {
       return null;
     }
   }
 
-  /** Redraw the board outline. Guide-layer chrome: never content, never
-   * exported, hidden with the other guides on print. */
+  /** Redraw the board outline. Kept as the entry point tests and older
+   * callers use; paints the full workspace (board + page). */
   drawBoard(): void {
+    this.drawWorkspace();
+  }
+
+  /** Repaint the workspace: the DrawingBoard working space with the user
+   * page sheet on top of it (when page dimensions are set). One shared
+   * guide layer, so the page always stacks above the board. Guide-layer
+   * chrome throughout: never content, never exported, hidden with the
+   * other guides on print. */
+  drawWorkspace(): void {
     const layer = this.ensureBoardLayer();
     if (!layer) return;
     try {
       const scope = this.scope;
       layer.removeChildren();
+      this.boardOutline = null;
+      this.pageOutline = null;
+      const stroke = 1 / (scope.view.zoom || 1);
       const board = this.drawingBoard.rect();
-      const shape = new scope.Path.Rectangle(
+      const boardShape = new scope.Path.Rectangle(
         new scope.Rectangle(
           new scope.Point(board.x, board.y),
           new scope.Size(board.width, board.height),
         ),
       );
-      shape.fillColor = new scope.Color(0.13, 0.16, 0.21, 1);
-      shape.strokeColor = new scope.Color(0.3, 0.36, 0.43, 1);
-      shape.strokeWidth = 1 / (scope.view.zoom || 1);
-      shape.guide = true;
-      shape.locked = true;
-      if (!shape.data) shape.data = {};
-      shape.data.isDrawingBoard = true;
-      layer.addChild(shape);
+      boardShape.fillColor = new scope.Color(0.13, 0.16, 0.21, 1);
+      boardShape.strokeColor = new scope.Color(0.3, 0.36, 0.43, 1);
+      boardShape.strokeWidth = stroke;
+      this.mountWorkspaceChrome(boardShape, { isDrawingBoard: true });
+      layer.addChild(boardShape);
+      this.boardOutline = boardShape;
+      const page = this.pageRect();
+      if (page) {
+        const pageShape = new scope.Path.Rectangle(
+          new scope.Rectangle(
+            new scope.Point(page.x, page.y),
+            new scope.Size(page.width, page.height),
+          ),
+        );
+        pageShape.fillColor = new scope.Color(0.93, 0.93, 0.92, 1);
+        pageShape.strokeColor = new scope.Color(0.55, 0.58, 0.62, 1);
+        pageShape.strokeWidth = stroke;
+        this.mountWorkspaceChrome(pageShape, { isPage: true });
+        layer.addChild(pageShape);
+        this.pageOutline = pageShape;
+      }
       layer.sendToBack();
-      this.boardOutline = shape;
       scope.view?.update();
     } catch {
       // Headless: no view to paint.
     }
   }
 
-  /** Keep the 1px board outline constant on screen across zoom. */
-  private syncBoardStroke(): void {
+  private mountWorkspaceChrome(shape: AnyItem, data: Record<string, boolean>): void {
+    shape.guide = true;
+    shape.locked = true;
+    if (!shape.data) shape.data = {};
+    Object.assign(shape.data, data);
+  }
+
+  /** Keep the 1px workspace outlines constant on screen across zoom. */
+  private syncWorkspaceStroke(): void {
     try {
-      if (!this.boardOutline) return;
-      this.boardOutline.strokeWidth = 1 / (this.scope.view.zoom || 1);
+      const stroke = 1 / (this.scope.view.zoom || 1);
+      if (this.boardOutline) this.boardOutline.strokeWidth = stroke;
+      if (this.pageOutline) this.pageOutline.strokeWidth = stroke;
     } catch {
       // Headless.
     }
@@ -2271,6 +2319,7 @@ export class NibGliderEngine {
         viewWidth: bounds.width,
         viewHeight: bounds.height,
         board: this.drawingBoard.rect(),
+        page: this.pageRect(),
       };
     } catch {
       return null;
@@ -3582,7 +3631,7 @@ export class NibGliderEngine {
 
   private afterViewChange(): void {
     if (this.isGridEnabled) this.drawGrid();
-    this.syncBoardStroke();
+    this.syncWorkspaceStroke();
     this.emitView();
   }
 

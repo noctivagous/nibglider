@@ -24,6 +24,22 @@ function unionRange(aMin: number, aSize: number, bMin: number, bSize: number): {
   return { min, size: Math.max(aMax, bMax) - min };
 }
 
+export interface ContentRect { x: number; y: number; width: number; height: number }
+
+/** Span of two rects; either side may be null (the board or the page). */
+export function unionRects(a: ContentRect | null, b: ContentRect | null): ContentRect {
+  if (!a && !b) return { x: 0, y: 0, width: 0, height: 0 };
+  if (!a || !b) return { ...((a ?? b) as ContentRect) };
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return {
+    x,
+    y,
+    width: Math.max(a.x + a.width, b.x + b.width) - x,
+    height: Math.max(a.y + a.height, b.y + b.height) - y,
+  };
+}
+
 /** Thumb geometry for one axis. Degenerate input yields a full thumb. */
 export function computeScrollGeometry(
   viewMin: number,

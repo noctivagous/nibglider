@@ -107,6 +107,44 @@ test('board size persists through reload', () => {
   } finally { second.cleanup(); }
 });
 
+test('page rect is null until the user sets page dimensions', () => {
+  const shared = store();
+  const { engine, cleanup } = openEngine(shared);
+  try {
+    assert.equal(engine.pageRect(), null);
+  } finally { cleanup(); }
+});
+
+test('user page paints centered on top of the board, never as content', () => {
+  const shared = store();
+  const { engine, cleanup } = openEngine(shared);
+  try {
+    engine.setPageDimensions(800, 600, 'pt');
+    const page = engine.pageRect();
+    assert.deepEqual(page, { x: -400, y: -300, width: 800, height: 600 });
+    assert.ok(engine.pageOutline);
+    assert.equal(engine.pageOutline.guide, true);
+    // Same workspace layer, above the board shape.
+    assert.equal(engine.pageOutline.layer, engine.boardLayer);
+    assert.ok(engine.pageOutline.index > engine.boardOutline.index);
+    assert.equal(engine.documentStats().objectCount, 0);
+  } finally { cleanup(); }
+});
+
+test('workspace repaint keeps the content layer active with a selection', () => {
+  const shared = store();
+  const { scope, engine, cleanup } = openEngine(shared);
+  try {
+    const rect = new scope.Path.Rectangle({ from: [0, 0], to: [40, 40] });
+    engine.addItemToSelection(rect);
+    const active = scope.project.activeLayer;
+    engine.drawWorkspace();
+    assert.equal(scope.project.activeLayer, active);
+    engine.setPageDimensions(800, 600, 'pt');
+    assert.equal(scope.project.activeLayer, active);
+  } finally { cleanup(); }
+});
+
 test('board outline paints on a guide layer, never as content', () => {
   const shared = store();
   const { engine, cleanup } = openEngine(shared);
