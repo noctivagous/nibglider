@@ -1,6 +1,6 @@
 // Selection intent and Paper mutations. HistoryManager records undo entries.
 import { HistoryManager } from '../history/HistoryManager';
-import { localCentroidOf } from '../geometry/shapeCenters';
+import { localCentroidOf, shiftCircleOrigins } from '../geometry/shapeCenters';
 import { editableBaselines } from '../snapping/textSnap';
 import { SceneRepository } from './SceneRepository';
 
@@ -348,6 +348,8 @@ export class SelectionManager {
     for (const item of sources) {
       try {
         const copy = item.clone(); this.retainClone(item, copy); copy.translate(step);
+        // Clone keeps the source tag while translate bakes into new points.
+        shiftCircleOrigins(copy, step.x, step.y);
         if (this.scene.isInScene(copy)) clones.push(copy);
       } catch { /* This source could not be cloned. */ }
     }

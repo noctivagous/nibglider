@@ -119,7 +119,7 @@ test('application menus cover file, edit, document, operations, modes, layers, c
     const parent = byId.modes.items.find((item) => item.commandId === id);
     assert.ok(parent?.children && parent.children.length > 0, `modes menu lists ${id} submenu`);
   }
-  assert.deepEqual(byId.debug.items.map((item) => item.commandId), ['reset-settings']);
+  assert.deepEqual(byId.debug.items.map((item) => item.commandId), ['reset-settings', 'empty-canvas']);
   // Canvas right-click menu mirrors the Layers Order group.
   assert.equal(byId['context-object'].title, 'Object');
   assert.deepEqual(

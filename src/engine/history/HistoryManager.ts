@@ -2,6 +2,7 @@ import type { NGDrawable } from '../model/NGDrawable';
 import { SceneRepository, type RetainedPath } from '../scene/SceneRepository';
 import type { SelectionManager } from '../scene/SelectionManager';
 import { UndoManager, type UndoCommand } from '../undoManager';
+import { remapCircleOrigins, rotateAboutMapper, scaleAboutMapper, shiftCircleOrigins } from '../geometry/shapeCenters';
 
 type Item = any;
 export interface MoveEntry { item: Item; before: paper.Point; after: paper.Point }
@@ -142,23 +143,38 @@ export class HistoryManager {
   private restoreMove(entries: MoveEntry[], position: 'before' | 'after'): void {
     const layer = this.scene.layer;
     for (const entry of entries) if (entry.item && layer && entry.item.parent === layer) {
-      try { entry.item.position = entry[position].clone(); } catch { /* Already gone. */ }
+      try {
+        const target = entry[position].clone();
+        // Position restore bakes into segment points; shift stored origins
+        // by the same delta first so they land with the geometry.
+        try {
+          const current = entry.item.position;
+          if (current && Number.isFinite(current.x) && Number.isFinite(current.y)) {
+            shiftCircleOrigins(entry.item, target.x - current.x, target.y - current.y);
+          }
+        } catch { /* Origin shift is best-effort; the restore still applies. */ }
+        entry.item.position = target;
+      } catch { /* Already gone. */ }
     }
   }
 
   recordScale(items: Item[], factor: number, center: paper.Point): void {
     this.recordAffine('Scale', items,
-      () => this.applyAffine(items, (item) => item.scale(1 / factor, center)),
-      () => this.applyAffine(items, (item) => item.scale(factor, center)));
+      () => this.applyAffine(items, (item) => item.scale(1 / factor, center), scaleAboutMapper(center, 1 / factor)),
+      () => this.applyAffine(items, (item) => item.scale(factor, center), scaleAboutMapper(center, factor)));
   }
   recordRotate(items: Item[], degrees: number, center: paper.Point): void {
     this.recordAffine('Rotate', items,
-      () => this.applyAffine(items, (item) => item.rotate(-degrees, center)),
-      () => this.applyAffine(items, (item) => item.rotate(degrees, center)));
+      () => this.applyAffine(items, (item) => item.rotate(-degrees, center), rotateAboutMapper(center, -degrees)),
+      () => this.applyAffine(items, (item) => item.rotate(degrees, center), rotateAboutMapper(center, degrees)));
   }
-  private applyAffine(items: Item[], apply: (item: Item) => void): void {
+  private applyAffine(
+    items: Item[],
+    apply: (item: Item) => void,
+    map?: (point: { x: number; y: number }) => { x: number; y: number },
+  ): void {
     for (const item of items) if (this.scene.isInScene(item)) {
-      try { apply(item); } catch { /* Item was consumed by another operation. */ }
+      try { apply(item); if (map) remapCircleOrigins(item, map); } catch { /* Item was consumed by another operation. */ }
     }
   }
   private recordAffine(label: string, items: Item[], undo: () => void, redo: () => void): void {

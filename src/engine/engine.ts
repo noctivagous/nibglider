@@ -20,6 +20,7 @@ import {
   type RectFrameInput,
 } from './geometry/RectangleGeometry';
 import { supershapeRadius as supershapeRadiusValue } from './geometry/pathResolver';
+import { remapCircleOrigins, scaleAboutMapper, shiftCircleOrigins } from './geometry/shapeCenters';
 import {
   loadEngineSettings,
   memorySettingsStore,
@@ -2778,7 +2779,11 @@ export class NibGliderEngine {
       if (!bounds || !bounds.center) return;
       const delta = target.subtract(bounds.center);
       for (const item of placed) {
-        try { item.translate(delta); } catch { /* Keep this item where it is. */ }
+        try {
+          item.translate(delta);
+          // Decoded items keep their stored origins; carry them to placement.
+          shiftCircleOrigins(item, delta.x, delta.y);
+        } catch { /* Keep this item where it is. */ }
       }
     } catch {
       // Placement never fails a paste: items stay where they decoded.
@@ -2792,7 +2797,10 @@ export class NibGliderEngine {
       const vb = this.scope.view.bounds;
       if (!bounds || !vb) return;
       const scale = viewFitScale(bounds, vb);
-      if (scale < 1) item.scale(scale, bounds.center);
+      if (scale < 1) {
+        item.scale(scale, bounds.center);
+        remapCircleOrigins(item, scaleAboutMapper(bounds.center, scale));
+      }
     } catch { /* A paste must never throw. */ }
   }
 

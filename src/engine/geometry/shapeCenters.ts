@@ -1,8 +1,13 @@
 // Circle-origin tagging and closed-path centroid resolution.
 // Snapping and selection markers share these so a revealed centroid is the
-// same point that point-snapping hits. Owns no scene state: callers map the
-// returned local points through item.localToGlobal so results track moves,
-// scales, and rotations applied to the item matrix.
+// same point that point-snapping hits. Owns no scene state: readers map the
+// returned local points through item.localToGlobal at query time.
+//
+// Paper bakes position/scale/rotate into segment points (applyMatrix) while
+// leaving the item matrix identity, so a stored local origin does NOT follow
+// later transforms on its own. Every mutation that moves geometry must carry
+// the tag along via shiftCircleOrigins/remapCircleOrigins below; readers must
+// never adjust the tag themselves.
 export interface CenteredSegment {
   point: { x: number; y: number };
   handleIn: { x: number; y: number };
@@ -70,6 +75,72 @@ export function polygonCentroid(points: Array<{ x: number; y: number }>): { x: n
   }
   if (!Number.isFinite(twiceArea) || Math.abs(twiceArea) < 1e-9) return null;
   return { x: cx / (3 * twiceArea), y: cy / (3 * twiceArea) };
+}
+
+/** Global-point mapper for remapCircleOrigins: scale about a center. */
+export function scaleAboutMapper(
+  center: { x: number; y: number }, factor: number,
+): (point: { x: number; y: number }) => { x: number; y: number } {
+  return (point) => ({
+    x: center.x + (point.x - center.x) * factor,
+    y: center.y + (point.y - center.y) * factor,
+  });
+}
+
+/** Global-point mapper for remapCircleOrigins: Paper-clockwise rotation. */
+export function rotateAboutMapper(
+  center: { x: number; y: number }, degrees: number,
+): (point: { x: number; y: number }) => { x: number; y: number } {
+  const radians = (degrees * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return (point) => {
+    const dx = point.x - center.x;
+    const dy = point.y - center.y;
+    return {
+      x: center.x + dx * cos - dy * sin,
+      y: center.y + dx * sin + dy * cos,
+    };
+  };
+}
+
+/**
+ * Carry stored circle origins along a translation applied to a (possibly
+ * grouped) item: shift every tagged descendant by the same global delta.
+ * No-op for untagged subtrees. Call with the same delta as the geometry
+ * move so the tag and the baked segment points stay in the same frame.
+ */
+export function shiftCircleOrigins(root: any, dx: number, dy: number): void {
+  if (!Number.isFinite(dx) || !Number.isFinite(dy) || (dx === 0 && dy === 0)) return;
+  remapCircleOrigins(root, (point) => ({ x: point.x + dx, y: point.y + dy }));
+}
+
+/**
+ * Carry stored circle origins along an arbitrary global-point transform
+ * (scale/rotate about a center) applied to a (possibly grouped) item.
+ * Each tagged leaf is re-read in its own local frame, so nesting under
+ * transformed groups stays exact. Leaves whose mapping fails keep their
+ * previous tag rather than recording garbage.
+ */
+export function remapCircleOrigins(
+  root: any, map: (point: { x: number; y: number }) => { x: number; y: number } | null,
+): void {
+  if (!root || typeof map !== 'function') return;
+  const children = root.children;
+  if (Array.isArray(children) && children.length > 0) {
+    for (const child of children) remapCircleOrigins(child, map);
+    return;
+  }
+  const origin = readCircleOrigin(root);
+  if (!origin) return;
+  let next: { x: number; y: number } | null = null;
+  try {
+    const global = root.localToGlobal({ x: origin.x, y: origin.y });
+    if (!global || !Number.isFinite(global.x) || !Number.isFinite(global.y)) return;
+    next = map({ x: global.x, y: global.y });
+  } catch { return; }
+  if (!next || !Number.isFinite(next.x) || !Number.isFinite(next.y)) return;
+  tagCircleOrigin(root, next);
 }
 
 /**

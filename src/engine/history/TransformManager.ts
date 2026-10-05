@@ -1,6 +1,7 @@
 import { HistoryManager, type MoveEntry } from './HistoryManager';
 import { SelectionManager } from '../scene/SelectionManager';
 import { SceneRepository } from '../scene/SceneRepository';
+import { remapCircleOrigins, rotateAboutMapper, scaleAboutMapper, shiftCircleOrigins } from '../geometry/shapeCenters';
 
 type Item = any;
 // Applies live movement and transforms. Only completed gestures and discrete
@@ -19,6 +20,8 @@ export class TransformManager {
     if (!Number.isFinite(delta.x) || !Number.isFinite(delta.y)) return;
     for (const item of this.selection.selectedItems) if (this.scene.isInScene(item)) {
       item.position = item.position.add(delta);
+      // Paper bakes the move into segment points; carry stored origins along.
+      shiftCircleOrigins(item, delta.x, delta.y);
     }
     this.selection.refreshCentroids();
   }
@@ -37,6 +40,7 @@ export class TransformManager {
     if (!items.length) return;
     const center = this.selection.collectiveCenter(items);
     items.forEach((item) => item.scale(factor, center));
+    for (const item of items) remapCircleOrigins(item, scaleAboutMapper(center, factor));
     this.selection.refreshCentroids();
     this.history.recordScale(items, factor, center);
   }
@@ -46,21 +50,33 @@ export class TransformManager {
     if (!items.length) return;
     const center = this.selection.collectiveCenter(items);
     items.forEach((item) => item.rotate(degrees, center));
+    for (const item of items) remapCircleOrigins(item, rotateAboutMapper(center, degrees));
     this.selection.refreshCentroids();
     this.history.recordRotate(items, degrees, center);
   }
   scalePreview(factor: number): void {
     if (!Number.isFinite(factor) || factor <= 0) return;
-    this.applyPreview((items, center) => items.forEach((item) => item.scale(factor, center)));
+    this.applyPreview(
+      (items, center) => items.forEach((item) => item.scale(factor, center)),
+      (center) => scaleAboutMapper(center, factor),
+    );
   }
   rotatePreview(degrees: number): void {
     if (!Number.isFinite(degrees) || degrees === 0) return;
-    this.applyPreview((items, center) => items.forEach((item) => item.rotate(degrees, center)));
+    this.applyPreview(
+      (items, center) => items.forEach((item) => item.rotate(degrees, center)),
+      (center) => rotateAboutMapper(center, degrees),
+    );
   }
-  private applyPreview(mutator: (items: Item[], center: paper.Point) => void): void {
+  private applyPreview(
+    mutator: (items: Item[], center: paper.Point) => void,
+    mapperFor: (center: paper.Point) => (point: { x: number; y: number }) => { x: number; y: number },
+  ): void {
     const items = this.selection.topLevelSelected();
     if (!items.length) return;
     const center = this.selection.collectiveCenter(items);
     mutator(items, center);
+    const map = mapperFor(center);
+    for (const item of items) remapCircleOrigins(item, map);
   }
 }

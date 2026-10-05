@@ -27,8 +27,17 @@ function setup() {
 }
 
 function near(point, x, y, epsilon = 1e-6) {
+  assert.ok(point, 'expected a snap point');
   assert.ok(Math.abs(point.x - x) < epsilon, `x ${point.x} ~= ${x}`);
   assert.ok(Math.abs(point.y - y) < epsilon, `y ${point.y} ~= ${y}`);
+}
+
+/** Midpoint of a hexagon's opposite vertices in global coordinates: its
+ * circumcenter derived purely from live geometry, independent of any tag. */
+function oppositeMidpoint(item) {
+  const a = item.localToGlobal(item.segments[0].point);
+  const b = item.localToGlobal(item.segments[3].point);
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
 function snapState() {
@@ -184,6 +193,127 @@ test('selection shows no marker for open paths', () => {
     const line = new scope.Path({ segments: [[0, 0], [60, 0]] });
     selection.add(line);
     assert.equal(selection.centroidIndicators.length, 0);
+  } finally { cleanup(); }
+});
+
+test('stored circle origin follows a move and point-snaps at the new center', () => {
+  const { scope, scene, selection, history, cleanup } = setup();
+  try {
+    const transforms = new TransformManager(scene, selection, history);
+    const factory = shapeFactory(scope);
+    const hexagon = factory.createInnerShape(
+      innerBuild(new scope.Point(100, 100), 50, 'polygon', { sides: 6 }));
+    selection.add(hexagon);
+    transforms.moveSelectionBy(new scope.Point(200, 0));
+    const manager = new SnappingManager(scope, snapState,
+      () => new Set(), (item) => !!item.guide,
+      { mount: () => {}, pathCursor: () => {}, pointCursor: () => {} });
+    // Paper bakes position changes into segment points, so the tag must be
+    // carried along: snapping near the moved center must hit (300, 100),
+    // not the stale construction center (100, 100).
+    const snapped = manager.snapPoint(new scope.Point(303, 102));
+    assert.ok(snapped);
+    near(snapped, 300, 100, 1e-4);
+  } finally { cleanup(); }
+});
+
+test('stored circle origin follows moves of a grouped shape', () => {
+  const { scope, scene, selection, history, cleanup } = setup();
+  try {
+    const transforms = new TransformManager(scene, selection, history);
+    const factory = shapeFactory(scope);
+    const hexagon = factory.createInnerShape(
+      innerBuild(new scope.Point(100, 100), 50, 'polygon', { sides: 6 }));
+    const label = new scope.PointText(new scope.Point(100, 100));
+    label.content = 'x';
+    const group = new scope.Group([hexagon, label]);
+    selection.add(group);
+    transforms.moveSelectionBy(new scope.Point(50, 25));
+    const manager = new SnappingManager(scope, snapState,
+      () => new Set(), (item) => !!item.guide,
+      { mount: () => {}, pathCursor: () => {}, pointCursor: () => {} });
+    const snapped = manager.snapPoint(new scope.Point(152, 126));
+    assert.ok(snapped);
+    near(snapped, 150, 125, 1e-4);
+  } finally { cleanup(); }
+});
+
+test('stored circle origin follows scale and rotate about another center', () => {
+  const { scope, scene, selection, history, cleanup } = setup();
+  try {
+    const transforms = new TransformManager(scene, selection, history);
+    const factory = shapeFactory(scope);
+    const hexagon = factory.createInnerShape(
+      innerBuild(new scope.Point(100, 100), 50, 'polygon', { sides: 6 }));
+    const rect = new scope.Path.Rectangle({ from: [190, 190], to: [210, 210] });
+    selection.add(hexagon);
+    selection.add(rect);
+    const manager = new SnappingManager(scope, snapState,
+      () => new Set(), (item) => !!item.guide,
+      { mount: () => {}, pathCursor: () => {}, pointCursor: () => {} });
+    // Scale 2x about the union-bounds center; the tag must land where the
+    // same affine carries the construction center.
+    const before = selection.collectiveBounds([hexagon, rect]).center;
+    const wantScaled = {
+      x: before.x + (100 - before.x) * 2,
+      y: before.y + (100 - before.y) * 2,
+    };
+    transforms.scale(2);
+    const scaled = manager.snapPoint(new scope.Point(wantScaled.x + 2, wantScaled.y + 1));
+    assert.ok(scaled);
+    near(scaled, wantScaled.x, wantScaled.y, 1e-4);
+    // Rotate 90 degrees clockwise about the new union center. The hexagon's
+    // opposite vertices stay antipodal, so their midpoint is an independent
+    // geometric oracle for the traveled center.
+    const mid = selection.collectiveBounds([hexagon, rect]).center;
+    const wantRotated = {
+      x: mid.x - (wantScaled.y - mid.y),
+      y: mid.y + (wantScaled.x - mid.x),
+    };
+    transforms.rotate(90);
+    const opposite = oppositeMidpoint(hexagon);
+    near(opposite, wantRotated.x, wantRotated.y, 1e-4);
+    const rotated = manager.snapPoint(new scope.Point(opposite.x + 2, opposite.y + 1));
+    assert.ok(rotated);
+    near(rotated, opposite.x, opposite.y, 1e-4);
+  } finally { cleanup(); }
+});
+
+test('move undo and redo carry the stored circle origin both ways', () => {
+  const { scope, scene, selection, history, cleanup } = setup();
+  try {
+    const transforms = new TransformManager(scene, selection, history);
+    const factory = shapeFactory(scope);
+    const hexagon = factory.createInnerShape(
+      innerBuild(new scope.Point(100, 100), 50, 'polygon', { sides: 6 }));
+    selection.add(hexagon);
+    const manager = new SnappingManager(scope, snapState,
+      () => new Set(), (item) => !!item.guide,
+      { mount: () => {}, pathCursor: () => {}, pointCursor: () => {} });
+    transforms.nudge(30, 0);
+    near(manager.snapPoint(new scope.Point(132, 101)), 130, 100, 1e-4);
+    history.undo();
+    near(manager.snapPoint(new scope.Point(102, 101)), 100, 100, 1e-4);
+    history.redo();
+    near(manager.snapPoint(new scope.Point(132, 101)), 130, 100, 1e-4);
+  } finally { cleanup(); }
+});
+
+test('duplicate carries the stored circle origin by the offset step', () => {
+  const { scope, selection, cleanup } = setup();
+  try {
+    const factory = shapeFactory(scope);
+    const hexagon = factory.createInnerShape(
+      innerBuild(new scope.Point(100, 100), 50, 'polygon', { sides: 6 }));
+    selection.add(hexagon);
+    assert.ok(selection.duplicate());
+    const manager = new SnappingManager(scope, snapState,
+      () => new Set(), (item) => !!item.guide,
+      { mount: () => {}, pathCursor: () => {}, pointCursor: () => {} });
+    // The clone lands at (120, 120); its tag must travel with it.
+    const snapped = manager.snapPoint(new scope.Point(122, 121));
+    assert.ok(snapped);
+    near(snapped, 120, 120, 1e-4);
   } finally { cleanup(); }
 });
 
