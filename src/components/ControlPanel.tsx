@@ -27,7 +27,7 @@ import {
   setCurrent as gallerySetCurrent,
   type GalleryDoc,
 } from '../ui/DocumentGallery';
-import { clearNibGliderSettings } from '../tutorial/tutorialProgress';
+
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import DocumentGallery, { type GalleryMode } from './DocumentGallery';
 import NewDocumentDialog, { type NewDocumentSpec } from './NewDocumentDialog';
@@ -54,11 +54,6 @@ import type {
 } from '../engine/engine';
 
 const ASPECT_RATIO_PRESETS = ['1:1', '3:4', '2:3', '16:9'];
-
-// Vertical menu rail: not launched. The rail markup below (including the
-// File card-grid layout) stays in place for later reuse; the horizontal
-// application menu bar is the live menu surface.
-const SHOW_MENU_RAIL = false;
 
 // Tiny legend glyph for pane titles (Adobe CS-style: small, currentColor).
 function TitleIcon({ children }: { children: ReactNode }) {
@@ -2614,9 +2609,6 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     panels.removeSection(id);
     setCtxMenu(null);
   }, [panels]);
-  const restoreSection = useCallback((id: string) => {
-    panels.restoreSection(id);
-  }, [panels]);
   const dragRef = useRef<{
     id: string;
     gapTarget: { x: number; y: number } | null;
@@ -2673,68 +2665,13 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     [panels],
   );
   const isRemoved = useCallback((id: string) => removedList.includes(id), [removedList]);
-  // Operations rail box: immediate entries act on the selection at once;
-  // scale/rotate open the modal dialog with a live on-page preview.
-  const [docValue, setDocValue] = useState('doc-none');
-  const [opValue, setOpValue] = useState('ops-none');
-  const [layersValue, setLayersValue] = useState('layers-none');
-  const [sectionsValue, setSectionsValue] = useState('sections-none');
-  const [debugValue, setDebugValue] = useState('debug-none');
+  // Scale/rotate modal dialog with a live on-page preview. Its rail trigger
+  // is archived; the dialog stays for the future top Operations wiring.
   const [opDialog, setOpDialog] = useState<
     | { kind: 'scale'; draft: number; applied: number }
     | { kind: 'rotate'; draft: number; applied: number }
     | null
   >(null);
-
-  const openOpDialog = useCallback(
-    (kind: 'scale' | 'rotate') => {
-      if (!engine.canTransformSelection()) return;
-      dismissSelects();
-      setOpDialog(
-        kind === 'scale'
-          ? { kind, draft: 100, applied: 1 }
-          : { kind, draft: 0, applied: 0 },
-      );
-    },
-    [engine, dismissSelects],
-  );
-  const handleOperation = useCallback(
-    (v: string) => {
-      if (v === 'ops-none') return;
-      dismissSelects();
-      switch (v) {
-        case 'op-delete':
-          engine.removeAllSelectedItemsAndReset();
-          break;
-        case 'op-duplicate':
-          engine.duplicateSelection();
-          break;
-        case 'op-group':
-          engine.groupSelection();
-          break;
-        case 'op-ungroup':
-          engine.ungroupSelected();
-          break;
-        case 'op-front':
-          engine.bringSelectionToFront();
-          break;
-        case 'op-back':
-          engine.sendSelectionToBack();
-          break;
-        case 'op-scale':
-          openOpDialog('scale');
-          break;
-        case 'op-rotate':
-          openOpDialog('rotate');
-          break;
-        default:
-          break;
-      }
-      // Reset to the placeholder label after acting.
-      setOpValue('ops-none');
-    },
-    [engine, dismissSelects, openOpDialog],
-  );
   const handleOpDraft = useCallback(
     (n: number) => {
       if (!opDialog || !Number.isFinite(n)) return;
@@ -2945,110 +2882,6 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   );
   // Document and Settings menu: document controls only. Section restore
   // and settings reset live in the Sections and Debug menus below.
-  const DOCUMENT_OPTIONS: CustomSelectOption[] = [
-    { value: 'doc-canvas', label: 'Canvas size…', disabled: true, title: 'Canvas size settings are not available yet' },
-    {
-      value: 'grp-doc-unit',
-      label: 'Length unit',
-      children: [
-        { value: 'doc-unit-pt', label: 'Points (pt)' },
-        { value: 'doc-unit-inch', label: 'Inches' },
-        { value: 'doc-unit-cm', label: 'Centimeters (cm)' },
-      ],
-    },
-  ];
-  const handleDocument = useCallback(
-    (value: string) => {
-      dismissSelects();
-      if (value === 'doc-unit-pt') engine.setLengthUnit('pt');
-      else if (value === 'doc-unit-inch') engine.setLengthUnit('inch');
-      else if (value === 'doc-unit-cm') engine.setLengthUnit('cm');
-      setDocValue('doc-none');
-    },
-    [engine, dismissSelects],
-  );
-  // Sections menu: restore removed panel sections.
-  const removedOptions: CustomSelectOption[] = [
-    ...(removedList.length > 0
-      ? [
-          {
-            value: 'grp-removed',
-            label: 'Restore',
-            children: removedList.map((id) => ({
-              value: `restore:${id}`,
-              label: sectionLabel(id),
-            })),
-          },
-        ]
-      : []),
-  ];
-  const DEBUG_OPTIONS: CustomSelectOption[] = [
-    { value: 'debug-reset-settings', label: 'Reset all settings' },
-  ];
-  const handleDebug = useCallback((value: string) => {
-    setDebugValue('debug-none');
-    if (value !== 'debug-reset-settings') return;
-    try {
-      clearNibGliderSettings(localStorage);
-    } catch { /* Storage can be unavailable in private browsing. */ }
-    window.location.reload();
-  }, []);
-  // Operations menu: flat grouped areas (headers, not collapsible parents)
-  // so every entry is one hover away. Shortcuts shown where a binding exists.
-  const OPERATIONS_OPTIONS: CustomSelectOption[] = [
-    { value: 'hdr-ops-immediate', label: 'Immediate', header: true },
-    { value: 'op-delete', label: 'Delete selection', shortcut: 'Backspace' },
-    { value: 'op-duplicate', label: 'Duplicate selection' },
-    { value: 'op-group', label: 'Group selection', shortcut: primaryShortcut('G') },
-    { value: 'op-ungroup', label: 'Ungroup selection', shortcut: primaryShortcut('G', true) },
-    { value: 'op-front', label: 'Bring to front' },
-    { value: 'op-back', label: 'Send to back' },
-    { value: 'hdr-ops-dialog', label: 'With dialog', header: true },
-    { value: 'op-scale', label: 'Scale…' },
-    { value: 'op-rotate', label: 'Rotate…' },
-  ];
-  // Layers and Objects menu: ordering and selection operations.
-  const LAYERS_OPTIONS: CustomSelectOption[] = [
-    { value: 'hdr-layers-order', label: 'Order', header: true },
-    { value: 'layer-front', label: 'Bring to front' },
-    { value: 'layer-back', label: 'Send to back' },
-    { value: 'hdr-layers-selection', label: 'Selection', header: true },
-    { value: 'layer-group', label: 'Group selection', shortcut: primaryShortcut('G') },
-    { value: 'layer-ungroup', label: 'Ungroup selection', shortcut: primaryShortcut('G', true) },
-    { value: 'layer-duplicate', label: 'Duplicate selection' },
-    { value: 'layer-delete', label: 'Delete selection', shortcut: 'Backspace' },
-  ];
-  const handleLayers = useCallback(
-    (v: string) => {
-      if (v === 'layers-none') return;
-      dismissSelects();
-      switch (v) {
-        case 'layer-delete':
-          engine.removeAllSelectedItemsAndReset();
-          break;
-        case 'layer-duplicate':
-          engine.duplicateSelection();
-          break;
-        case 'layer-group':
-          engine.groupSelection();
-          break;
-        case 'layer-ungroup':
-          engine.ungroupSelected();
-          break;
-        case 'layer-front':
-          engine.bringSelectionToFront();
-          break;
-        case 'layer-back':
-          engine.sendSelectionToBack();
-          break;
-        default:
-          break;
-      }
-      // Reset to the placeholder label after acting.
-      setLayersValue('layers-none');
-    },
-    [engine, dismissSelects],
-  );
   // Selection state: when items are selected the Stroke/Fill panels
   // reflect the selection (first selected item) instead of the globals.
   const sel = engine.selectionPaint();
@@ -3214,94 +3047,8 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   return (
     <div className="panel-shell">
       <div className="panel-side">
-        {SHOW_MENU_RAIL && (
-        <div className="panel-rail" role="group" aria-label="Panel tools">
-          <WidgetHandle widget="menus" label="Application menus" />
-          <div
-            className="doc-label"
-            title={docDirty ? `${docName} (unsaved changes)` : docName}
-            aria-live="polite"
-          >
-            {docName}
-            {docDirty ? ' •' : null}
-          </div>
-          <div className="rail-box" title="Document and Settings" data-tutorial-id="menu-document">
-            <CustomSelect
-              id="panelDocumentSelect"
-              ariaLabel="Document and Settings"
-              placeholder="Document"
-              value={docValue}
-              options={DOCUMENT_OPTIONS}
-              onChange={handleDocument}
-              openOnHover
-              stickyOnClick
-              onHoverOpen={handleSelectHoverOpen}
-              forceCloseKey={selectCloseKey}
-            />
-          </div>
-          <div className="rail-box" title="Operations on the selection" data-tutorial-id="menu-operations">
-            <CustomSelect
-              id="panelOperationsSelect"
-              ariaLabel="Operations on the selection"
-              placeholder="Operations"
-              value={opValue}
-              options={OPERATIONS_OPTIONS}
-              onChange={handleOperation}
-              openOnHover
-              stickyOnClick
-              onHoverOpen={handleSelectHoverOpen}
-              forceCloseKey={selectCloseKey}
-            />
-          </div>
-          <div className="rail-box" title="Layers and Objects" data-tutorial-id="menu-layers">
-            <CustomSelect
-              id="panelLayersSelect"
-              ariaLabel="Layers and Objects"
-              placeholder="Layers"
-              value={layersValue}
-              options={LAYERS_OPTIONS}
-              onChange={handleLayers}
-              openOnHover
-              stickyOnClick
-              onHoverOpen={handleSelectHoverOpen}
-              forceCloseKey={selectCloseKey}
-            />
-          </div>
-          <div className="rail-box" title="Panel sections" data-tutorial-id="menu-sections">
-            <CustomSelect
-              id="panelSectionsSelect"
-              ariaLabel="Panel sections"
-              placeholder="Sections"
-              value={sectionsValue}
-              options={removedOptions}
-              onChange={(v) => {
-                if (v.startsWith('restore:')) restoreSection(v.slice(8));
-                setSectionsValue('sections-none');
-              }}
-              openOnHover
-              stickyOnClick
-              onHoverOpen={handleSelectHoverOpen}
-              forceCloseKey={selectCloseKey}
-            />
-          </div>
-          <div className="rail-box" title="Debug settings" data-tutorial-id="menu-debug">
-            <CustomSelect
-              id="panelDebugSelect"
-              ariaLabel="Debug settings"
-              placeholder="Debug"
-              value={debugValue}
-              options={DEBUG_OPTIONS}
-              onChange={handleDebug}
-              openOnHover
-              stickyOnClick
-              onHoverOpen={handleSelectHoverOpen}
-              forceCloseKey={selectCloseKey}
-            />
-          </div>
-        </div>
-        )}
         <KeymapWidget engine={engine} />
-        </div>
+      </div>
       <div
         className="panel-sections"
         role="group"
