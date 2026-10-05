@@ -3869,22 +3869,22 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             onHoverOpen={handleSelectHoverOpen}
             forceCloseKey={selectCloseKey}
           />
+          <span className="param-item">
+            <label htmlFor="gridSpacingStepper">Spacing</label>
+            <NumericStepper
+              id="gridSpacingStepper"
+              size="compact"
+              value={engine.gridSpacing}
+              min={1}
+              max={500}
+              step={1}
+              unit="pt"
+              ariaLabel="Grid spacing in points"
+              title="Grid spacing"
+              onCommit={(n) => engine.setGridSpacing(n)}
+            />
+          </span>
         </header>
-        <div className="pane-body pane-body-row">
-          <label htmlFor="gridSpacingStepper">Spacing</label>
-          <NumericStepper
-            id="gridSpacingStepper"
-            size="compact"
-            value={engine.gridSpacing}
-            min={1}
-            max={500}
-            step={1}
-            unit="pt"
-            ariaLabel="Grid spacing in points"
-            title="Grid spacing"
-            onCommit={(n) => engine.setGridSpacing(n)}
-          />
-        </div>
       </PanelSection>
       )}
       {isRemoved('snappingControls') ? null : (
