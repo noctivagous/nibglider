@@ -16,6 +16,7 @@ import {
 } from './geometry/ShapeFactory';
 import {
   circleInnerShapeUnitPoints as circleUnitPoints,
+  type QuadMapping,
   type RectFrameInput,
 } from './geometry/RectangleGeometry';
 import { supershapeRadius as supershapeRadiusValue } from './geometry/pathResolver';
@@ -1142,6 +1143,19 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  // Quad-frame mapping for quad-fitted shapes. Bilinear is robust for every
+  // frame; projective is perspective-correct on convex, well-conditioned
+  // frames and falls back per shape (raw quad) otherwise. Wired to the
+  // Settings window switch when that lands; safe to call before then.
+  quadMapping: QuadMapping = 'bilinear';
+
+  setQuadMapping(m: QuadMapping): void {
+    if (m !== 'bilinear' && m !== 'projective') return;
+    this.quadMapping = m;
+    this.updateTextContent();
+    this.notify();
+  }
+
   setRectangleOrientation(o: number): void {
     const v = Number.isFinite(o) ? Math.round(o) : 0;
     this.rectangleOrientation = ((v % 4) + 4) % 4;
@@ -1979,9 +1993,9 @@ export class NibGliderEngine {
   }
 
   // --- Quad-frame shapes: the selected Rect Keys shape fitted to the quad
-  // corners (bilinear), used by the quad-by-4-pts key once three corners are
-  // fixed. Returns null for the plain 'rectangle' setting or degenerate
-  // corners; the caller then deposits the raw quad.
+  // corners, used by the quad-by-4-pts key once three corners are fixed.
+  // Returns null for the plain 'rectangle' setting, degenerate corners, or
+  // a projectively unusable frame; the caller then deposits the raw quad.
   createQuadFrameShape(styleOrPreview = 'stroke', corners?: AnyItem[] | null): AnyItem {
     const pts = corners ?? [];
     const quad = pts.length === 4 ? pts.map((p) => xy(p)) : null;
@@ -1993,6 +2007,7 @@ export class NibGliderEngine {
       orientation: this.rectangleOrientation,
       guideAngle: this.shapeGuideAngle,
       corners: quad && quad.every((p) => p != null) ? (quad as [any, any, any, any]) : null,
+      mapping: this.quadMapping,
     });
   }
 

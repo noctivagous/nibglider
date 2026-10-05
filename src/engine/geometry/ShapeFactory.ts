@@ -24,13 +24,14 @@ import {
   parallelogramFrameST,
   placeUnitPoints,
   quadArea,
-  quadFramePoint,
+  quadFrameMapper,
   rectFrameBasis,
   rotST,
   rotWell,
   squareShear,
   trapezoidFrameST,
   type QuadCorners,
+  type QuadMapping,
   type RectFrameInput,
   type UnitPoint,
 } from './RectangleGeometry';
@@ -92,6 +93,7 @@ export interface QuadFrameBuild {
   orientation: number;
   guideAngle: number;
   corners: QuadCorners | null;
+  mapping?: QuadMapping;
 }
 
 export class ShapeFactory {
@@ -355,18 +357,21 @@ export class ShapeFactory {
 
   /**
    * The selected Rect Keys shape fitted to a general quad frame. Mirrors
-   * createRectFrameShape, but the (s, t) projection is the bilinear map over
-   * the four corners instead of the affine rect basis. Returns null for the
-   * plain 'rectangle' setting (the caller deposits the raw quad) and for
-   * missing or degenerate corners.
+   * createRectFrameShape, but the (s, t) projection maps over the four
+   * quad corners instead of the affine rect basis: bilinear by default, or
+   * projective when requested and the frame is convex and well-conditioned.
+   * Returns null for the plain 'rectangle' setting (the caller deposits the
+   * raw quad) and for missing, degenerate, or projectively unusable corners.
    */
   createQuadFrameShape(build: QuadFrameBuild): Item {
     const scope = this.scope;
     const corners = build.corners;
     if (!corners || quadArea(corners) < 1e-6) return null;
     if (build.innerType === 'rectangle') return null;
+    const toPt = quadFrameMapper(corners, build.orientation, build.mapping ?? 'bilinear');
+    if (!toPt) return null;
     const P = (s: number, t: number): Item => {
-      const q = quadFramePoint(corners, s, t, build.orientation);
+      const q = toPt(s, t);
       return new scope.Point(q.x, q.y);
     };
     const isPreview = (build.styleOrPreview ?? 'stroke') === 'preview';

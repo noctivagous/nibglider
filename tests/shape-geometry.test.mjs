@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   circleInnerShapeUnitPoints,
+  isConvexQuad,
   parallelogramFrameST,
   quadArea,
+  quadFrameMapper,
   quadFramePoint,
+  quadHomography,
   rectFrameBasis,
   rotST,
   trapezoidFrameST,
@@ -56,6 +59,40 @@ test('quad bilinear map pins corners, averages the center, and flags degeneracy'
   assert.ok(quadArea(square) > 0);
   assert.ok(quadArea(trap) > 0);
   assert.equal(quadArea([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 0 }, { x: 30, y: 0 }]), 0);
+});
+
+test('projective quad map pins corners, centers on the diagonal crossing, matches bilinear when affine', () => {
+  const road = [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 160, y: 200 }, { x: 40, y: 200 }];
+  assert.ok(isConvexQuad(road));
+  const H = quadHomography(road);
+  assert.ok(H);
+  assert.ok(H.minW > 0.25);
+  for (const [s, t, p] of [[0, 0, road[0]], [1, 0, road[1]], [1, 1, road[2]], [0, 1, road[3]]]) {
+    const q = H.at(s, t);
+    assert.ok(Math.hypot(q.x - p.x, q.y - p.y) < 1e-6);
+  }
+  // Projective unit-center lands on the diagonal crossing; bilinear averages the corners.
+  const pc = H.at(0.5, 0.5);
+  assert.ok(Math.hypot(pc.x - 100, pc.y - 125) < 1e-6);
+  const bc = quadFramePoint(road, 0.5, 0.5);
+  assert.deepEqual(bc, { x: 100, y: 100 });
+  // Parallelogram frames: projective and bilinear agree everywhere.
+  const para = [{ x: 10, y: 10 }, { x: 210, y: 30 }, { x: 170, y: 180 }, { x: -30, y: 160 }];
+  const proj = quadFrameMapper(para, 0, 'projective');
+  assert.ok(proj);
+  for (let i = 0; i <= 4; i++) {
+    for (let j = 0; j <= 4; j++) {
+      const a = quadFramePoint(para, i / 4, j / 4);
+      const b = proj(i / 4, j / 4);
+      assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 1e-6);
+    }
+  }
+  // Concave and collinear frames reject projective but keep bilinear.
+  const dart = [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 100, y: 60 }];
+  assert.equal(isConvexQuad(dart), false);
+  assert.equal(quadFrameMapper(dart, 0, 'projective'), null);
+  assert.ok(quadFrameMapper(dart, 0, 'bilinear'));
+  assert.equal(isConvexQuad([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 0 }, { x: 30, y: 0 }]), false);
 });
 
 test('supershape radius, sector clamp, and semantic records preserve parameters', () => {

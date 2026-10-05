@@ -154,6 +154,118 @@ export function quadArea(corners: QuadCorners): number {
   ) / 2;
 }
 
+/** Frame-mapping choices for quad-fitted shapes. */
+export type QuadMapping = 'bilinear' | 'projective';
+
+/**
+ * Strict convexity: all four edge turns share a sign. Collinear or repeated
+ * corners fail, as do concave (dart) quads, where a projective map must fold.
+ */
+export function isConvexQuad(corners: QuadCorners): boolean {
+  let sign = 0;
+  for (let i = 0; i < 4; i++) {
+    const a = corners[i];
+    const b = corners[(i + 1) % 4];
+    const c = corners[(i + 2) % 4];
+    const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+    if (Math.abs(cross) < 1e-9) return false;
+    const s = Math.sign(cross);
+    if (sign === 0) sign = s;
+    else if (s !== sign) return false;
+  }
+  return true;
+}
+
+export interface QuadHomography {
+  at(s: number, t: number): Vec2;
+  /**
+   * Smallest |w| at the four corners. w is linear in (s, t), so its minimum
+   * over the unit square sits at a corner; near zero means the vanishing
+   * line crosses the frame and interior points blow up.
+   */
+  minW: number;
+}
+
+/**
+ * Homography taking unit-square corners to the quad corners, solved with
+ * h33 = 1. Returns null when the system is singular (degenerate corners).
+ */
+export function quadHomography(corners: QuadCorners): QuadHomography | null {
+  const src: UnitPoint[] = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  const M: number[][] = [];
+  const rhs: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const [x, y] = src[i];
+    const X = corners[i].x;
+    const Y = corners[i].y;
+    M.push([x, y, 1, 0, 0, 0, -X * x, -X * y]); rhs.push(X);
+    M.push([0, 0, 0, x, y, 1, -Y * x, -Y * y]); rhs.push(Y);
+  }
+  const n = 8;
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) {
+      if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    }
+    if (Math.abs(M[piv][col]) < 1e-12) return null;
+    if (piv !== col) {
+      [M[col], M[piv]] = [M[piv], M[col]];
+      [rhs[col], rhs[piv]] = [rhs[piv], rhs[col]];
+    }
+    const d = M[col][col];
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const f = M[r][col] / d;
+      if (f === 0) continue;
+      for (let k = col; k < n; k++) M[r][k] -= f * M[col][k];
+      rhs[r] -= f * rhs[col];
+    }
+  }
+  const h = M.map((row, i) => rhs[i] / row[i]);
+  const wAt = (s: number, t: number): number => h[6] * s + h[7] * t + 1;
+  let minW = Infinity;
+  for (const [s, t] of src) {
+    const w = Math.abs(wAt(s, t));
+    if (w < minW) minW = w;
+  }
+  return {
+    at: (s: number, t: number): Vec2 => {
+      const w = wAt(s, t);
+      return { x: (h[0] * s + h[1] * t + h[2]) / w, y: (h[3] * s + h[4] * t + h[5]) / w };
+    },
+    minW,
+  };
+}
+
+/**
+ * Smallest acceptable |w| for the projective map. Below this the frame is
+ * in extreme perspective and interior points stretch unacceptably; the
+ * caller falls back to bilinear.
+ */
+export const QUAD_PROJECTIVE_MIN_W = 0.25;
+
+/**
+ * Unit-square to quad mapper for fitted shapes. Bilinear always applies;
+ * projective needs a convex, well-conditioned frame and returns null
+ * otherwise so the caller can fall back to the raw quad.
+ */
+export function quadFrameMapper(
+  corners: QuadCorners,
+  orientation = 0,
+  mapping: QuadMapping = 'bilinear',
+): ((s: number, t: number) => Vec2) | null {
+  if (mapping === 'projective') {
+    if (!isConvexQuad(corners)) return null;
+    const H = quadHomography(corners);
+    if (!H || H.minW < QUAD_PROJECTIVE_MIN_W) return null;
+    return (s: number, t: number): Vec2 => {
+      const [rs, rt] = rotST(s, t, orientation);
+      return H.at(rs, rt);
+    };
+  }
+  return (s: number, t: number): Vec2 => quadFramePoint(corners, s, t, orientation);
+}
+
 export function placeUnitPoints(
   center: Vec2,
   radius: number,

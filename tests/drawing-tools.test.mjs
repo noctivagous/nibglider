@@ -150,6 +150,51 @@ test('quad with a Rect Keys shape falls back to the raw quad when corners are de
   } finally { cleanup(); }
 });
 
+test('quad projective mapping shifts the fitted shape off the bilinear midpoints', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    e.quadMapping = 'projective';
+    e.rectangleInnerShapeType = 'rhombus';
+    for (const point of [[0, 0], [200, 0], [160, 200]]) {
+      e.mousePt = new s.Point(point[0], point[1]);
+      e.quadPointKC();
+    }
+    e.pointer.onMouseMove({ point: new s.Point(40, 200) });
+    assert.ok(e.previewInner);
+    assert.equal(e.previewInner.segments.length, 4);
+    e.mousePt = new s.Point(40, 200);
+    e.quadPointKC();
+    assert.equal(e.isDrawingQuad, false);
+    assert.equal(e.previewInner, null);
+    const deposited = layer.children[layer.children.length - 1];
+    assert.equal(deposited.closed, true);
+    assert.equal(deposited.segments.length, 4);
+    const pts = deposited.segments.map((seg) => [seg.point.x, seg.point.y]);
+    // Symmetric edges agree; the right edge midpoint moves down the slope.
+    assert.ok(Math.hypot(pts[0][0] - 100, pts[0][1] - 0) < 1e-6);
+    assert.ok(Math.hypot(pts[1][0] - 175, pts[1][1] - 125) < 1e-6);
+    assert.ok(Math.hypot(pts[2][0] - 100, pts[2][1] - 200) < 1e-6);
+    e.undo();
+  } finally { cleanup(); }
+});
+
+test('quad projective mapping falls back to the raw quad on a concave frame', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    e.quadMapping = 'projective';
+    e.rectangleInnerShapeType = 'kite';
+    const before = layer.children.length;
+    for (const point of [[0, 0], [200, 0], [200, 200], [100, 60]]) {
+      e.mousePt = new s.Point(point[0], point[1]);
+      e.quadPointKC();
+    }
+    assert.equal(e.isDrawingQuad, false);
+    assert.equal(e.previewInner, null);
+    assert.equal(layer.children.length, before + 1);
+    assert.equal(layer.children[before].closed, true);
+  } finally { cleanup(); }
+});
+
 test('rectangle diagonal cancel drops the frame and a fitted stamp does not end the session', () => {
   const { s, e, layer, cleanup } = engine();
   try {
