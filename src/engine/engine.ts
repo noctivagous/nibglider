@@ -1733,9 +1733,9 @@ export class NibGliderEngine {
   }
 
   /** Run a mutation over every selected editable root's lines, keeping each
-   * root pinned by its anchor corner (lower-left for display, top-left for
-   * body). The restack flag re-flows multiline roots afterwards (needed
-   * after size/leading changes). Returns true when a root was updated. */
+   * root pinned by its anchor (baseline lower-left for display, ascender
+   * top-left for body). The restack flag re-flows multiline roots afterwards
+   * (needed after size/leading changes). Returns true when a root was updated. */
   private applyToEditableText(
     apply: (lines: AnyItem[], root: AnyItem) => void,
     restack = false,
@@ -1747,21 +1747,47 @@ export class NibGliderEngine {
       const lines = this.editableLines(root);
       if (lines.length === 0) continue;
       const body = root.data?.textKind === 'body';
-      let corner: AnyItem = null;
-      try {
-        const bounds = root.bounds;
-        const point = body ? bounds?.topLeft : bounds?.bottomLeft;
-        corner = point && point.clone ? point.clone() : null;
-      } catch { corner = null; }
+      const anchor = this.textAnchorOf(root, body);
       try {
         apply(lines, root);
         touched = true;
       } catch { /* One bad root must not sink the others. */ }
       if (restack) this.restackBodyLines(root);
-      if (corner) this.anchorTextCornerOn(root, corner, body ? 'topLeft' : 'bottomLeft');
+      const current = this.textAnchorOf(root, body);
+      if (anchor && current) this.anchorTextPointOn(root, anchor, current);
     }
     if (touched) this.documentManager.markEdited('scene');
     return touched;
+  }
+
+  /** The print anchor of an editable root in global coordinates: the left
+   * edge of the text box at the baseline (display) or at the first line's
+   * ascender height (body, 0.75 leading above its baseline, matching Paper's
+   * text bounds convention). Null when unreadable. */
+  private textAnchorOf(root: AnyItem, body: boolean): AnyItem | null {
+    try {
+      const lines = this.editableLines(root);
+      const first = root.className === 'PointText' ? root : lines[0];
+      if (!first) return null;
+      const origin = first.localToGlobal(new this.scope.Point(0, 0));
+      const step = Number(first.leading);
+      const bounds = root.bounds;
+      if (!origin || !bounds || !Number.isFinite(bounds.left)) return null;
+      const y = body ? origin.y - 0.75 * step : origin.y;
+      if (body && !(step > 0)) return null;
+      return new this.scope.Point(bounds.left, y);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Translate an item so one of its global points lands on the target. */
+  private anchorTextPointOn(item: AnyItem, target: AnyItem, point: AnyItem): void {
+    try {
+      item.translate(target.subtract(point));
+    } catch {
+      // Anchoring never fails a paste or an edit.
+    }
   }
 
   /** Re-flow a multiline root's lines from the first line's position and
@@ -2581,8 +2607,8 @@ export class NibGliderEngine {
   }
 
   /** Plain text becomes a standalone editable text item: single-line pastes
-   * are Display Text pinned by their lower-left corner, multiline pastes
-   * are Body Text pinned by their top-left corner. */
+   * are Display Text pinned by their baseline lower-left corner, multiline
+   * pastes are Body Text pinned by their ascender top-left corner. */
   pastePlainText(text: string, at?: AnyItem): boolean {
     if (this.isLiveDrawing || typeof text !== 'string') return false;
     const clean = text.replace(/\r\n?/g, '\n');
@@ -2611,7 +2637,8 @@ export class NibGliderEngine {
       const pt: AnyItem = new this.scope.PointText(target);
       pt.content = clean.trim();
       styleText(pt, 'display');
-      this.anchorTextCornerOn(pt, target, 'bottomLeft');
+      const anchor = this.textAnchorOf(pt, false);
+      if (anchor) this.anchorTextPointOn(pt, target, anchor);
       placed = pt;
       label = 'Paste display text';
     } else {
@@ -2626,7 +2653,8 @@ export class NibGliderEngine {
       }
       group.data.textKind = 'body';
       group.data.editableText = true;
-      this.anchorTextCornerOn(group, target, 'topLeft');
+      const anchor = this.textAnchorOf(group, true);
+      if (anchor) this.anchorTextPointOn(group, target, anchor);
       placed = group;
       label = 'Paste body text';
     }
@@ -2752,20 +2780,6 @@ export class NibGliderEngine {
       }
     } catch {
       // Placement never fails a paste: items stay where they decoded.
-    }
-  }
-
-  /** Pin a bounds corner of freshly pasted text onto the target: a
-   * single-line Display Text item sits its lower-left corner on the
-   * crosshair, multiline Body Text hangs its top-left corner from it. */
-  private anchorTextCornerOn(item: AnyItem, target: AnyItem, corner: 'bottomLeft' | 'topLeft'): void {
-    try {
-      const bounds = item.bounds;
-      const point = bounds?.[corner];
-      if (!point) return;
-      item.translate(target.subtract(point));
-    } catch {
-      // Anchoring never fails a paste: the item stays where it was created.
     }
   }
 
