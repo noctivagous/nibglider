@@ -11,6 +11,7 @@ import ControlPanel, { type ControlPanelHandle } from './components/ControlPanel
 import { FILE_COMMANDS, type FileCommand } from './ui/fileCommands';
 import AppMenu, { type MenuPanelSection, type PanelSectionAction } from './components/AppMenu';
 import SettingsWindow from './components/SettingsWindow';
+import DocumentInfoWindow from './components/DocumentInfoWindow';
 import OnscreenKeyboard from './components/OnscreenKeyboard';
 import TutorialOverlay from './components/TutorialOverlay';
 import WidgetHandle from './components/WidgetHandle';
@@ -593,6 +594,9 @@ export default function App() {
       {ui.openWindowId === 'settings' && (
         <SettingsWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
       )}
+      {ui.openWindowId === 'document-info' && (
+        <DocumentInfoWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
+      )}
       <div id="canvasContainer">
         <canvas
           id="nibgliderCanvas"
@@ -613,7 +617,12 @@ export default function App() {
             aria-hidden={!ui.controlsVisible}
             inert={!ui.controlsVisible}
           >
-            <ControlPanel ref={controlPanelRef} engine={engine} panels={panels} />
+            <ControlPanel
+              ref={controlPanelRef}
+              engine={engine}
+              panels={panels}
+              onOpenDocumentInfo={() => gui.openWindow('document-info')}
+            />
           </div>
           <StatusOverlay
             engine={engine}

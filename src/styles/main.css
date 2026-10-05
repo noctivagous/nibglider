@@ -543,6 +543,65 @@ article {
   color: var(--dp-text-3);
 }
 
+/* Document name opens the Document Info window: text-like button with a
+   hover affordance. */
+#configSummaryBox .cfg-doc-btn {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: block;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+#configSummaryBox .cfg-doc-btn:hover .cfg-doc {
+  color: #bcd6fd;
+  text-decoration: underline;
+}
+
+#configSummaryBox .cfg-doc-btn:focus-visible {
+  outline: 2px solid #4f8ff7;
+  outline-offset: 1px;
+}
+
+/* Document Info window rows: reuse the settings dialog classes, with a
+   text input for rename and right-aligned stat values. */
+.settings-row.docinfo-row {
+  justify-content: flex-start;
+}
+
+.settings-row.docinfo-row .settings-label {
+  flex: none;
+  width: 4.5rem;
+}
+
+.docinfo-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  color: var(--dp-text-1);
+  text-align: right;
+}
+
+.docinfo-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 5px 8px;
+}
+
 /* Control panel */
 #controlPanel {
   position: absolute;

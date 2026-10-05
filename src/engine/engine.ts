@@ -655,6 +655,28 @@ export class NibGliderEngine {
   getVersion = (): number => this.context.getVersion();
 
   getPageSettings(): PageSettings { return this.documentManager.pageSettings; }
+  /** Counts for the Document Info window: top-level artwork objects and
+   * artwork layers. Guide, grid, cursor, and preview items never count;
+   * groups count as one object, matching the selection model. */
+  documentStats(): { objectCount: number; layerCount: number } {
+    try {
+      const project = this.scope.project;
+      const layers = ((project?.layers ?? []) as AnyItem[]).filter(
+        (layer) => layer && !layer.guide && layer !== this.gridLayer && layer !== this.guideLayer,
+      );
+      let objects = 0;
+      for (const layer of layers) {
+        for (const child of ([...(layer.children ?? [])] as AnyItem[])) {
+          try {
+            if (!this.scene.isNonContentItem(child)) objects += 1;
+          } catch { /* Detached; not an object. */ }
+        }
+      }
+      return { objectCount: objects, layerCount: layers.length };
+    } catch {
+      return { objectCount: 0, layerCount: 0 };
+    }
+  }
   isDocumentDirty(): boolean { return this.documentManager.isDirty; }
   documentRevision(): number { return this.documentManager.revisionNumber; }
   setPageDimensions(width: number, height: number, unit: LengthUnit = 'pt'): void {

@@ -80,6 +80,7 @@ export interface ConfigSummaryBoxProps {
   selectedCount: number;
   selection: SelectionPaint | null;
   globals: SummaryGlobals;
+  onOpenDocumentInfo?: () => void;
 }
 
 export default function ConfigSummaryBox({
@@ -88,6 +89,7 @@ export default function ConfigSummaryBox({
   selectedCount,
   selection,
   globals,
+  onOpenDocumentInfo,
 }: ConfigSummaryBoxProps) {
   const { mode, paint, mixed } = resolveSummaryState(selection, selectedCount, globals);
   const uid = useId().replace(/:/g, '');
@@ -112,14 +114,29 @@ export default function ConfigSummaryBox({
       }
     >
       <div className="cfg-head">
-        <span
-          className="cfg-doc"
-          title={docDirty ? `${docName} (unsaved changes)` : docName}
-          aria-live="polite"
-        >
-          {docName}
-          {docDirty ? ' •' : null}
-        </span>
+        {onOpenDocumentInfo ? (
+          <button
+            type="button"
+            className="cfg-doc-btn"
+            onClick={onOpenDocumentInfo}
+            title={`${docDirty ? `${docName} (unsaved changes)` : docName} — open Document Info`}
+            aria-label={`${docName} — open Document Info`}
+          >
+            <span className="cfg-doc" aria-live="polite">
+              {docName}
+              {docDirty ? ' •' : null}
+            </span>
+          </button>
+        ) : (
+          <span
+            className="cfg-doc"
+            title={docDirty ? `${docName} (unsaved changes)` : docName}
+            aria-live="polite"
+          >
+            {docName}
+            {docDirty ? ' •' : null}
+          </span>
+        )}
         <span className={`cfg-state ${mode}`} title={mode === 'selection' ? 'Showing the selected path' : 'Showing the global settings the next path will use'}>
           {stateLabel}
         </span>

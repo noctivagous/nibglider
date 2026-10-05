@@ -2578,9 +2578,13 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
    * App passes its own instance so live demonstrations can expand the
    * sections their scripts point at. */
   panels?: PanelsManager;
+  /** Opens the Document Info window. App wires this to the window registry;
+   * the summary box document name calls it on click. */
+  onOpenDocumentInfo?: () => void;
 }>(function ControlPanel({
   engine,
   panels: panelsProp,
+  onOpenDocumentInfo,
 }, ref) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
@@ -3199,6 +3203,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           docDirty={docDirty}
           selectedCount={engine.selectedItems.length}
           selection={sel}
+          onOpenDocumentInfo={onOpenDocumentInfo}
           globals={{
             strokeOn: engine.strokeEnabled,
             strokeColor: engine.globalStrokeColor,
