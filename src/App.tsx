@@ -48,8 +48,10 @@ export default function App() {
   const layoutSnap = useSyncExternalStore(layout.subscribe, layout.getSnapshot);
   const [engine] = useState(
     () =>
-      new NibGliderEngine(new paper.PaperScope(), (a: KeyActivity) =>
-        setActiveCode(a.active ? a.code : null),
+      new NibGliderEngine(
+        new paper.PaperScope(),
+        (a: KeyActivity) => setActiveCode(a.active ? a.code : null),
+        browserStore(),
       ),
   );
   const [tutorialRunner] = useState(() => new TutorialRunner());

@@ -20,6 +20,12 @@ import {
   type RectFrameInput,
 } from './geometry/RectangleGeometry';
 import { supershapeRadius as supershapeRadiusValue } from './geometry/pathResolver';
+import {
+  loadEngineSettings,
+  memorySettingsStore,
+  saveEngineSettings,
+  type SettingsStorage,
+} from './engineSettings';
 import { InputManager } from './input/InputManager';
 import {
   KeyboardController,
@@ -454,7 +460,12 @@ export class NibGliderEngine {
     return this.keymapRows;
   }
 
-  constructor(scope: paper.PaperScope, onKeyActivity: (a: KeyActivity) => void) {
+  constructor(
+    scope: paper.PaperScope,
+    onKeyActivity: (a: KeyActivity) => void,
+    store: SettingsStorage = memorySettingsStore(),
+  ) {
+    this.settingsStore = store;
     this.context = new EngineContext(scope);
     installStrokePositionRenderer(scope);
     this.onKeyActivity = onKeyActivity;
@@ -559,6 +570,7 @@ export class NibGliderEngine {
     this.context.rectangleTool = new RectangleTool(host);
     this.context.quadTool = new QuadTool(host);
     this.retainHostCallbacks();
+    this.loadSettings();
   }
 
   // hosts.ts calls these through the untyped surface. The references keep
@@ -803,7 +815,31 @@ export class NibGliderEngine {
   }
 
   private notify(): void {
+    // Persist-on-notify: every user-facing setter ends here, so settings
+    // reach storage with no per-setter hook. saveSettings writes only when
+    // the snapshot changed and no-ops while settings load.
+    this.saveSettings();
     this.context.notify();
+  }
+
+  private readonly settingsStore: SettingsStorage;
+  private loadingSettings = false;
+  private lastSettingsJson: string | null = null;
+
+  private saveSettings(): void {
+    if (this.loadingSettings) return;
+    this.lastSettingsJson = saveEngineSettings(this, this.settingsStore, this.lastSettingsJson);
+  }
+
+  private loadSettings(): void {
+    this.loadingSettings = true;
+    try {
+      loadEngineSettings(this, this.settingsStore);
+    } finally {
+      this.loadingSettings = false;
+    }
+    this.updateTextContent();
+    this.notify();
   }
 
   // --- Lifecycle: canvas setup + event wiring (NibGliderApp init) ---
