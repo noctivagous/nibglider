@@ -95,9 +95,9 @@ test('dragging across a row boundary keeps the requested visual row', () => {
   assert.equal(sectionOrder(again.order).indexOf('textControls'), 6);
 });
 
-test('application menus cover file, edit, document, operations, layers, and debug', () => {
+test('application menus cover file, edit, document, operations, modes, layers, and debug', () => {
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
-  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'layers', 'debug']);
+  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'debug']);
   assert.equal(byId.file.title, 'File');
   assert.deepEqual(byId.file.items.map((item) => item.commandId), [
     'open-gallery', 'new-document', 'save-gallery', 'rename-document', 'export', 'import', 'tutorial',
@@ -113,10 +113,10 @@ test('application menus cover file, edit, document, operations, layers, and debu
   ]) {
     assert.ok(byId.layers.items.some((item) => item.commandId === id), `layers menu lists ${id}`);
   }
-  // Operations holds mode parents, the future Repeat area, and dialogs.
+  // Modes holds the mode parents; Operations holds the future Repeat area and dialogs.
   for (const id of ['rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode']) {
-    const parent = byId.operations.items.find((item) => item.commandId === id);
-    assert.ok(parent?.children && parent.children.length > 0, `operations menu lists ${id} submenu`);
+    const parent = byId.modes.items.find((item) => item.commandId === id);
+    assert.ok(parent?.children && parent.children.length > 0, `modes menu lists ${id} submenu`);
   }
   assert.deepEqual(byId.debug.items.map((item) => item.commandId), ['reset-settings']);
 });
@@ -125,8 +125,8 @@ test('operations menu groups dialog entries and carries rail shortcuts and icons
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
   const ops = byId.operations.items.map((item) => item.commandId);
   // Scale/Rotate sit under a "With dialog" group header, mirroring the rail.
-  assert.deepEqual(ops.slice(-3), ['hdr-operations-3', 'scale-dialog', 'rotate-dialog']);
-  const dialogHeader = byId.operations.items.find((item) => item.commandId === 'hdr-operations-3');
+  assert.deepEqual(ops.slice(-3), ['hdr-operations-2', 'scale-dialog', 'rotate-dialog']);
+  const dialogHeader = byId.operations.items.find((item) => item.commandId === 'hdr-operations-2');
   assert.equal(dialogHeader.header, true);
   assert.equal(dialogHeader.label, 'With dialog');
   // Shortcuts match the vertical rail's Operations/Layers menus.

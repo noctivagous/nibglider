@@ -312,6 +312,12 @@ const TRIGGER_ICONS: Record<string, ReactNode> = {
       <circle cx="15" cy="17" r="2.2" />
     </MenuGlyph>
   ),
+  modes: (
+    <MenuGlyph size={13}>
+      <rect x="3" y="6" width="18" height="12" rx="6" />
+      <circle cx="15" cy="12" r="3" />
+    </MenuGlyph>
+  ),
   layers: (
     <MenuGlyph size={13}>
       <path d="M12 3 l9 5 -9 5 -9 -5 Z" />

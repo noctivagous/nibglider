@@ -36,51 +36,7 @@
     <item command="toggle-keyboard" icon="toggle-keyboard" />
     <item command="toggle-status" icon="toggle-status" />
   </menu>
-  <menu id="operations" title="Operations and Modes">
-    <group label="Modes">
-      <item command="rect-shape" label="Rect Keys shape" icon="rect-shape">
-        <option command="rect-shape-rectangle" label="Rectangle" />
-        <option command="rect-shape-circle" label="Circle" />
-        <option command="rect-shape-polygon" label="Regular Polygon" />
-        <option command="rect-shape-supershape" label="Supershape" />
-        <option command="rect-shape-trapezoid" label="Trapezoid" />
-        <option command="rect-shape-parallelogram" label="Parallelogram" />
-        <option command="rect-shape-rightTriangle" label="Right Triangle" />
-        <option command="rect-shape-rhombus" label="Rhombus" />
-        <option command="rect-shape-kite" label="Kite" />
-      </item>
-      <item command="circle-shape" label="Circle Keys shape" icon="circle-shape">
-        <option command="circle-shape-circle" label="Circle" />
-        <option command="circle-shape-semicircle" label="Semicircle" />
-        <option command="circle-shape-sector" label="Sector" />
-        <option command="circle-shape-segment" label="Segment" />
-        <option command="circle-shape-polygon" label="Regular Polygon" />
-        <option command="circle-shape-supershape" label="Supershape" />
-        <option command="circle-shape-trapezoid" label="Trapezoid" />
-        <option command="circle-shape-parallelogram" label="Parallelogram" />
-        <option command="circle-shape-rightTriangle" label="Right Triangle" />
-        <option command="circle-shape-rhombus" label="Rhombus" />
-        <option command="circle-shape-kite" label="Kite" />
-      </item>
-      <item command="combinatorics" label="Combinatorics" icon="combinatorics">
-        <option command="combinatorics-none" label="Off" />
-        <option command="combinatorics-union" label="Union" />
-        <option command="combinatorics-subtract" label="Subtract" />
-        <option command="combinatorics-intersect" label="Intersect" />
-      </item>
-      <item command="snapping" label="Snapping" icon="snapping">
-        <option command="snap-grid" label="Grid" />
-        <option command="snap-path" label="Path" />
-        <option command="snap-points" label="Points" />
-        <option command="snap-angle" label="Angle" />
-        <option command="snap-length" label="Length" />
-        <option command="snap-aspect" label="Aspect" />
-      </item>
-      <item command="text-mode" label="Text mode" icon="text-mode">
-        <option command="text-mode-display" label="Display" />
-        <option command="text-mode-body" label="Body" />
-      </item>
-    </group>
+  <menu id="operations" title="Operations">
     <group label="Repeat">
       <item command="repeat-grid" label="Repeat grid (future)" icon="repeat-grid" />
       <item command="repeat-circle" label="Repeat circle (future)" icon="repeat-circle" />
@@ -89,6 +45,50 @@
       <item command="scale-dialog" label="Scale…" icon="scale-dialog" />
       <item command="rotate-dialog" label="Rotate…" icon="rotate-dialog" />
     </group>
+  </menu>
+  <menu id="modes" title="Modes">
+    <item command="rect-shape" label="Rect Keys shape" icon="rect-shape">
+      <option command="rect-shape-rectangle" label="Rectangle" />
+      <option command="rect-shape-circle" label="Circle" />
+      <option command="rect-shape-polygon" label="Regular Polygon" />
+      <option command="rect-shape-supershape" label="Supershape" />
+      <option command="rect-shape-trapezoid" label="Trapezoid" />
+      <option command="rect-shape-parallelogram" label="Parallelogram" />
+      <option command="rect-shape-rightTriangle" label="Right Triangle" />
+      <option command="rect-shape-rhombus" label="Rhombus" />
+      <option command="rect-shape-kite" label="Kite" />
+    </item>
+    <item command="circle-shape" label="Circle Keys shape" icon="circle-shape">
+      <option command="circle-shape-circle" label="Circle" />
+      <option command="circle-shape-semicircle" label="Semicircle" />
+      <option command="circle-shape-sector" label="Sector" />
+      <option command="circle-shape-segment" label="Segment" />
+      <option command="circle-shape-polygon" label="Regular Polygon" />
+      <option command="circle-shape-supershape" label="Supershape" />
+      <option command="circle-shape-trapezoid" label="Trapezoid" />
+      <option command="circle-shape-parallelogram" label="Parallelogram" />
+      <option command="circle-shape-rightTriangle" label="Right Triangle" />
+      <option command="circle-shape-rhombus" label="Rhombus" />
+      <option command="circle-shape-kite" label="Kite" />
+    </item>
+    <item command="combinatorics" label="Combinatorics" icon="combinatorics">
+      <option command="combinatorics-none" label="Off" />
+      <option command="combinatorics-union" label="Union" />
+      <option command="combinatorics-subtract" label="Subtract" />
+      <option command="combinatorics-intersect" label="Intersect" />
+    </item>
+    <item command="snapping" label="Snapping" icon="snapping">
+      <option command="snap-grid" label="Grid" />
+      <option command="snap-path" label="Path" />
+      <option command="snap-points" label="Points" />
+      <option command="snap-angle" label="Angle" />
+      <option command="snap-length" label="Length" />
+      <option command="snap-aspect" label="Aspect" />
+    </item>
+    <item command="text-mode" label="Text mode" icon="text-mode">
+      <option command="text-mode-display" label="Display" />
+      <option command="text-mode-body" label="Body" />
+    </item>
   </menu>
   <menu id="layers" title="Layers and Objects">
     <item command="select" label="Select" icon="select" />

@@ -43,9 +43,9 @@ function loadMenus() {
 
 test('menus XML parses to the five application menus in order', () => {
   const menus = loadMenus();
-  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'layers', 'debug']);
+  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'debug']);
   assert.deepEqual(menus.map((menu) => menu.title), [
-    'File', 'Edit', 'Document and Settings', 'Operations and Modes', 'Layers and Objects', 'Debug',
+    'File', 'Edit', 'Document and Settings', 'Operations', 'Modes', 'Layers and Objects', 'Debug',
   ]);
 });
 
@@ -94,18 +94,21 @@ test('items fall back to the command id and menus to the menu id', () => {
   }]);
 });
 
-test('operations holds modes, repeat, and dialogs; layers holds object control', () => {
+test('operations holds repeat and dialogs, modes holds the mode parents; layers holds object control', () => {
   const menus = loadMenus();
   const byId = Object.fromEntries(menus.map((menu) => [menu.id, menu]));
   assert.deepEqual(byId.operations.items.map((item) => item.commandId), [
-    'hdr-operations-1', 'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
-    'hdr-operations-2', 'repeat-grid', 'repeat-circle',
-    'hdr-operations-3', 'scale-dialog', 'rotate-dialog',
+    'hdr-operations-1', 'repeat-grid', 'repeat-circle',
+    'hdr-operations-2', 'scale-dialog', 'rotate-dialog',
   ]);
   assert.deepEqual(
     byId.operations.items.filter((item) => item.header).map((item) => item.label),
-    ['Modes', 'Repeat', 'With dialog'],
+    ['Repeat', 'With dialog'],
   );
+  assert.deepEqual(byId.modes.items.map((item) => item.commandId), [
+    'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
+  ]);
+  assert.equal(byId.modes.items.some((item) => item.header), false);
   const opsText = JSON.stringify(byId.operations);
   assert.equal(opsText.includes('stroke'), false);
   assert.equal(opsText.includes('fill'), false);
