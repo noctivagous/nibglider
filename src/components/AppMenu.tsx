@@ -3,7 +3,7 @@
 // items without a wired handler render disabled. Owns only its open-menu
 // state. Tested indirectly through App wiring; menu defs from
 // tests/ui-state.test.mjs.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { MenuDef } from '../ui/PanelsManager';
 
 function commandLabel(commandId: string): string {
@@ -12,6 +12,66 @@ function commandLabel(commandId: string): string {
     .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word))
     .join(' ');
 }
+
+// File-menu glyphs, mirroring the vertical rail's card icons (ControlPanel)
+// so the horizontal menu carries the same artwork to the left of each label.
+function FileMenuGlyph({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  );
+}
+
+const MENU_ICONS: Record<string, ReactNode> = {
+  open: (
+    <FileMenuGlyph>
+      <path d="M3 7 h6 l2 2 h10 v9 H3 Z" />
+      <path d="M3 7 v10" />
+    </FileMenuGlyph>
+  ),
+  new: (
+    <FileMenuGlyph>
+      <path d="M7 3 h7 l4 4 v14 H7 Z" />
+      <path d="M12 11 v6 M9 14 h6" />
+    </FileMenuGlyph>
+  ),
+  save: (
+    <FileMenuGlyph>
+      <path d="M5 4 h11 l3 3 v13 H5 Z" />
+      <path d="M8 4 v5 h7 V4" />
+      <path d="M8 20 v-6 h8 v6" />
+    </FileMenuGlyph>
+  ),
+  rename: (
+    <FileMenuGlyph>
+      <path d="M4 20 l1 -4 L16 5 l3 3 L8 19 Z" />
+      <path d="M14 7 l3 3" />
+    </FileMenuGlyph>
+  ),
+  export: (
+    <FileMenuGlyph>
+      <path d="M4 14 v6 h16 v-6" />
+      <path d="M12 3 v10 M8 7 l4 -4 4 4" />
+    </FileMenuGlyph>
+  ),
+  import: (
+    <FileMenuGlyph>
+      <path d="M4 14 v6 h16 v-6" />
+      <path d="M12 4 v10 M8 10 l4 4 4 -4" />
+    </FileMenuGlyph>
+  ),
+};
 
 export default function AppMenu({
   menus,
@@ -49,6 +109,7 @@ export default function AppMenu({
           <button
             type="button"
             className={openMenu === menu.id ? 'app-menu-trigger open' : 'app-menu-trigger'}
+            data-tutorial-id={`menu-${menu.id}`}
             aria-haspopup="menu"
             aria-expanded={openMenu === menu.id}
             onClick={() => setOpenMenu(openMenu === menu.id ? null : menu.id)}
@@ -61,6 +122,13 @@ export default function AppMenu({
           {openMenu === menu.id && (
             <div className="app-menu-dropdown" role="menu" aria-label={menu.title}>
               {menu.items.map((item) => {
+                if (item.header) {
+                  return (
+                    <div key={item.commandId} className="app-menu-group" role="presentation">
+                      <span>{item.label ?? commandLabel(item.commandId)}</span>
+                    </div>
+                  );
+                }
                 const enabled = enabledCommands.has(item.commandId);
                 return (
                   <button
@@ -75,7 +143,15 @@ export default function AppMenu({
                       onCommand(item.commandId);
                     }}
                   >
-                    {commandLabel(item.commandId)}
+                    <span className="app-menu-icon" aria-hidden="true">
+                      {(item.icon && MENU_ICONS[item.icon]) ?? null}
+                    </span>
+                    <span className="app-menu-label">{item.label ?? commandLabel(item.commandId)}</span>
+                    {item.shortcut && (
+                      <span className="app-menu-shortcut">
+                        <kbd>{item.shortcut}</kbd>
+                      </span>
+                    )}
                   </button>
                 );
               })}

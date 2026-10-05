@@ -42,7 +42,9 @@ test('keyboard width treats a blank store as the default and menu layout stays s
   const panels = new PanelsManager(mem);
   assert.equal(panels.menuLayout, 'grid');
   assert.ok(APPLICATION_MENUS.every((menu) => menu.items.every((item) => typeof item.commandId === 'string')));
-  assert.equal(JSON.stringify(APPLICATION_MENUS).includes('shortcut'), false);
+  assert.ok(APPLICATION_MENUS.some((menu) => menu.items.some((item) => typeof item.shortcut === 'string')));
+  assert.ok(APPLICATION_MENUS.some((menu) => menu.items.some((item) => item.header === true)));
+  assert.ok(APPLICATION_MENUS.some((menu) => menu.items.some((item) => typeof item.icon === 'string')));
 });
 
 test('panel order round-trips through the store', () => {
@@ -93,9 +95,9 @@ test('dragging across a row boundary keeps the requested visual row', () => {
   assert.equal(sectionOrder(again.order).indexOf('textControls'), 6);
 });
 
-test('application menus cover file, document, operations, and layers', () => {
+test('application menus cover file, document, operations, layers, and debug', () => {
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
-  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'document', 'operations', 'layers']);
+  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'document', 'operations', 'layers', 'debug']);
   assert.equal(byId.file.title, 'File');
   assert.deepEqual(byId.file.items.map((item) => item.commandId), [
     'open-gallery', 'new-document', 'save-gallery', 'rename-document', 'export', 'import', 'tutorial',
@@ -107,6 +109,38 @@ test('application menus cover file, document, operations, and layers', () => {
   for (const id of ['bring-to-front', 'send-to-back', 'duplicate-selection', 'group']) {
     assert.ok(byId.layers.items.some((item) => item.commandId === id), `layers menu lists ${id}`);
   }
+  assert.deepEqual(byId.debug.items.map((item) => item.commandId), ['reset-settings']);
+});
+
+test('operations menu groups dialog entries and carries rail shortcuts and icons', () => {
+  const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
+  const ops = byId.operations.items.map((item) => item.commandId);
+  // Scale/Rotate sit under a "With dialog" group header, mirroring the rail.
+  assert.deepEqual(ops.slice(-3), ['hdr-operations-2', 'scale-dialog', 'rotate-dialog']);
+  const dialogHeader = byId.operations.items.find((item) => item.commandId === 'hdr-operations-2');
+  assert.equal(dialogHeader.header, true);
+  assert.equal(dialogHeader.label, 'With dialog');
+  // Shortcuts match the vertical rail's Operations/Layers menus.
+  const shortcutById = Object.fromEntries(
+    APPLICATION_MENUS.flatMap((menu) => menu.items)
+      .filter((item) => typeof item.shortcut === 'string')
+      .map((item) => [item.commandId, item.shortcut]),
+  );
+  assert.equal(shortcutById['delete-selection'], 'Backspace');
+  assert.ok(typeof shortcutById.group === 'string' && shortcutById.group.endsWith('G'));
+  // File entries reuse the rail's card artwork via the AppMenu icon map.
+  const iconById = Object.fromEntries(
+    byId.file.items.filter((item) => typeof item.icon === 'string')
+      .map((item) => [item.commandId, item.icon]),
+  );
+  assert.deepEqual(iconById, {
+    'open-gallery': 'open',
+    'new-document': 'new',
+    'save-gallery': 'save',
+    'rename-document': 'rename',
+    export: 'export',
+    import: 'import',
+  });
 });
 
 test('status box clears the menus rail hanging below the panel', () => {

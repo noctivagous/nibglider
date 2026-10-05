@@ -51,6 +51,11 @@ import type {
 
 const ASPECT_RATIO_PRESETS = ['1:1', '3:4', '2:3', '16:9'];
 
+// Vertical menu rail: not launched. The rail markup below (including the
+// File card-grid layout) stays in place for later reuse; the horizontal
+// application menu bar is the live menu surface.
+const SHOW_MENU_RAIL = false;
+
 // Tiny legend glyph for pane titles (Adobe CS-style: small, currentColor).
 function TitleIcon({ children }: { children: ReactNode }) {
   return (
@@ -3280,6 +3285,7 @@ export default function ControlPanel({
   return (
     <div className="panel-shell">
       <div className="panel-side">
+        {SHOW_MENU_RAIL && (
         <div className="panel-rail" role="group" aria-label="Panel tools">
           <WidgetHandle widget="menus" label="Application menus" />
           <div
@@ -3378,6 +3384,7 @@ export default function ControlPanel({
             />
           </div>
         </div>
+        )}
         <KeymapWidget engine={engine} />
         </div>
       <div

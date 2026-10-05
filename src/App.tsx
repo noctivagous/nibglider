@@ -26,6 +26,7 @@ import {
 } from './tutorial/completionDetectors';
 import { parseTutorialText } from './tutorial/tutorialLoader';
 import {
+  clearNibGliderSettings,
   markTutorialCompleted,
   markTutorialDismissed,
   shouldAutoShowTutorial,
@@ -37,7 +38,7 @@ import helloTutorialRaw from '../tutorials/hello-rectangle.tutorial.json?raw';
 const HIDE_SECTION_TITLES = true;
 
 /** Menu commands with a wired handler; everything else renders disabled. */
-const MENU_COMMANDS: Set<string> = new Set(['settings', 'tutorial']);
+const MENU_COMMANDS: Set<string> = new Set(['settings', 'tutorial', 'reset-settings']);
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -242,6 +243,12 @@ export default function App() {
   const handleMenuCommand = useCallback((commandId: string) => {
     if (commandId === 'settings') gui.openWindow('settings');
     else if (commandId === 'tutorial') startTutorial();
+    else if (commandId === 'reset-settings') {
+      try {
+        clearNibGliderSettings(localStorage);
+      } catch { /* Storage can be unavailable in private browsing. */ }
+      window.location.reload();
+    }
   }, [gui, startTutorial]);
 
   // New users (config flag on, no completion recorded) land in the tutorial.

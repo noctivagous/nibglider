@@ -4175,7 +4175,7 @@ kbd,
   position: absolute;
   top: 100%;
   left: 0;
-  min-width: 180px;
+  min-width: 220px;
   background: var(--dp-bg-2);
   border: 1px solid var(--dp-border);
   border-radius: 6px;
@@ -4183,8 +4183,17 @@ kbd,
   box-shadow: 0 8px 24px rgba(8, 10, 14, 0.45);
   z-index: 950;
 }
+.app-menu-group {
+  padding: 6px 10px 2px;
+  color: var(--dp-text-3);
+  font: inherit;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+}
 .app-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   background: none;
@@ -4202,6 +4211,30 @@ kbd,
 .app-menu-item:disabled {
   color: var(--dp-text-3);
   cursor: default;
+}
+.app-menu-icon {
+  display: inline-flex;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  align-items: center;
+  justify-content: center;
+  color: var(--dp-text-2);
+}
+.app-menu-item:disabled .app-menu-icon {
+  color: inherit;
+}
+.app-menu-label {
+  flex: 1 1 auto;
+}
+.app-menu-shortcut {
+  flex: none;
+  margin-left: auto;
+  padding-left: 16px;
+}
+.app-menu-shortcut kbd {
+  font-size: 0.6875rem;
+  white-space: nowrap;
 }
 
 /* Settings window: centered dialog over a click-to-close backdrop. Above the

@@ -1,44 +1,33 @@
-// Panel section layout and application-menu definitions.
+// Panel section layout; application menus load from menus/menus.xml.
 // Owns collapsed, removed, and order records in the store passed in.
 // Reads menu layout from the same store GUIManager writes. Does not render.
 // Public: collapsed, removed, order, menuLayout, sectionOrder, moveSection, menus.
 // Tested from tests/ui-state.test.mjs.
 
 import { MENU_LAYOUT_KEY, type KeyValueStore, type MenuLayout, browserStore } from './GUIManager';
+import menusXML from './menus/menus.xml?raw';
+import { parseMenuXML } from './menuXML';
 
-export interface MenuItemDef { commandId: string }
+export interface MenuItemDef {
+  commandId: string;
+  /** Non-interactive group header separating grouped areas of a menu. */
+  header?: boolean;
+  /** Explicit label; defaults to the title-cased command id. */
+  label?: string;
+  /** Right-aligned keyboard shortcut chip shown next to the label. */
+  shortcut?: string;
+  /** Icon key rendered to the left of the label (see AppMenu icon map). */
+  icon?: string;
+}
 export interface MenuDef { id: string; title: string; items: MenuItemDef[] }
 
-export const APPLICATION_MENUS: MenuDef[] = [
-  {
-    id: 'file', title: 'File', items: [
-      { commandId: 'open-gallery' }, { commandId: 'new-document' },
-      { commandId: 'save-gallery' }, { commandId: 'rename-document' },
-      { commandId: 'export' }, { commandId: 'import' }, { commandId: 'tutorial' },
-      { commandId: 'settings' },
-    ],
-  },
-  {
-    id: 'document', title: 'Document and Settings', items: [
-      { commandId: 'page-size' }, { commandId: 'length-unit' },
-      { commandId: 'reset-zoom' }, { commandId: 'toggle-panel' },
-      { commandId: 'toggle-keyboard' }, { commandId: 'toggle-status' },
-    ],
-  },
-  {
-    id: 'operations', title: 'Operations and Modes', items: [
-      { commandId: 'group' }, { commandId: 'delete-selection' },
-      { commandId: 'scale-dialog' }, { commandId: 'rotate-dialog' },
-    ],
-  },
-  {
-    id: 'layers', title: 'Layers and Objects', items: [
-      { commandId: 'select' }, { commandId: 'bring-to-front' },
-      { commandId: 'send-to-back' }, { commandId: 'duplicate-selection' },
-      { commandId: 'group' },
-    ],
-  },
-];
+const parsedMenus = parseMenuXML(menusXML);
+if ('error' in parsedMenus) {
+  // The menu suite pins the full structure, so a broken definition fails
+  // loudly there; at runtime the bar degrades to empty instead of crashing.
+  console.error(`Application menus failed to parse: ${parsedMenus.error}`);
+}
+export const APPLICATION_MENUS: MenuDef[] = 'menus' in parsedMenus ? parsedMenus.menus : [];
 
 export const PANEL_GROUP_IDS = ['paint', 'keys', 'snap'] as const;
 export type PanelGroupId = (typeof PANEL_GROUP_IDS)[number];

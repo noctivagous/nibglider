@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<menus>
+  <menu id="file" title="File">
+    <item command="open-gallery" icon="open" />
+    <item command="new-document" icon="new" />
+    <item command="save-gallery" icon="save" />
+    <item command="rename-document" icon="rename" />
+    <item command="export" icon="export" />
+    <item command="import" icon="import" />
+    <item command="tutorial" />
+    <item command="settings" />
+  </menu>
+  <menu id="document" title="Document and Settings">
+    <item command="page-size" />
+    <item command="length-unit" />
+    <item command="reset-zoom" />
+    <item command="toggle-panel" />
+    <item command="toggle-keyboard" />
+    <item command="toggle-status" />
+  </menu>
+  <menu id="operations" title="Operations and Modes">
+    <group label="Immediate">
+      <item command="group" shortcut="Primary+G" />
+      <item command="delete-selection" shortcut="Backspace" />
+    </group>
+    <group label="With dialog">
+      <item command="scale-dialog" />
+      <item command="rotate-dialog" />
+    </group>
+  </menu>
+  <menu id="layers" title="Layers and Objects">
+    <item command="select" />
+    <item command="bring-to-front" />
+    <item command="send-to-back" />
+    <item command="duplicate-selection" />
+    <item command="group" shortcut="Primary+G" />
+  </menu>
+  <menu id="debug" title="Debug">
+    <item command="reset-settings" label="Reset all settings" />
+  </menu>
+</menus>
