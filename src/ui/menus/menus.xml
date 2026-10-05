@@ -23,21 +23,71 @@
     <item command="toggle-status" />
   </menu>
   <menu id="operations" title="Operations and Modes">
-    <group label="Immediate">
-      <item command="group" shortcut="Primary+G" />
-      <item command="delete-selection" shortcut="Backspace" />
+    <group label="Modes">
+      <item command="rect-shape" label="Rect Keys shape">
+        <option command="rect-shape-rectangle" label="Rectangle" />
+        <option command="rect-shape-circle" label="Circle" />
+        <option command="rect-shape-polygon" label="Regular Polygon" />
+        <option command="rect-shape-supershape" label="Supershape" />
+        <option command="rect-shape-trapezoid" label="Trapezoid" />
+        <option command="rect-shape-parallelogram" label="Parallelogram" />
+        <option command="rect-shape-rightTriangle" label="Right Triangle" />
+        <option command="rect-shape-rhombus" label="Rhombus" />
+        <option command="rect-shape-kite" label="Kite" />
+      </item>
+      <item command="circle-shape" label="Circle Keys shape">
+        <option command="circle-shape-circle" label="Circle" />
+        <option command="circle-shape-semicircle" label="Semicircle" />
+        <option command="circle-shape-sector" label="Sector" />
+        <option command="circle-shape-segment" label="Segment" />
+        <option command="circle-shape-polygon" label="Regular Polygon" />
+        <option command="circle-shape-supershape" label="Supershape" />
+        <option command="circle-shape-trapezoid" label="Trapezoid" />
+        <option command="circle-shape-parallelogram" label="Parallelogram" />
+        <option command="circle-shape-rightTriangle" label="Right Triangle" />
+        <option command="circle-shape-rhombus" label="Rhombus" />
+        <option command="circle-shape-kite" label="Kite" />
+      </item>
+      <item command="combinatorics" label="Combinatorics">
+        <option command="combinatorics-none" label="Off" />
+        <option command="combinatorics-union" label="Union" />
+        <option command="combinatorics-subtract" label="Subtract" />
+        <option command="combinatorics-intersect" label="Intersect" />
+      </item>
+      <item command="snapping" label="Snapping">
+        <option command="snap-grid" label="Grid" />
+        <option command="snap-path" label="Path" />
+        <option command="snap-points" label="Points" />
+        <option command="snap-angle" label="Angle" />
+        <option command="snap-length" label="Length" />
+        <option command="snap-aspect" label="Aspect" />
+      </item>
+      <item command="text-mode" label="Text mode">
+        <option command="text-mode-display" label="Display" />
+        <option command="text-mode-body" label="Body" />
+      </item>
+    </group>
+    <group label="Repeat">
+      <item command="repeat-grid" label="Repeat grid (future)" />
+      <item command="repeat-circle" label="Repeat circle (future)" />
     </group>
     <group label="With dialog">
-      <item command="scale-dialog" />
-      <item command="rotate-dialog" />
+      <item command="scale-dialog" label="Scale…" />
+      <item command="rotate-dialog" label="Rotate…" />
     </group>
   </menu>
   <menu id="layers" title="Layers and Objects">
-    <item command="select" />
-    <item command="bring-to-front" />
-    <item command="send-to-back" />
-    <item command="duplicate-selection" />
-    <item command="group" shortcut="Primary+G" />
+    <item command="select" label="Select" />
+    <group label="Order">
+      <item command="bring-to-front" label="Bring to front" />
+      <item command="send-to-back" label="Send to back" />
+    </group>
+    <group label="Selection">
+      <item command="group" label="Group selection" shortcut="Primary+G" />
+      <item command="ungroup-selection" label="Ungroup selection" shortcut="Primary+Shift+G" />
+      <item command="duplicate-selection" label="Duplicate selection" />
+      <item command="delete-selection" label="Delete selection" shortcut="Backspace" />
+    </group>
   </menu>
   <menu id="debug" title="Debug">
     <item command="reset-settings" label="Reset all settings" />

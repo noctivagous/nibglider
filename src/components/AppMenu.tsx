@@ -270,6 +270,8 @@ export default function AppMenu({
                 const enabled = enabledCommands.has(item.commandId);
                 const isParent = !!item.children;
                 const expanded = openSub === item.commandId;
+                // Parents stay clickable while unwired: their click expands.
+                const clickable = enabled || isParent;
                 const childIndexes = rows
                   .map((r, i) => ({ row: r, index: i }))
                   .filter(({ row: r }) => r.parent === item);
@@ -280,8 +282,8 @@ export default function AppMenu({
                       type="button"
                       role="menuitem"
                       className={rowIdx === focusIdx ? 'app-menu-item focused' : 'app-menu-item'}
-                      disabled={!enabled}
-                      aria-disabled={!enabled}
+                      disabled={!clickable}
+                      aria-disabled={!clickable}
                       aria-haspopup={isParent || undefined}
                       aria-expanded={isParent ? expanded : undefined}
                       tabIndex={-1}

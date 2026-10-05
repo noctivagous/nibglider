@@ -19,6 +19,15 @@ test('focusable rows skip headers and unwired commands', () => {
   assert.deepEqual(focusableIndexes(ITEMS, new Set()), []);
 });
 
+test('unwired parents stay focusable so their submenu opens by keyboard', () => {
+  const withParent = [
+    ...ITEMS,
+    { commandId: 'modes', label: 'Modes', children: [{ commandId: 'opt' }] },
+  ];
+  assert.deepEqual(focusableIndexes(withParent, ENABLED), [1, 4, 6]);
+  assert.deepEqual(focusableIndexes(withParent, new Set()), [6]);
+});
+
 test('stepping starts at the near edge and skips over gaps', () => {
   assert.equal(stepFocus(ITEMS, ENABLED, -1, 1), 1);
   assert.equal(stepFocus(ITEMS, ENABLED, -1, -1), 4);

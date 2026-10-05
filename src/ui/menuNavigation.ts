@@ -1,16 +1,20 @@
 // Keyboard focus movement for the horizontal application menu bar.
 // Pure helpers so the stepping rules stay unit-testable without React:
-// headers never take focus, and keyboard stepping skips disabled rows
+// headers never take focus, and keyboard stepping skips disabled leaves
 // (hover still highlights them, matching the rail's CustomSelect).
 // Tested from tests/menu-navigation.test.mjs.
 
 import type { MenuItemDef } from './PanelsManager';
 
-/** Row indexes the highlight may rest on: real items with a wired handler. */
+/**
+ * Row indexes the highlight may rest on: real items with a wired handler,
+ * plus expandable parents (their Enter expands the submenu instead of
+ * dispatching, so they stay reachable while unwired).
+ */
 export function focusableIndexes(items: MenuItemDef[], enabled: Set<string>): number[] {
   const out: number[] = [];
   items.forEach((item, index) => {
-    if (!item.header && enabled.has(item.commandId)) out.push(index);
+    if (!item.header && (enabled.has(item.commandId) || item.children)) out.push(index);
   });
   return out;
 }

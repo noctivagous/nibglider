@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import paper from 'paper';
-import { NibGliderEngine, type KeyActivity } from './engine/engine';
+import {
+  NibGliderEngine,
+  type CircleInnerShape,
+  type KeyActivity,
+  type RectangleInnerShape,
+} from './engine/engine';
 import { isCommandAvailable, matchAppCommand } from './engine/input/keymap';
 import ControlPanel from './components/ControlPanel';
 import AppMenu from './components/AppMenu';
@@ -42,7 +47,29 @@ const MENU_COMMANDS: Set<string> = new Set([
   'settings', 'tutorial', 'reset-settings',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
+  'bring-to-front', 'send-to-back', 'duplicate-selection',
+  'group', 'ungroup-selection', 'delete-selection',
+  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect',
+  'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
+  'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
+  'rect-shape-rhombus', 'rect-shape-kite',
+  'circle-shape-circle', 'circle-shape-semicircle', 'circle-shape-sector', 'circle-shape-segment',
+  'circle-shape-polygon', 'circle-shape-supershape', 'circle-shape-trapezoid',
+  'circle-shape-parallelogram', 'circle-shape-rightTriangle', 'circle-shape-rhombus',
+  'circle-shape-kite',
+  'snap-grid', 'snap-path', 'snap-points', 'snap-angle', 'snap-length', 'snap-aspect',
+  'text-mode-display', 'text-mode-body',
 ]);
+
+/** Guard prefix dispatch: the shape setters assign blindly, so only known values pass. */
+const RECT_SHAPE_VALUES = [
+  'rectangle', 'circle', 'polygon', 'supershape', 'trapezoid',
+  'parallelogram', 'rightTriangle', 'rhombus', 'kite',
+];
+const CIRCLE_SHAPE_VALUES = [
+  'circle', 'semicircle', 'sector', 'segment', 'polygon', 'supershape',
+  'trapezoid', 'parallelogram', 'rightTriangle', 'rhombus', 'kite',
+];
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -258,6 +285,37 @@ export default function App() {
     else if (commandId === 'length-unit-pt') engine.setLengthUnit('pt');
     else if (commandId === 'length-unit-inch') engine.setLengthUnit('inch');
     else if (commandId === 'length-unit-cm') engine.setLengthUnit('cm');
+    else if (commandId === 'bring-to-front') engine.bringSelectionToFront();
+    else if (commandId === 'send-to-back') engine.sendSelectionToBack();
+    else if (commandId === 'duplicate-selection') engine.duplicateSelection();
+    else if (commandId === 'group') engine.groupSelection();
+    else if (commandId === 'ungroup-selection') engine.ungroupSelected();
+    else if (commandId === 'delete-selection') engine.removeAllSelectedItemsAndReset();
+    else if (commandId.startsWith('combinatorics-')) {
+      const mode = commandId.slice('combinatorics-'.length);
+      if (mode === 'none' || mode === 'union' || mode === 'subtract' || mode === 'intersect') {
+        // Panel parity (ControlPanel arm): arming with a selection combines immediately.
+        engine.setCombineMode(mode);
+        if (mode !== 'none' && engine.canCombineSelection()) engine.combineSelection(mode);
+      }
+    } else if (commandId.startsWith('rect-shape-')) {
+      const shape = commandId.slice('rect-shape-'.length);
+      if ((RECT_SHAPE_VALUES as readonly string[]).includes(shape)) {
+        engine.setRectangleInnerShapeType(shape as RectangleInnerShape);
+      }
+    } else if (commandId.startsWith('circle-shape-')) {
+      const shape = commandId.slice('circle-shape-'.length);
+      if ((CIRCLE_SHAPE_VALUES as readonly string[]).includes(shape)) {
+        engine.setCircleInnerShapeType(shape as CircleInnerShape);
+      }
+    } else if (commandId === 'snap-grid') engine.setGridSnappingEnabled(!engine.isGridSnappingEnabled);
+    else if (commandId === 'snap-path') engine.setPathSnappingEnabled(!engine.isPathSnappingEnabled);
+    else if (commandId === 'snap-points') engine.setPointSnappingEnabled(!engine.isPointSnappingEnabled);
+    else if (commandId === 'snap-angle') engine.setAngleSnappingEnabled(!engine.isAngleSnappingEnabled);
+    else if (commandId === 'snap-length') engine.setLengthSnappingEnabled(!engine.isLengthSnappingEnabled);
+    else if (commandId === 'snap-aspect') engine.setAspectSnappingEnabled(!engine.isAspectSnappingEnabled);
+    else if (commandId === 'text-mode-display') engine.setTextMode('display');
+    else if (commandId === 'text-mode-body') engine.setTextMode('body');
   }, [engine, gui, startTutorial]);
 
   // Re-render on engine changes so menu checkmarks (length unit) stay fresh.
@@ -268,6 +326,16 @@ export default function App() {
     ...(ui.keyboardVisible ? ['toggle-keyboard'] : []),
     ...(ui.statusVisible ? ['toggle-status'] : []),
     `length-unit-${engine.lengthUnit}`,
+    `combinatorics-${engine.combineMode}`,
+    `rect-shape-${engine.rectangleInnerShapeType}`,
+    `circle-shape-${engine.circleInnerShapeType}`,
+    `text-mode-${engine.textMode}`,
+    ...(engine.isGridSnappingEnabled ? ['snap-grid'] : []),
+    ...(engine.isPathSnappingEnabled ? ['snap-path'] : []),
+    ...(engine.isPointSnappingEnabled ? ['snap-points'] : []),
+    ...(engine.isAngleSnappingEnabled ? ['snap-angle'] : []),
+    ...(engine.isLengthSnappingEnabled ? ['snap-length'] : []),
+    ...(engine.isAspectSnappingEnabled ? ['snap-aspect'] : []),
   ]);
 
   // New users (config flag on, no completion recorded) land in the tutorial.

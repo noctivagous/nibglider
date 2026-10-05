@@ -104,10 +104,19 @@ test('application menus cover file, document, operations, layers, and debug', ()
     'settings',
   ]);
   assert.ok(byId.document.items.some((item) => item.commandId === 'length-unit'));
-  assert.ok(byId.operations.items.some((item) => item.commandId === 'group'));
-  assert.ok(byId.operations.items.some((item) => item.commandId === 'delete-selection'));
-  for (const id of ['bring-to-front', 'send-to-back', 'duplicate-selection', 'group']) {
+  // Object control lives in Layers, not Operations.
+  assert.ok(!byId.operations.items.some((item) => item.commandId === 'group'));
+  assert.ok(!byId.operations.items.some((item) => item.commandId === 'delete-selection'));
+  for (const id of [
+    'select', 'bring-to-front', 'send-to-back', 'duplicate-selection',
+    'group', 'ungroup-selection', 'delete-selection',
+  ]) {
     assert.ok(byId.layers.items.some((item) => item.commandId === id), `layers menu lists ${id}`);
+  }
+  // Operations holds mode parents, the future Repeat area, and dialogs.
+  for (const id of ['rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode']) {
+    const parent = byId.operations.items.find((item) => item.commandId === id);
+    assert.ok(parent?.children && parent.children.length > 0, `operations menu lists ${id} submenu`);
   }
   assert.deepEqual(byId.debug.items.map((item) => item.commandId), ['reset-settings']);
 });
@@ -116,8 +125,8 @@ test('operations menu groups dialog entries and carries rail shortcuts and icons
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
   const ops = byId.operations.items.map((item) => item.commandId);
   // Scale/Rotate sit under a "With dialog" group header, mirroring the rail.
-  assert.deepEqual(ops.slice(-3), ['hdr-operations-2', 'scale-dialog', 'rotate-dialog']);
-  const dialogHeader = byId.operations.items.find((item) => item.commandId === 'hdr-operations-2');
+  assert.deepEqual(ops.slice(-3), ['hdr-operations-3', 'scale-dialog', 'rotate-dialog']);
+  const dialogHeader = byId.operations.items.find((item) => item.commandId === 'hdr-operations-3');
   assert.equal(dialogHeader.header, true);
   assert.equal(dialogHeader.label, 'With dialog');
   // Shortcuts match the vertical rail's Operations/Layers menus.

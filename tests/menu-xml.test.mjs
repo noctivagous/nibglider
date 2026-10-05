@@ -13,12 +13,24 @@ const WIRED_COMMANDS = [
   'settings', 'tutorial', 'reset-settings',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
+  'bring-to-front', 'send-to-back', 'duplicate-selection',
+  'group', 'ungroup-selection', 'delete-selection',
+  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect',
+  'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
+  'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
+  'rect-shape-rhombus', 'rect-shape-kite',
+  'circle-shape-circle', 'circle-shape-semicircle', 'circle-shape-sector', 'circle-shape-segment',
+  'circle-shape-polygon', 'circle-shape-supershape', 'circle-shape-trapezoid',
+  'circle-shape-parallelogram', 'circle-shape-rightTriangle', 'circle-shape-rhombus',
+  'circle-shape-kite',
+  'snap-grid', 'snap-path', 'snap-points', 'snap-angle', 'snap-length', 'snap-aspect',
+  'text-mode-display', 'text-mode-body',
 ];
 const PLACEHOLDER_COMMANDS = [
   'open-gallery', 'new-document', 'save-gallery', 'rename-document',
-  'export', 'import', 'page-size', 'length-unit', 'reset-zoom', 'group',
-  'delete-selection', 'scale-dialog', 'rotate-dialog', 'select',
-  'bring-to-front', 'send-to-back', 'duplicate-selection',
+  'export', 'import', 'page-size', 'length-unit', 'reset-zoom', 'select',
+  'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
+  'repeat-grid', 'repeat-circle', 'scale-dialog', 'rotate-dialog',
 ];
 
 function loadMenus() {
@@ -52,15 +64,16 @@ test('every menu command is either wired or an explicit placeholder', () => {
 
 test('groups emit ordered headers and Primary shortcuts resolve per platform', () => {
   const menus = loadMenus();
-  const ops = menus.find((menu) => menu.id === 'operations').items;
-  assert.deepEqual(ops.map((item) => item.commandId).slice(0, 3), ['hdr-operations-1', 'group', 'delete-selection']);
-  assert.deepEqual(ops.map((item) => item.commandId).slice(-3), ['hdr-operations-2', 'scale-dialog', 'rotate-dialog']);
-  const headers = ops.filter((item) => item.header);
-  assert.deepEqual(headers.map((item) => item.label), ['Immediate', 'With dialog']);
+  const byMenu = Object.fromEntries(menus.map((menu) => [menu.id, menu]));
+  const layers = byMenu.layers.items;
+  assert.deepEqual(layers.map((item) => item.commandId).slice(0, 4), [
+    'select', 'hdr-layers-1', 'bring-to-front', 'send-to-back',
+  ]);
   // Primary resolves through the keymap for the host platform (⌘ on macOS).
-  const byId = Object.fromEntries(ops.map((item) => [item.commandId, item]));
-  assert.equal(byId.group.shortcut, primaryShortcut('G'));
-  assert.equal(byId['delete-selection'].shortcut, 'Backspace');
+  const layerById = Object.fromEntries(layers.map((item) => [item.commandId, item]));
+  assert.equal(layerById.group.shortcut, primaryShortcut('G'));
+  assert.equal(layerById['ungroup-selection'].shortcut, primaryShortcut('G', true));
+  assert.equal(layerById['delete-selection'].shortcut, 'Backspace');
 });
 
 test('items fall back to the command id and menus to the menu id', () => {
@@ -77,6 +90,28 @@ test('items fall back to the command id and menus to the menu id', () => {
       { commandId: 'other' },
     ],
   }]);
+});
+
+test('operations holds modes, repeat, and dialogs; layers holds object control', () => {
+  const menus = loadMenus();
+  const byId = Object.fromEntries(menus.map((menu) => [menu.id, menu]));
+  assert.deepEqual(byId.operations.items.map((item) => item.commandId), [
+    'hdr-operations-1', 'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
+    'hdr-operations-2', 'repeat-grid', 'repeat-circle',
+    'hdr-operations-3', 'scale-dialog', 'rotate-dialog',
+  ]);
+  assert.deepEqual(
+    byId.operations.items.filter((item) => item.header).map((item) => item.label),
+    ['Modes', 'Repeat', 'With dialog'],
+  );
+  const opsText = JSON.stringify(byId.operations);
+  assert.equal(opsText.includes('stroke'), false);
+  assert.equal(opsText.includes('fill'), false);
+  assert.deepEqual(byId.layers.items.map((item) => item.commandId), [
+    'select',
+    'hdr-layers-1', 'bring-to-front', 'send-to-back',
+    'hdr-layers-2', 'group', 'ungroup-selection', 'duplicate-selection', 'delete-selection',
+  ]);
 });
 
 test('length-unit carries the three unit options as a submenu', () => {
