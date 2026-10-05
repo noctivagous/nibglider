@@ -74,19 +74,19 @@ test('plain text pastes as display or body editable text', () => {
   } finally { cleanup(); }
 });
 
-test('pasted text pins baseline and ascender corners to the target', () => {
+test('pasted text pins its box corners to the target', () => {
   const { scope, engine, cleanup } = setup();
   try {
     const close = (actual, expected, label) => {
       assert.ok(Math.abs(actual - expected) < 1e-6, `${label}: ${actual} ~= ${expected}`);
     };
     // Fresh engine: first paste cascades one step (16, 16).
-    // Single line lands its baseline lower-left corner on the target.
+    // Single line lands its lower-left box corner on the target.
     const at = new scope.Point(100, 200);
     assert.equal(engine.pastePlainText('hi', at), true);
     const display = engine.selectedItems[0];
-    close(display.bounds.left, at.x + 16, 'display left');
-    close(editableBaselines(scope, display)[0].point.y, at.y + 16, 'display baseline');
+    close(display.bounds.bottomLeft.x, at.x + 16, 'display left');
+    close(display.bounds.bottomLeft.y, at.y + 16, 'display bottom');
     // Second paste cascades two steps (32, 32).
     // Multiline lands its ascender top-left corner on the target.
     const at2 = new scope.Point(50, 60);
@@ -106,8 +106,8 @@ test('text paste location setting chooses crosshair or view center', () => {
     assert.equal(first.engine.textPasteLocation, 'crosshair');
     assert.equal(first.engine.pastePlainText('hi'), true);
     const crossItem = first.engine.selectedItems[0];
-    assert.ok(Math.abs(crossItem.bounds.left - 516) < 1e-6);
-    assert.ok(Math.abs(editableBaselines(first.scope, crossItem)[0].point.y - 516) < 1e-6);
+    assert.ok(Math.abs(crossItem.bounds.bottomLeft.x - 516) < 1e-6);
+    assert.ok(Math.abs(crossItem.bounds.bottomLeft.y - 516) < 1e-6);
     first.engine.setTextPasteLocation('view-center');
     assert.equal(first.engine.textPasteLocation, 'view-center');
     // Invalid values are ignored.
@@ -121,8 +121,8 @@ test('text paste location setting chooses crosshair or view center', () => {
     assert.equal(second.engine.pastePlainText('hi'), true);
     const centerItem = second.engine.selectedItems[0];
     const viewCenter = second.scope.view.center;
-    assert.ok(Math.abs(centerItem.bounds.left - (viewCenter.x + 16)) < 1e-6);
-    assert.ok(Math.abs(editableBaselines(second.scope, centerItem)[0].point.y - (viewCenter.y + 16)) < 1e-6);
+    assert.ok(Math.abs(centerItem.bounds.bottomLeft.x - (viewCenter.x + 16)) < 1e-6);
+    assert.ok(Math.abs(centerItem.bounds.bottomLeft.y - (viewCenter.y + 16)) < 1e-6);
   } finally { second.cleanup(); }
 });
 

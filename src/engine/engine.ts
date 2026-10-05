@@ -2607,7 +2607,7 @@ export class NibGliderEngine {
   }
 
   /** Plain text becomes a standalone editable text item: single-line pastes
-   * are Display Text pinned by their baseline lower-left corner, multiline
+   * are Display Text pinned by their lower-left box corner, multiline
    * pastes are Body Text pinned by their ascender top-left corner. */
   pastePlainText(text: string, at?: AnyItem): boolean {
     if (this.isLiveDrawing || typeof text !== 'string') return false;
@@ -2637,8 +2637,10 @@ export class NibGliderEngine {
       const pt: AnyItem = new this.scope.PointText(target);
       pt.content = clean.trim();
       styleText(pt, 'display');
-      const anchor = this.textAnchorOf(pt, false);
-      if (anchor) this.anchorTextPointOn(pt, target, anchor);
+      try {
+        const corner = pt.bounds?.bottomLeft;
+        if (corner) this.anchorTextPointOn(pt, target, corner);
+      } catch { /* Keep the created position. */ }
       placed = pt;
       label = 'Paste display text';
     } else {
