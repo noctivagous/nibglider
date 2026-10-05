@@ -22,6 +22,41 @@ export function tickLabel(offsetPt: number, unit: LengthUnit): string {
 
 const MINOR_DIVISIONS = 4;
 
+export interface FrameView { centerX: number; centerY: number; viewWidth: number; viewHeight: number }
+export interface FrameRect { x: number; y: number; width: number; height: number }
+export interface FrameSize { width: number; height: number }
+
+export interface FrameTrack { left: number; top: number; width?: number; height?: number }
+
+export interface PageFrameTracks {
+  top: FrameTrack;
+  left: FrameTrack;
+  corner: FrameTrack;
+}
+
+/** Screen-px track boxes hugging the page frame: the top ruler sits one
+ * ruler above the page top edge, the left ruler one ruler left of the
+ * page left edge. Canvas square pixels assumed (Paper view fills the
+ * container). May run off-container when the page is panned away; the
+ * container clips. */
+export function pageFrameTracks(
+  view: FrameView,
+  page: FrameRect,
+  container: FrameSize,
+  rulerSize: number,
+): PageFrameTracks {
+  const pxPerPt = container.width / view.viewWidth;
+  const pageLeft = (page.x - (view.centerX - view.viewWidth / 2)) * pxPerPt;
+  const pageTop = (page.y - (view.centerY - view.viewHeight / 2)) * pxPerPt;
+  const pageWidth = page.width * pxPerPt;
+  const pageHeight = page.height * pxPerPt;
+  return {
+    top: { left: pageLeft, top: pageTop - rulerSize, width: pageWidth },
+    left: { left: pageLeft - rulerSize, top: pageTop, height: pageHeight },
+    corner: { left: pageLeft - rulerSize, top: pageTop - rulerSize },
+  };
+}
+
 export function computeRulerTicks(
   sizePt: number,
   spacingPt: number,

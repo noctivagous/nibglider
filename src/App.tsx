@@ -13,6 +13,7 @@ import AppMenu, { type MenuPanelSection, type PanelSectionAction } from './compo
 import ContextMenu from './components/ContextMenu';
 import SettingsWindow from './components/SettingsWindow';
 import DocumentInfoWindow from './components/DocumentInfoWindow';
+import DocumentSettingsWindow from './components/DocumentSettingsWindow';
 import OnscreenKeyboard from './components/OnscreenKeyboard';
 import CanvasScrollbars from './components/CanvasScrollbars';
 import PageRuler from './components/PageRuler';
@@ -51,7 +52,7 @@ const HIDE_SECTION_TITLES = true;
 /** Menu commands with a wired handler; everything else renders disabled. */
 const MENU_COMMANDS: Set<string> = new Set([
   ...FILE_COMMANDS,
-  'settings', 'tutorial', 'reset-settings', 'empty-canvas',
+  'settings', 'document-settings', 'tutorial', 'reset-settings', 'empty-canvas',
   'undo', 'redo',
   'cut', 'copy', 'paste', 'select-all',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
@@ -291,6 +292,7 @@ export default function App() {
       return;
     }
     if (commandId === 'settings') gui.openWindow('settings');
+    else if (commandId === 'document-settings') gui.openWindow('document-settings');
     else if (commandId === 'tutorial') startTutorial();
     else if (commandId === 'undo') engine.undo();
     else if (commandId === 'redo') engine.redo();
@@ -613,6 +615,9 @@ export default function App() {
       )}
       {ui.openWindowId === 'document-info' && (
         <DocumentInfoWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
+      )}
+      {ui.openWindowId === 'document-settings' && (
+        <DocumentSettingsWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
       )}
       <div
         id="canvasContainer"

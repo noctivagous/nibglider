@@ -24,6 +24,7 @@
     </group>
   </menu>
   <menu id="document" title="Document and Settings">
+    <item command="document-settings" label="Document Settings" icon="settings" />
     <item command="page-size" icon="page-size" />
     <item command="length-unit" label="Length unit" icon="length-unit">
       <option command="length-unit-pt" label="Points (pt)" />

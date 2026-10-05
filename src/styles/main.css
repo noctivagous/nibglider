@@ -5147,6 +5147,16 @@ kbd,
   border-right: 1px solid var(--dp-border);
 }
 
+/* Page-frame placement: tracks hug the page rect via inline geometry;
+   the anchored edges below yield to it. */
+.pruler-track-h.frame {
+  right: auto;
+}
+
+.pruler-track-v.frame {
+  bottom: auto;
+}
+
 .pruler-corner {
   position: absolute;
   left: 0;

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window id="document-settings" title="Document Settings">
+  <section id="rulers" title="Rulers">
+    <switch key="rulerPlacement" label="Ruler placement">
+      <option value="viewer" label="Viewer edges" />
+      <option value="page" label="Page frame" />
+    </switch>
+  </section>
+</window>

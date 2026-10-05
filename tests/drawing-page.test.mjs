@@ -8,7 +8,7 @@ import {
   snapPageToGrid,
 } from '../src/engine/document/DrawingPage.ts';
 import { defaultGridSpacingPt, pointsPerUnit } from '../src/engine/document/MeasurementUnits.ts';
-import { computeRulerTicks } from '../src/engine/document/pageRuler.ts';
+import { computeRulerTicks, pageFrameTracks } from '../src/engine/document/pageRuler.ts';
 
 function store(seed = {}) {
   const mem = new Map(Object.entries(seed));
@@ -66,6 +66,43 @@ test('ruler ticks land on grid lines with unit labels', () => {
   assert.ok(minors.length > 0);
   assert.ok(minors.every((t) => t.label === null));
   assert.ok(ticks.every((t, i, all) => i === 0 || t.offsetPt > all[i - 1].offsetPt));
+});
+
+test('ruler placement defaults to viewer edges and persists', () => {
+  const shared = store();
+  const first = openEngine(shared);
+  try {
+    assert.equal(first.engine.rulerPlacement, 'viewer');
+    first.engine.setRulerPlacement('page');
+    assert.equal(first.engine.rulerPlacement, 'page');
+    assert.doesNotThrow(() => first.engine.setRulerPlacement('ceiling'));
+    assert.equal(first.engine.rulerPlacement, 'page');
+  } finally { first.cleanup(); }
+  const second = openEngine(shared);
+  try {
+    assert.equal(second.engine.rulerPlacement, 'page');
+  } finally { second.cleanup(); }
+});
+
+test('page-frame tracks hug the page screen rect', () => {
+  const tracks = pageFrameTracks(
+    { centerX: 0, centerY: 0, viewWidth: 800, viewHeight: 600 },
+    { x: -400, y: -300, width: 800, height: 600 },
+    { width: 800, height: 600 },
+    22,
+  );
+  assert.deepEqual(tracks.top, { left: 0, top: -22, width: 800 });
+  assert.deepEqual(tracks.left, { left: -22, top: 0, height: 600 });
+  assert.deepEqual(tracks.corner, { left: -22, top: -22 });
+  // Panned view shifts the frame with the page.
+  const moved = pageFrameTracks(
+    { centerX: 100, centerY: 0, viewWidth: 800, viewHeight: 600 },
+    { x: -400, y: -300, width: 800, height: 600 },
+    { width: 800, height: 600 },
+    22,
+  );
+  assert.equal(moved.top.left, -100);
+  assert.equal(moved.corner.left, -122);
 });
 
 test('engine drawingPage is null until dimensions are set', () => {

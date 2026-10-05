@@ -200,6 +200,10 @@ export type WheelGesture = 'pinch' | 'pan' | 'zoom';
 
 /** View snapshot for the canvas scrollbars: center and size in project
  * coordinates plus the DrawingBoard rect. Null while no view exists. */
+/** Ruler placement: viewer edges (fixed to the canvas container) or the
+ * DrawingPage frame (travels with the page). A Document Settings option. */
+export type RulerPlacement = 'viewer' | 'page';
+
 export interface ViewState {
   centerX: number;
   centerY: number;
@@ -833,6 +837,16 @@ export class NibGliderEngine {
     const page = this.documentManager.activePage();
     if (!page) return null;
     return drawingPageRect(page);
+  }
+
+  /** Ruler placement. Unknown values are ignored. */
+  rulerPlacement: RulerPlacement = 'viewer';
+
+  setRulerPlacement(v: RulerPlacement): void {
+    if (v !== 'viewer' && v !== 'page') return;
+    if (v === this.rulerPlacement) return;
+    this.rulerPlacement = v;
+    this.updateTextContent(); this.notify();
   }
   setPageDisplayUnit(unit: LengthUnit): void { this.documentManager.setDisplayUnit(unit); }
   subscribeDocumentChanges(listener: (change: DocumentChange) => void): () => void {
