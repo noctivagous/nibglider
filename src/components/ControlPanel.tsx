@@ -2439,6 +2439,7 @@ const RECT_OPTION_TREE: CustomSelectOption[] = [
  * gallery and New Document dialogs. */
 export interface ControlPanelHandle {
   dispatchFileCommand: (command: FileCommand) => void;
+  openOperationDialog: (kind: 'scale' | 'rotate') => void;
 }
 
 const ControlPanel = forwardRef<ControlPanelHandle, {
@@ -2863,7 +2864,21 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         break;
     }
   }, [dismissSelects, exportSceneAsSVG, openGallery, saveSceneToGallery]);
-  useImperativeHandle(ref, () => ({ dispatchFileCommand }), [dispatchFileCommand]);
+  // Top Operations menu entry point for the scale/rotate modal dialog.
+  const openOperationDialog = useCallback((kind: 'scale' | 'rotate') => {
+    if (!engine.canTransformSelection()) return;
+    dismissSelects();
+    setOpDialog(
+      kind === 'scale'
+        ? { kind, draft: 100, applied: 1 }
+        : { kind, draft: 0, applied: 0 },
+    );
+  }, [engine, dismissSelects]);
+  useImperativeHandle(
+    ref,
+    () => ({ dispatchFileCommand, openOperationDialog }),
+    [dispatchFileCommand, openOperationDialog],
+  );
   const handleImportFile = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];

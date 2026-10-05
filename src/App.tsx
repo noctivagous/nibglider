@@ -65,6 +65,7 @@ const MENU_COMMANDS: Set<string> = new Set([
   'circle-shape-kite',
   'snap-grid', 'snap-path', 'snap-points', 'snap-angle', 'snap-length', 'snap-aspect',
   'text-mode-display', 'text-mode-body',
+  'scale-dialog', 'rotate-dialog',
 ]);
 
 /** Guard prefix dispatch: the shape setters assign blindly, so only known values pass. */
@@ -329,6 +330,8 @@ export default function App() {
     else if (commandId === 'snap-aspect') engine.setAspectSnappingEnabled(!engine.isAspectSnappingEnabled);
     else if (commandId === 'text-mode-display') engine.setTextMode('display');
     else if (commandId === 'text-mode-body') engine.setTextMode('body');
+    else if (commandId === 'scale-dialog') controlPanelRef.current?.openOperationDialog('scale');
+    else if (commandId === 'rotate-dialog') controlPanelRef.current?.openOperationDialog('rotate');
   }, [engine, gui, startTutorial]);
 
   // Re-render on engine changes so menu checkmarks (length unit) stay fresh.

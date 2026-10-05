@@ -12,6 +12,7 @@ const MENUS_URL = new URL('../src/ui/menus/menus.xml', import.meta.url);
 const WIRED_COMMANDS = [
   'open-gallery', 'new-document', 'save-gallery', 'rename-document',
   'export', 'import',
+  'scale-dialog', 'rotate-dialog',
   'settings', 'tutorial', 'reset-settings',
   'undo', 'redo',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
@@ -32,7 +33,7 @@ const WIRED_COMMANDS = [
 const PLACEHOLDER_COMMANDS = [
   'page-size', 'length-unit', 'reset-zoom', 'select',
   'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
-  'repeat-grid', 'repeat-circle', 'scale-dialog', 'rotate-dialog',
+  'repeat-grid', 'repeat-circle',
   'cut', 'copy', 'paste', 'select-all',
 ];
 

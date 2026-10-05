@@ -13,10 +13,9 @@ Where each action lives now:
   `doc-canvas` entry was a disabled placeholder.
 - **Operations** — delete/duplicate/group/ungroup/front/back are all wired
   in the top Edit and Layers menus. `op-scale` / `op-rotate` opened the
-  `OperationDialog` live-preview modal (which stays in `ControlPanel` for
-  future wiring); the rail card was its only trigger, so Scale…/Rotate…
-  are unreachable until the top Operations `scale-dialog` / `rotate-dialog`
-  entries are wired.
+  `OperationDialog` live-preview modal; the rail card was archived, so the
+  top Operations `scale-dialog` / `rotate-dialog` entries are now wired to
+  the same modal through `ControlPanel.openOperationDialog`.
 - **Layers** — all six actions are wired in the top Layers menu.
 - **Sections** — the restore-removed-sections list; per-section show/expand
   toggles remain in the top menus' Panel groups for mapped sections.
