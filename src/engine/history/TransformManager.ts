@@ -20,6 +20,7 @@ export class TransformManager {
     for (const item of this.selection.selectedItems) if (this.scene.isInScene(item)) {
       item.position = item.position.add(delta);
     }
+    this.selection.refreshCentroids();
   }
   nudge(dx: number, dy: number): void {
     if (!Number.isFinite(dx) || !Number.isFinite(dy) || (dx === 0 && dy === 0)) return;
@@ -36,6 +37,7 @@ export class TransformManager {
     if (!items.length) return;
     const center = this.selection.collectiveCenter(items);
     items.forEach((item) => item.scale(factor, center));
+    this.selection.refreshCentroids();
     this.history.recordScale(items, factor, center);
   }
   rotate(degrees: number): void {
@@ -44,6 +46,7 @@ export class TransformManager {
     if (!items.length) return;
     const center = this.selection.collectiveCenter(items);
     items.forEach((item) => item.rotate(degrees, center));
+    this.selection.refreshCentroids();
     this.history.recordRotate(items, degrees, center);
   }
   scalePreview(factor: number): void {

@@ -521,7 +521,11 @@ export class NibGliderEngine {
     this.context.history = new HistoryManager(this.scene, () => this.selection,
       () => this.documentManager.markEdited('scene'));
     this.context.selection = new SelectionManager(this.scene, this.history,
-      (original, clone) => this.scene.retainClone(original, clone, (item) => this.shapePartOf(item)));
+      (original, clone) => this.scene.retainClone(original, clone, (item) => this.shapePartOf(item)),
+      {
+        mount: (item) => this.mountCentroidMarker(item),
+        unmount: (item) => { try { item.remove(); } catch { /* Detached already. */ } },
+      });
     this.context.combinatorics = new CombinatoricsManager({
       combineMode: () => this.combineMode,
       setCombineNote: (note) => { this.lastCombineNote = note; },
@@ -2645,6 +2649,16 @@ export class NibGliderEngine {
     layer.locked = true;
     if (active && active !== layer) active.activate();
     return layer;
+  }
+
+  private mountCentroidMarker(item: AnyItem): void {
+    if (!item) return;
+    item.guide = true;
+    item.locked = true;
+    if (!item.data) item.data = {};
+    item.data.isCentroidMarker = true;
+    const layer = this.ensureGuideLayer();
+    if (item.layer !== layer) layer.addChild(item);
   }
 
   private mountSnapIndicator(item: AnyItem): void {

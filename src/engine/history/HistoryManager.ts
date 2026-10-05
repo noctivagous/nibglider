@@ -30,8 +30,11 @@ export class HistoryManager {
   canRedo(): boolean { return this.stack.canRedo(); }
   undoLabel(): string | null { return this.stack.undoLabel(); }
   redoLabel(): string | null { return this.stack.redoLabel(); }
-  undo(): void { this.cancelMoveGesture(); this.stack.undo(); }
-  redo(): void { this.cancelMoveGesture(); this.stack.redo(); }
+  undo(): void { this.cancelMoveGesture(); this.stack.undo(); this.refreshCentroids(); }
+  redo(): void { this.cancelMoveGesture(); this.stack.redo(); this.refreshCentroids(); }
+  private refreshCentroids(): void {
+    try { this.selection().refreshCentroids(); } catch { /* Headless or detached. */ }
+  }
   cancelMoveGesture(): void { this.moveGesture = null; }
 
   recordSceneCommand(label: string, before: Item[], selectedBefore: Item[],

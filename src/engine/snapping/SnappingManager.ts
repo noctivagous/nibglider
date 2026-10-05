@@ -1,4 +1,5 @@
 import { snapAngle, snapAspect, aspectSecond, snapGrid, snapLength } from './snappingMath';
+import { localCentroidOf } from '../geometry/shapeCenters';
 import type { GridType } from '../types';
 
 type Item = any;
@@ -81,7 +82,14 @@ export class SnappingManager {
       if (!item.segments?.length) return;
       item.segments.forEach((segment: Item) => consider(item.localToGlobal(segment.point), 'point'));
       item.curves?.forEach((curve: Item) => consider(item.localToGlobal(curve.getPointAt(curve.length / 2)), 'midpoint'));
-      if (item.closed) consider(item.localToGlobal(item.internalBounds.center), 'centroid');
+      // Stored circle origins (sectors, segments, regular polygons) win over
+      // the bounds center; other straight closed paths use their area centroid.
+      const local = localCentroidOf(item);
+      if (local) {
+        try {
+          consider(item.localToGlobal(new this.scope.Point(local.x, local.y)), 'centroid');
+        } catch { /* Detached mid-search. */ }
+      }
     };
     const items: Item[] = this.scope.project.getItems({ match: (item: Item) =>
       !!item && item.visible && !this.isGuide(item) && !ignored.has(item) &&

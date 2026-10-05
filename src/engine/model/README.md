@@ -145,9 +145,14 @@ through the existing operations dialog.
 aspect constraints. `GridRenderer.ts` owns rendered guide dots and the grid
 cursor. `SnappingManager.ts` owns path and point scene searches, ignored
 preview/guide items, and indicator mounting. Its point candidates include
-segment anchors, curve midpoints, and closed-path centroids. Pointer routing
-keeps its established constraint order, with exact point candidates overriding
-the prior path candidate.
+segment anchors, curve midpoints, and closed-path centroids: a stored circle
+origin when the shape records one (sectors, segments, regular polygons),
+otherwise the area centroid for straight paths or the bounds center for
+curves. `geometry/shapeCenters.ts` shares that resolution with the selection
+centroid markers in `scene/SelectionManager.ts`, so the revealed centroid is
+the same point that point-snapping hits. Pointer routing keeps its
+established constraint order, with exact point candidates overriding the
+prior path candidate.
 
 ## Verification
 

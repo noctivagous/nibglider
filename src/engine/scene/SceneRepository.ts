@@ -27,7 +27,7 @@ export class SceneRepository {
     const item = typeof value.getClassName === 'function' && value.getClassName() === 'HitResult' ? value.item : value;
     if (!item) return true;
     if (item.guide || (item.layer && item.layer !== item && item.layer.guide)) return true;
-    if (item.data?.isUICursor || item.data?.isPathPreview) return true;
+    if (item.data?.isUICursor || item.data?.isPathPreview || item.data?.isCentroidMarker) return true;
     const refs = this.overlays();
     if (refs.gridLayer && (item === refs.gridLayer || item.layer === refs.gridLayer)) return true;
     return refs.cursors.includes(item) || refs.previews.includes(item);

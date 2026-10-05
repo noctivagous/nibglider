@@ -1,8 +1,19 @@
 // Selection intent and Paper mutations. HistoryManager records undo entries.
 import { HistoryManager } from '../history/HistoryManager';
+import { localCentroidOf } from '../geometry/shapeCenters';
 import { SceneRepository } from './SceneRepository';
 
 type Item = any;
+
+/** Guide-layer host for per-selection centroid markers. */
+export interface CentroidMarkerHost {
+  mount(item: Item): void;
+  unmount(item: Item): void;
+}
+
+/** Marker radius in document points. Green matches the point-snap centroid. */
+const CENTROID_MARK_RADIUS = 3;
+const CENTROID_MARK_FILL = '#69db7c';
 
 /** Floating Marker parity: selected drawables carry a two-tone halo — a light
  * Paper selection outline over a dark blurred glow — so the selection reads
@@ -27,31 +38,38 @@ export class SelectionManager {
   private readonly scene: SceneRepository;
   private readonly history: HistoryManager;
   private readonly retainClone: (original: Item, clone: Item) => void;
+  private readonly centroidHost: CentroidMarkerHost | null;
+  private centroidMarks: Item[] = [];
   private glowSuspended = false;
 
   constructor(scene: SceneRepository, history: HistoryManager,
-    retainClone: (original: Item, clone: Item) => void) {
+    retainClone: (original: Item, clone: Item) => void, centroidHost?: CentroidMarkerHost | null) {
     this.scene = scene; this.history = history; this.retainClone = retainClone;
+    this.centroidHost = centroidHost ?? null;
   }
   get selectedItems(): Item[] { return this.items; }
   get hasSelection(): boolean { return this.items.length > 0; }
+  get centroidIndicators(): Item[] { return [...this.centroidMarks]; }
   snapshot(): Item[] { return [...this.items]; }
 
   add(item: Item): void {
     if (!item || this.scene.isNonContentItem(item) || this.items.includes(item)) return;
     this.mark(item, true); this.items.push(item);
+    this.refreshCentroids();
     this.firePulse();
   }
   remove(item: Item): void {
     const index = this.items.indexOf(item);
     if (index < 0) return;
     this.mark(item, false); this.items.splice(index, 1);
+    this.refreshCentroids();
   }
   clear(): void {
     for (const item of this.items) {
       try { this.mark(item, false); } catch { /* Already gone. */ }
     }
     this.items = [];
+    this.refreshCentroids();
   }
   restore(items: Item[], opts?: { quiet?: boolean }): void {
     this.clear();
@@ -61,7 +79,62 @@ export class SelectionManager {
     }
     // Continuous updates (marquee live-select, Esc) stay quiet so dragging
     // never shimmers; discrete commits fire the settle pulse.
+    this.refreshCentroids();
     if (!opts?.quiet && this.items.length > 0) this.firePulse();
+  }
+  /** Rebuild centroid markers for the current selection: one marker per
+   * closed shape at its stored circle origin or geometric centroid. Markers
+   * are guide-flagged non-content, so they never select, snap, or print.
+   * Call after any membership or geometry change (moves, undo/redo). */
+  refreshCentroids(): void {
+    for (const mark of this.centroidMarks) {
+      try {
+        if (this.centroidHost) this.centroidHost.unmount(mark);
+        else mark.remove();
+      } catch { /* Already gone. */ }
+    }
+    this.centroidMarks = [];
+    for (const item of this.items) {
+      for (const point of this.centroidPoints(item)) {
+        try {
+          const mark: Item = new this.scene.scope.Shape.Circle(point, CENTROID_MARK_RADIUS);
+          mark.fillColor = new this.scene.scope.Color(CENTROID_MARK_FILL);
+          mark.strokeColor = new this.scene.scope.Color(1, 1, 1);
+          mark.strokeWidth = 1.5;
+          mark.guide = true;
+          mark.locked = true;
+          if (!mark.data) mark.data = {};
+          mark.data.isCentroidMarker = true;
+          if (this.centroidHost) this.centroidHost.mount(mark);
+          this.centroidMarks.push(mark);
+        } catch { /* Detached mid-refresh. */ }
+      }
+    }
+    this.refresh();
+  }
+  private centroidPoints(item: Item): Item[] {
+    const out: Item[] = [];
+    this.collectCentroids(item, out);
+    return out;
+  }
+  private collectCentroids(item: Item, out: Item[]): void {
+    if (!item || !this.scene.isInScene(item)) return;
+    if (item.data?.isShapeText) return;
+    if (item.data?.shapeTextGroup && item.children?.length) {
+      const geo = item.children.find((child: Item) => !child?.data?.isShapeText);
+      if (geo) this.collectCentroids(geo, out);
+      return;
+    }
+    if (item.children?.length) {
+      for (const child of item.children) this.collectCentroids(child, out);
+      return;
+    }
+    let local: { x: number; y: number } | null = null;
+    try { local = localCentroidOf(item); } catch { return; }
+    if (!local) return;
+    try {
+      out.push(item.localToGlobal(new this.scene.scope.Point(local.x, local.y)));
+    } catch { /* Detached mid-refresh. */ }
   }
   /** Re-fire the settle pulse on the current selection (e.g. marquee commit). */
   pulse(): void {

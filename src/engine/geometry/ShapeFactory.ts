@@ -13,6 +13,7 @@
 // Tested from tests/shape-geometry.test.mjs and the engine drawing tests.
 import { clampSectorAngle } from '../input/KeySettingsRegistry';
 import type { NGShape } from '../model/NGShape';
+import { tagCircleOrigin } from './shapeCenters';
 import type { Vec2 } from '../model/geometryResolution';
 import type { InnerShapeParams, PolygonRadiusMode } from '../types';
 import { SUPERSHAPE_STEPS, supershapeRadius } from './pathResolver';
@@ -211,6 +212,7 @@ export class ShapeFactory {
     switch (currentInnerType) {
       case 'circle':
         path = new scope.Path.Circle(center, radius);
+        tagCircleOrigin(path, center);
         geoRotates = false;
         break;
       case 'sector':
@@ -458,6 +460,7 @@ export class ShapeFactory {
       path.add(center.add(new scope.Point(rx * radius, ry * radius)));
     }
     path.closed = true;
+    tagCircleOrigin(path, center);
     return path;
   }
 
@@ -483,6 +486,7 @@ export class ShapeFactory {
     }
     if (radiusMode === 'inradius') path.rotate(360 / sides / 2, center);
     path.closed = true;
+    tagCircleOrigin(path, center);
     return path;
   }
 
@@ -502,6 +506,7 @@ export class ShapeFactory {
     }
     path.closed = true;
     this.hooks.applyStrokeGeometry(path);
+    tagCircleOrigin(path, center);
     return path;
   }
 
@@ -518,6 +523,7 @@ export class ShapeFactory {
     if (pie) path.lineTo(pt(start));
     path.arcTo(pt(mid), pt(end));
     path.closed = true;
+    tagCircleOrigin(path, center);
     return path;
   }
 
