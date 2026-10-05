@@ -42,8 +42,11 @@ test('text move prefers baselines over box edges', () => {
 });
 
 test('selected editable text shows its baseline grid', () => {
-  const { engine, guides, cleanup } = setup();
+  const { scope, engine, guides, cleanup } = setup();
   try {
+    const ascenders = () => scope.project.getItems({
+      match: (item) => !!(item && item.data && item.data.isAscenderGuide),
+    });
     assert.equal(guides().length, 0);
     assert.equal(engine.pastePlainText('hi'), true);
     const item = engine.selectedItems[0];
@@ -53,10 +56,17 @@ test('selected editable text shows its baseline grid', () => {
     // Baselines run through the text local origin (line 1 at y = 0).
     const origins = editableBaselines(engine.scope, item);
     assert.equal(origins.length, 1);
+    // One ascender rule per line, 0.75 leading above its baseline.
+    const caps = ascenders();
+    assert.equal(caps.length, 1);
+    assert.ok(Math.abs(caps[0].bounds.center.y -
+      (origins[0].point.y - 0.75 * item.leading)) < 1e-6);
     engine.clearOutSelection();
     assert.equal(guides().length, 0);
+    assert.equal(ascenders().length, 0);
     assert.equal(engine.pastePlainText('a\nb'), true);
     assert.equal(guides().length, 2);
+    assert.equal(ascenders().length, 2);
   } finally { cleanup(); }
 });
 

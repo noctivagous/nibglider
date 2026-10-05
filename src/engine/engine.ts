@@ -3360,7 +3360,7 @@ export class NibGliderEngine {
     item.guide = true;
     item.locked = true;
     if (!item.data) item.data = {};
-    if (!item.data.isBaselineGuide) item.data.isCentroidMarker = true;
+    if (!item.data.isBaselineGuide && !item.data.isAscenderGuide) item.data.isCentroidMarker = true;
     const layer = this.ensureGuideLayer();
     if (item.layer !== layer) layer.addChild(item);
   }

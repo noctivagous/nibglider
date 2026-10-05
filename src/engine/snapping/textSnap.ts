@@ -16,12 +16,14 @@ export interface TextSnapFeatures {
   right: number;
 }
 
-/** A baseline origin (global) with its run direction (unit). Paper draws
- * each PointText line from its local origin, so the first line's baseline
- * is local y = 0 and later lines sit at multiples of the leading. */
+/** A baseline origin (global) with its run direction (unit) and the line's
+ * absolute leading. Paper draws each PointText line from its local origin,
+ * so the first line's baseline is local y = 0 and later lines sit at
+ * multiples of the leading. */
 export interface BaselineGuide {
   point: Item;
   dir: Item;
+  leading: number;
 }
 
 /** Snap reach: half a grid cell, capped so coarse grids stay predictable. */
@@ -85,7 +87,10 @@ export function editableBaselines(scope: Item, root: Item): BaselineGuide[] {
       const point = line.localToGlobal(new scope.Point(0, 0));
       const along = line.localToGlobal(new scope.Point(1, 0));
       const dir = along.subtract(point);
-      if (dir && dir.length > 1e-9) out.push({ point, dir: dir.normalize() });
+      const leading = Number(line.leading);
+      if (dir && dir.length > 1e-9) {
+        out.push({ point, dir: dir.normalize(), leading: Number.isFinite(leading) ? leading : 0 });
+      }
     } catch { /* Skip unreadable lines. */ }
   }
   return out;

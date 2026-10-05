@@ -123,10 +123,12 @@ export class SelectionManager {
     this.refresh();
   }
 
-  /** Baseline rules for a selected editable text root: one horizontal rule
-   * per line through its baseline, spanning the text box plus overhang.
-   * Guide-flagged, so they never select, snap, print, or count as content.
-   * Rebuilt with the centroid marks, so they track moves for free. */
+  /** Baseline rules for a selected editable text root: per line, one rule
+   * through its baseline plus one at its ascender height (0.75 leading
+   * above the baseline, matching Paper's text bounds convention). Rules span
+   * the text box plus overhang; ascenders render dimmed so the two read
+   * apart. Guide-flagged, so they never select, snap, print, or count as
+   * content. Rebuilt with the centroid marks, so they track moves for free. */
   private baselineRules(item: Item): Item[] {
     if (!item?.data?.editableText || !this.scene.isInScene(item)) return [];
     const out: Item[] = [];
@@ -138,20 +140,37 @@ export class SelectionManager {
         ? bounds.width / 2 + BASELINE_GUIDE_PAD
         : BASELINE_GUIDE_PAD * 2;
       for (const guide of guides) {
-        const rule: Item = new this.scene.scope.Path.Line(
-          guide.point.subtract(guide.dir.multiply(half)),
-          guide.point.add(guide.dir.multiply(half)),
-        );
-        rule.strokeColor = new this.scene.scope.Color(BASELINE_GUIDE_COLOR);
-        rule.strokeWidth = 1;
-        rule.guide = true;
-        rule.locked = true;
-        if (!rule.data) rule.data = {};
-        rule.data.isBaselineGuide = true;
-        out.push(rule);
+        out.push(this.textRule(guide.point, guide.dir, half, false));
+        if (guide.leading > 0) {
+          // Ascender height above the baseline along the run normal.
+          const normal = new this.scene.scope.Point(guide.dir.y, -guide.dir.x);
+          out.push(this.textRule(
+            guide.point.add(normal.multiply(0.75 * guide.leading)),
+            guide.dir,
+            half,
+            true,
+          ));
+        }
       }
     } catch { /* Detached mid-refresh. */ }
     return out;
+  }
+
+  /** One horizontal guide rule through a point along a direction. */
+  private textRule(center: Item, dir: Item, half: number, ascender: boolean): Item {
+    const rule: Item = new this.scene.scope.Path.Line(
+      center.subtract(dir.multiply(half)),
+      center.add(dir.multiply(half)),
+    );
+    rule.strokeColor = new this.scene.scope.Color(BASELINE_GUIDE_COLOR);
+    rule.strokeWidth = 1;
+    if (ascender) rule.opacity = 0.5;
+    rule.guide = true;
+    rule.locked = true;
+    if (!rule.data) rule.data = {};
+    if (ascender) rule.data.isAscenderGuide = true;
+    else rule.data.isBaselineGuide = true;
+    return rule;
   }
   private centroidPoints(item: Item): Item[] {
     const out: Item[] = [];
