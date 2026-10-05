@@ -103,7 +103,12 @@ import { SnappingManager } from './snapping/SnappingManager';
 import { LayerManager } from './document/LayerManager';
 import { CoordinateManager } from './document/CoordinateManager';
 import { DrawingBoard, type BoardRect } from './document/DrawingBoard';
-import type { UnitSystem } from './document/MeasurementUnits';
+import {
+  drawingPageRect,
+  snapPageToGrid,
+  type DrawingPage,
+} from './document/DrawingPage';
+import { defaultGridSpacingPt, type UnitSystem } from './document/MeasurementUnits';
 import { ViewportManager } from './document/ViewportManager';
 import { DocumentManager, type DocumentChange, type PageSettings } from './document/DocumentManager';
 import type { NGPathDrawable } from './model/NGDrawable';
@@ -736,15 +741,95 @@ export class NibGliderEngine {
   setPageDimensions(width: number, height: number, unit: LengthUnit = 'pt'): void {
     this.documentManager.setPageSize(width, height, unit);
     // documentManager.subscribe already notifies; repaint the page sheet.
+    this.ensurePageLayer();
     this.drawWorkspace();
+  }
+
+  /** New-document entry: dimensions snap to the unit grid, the display
+   * unit applies, and the grid defaults to the unit spacing
+   * (quarter-inch for inch/foot). Width/height arrive in points. */
+  applyPageSpec(widthPt: number, heightPt: number, unit: LengthUnit): void {
+    const spacing = defaultGridSpacingPt(unit);
+    this.setGridSpacing(spacing);
+    const snapped = snapPageToGrid(widthPt, heightPt, spacing);
+    try {
+      this.documentManager.setPageSize(snapped.widthPt, snapped.heightPt, 'pt');
+    } catch {
+      return;
+    }
+    this.documentManager.setDisplayUnit(unit);
+    this.ensurePageLayer();
+    this.drawWorkspace();
+  }
+
+  /** Active DrawingPage record (a copy), null until dimensions are set. */
+  get drawingPage(): DrawingPage | null {
+    const page = this.documentManager.activePage();
+    return page ? { ...page } : null;
+  }
+
+  /** Every page on the board; one entry today, more for multi-page later. */
+  get drawingPages(): DrawingPage[] {
+    return this.documentManager.pageList;
+  }
+
+  /** Append a page (points) and make it active. The board can hold more
+   * than one; the UI activates among them. */
+  addDrawingPage(widthPt: number, heightPt: number, unit: LengthUnit = 'pt'): DrawingPage | null {
+    if (!Number.isFinite(widthPt) || !Number.isFinite(heightPt) || widthPt <= 0 || heightPt <= 0) {
+      return null;
+    }
+    const page = this.documentManager.addPage(widthPt, heightPt, unit);
+    this.ensurePageLayer();
+    this.drawWorkspace();
+    return page;
+  }
+
+  /** Activate a page by id. Unknown ids are ignored. */
+  setActiveDrawingPage(id: string): boolean {
+    if (!this.documentManager.setActivePage(id)) return false;
+    this.ensurePageLayer();
+    this.drawWorkspace();
+    return true;
+  }
+
+  /** Bind the active page to its Paper content layer: rejoin by recorded
+   * layer id, else claim the current active content layer (fresh page,
+   * or a new Paper project after attach). Never leaves a guide layer
+   * active — the layer-capture lesson from ensureBoardLayer applies. */
+  private ensurePageLayer(): AnyItem | null {
+    try {
+      const project = this.scope.project;
+      if (!project) return null;
+      const page = this.documentManager.activePage();
+      if (!page) return null;
+      const active = this.layers.activeOrNull;
+      if (page.layerId) {
+        for (const layer of (project.layers ?? []) as AnyItem[]) {
+          try {
+            if (layer && `paper-layer-${layer.id}` === page.layerId && !layer.guide) {
+              if (layer !== active) layer.activate();
+              return layer;
+            }
+          } catch { /* Detached; keep looking. */ }
+        }
+      }
+      if (active && !active.guide) {
+        page.layerId = `paper-layer-${active.id}`;
+        return active;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   /** User page rect, centered on the project origin like the board. Null
    * until New Document (or setPageDimensions) assigns page dimensions. */
   pageRect(): BoardRect | null {
-    const page = this.documentManager.pageSettings;
-    if (!(page.widthPt != null && page.heightPt != null)) return null;
-    return { x: -page.widthPt / 2, y: -page.heightPt / 2, width: page.widthPt, height: page.heightPt };
+    const page = this.documentManager.activePage();
+    if (!page) return null;
+    return drawingPageRect(page);
   }
   setPageDisplayUnit(unit: LengthUnit): void { this.documentManager.setDisplayUnit(unit); }
   subscribeDocumentChanges(listener: (change: DocumentChange) => void): () => void {
@@ -1245,7 +1330,9 @@ export class NibGliderEngine {
     });
 
     // setup() replaces the project, so the workspace (board + page) is
-    // repainted on every attach (StrictMode remounts included).
+    // repainted on every attach (StrictMode remounts included). The
+    // page rebinds to the new project's content layer first.
+    this.ensurePageLayer();
     this.drawWorkspace();
     this.updatePreviewBox();
     this.updateTextContent();
@@ -1429,6 +1516,18 @@ export class NibGliderEngine {
   setGridType(t: GridType): void {
     if (t !== 'square' && t !== 'diamond') return;
     this.gridType = t;
+    if (this.isGridEnabled) this.drawGrid();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** Grid spacing in points. New documents default it from their unit
+   * (quarter-inch for inch/foot); this manual override persists after. */
+  setGridSpacing(v: number): void {
+    if (!Number.isFinite(v) || v <= 0) return;
+    const next = Math.min(500, v);
+    if (next === this.gridSpacing) return;
+    this.gridSpacing = next;
     if (this.isGridEnabled) this.drawGrid();
     this.updateTextContent();
     this.notify();

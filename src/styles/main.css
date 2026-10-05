@@ -5115,6 +5115,100 @@ kbd,
   background: var(--dp-border);
 }
 
+/* Page ruler: top + left strips for the active DrawingPage, origin at
+   the page corner, majors on board-grid lines. Display-only overlay;
+   pointer events fall through to the canvas. */
+#pageRuler {
+  position: absolute;
+  inset: 0;
+  z-index: 410;
+  pointer-events: none;
+}
+
+.pruler-track-h,
+.pruler-track-v {
+  position: absolute;
+  background: rgba(13, 17, 22, 0.72);
+}
+
+.pruler-track-h {
+  left: 22px;
+  right: 12px;
+  top: 0;
+  height: 22px;
+  border-bottom: 1px solid var(--dp-border);
+}
+
+.pruler-track-v {
+  top: 22px;
+  bottom: 12px;
+  left: 0;
+  width: 22px;
+  border-right: 1px solid var(--dp-border);
+}
+
+.pruler-corner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 17, 22, 0.72);
+  border-bottom: 1px solid var(--dp-border);
+  border-right: 1px solid var(--dp-border);
+  font-family: Monospace, monospace;
+  font-size: 9px;
+  color: var(--dp-text-2);
+}
+
+.pruler-tick {
+  position: absolute;
+  background: var(--dp-border);
+}
+
+.pruler-track-h .pruler-tick {
+  top: 14px;
+  bottom: 0;
+  width: 1px;
+}
+
+.pruler-track-h .pruler-tick.major {
+  top: 8px;
+}
+
+.pruler-track-v .pruler-tick {
+  left: 14px;
+  right: 0;
+  height: 1px;
+}
+
+.pruler-track-v .pruler-tick.major {
+  left: 8px;
+}
+
+.pruler-label {
+  position: absolute;
+  font-family: Monospace, monospace;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--dp-text-2);
+  white-space: nowrap;
+}
+
+.pruler-track-h .pruler-label {
+  bottom: 12px;
+  left: 2px;
+}
+
+.pruler-track-v .pruler-label {
+  top: -4px;
+  left: 1px;
+  writing-mode: vertical-rl;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .csb-thumb {
     transition: background 120ms ease;

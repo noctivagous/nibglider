@@ -15,6 +15,7 @@ import SettingsWindow from './components/SettingsWindow';
 import DocumentInfoWindow from './components/DocumentInfoWindow';
 import OnscreenKeyboard from './components/OnscreenKeyboard';
 import CanvasScrollbars from './components/CanvasScrollbars';
+import PageRuler from './components/PageRuler';
 import TutorialOverlay from './components/TutorialOverlay';
 import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
@@ -628,6 +629,7 @@ export default function App() {
           ref={canvasRef}
         />
         <CanvasScrollbars engine={engine} />
+        <PageRuler engine={engine} />
         <div id="topOverlayStack">
           <div
             id="controlPanel"

@@ -2959,8 +2959,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       ) {
         return;
       }
-      engine.setPageDimensions(spec.widthPt, spec.heightPt, 'pt');
-      engine.setPageDisplayUnit(spec.unit);
+      engine.applyPageSpec(spec.widthPt, spec.heightPt, spec.unit);
       engine.newDocument();
       gallerySetCurrent(browserStore(), null);
       engine.markDocumentClean();
@@ -3871,6 +3870,20 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             forceCloseKey={selectCloseKey}
           />
         </header>
+        <span className="param-item">
+          <label htmlFor="gridSpacingStepper">Spacing</label>
+          <NumericStepper
+            id="gridSpacingStepper"
+            value={engine.gridSpacing}
+            min={1}
+            max={500}
+            step={1}
+            unit="pt"
+            ariaLabel="Grid spacing in points"
+            title="Grid spacing"
+            onCommit={(n) => engine.setGridSpacing(n)}
+          />
+        </span>
       </PanelSection>
       )}
       {isRemoved('snappingControls') ? null : (

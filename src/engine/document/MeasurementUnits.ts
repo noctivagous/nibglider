@@ -21,6 +21,22 @@ export const UNIT_SYSTEM_KEY = 'nibglider.unitSystem';
 export const DEFAULT_CANVAS_WIDTH_PT = 1920;
 export const DEFAULT_CANVAS_HEIGHT_PT = 1080;
 
+/** Board grid default per document unit: quarter-inch squares for
+ * inch/foot documents, 10 mm squares for metric, 20 pt otherwise. */
+export function defaultGridSpacingPt(unit: LengthUnit): number {
+  switch (unit) {
+    case 'inch':
+    case 'ft':
+      return 18;
+    case 'mm':
+    case 'cm':
+    case 'm':
+      return 10 * (72 / 25.4);
+    default:
+      return 20;
+  }
+}
+
 /** CSS pixels per inch: image presets are authored in px and land in
  * points through this rule (matches CoordinateManager's SVG_PX_PER_INCH). */
 export const PX_PER_INCH = 96;
