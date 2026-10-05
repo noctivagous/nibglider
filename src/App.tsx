@@ -50,8 +50,7 @@ const MENU_COMMANDS: Set<string> = new Set([
   ...FILE_COMMANDS,
   'settings', 'tutorial', 'reset-settings',
   'undo', 'redo',
-  // Cut, copy, paste, and select-all have no engine support yet, so they
-  // stay out of this set and render disabled until they are wired.
+  'cut', 'copy', 'paste', 'select-all',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
   'bring-to-front', 'send-to-back', 'duplicate-selection',
@@ -289,6 +288,10 @@ export default function App() {
     else if (commandId === 'tutorial') startTutorial();
     else if (commandId === 'undo') engine.undo();
     else if (commandId === 'redo') engine.redo();
+    else if (commandId === 'cut') engine.cutSelection();
+    else if (commandId === 'copy') engine.copySelection();
+    else if (commandId === 'paste') void engine.pasteFromSystemClipboard();
+    else if (commandId === 'select-all') engine.selectAll();
     else if (commandId === 'reset-settings') {
       try {
         clearNibGliderSettings(localStorage);

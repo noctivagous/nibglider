@@ -37,7 +37,7 @@ import {
 } from './input/PointerController';
 import { keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
 import { CombinatoricsManager } from './scene/CombinatoricsManager';
-import { DropController } from './document/DropController';
+import { DropController, viewFitScale } from './document/DropController';
 import {
   clearTransient,
   decodeSceneItems,
@@ -46,6 +46,17 @@ import {
   isSvgMarkup,
   stripSvgClips,
 } from './document/SceneIO';
+import {
+  classifyClipboardText,
+  isMultilineText,
+  richTextToPlainText,
+  splitBodyLines,
+} from './document/clipboardIngest';
+import {
+  blobToDataUrl,
+  readSystemClipboard,
+  writeSystemClipboard,
+} from './document/systemClipboard';
 import { buildStatusSchema } from './appearance/statusSchema';
 import { buildKeymapRows } from './appearance/keymapSchema';
 import {
@@ -566,6 +577,8 @@ export class NibGliderEngine {
       addToSelection: (item) => this.addItemToSelection(item),
       setDropNote: (note) => { this.lastDropNote = note; },
       recordDrop: (label, item, selectedBefore) => this.history.recordDrop(label, item, selectedBefore),
+      depositTextPayload: (text, at) => { this.pasteTextPayload(text, at); },
+      depositImageUrl: (url, at) => { void this.depositImageUrl(url, at); },
       updateTextContent: () => this.updateTextContent(),
       notify: () => this.notify(),
     });
@@ -2131,6 +2144,327 @@ export class NibGliderEngine {
   duplicateSelection(): void {
     if (this.isLiveDrawing || !this.selection.duplicate()) return;
     this.updateTextContent(); this.notify();
+  }
+
+  // --- Clipboard (Edit menu cut/copy/paste + select-all) ---
+  // The internal scene buffer is the source of truth: it works headless,
+  // over plain HTTP, and when the system clipboard denies access. Copies
+  // also mirror outward (native scene type + plain-text degradation) and
+  // pastes read the system clipboard first, so cross-app exchange works
+  // where the browser allows it. Every mutation records one history entry.
+  private clipboardScene = '';
+  private pasteCascade = 0;
+
+  canSelectAll(): boolean {
+    return !this.isLiveDrawing && this.contentItems().length > 0;
+  }
+
+  selectAll(): boolean {
+    if (this.isLiveDrawing) return false;
+    const items = this.contentItems();
+    if (items.length === 0) return false;
+    this.commitMoveGesture();
+    this.selection.restore(items);
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  canCopySelection(): boolean {
+    return !this.isLiveDrawing && this.topLevelSelected().length > 0;
+  }
+
+  /** Internal scene buffer, filled by copy/cut. Null when empty. */
+  clipboardSceneJson(): string | null {
+    return this.clipboardScene ? this.clipboardScene : null;
+  }
+
+  /** Plain-text degradation of the selection for other apps: joined text
+   * item contents, empty when no text is selected. */
+  selectedTextContent(): string {
+    const parts: string[] = [];
+    const collect = (item: AnyItem): void => {
+      if (!item) return;
+      try {
+        if (item.className === 'PointText' && typeof item.content === 'string') {
+          parts.push(item.content);
+          return;
+        }
+      } catch { return; }
+      const children = item.children;
+      if (Array.isArray(children)) for (const child of children) collect(child);
+    };
+    for (const item of this.topLevelSelected()) collect(item);
+    return parts.join('\n');
+  }
+
+  copySelection(): boolean {
+    if (!this.canCopySelection()) return false;
+    try {
+      this.clipboardScene = encodeSceneItems(this.topLevelSelected());
+    } catch {
+      return false;
+    }
+    void writeSystemClipboard({ scene: this.clipboardScene, text: this.selectedTextContent() });
+    return true;
+  }
+
+  cutSelection(): boolean {
+    if (!this.canCopySelection()) return false;
+    this.commitMoveGesture();
+    let buffer: string;
+    try {
+      buffer = encodeSceneItems(this.topLevelSelected());
+    } catch {
+      return false;
+    }
+    const outward = this.selectedTextContent();
+    const before = this.contentItems();
+    const selBefore = [...this.selectedItems];
+    this.selection.removeAll();
+    this.clipboardScene = buffer;
+    this.recordSceneCommand(
+      selBefore.length > 1 ? `Cut ${selBefore.length} items` : 'Cut',
+      before, selBefore, [],
+    );
+    void writeSystemClipboard({ scene: buffer, text: outward });
+    this.setIsInDragLock(false);
+    return true;
+  }
+
+  /** Route one pasted or dropped string through the shared classifier:
+   * scene JSON, SVG markup, or rich/plain text. */
+  pasteTextPayload(text: string, at?: AnyItem): boolean {
+    if (this.isLiveDrawing || typeof text !== 'string') return false;
+    switch (classifyClipboardText(text)) {
+      case 'scene': return this.pasteSceneJson(text, at);
+      case 'svg': return this.pasteSvgText(text, at);
+      case 'rtf':
+      case 'html':
+      case 'text': {
+        const plain = richTextToPlainText(text);
+        if (!plain.trim()) return false;
+        return this.pastePlainText(plain, at);
+      }
+      default: return false;
+    }
+  }
+
+  pasteSceneJson(json: string, at?: AnyItem): boolean {
+    if (this.isLiveDrawing || !isSceneJson(json)) return false;
+    const before = this.contentItems();
+    const selectedBefore = [...this.selectedItems];
+    let placed: AnyItem[];
+    try {
+      placed = decodeSceneItems(this.scope.project, json).filter(Boolean);
+    } catch {
+      return false;
+    }
+    if (placed.length === 0) return false;
+    this.centerPlacedOn(placed, at);
+    this.selection.restore(placed);
+    this.recordSceneCommand(
+      placed.length > 1 ? `Paste ${placed.length} items` : 'Paste',
+      before, selectedBefore, placed,
+    );
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  pasteSvgText(svg: string, at?: AnyItem): boolean {
+    if (this.isLiveDrawing || !isSvgMarkup(svg)) return false;
+    const before = this.contentItems();
+    const selectedBefore = [...this.selectedItems];
+    const placed = this.ingestSvg(svg);
+    if (!placed) return false;
+    try { placed.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
+    this.centerPlacedOn([placed], at);
+    this.fitPlacedToView(placed);
+    this.selection.restore([placed]);
+    this.recordSceneCommand('Paste', before, selectedBefore, [placed]);
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  /** Plain text becomes a standalone editable text item: single-line pastes
+   * are Display Text, multiline pastes are Body Text. */
+  pastePlainText(text: string, at?: AnyItem): boolean {
+    if (this.isLiveDrawing || typeof text !== 'string') return false;
+    const clean = text.replace(/\r\n?/g, '\n');
+    if (!clean.trim()) return false;
+    const before = this.contentItems();
+    const selectedBefore = [...this.selectedItems];
+    const target = this.pasteTarget(at);
+    const spec = this.globalText;
+    const cfg = this.textLayoutConfig();
+    const size = Math.max(4, spec.fontSize);
+    const leading = Math.max(0.8, spec.leading || 1.2) * size;
+    const styleText = (pt: AnyItem, kind: 'display' | 'body'): void => {
+      pt.fontFamily = spec.fontFamily;
+      pt.fontSize = size;
+      pt.fontWeight = spec.fontWeight;
+      pt.fillColor = cfg.fillEnabled ? cfg.fillColor : cfg.strokeColor;
+      pt.strokeColor = null;
+      pt.justification = spec.justification;
+      pt.leading = leading;
+      pt.data.textKind = kind;
+      pt.data.editableText = true;
+    };
+    let placed: AnyItem;
+    let label: string;
+    if (!isMultilineText(clean)) {
+      const pt: AnyItem = new this.scope.PointText(target);
+      pt.content = clean.trim();
+      styleText(pt, 'display');
+      placed = pt;
+      label = 'Paste display text';
+    } else {
+      const group: AnyItem = new this.scope.Group();
+      for (const [index, line] of splitBodyLines(clean).entries()) {
+        const pt: AnyItem = new this.scope.PointText(
+          new this.scope.Point(target.x, target.y + index * leading),
+        );
+        pt.content = line.length > 0 ? line : ' ';
+        styleText(pt, 'body');
+        group.addChild(pt);
+      }
+      group.data.textKind = 'body';
+      group.data.editableText = true;
+      this.centerPlacedOn([group], target);
+      placed = group;
+      label = 'Paste body text';
+    }
+    if (!placed.parent) {
+      try { this.layers.addToActive(placed); } catch { return false; }
+    }
+    this.selection.restore([placed]);
+    this.recordSceneCommand(label, before, selectedBefore, [placed]);
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  /** Data-URL raster paste. The image decodes asynchronously; the history
+   * entry records on load, mirroring DropController. */
+  pasteImageDataUrl(dataUrl: string, at?: AnyItem): boolean {
+    if (this.isLiveDrawing || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return false;
+    const target = this.pasteTarget(at);
+    const selectedBefore = [...this.selectedItems];
+    let raster: AnyItem = null;
+    try {
+      raster = new this.scope.Raster(dataUrl);
+    } catch {
+      return false;
+    }
+    if (!raster) return false;
+    try {
+      raster.onLoad = () => {
+        try { raster.position = target.clone(); } catch { /* Keep the decoded position. */ }
+        this.fitPlacedToView(raster);
+        this.selection.restore([raster]);
+        this.history.recordDrop('Paste image', raster, selectedBefore);
+        this.updateTextContent(); this.notify();
+      };
+    } catch {
+      return false;
+    }
+    return true;
+  }
+
+  /** Full paste path for the Edit menu and the pasteshortcut: system
+   * clipboard first, internal buffer when it is unavailable or empty. */
+  async pasteFromSystemClipboard(): Promise<boolean> {
+    if (this.isLiveDrawing) return false;
+    try {
+      const clip = await readSystemClipboard();
+      if (clip.imageBlob) {
+        const dataUrl = await blobToDataUrl(clip.imageBlob);
+        if (dataUrl && this.pasteImageDataUrl(dataUrl)) return true;
+      }
+      if (clip.scene && this.pasteSceneJson(clip.scene)) return true;
+      // HTML carries its own structure; plain text may still hold scene
+      // JSON, SVG, or markdown, so both route through the classifier.
+      if (clip.html && this.pasteTextPayload(clip.html)) return true;
+      if (clip.text && this.pasteTextPayload(clip.text)) return true;
+    } catch {
+      // Fall through to the internal buffer below.
+    }
+    const internal = this.clipboardSceneJson();
+    return internal ? this.pasteSceneJson(internal) : false;
+  }
+
+  /** Drop of an image URL (from text/uri-list): fetch, decode, deposit at
+   * the drop point. Failures surface as a drop note, never a throw. */
+  async depositImageUrl(url: string, at?: AnyItem): Promise<boolean> {
+    if (this.isLiveDrawing || typeof url !== 'string') return false;
+    const first = url.split(/[\r\n]+/).map((line) => line.trim())
+      .find((line) => line && !line.startsWith('#'));
+    if (!first || !/^https?:\/\//i.test(first)) return false;
+    const target = this.pasteTarget(at);
+    try {
+      const response = await fetch(first);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      if (!/^image\//.test(blob.type)) throw new Error('not an image');
+      const dataUrl = await blobToDataUrl(blob);
+      if (!dataUrl) throw new Error('unreadable');
+      return this.pasteImageDataUrl(dataUrl, target);
+    } catch {
+      this.lastDropNote = 'Drop skipped: could not load that image URL.';
+      this.updateTextContent(); this.notify();
+      return false;
+    }
+  }
+
+  /** Paste/drop target in project coordinates: explicit point, cursor, or
+   * view center. Repeated pastes cascade so they never stack exactly. */
+  private pasteTarget(explicit?: AnyItem): AnyItem {
+    this.pasteCascade += 1;
+    const step = 16 * (this.pasteCascade % 8);
+    let base: AnyItem = null;
+    if (explicit) {
+      try { base = explicit.clone(); } catch { base = explicit; }
+    }
+    if (!base && this.mousePt) {
+      try { base = this.mousePt.clone(); } catch { base = null; }
+    }
+    if (!base) {
+      try {
+        const view = this.scope.view;
+        base = view && view.center ? view.center.clone() : null;
+      } catch { base = null; }
+    }
+    if (!base) base = new this.scope.Point(0, 0);
+    try {
+      return base.add(new this.scope.Point(step, step));
+    } catch {
+      return base;
+    }
+  }
+
+  /** Translate placed items as a block so their collective center lands on
+   * the target, preserving relative layout. */
+  private centerPlacedOn(placed: AnyItem[], at?: AnyItem): void {
+    try {
+      const target = this.pasteTarget(at);
+      const bounds = this.selection.collectiveBounds(placed);
+      if (!bounds || !bounds.center) return;
+      const delta = target.subtract(bounds.center);
+      for (const item of placed) {
+        try { item.translate(delta); } catch { /* Keep this item where it is. */ }
+      }
+    } catch {
+      // Placement never fails a paste: items stay where they decoded.
+    }
+  }
+
+  /** Scale down only, matching DropController's 75%-of-view fit. */
+  private fitPlacedToView(item: AnyItem): void {
+    try {
+      const bounds = item.bounds;
+      const vb = this.scope.view.bounds;
+      if (!bounds || !vb) return;
+      const scale = viewFitScale(bounds, vb);
+      if (scale < 1) item.scale(scale, bounds.center);
+    } catch { /* A paste must never throw. */ }
   }
 
   canReorderSelection(): boolean {

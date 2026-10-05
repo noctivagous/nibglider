@@ -60,6 +60,10 @@ export interface KeyboardHost {
   notify(): void;
   setIsInDragLock(on: boolean): void;
   removeAllSelectedItemsAndReset(): void;
+  copySelection(): boolean;
+  cutSelection(): boolean;
+  pasteFromSystemClipboard(): Promise<boolean>;
+  selectAll(): boolean;
   stampCurrentPreview(): void;
   stampItems(items: Item[] | null): void;
   rectCenterlineKC(): void;
@@ -220,6 +224,18 @@ export class KeyboardController {
         return;
       case 'delete-selection':
         host.removeAllSelectedItemsAndReset();
+        return;
+      case 'cut':
+        host.cutSelection();
+        return;
+      case 'copy':
+        host.copySelection();
+        return;
+      case 'paste':
+        void host.pasteFromSystemClipboard();
+        return;
+      case 'select-all':
+        host.selectAll();
         return;
       case 'clear-selection':
         this.clearSelection();

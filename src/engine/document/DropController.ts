@@ -1,8 +1,12 @@
 import { stripSvgClips } from './SceneIO';
+import { classifyClipboardText, SCENE_MIME } from './clipboardIngest';
 
-// SVG and raster drops.
+// SVG, raster, and string drops (pasted strings route through the same
+// classifier, so anything pasteable is droppable and vice versa).
 // Owns no selection or history. Reads the drop event, the view, and zoom.
-// Mutates the scene only through host place, select, and recordDrop callbacks.
+// File payloads mutate the scene through host place, select, and recordDrop
+// callbacks; string payloads (scene/SVG/rich text, image URLs) delegate to
+// the host deposit callbacks, which share the engine paste path.
 // One history entry per file that lands. A failed read records no command.
 // Public: handle, looksLikeSvg, looksLikeRaster, viewFitScale.
 // Tested from tests/drop-controller.test.mjs.
@@ -17,6 +21,10 @@ export interface DropHost {
   addToSelection(item: Item): void;
   setDropNote(note: string): void;
   recordDrop(label: string, item: Item, selectedBefore: Item[]): void;
+  /** Shared paste-path deposit for string drops. Optional so older and
+   * minimal test hosts keep working; without it string drops are skipped. */
+  depositTextPayload?(text: string, at: Item): void;
+  depositImageUrl?(url: string, at: Item): void;
   updateTextContent(): void;
   notify(): void;
 }
@@ -47,8 +55,6 @@ export class DropController {
 
   handle(event: DragEvent): void {
     event.preventDefault();
-    const files = event.dataTransfer?.files;
-    if (!files || files.length === 0) return;
     const scope = this.host.scope();
     const view = scope.view;
     const canvas = view.element as HTMLCanvasElement | null;
@@ -56,19 +62,70 @@ export class DropController {
     const base = rect != null
       ? view.viewToProject(new scope.Point(event.clientX - rect.left, event.clientY - rect.top))
       : view.center.clone();
-    const cascade = 24 / this.host.zoom();
-    this.host.setDropNote('');
-    const selBefore = [...this.host.selectedItems()];
-    this.host.clearSelection();
-    this.host.updateTextContent();
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const at = base.add(new scope.Point(cascade * i, cascade * i));
-      if (looksLikeSvg(file)) this.dropSvgFile(file, at, selBefore);
-      else if (looksLikeRaster(file)) this.dropRasterFile(file, at, selBefore);
-      else this.dropUnknownFile(file, at, selBefore);
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      const cascade = 24 / this.host.zoom();
+      this.host.setDropNote('');
+      const selBefore = [...this.host.selectedItems()];
+      this.host.clearSelection();
+      this.host.updateTextContent();
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const at = base.add(new scope.Point(cascade * i, cascade * i));
+        if (looksLikeSvg(file)) this.dropSvgFile(file, at, selBefore);
+        else if (looksLikeRaster(file)) this.dropRasterFile(file, at, selBefore);
+        else this.dropUnknownFile(file, at, selBefore);
+      }
+      this.host.notify();
+      return;
     }
-    this.host.notify();
+    this.handleStringDrop(event.dataTransfer, base);
+  }
+
+  /** String-only drops: scene/SVG/rich text via the shared classifier and
+   * image URLs via the host fetch path. Anything pasteable is droppable. */
+  private handleStringDrop(dataTransfer: DataTransfer | null | undefined, base: Item): void {
+    if (!dataTransfer) return;
+    const get = (type: string): string | null => {
+      try {
+        const value = dataTransfer.getData(type);
+        return value ? value : null;
+      } catch {
+        return null;
+      }
+    };
+    const scene = get(SCENE_MIME);
+    if (scene && this.host.depositTextPayload) {
+      this.host.setDropNote('');
+      this.host.depositTextPayload(scene, base);
+      this.host.notify();
+      return;
+    }
+    const plain = get('text/plain');
+    const html = get('text/html');
+    const uri = get('text/uri-list');
+    // Exact payloads win: pasted SVG/scene text must not lose to an HTML
+    // link card describing the same drag. Otherwise rich HTML beats the
+    // lossy plain fallback, which beats a bare URL.
+    let payload: string | null = null;
+    if (plain) {
+      const kind = classifyClipboardText(plain);
+      if (kind === 'scene' || kind === 'svg' || !html) payload = plain;
+      else payload = html;
+    } else if (html) {
+      payload = html;
+    }
+    if (payload && this.host.depositTextPayload) {
+      this.host.setDropNote('');
+      this.host.depositTextPayload(payload, base);
+      this.host.notify();
+      return;
+    }
+    if (uri && this.host.depositImageUrl) {
+      this.host.setDropNote('');
+      this.host.depositImageUrl(uri, base);
+      this.host.notify();
+    }
   }
 
   private note(note: string): void {
