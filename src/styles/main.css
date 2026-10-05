@@ -4285,6 +4285,51 @@ kbd,
 .app-menu-item.focused .app-menu-caret {
   border-left-color: currentColor;
 }
+/* Submenu option rows hosting a numeric field: the toggle button keeps the
+   row idiom while the input sits to its right. */
+.app-menu-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 4px;
+  padding-right: 10px;
+}
+.app-menu-field.focused {
+  background: var(--dp-accent-soft);
+}
+.app-menu-field-toggle {
+  flex: 1 1 auto;
+  width: auto;
+}
+.app-menu-dropdown .snap-num {
+  flex: none;
+  width: calc(3ch + 14px);
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  box-shadow: none;
+  color: var(--dp-text-1);
+  padding: 2px 6px;
+  font-size: 0.8125rem;
+  font-family: var(--font-tech-mono);
+}
+.app-menu-dropdown .snap-num::-webkit-outer-spin-button,
+.app-menu-dropdown .snap-num::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.app-menu-dropdown .snap-num[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.app-menu-dropdown .snap-num:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.app-menu-dropdown .snap-num:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 1px;
+}
 
 /* Settings window: centered dialog over a click-to-close backdrop. Above the
    panel widgets and select menus (up to 10100) but below the tutorial

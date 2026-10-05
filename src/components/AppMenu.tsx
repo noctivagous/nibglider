@@ -11,6 +11,27 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { MenuDef, MenuItemDef } from '../ui/PanelsManager';
 import { stepFocus } from '../ui/menuNavigation';
+import { SnapNumInput } from './ControlPanel';
+
+/** Live numeric field hosted inside a menu option row (e.g. snap steps). */
+export interface MenuNumberField {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  disabled?: boolean;
+  label: string;
+}
+
+/** Live panel-section state for a menu's bottom Panel toggle group. */
+export interface MenuPanelSection {
+  id: string;
+  label: string;
+  hidden: boolean;
+  collapsed: boolean;
+}
+
+export type PanelSectionAction = 'toggle-show' | 'toggle-expand';
 
 function commandLabel(commandId: string): string {
   return commandId
@@ -512,6 +533,13 @@ const TRIGGER_ICONS: Record<string, ReactNode> = {
       <path d="M12 7 V4 M8 9 L5 6 M16 9 l3 -3 M6 13 H3 M21 13 h-3 M8 17 l-3 3 M16 17 l3 3" />
     </MenuGlyph>
   ),
+  help: (
+    <MenuGlyph size={13}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.5 a2.5 2.5 0 1 1 3.6 2.2 c-.9.4-1.1 1-1.1 1.8" />
+      <path d="M12 17 v.5" />
+    </MenuGlyph>
+  ),
 };
 
 /** No checked rows; default so callers without live state pass nothing. */
@@ -531,6 +559,10 @@ export default function AppMenu({
   enabledCommands,
   checkedCommands = NO_CHECKS,
   onCommand,
+  numberFields,
+  onNumberCommit,
+  panelSections,
+  onPanelSection,
 }: {
   menus: MenuDef[];
   /** Commands with a wired handler; everything else renders disabled. */
@@ -538,6 +570,12 @@ export default function AppMenu({
   /** Commands currently active; their rows carry a check glyph. */
   checkedCommands?: Set<string>;
   onCommand: (commandId: string) => void;
+  /** Numeric inputs hosted in option rows, keyed by command id. */
+  numberFields?: Record<string, MenuNumberField>;
+  onNumberCommit?: (commandId: string, value: number) => void;
+  /** Panel sections per menu id; menus in this map grow a bottom Panel group. */
+  panelSections?: Record<string, MenuPanelSection[]>;
+  onPanelSection?: (action: PanelSectionAction, sectionId: string) => void;
 }) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [focusIdx, setFocusIdx] = useState<number>(-1);
@@ -571,8 +609,24 @@ export default function AppMenu({
     <div ref={barRef} className="app-menu-bar" role="menubar" aria-label="Application">
       {menus.map((menu, menuIndex) => {
         const isOpen = openMenu === menu.id;
+        // Panel toggles for this menu: a bottom group with per-section
+        // show/expand rows. Expand stays disabled while its section is hidden.
+        const sections = onPanelSection ? (panelSections?.[menu.id] ?? []) : [];
+        const panelChecked = (commandId: string): boolean => {
+          for (const sec of sections) {
+            if (commandId === `panel-show-${sec.id}`) return !sec.hidden;
+            if (commandId === `panel-expand-${sec.id}`) return !sec.collapsed;
+          }
+          return false;
+        };
+        const effectiveEnabled = new Set(enabledCommands);
+        for (const sec of sections) {
+          effectiveEnabled.add(`panel-show-${sec.id}`);
+          if (!sec.hidden) effectiveEnabled.add(`panel-expand-${sec.id}`);
+        }
         // Visible rows: headers and items in order, with the open submenu's
-        // options spliced after their parent. focusIdx addresses this list.
+        // options spliced after their parent and the Panel group last.
+        // focusIdx addresses this list.
         const rows: MenuRow[] = [];
         for (const item of menu.items) {
           rows.push({ item, parent: null });
@@ -580,13 +634,33 @@ export default function AppMenu({
             for (const child of item.children) rows.push({ item: child, parent: item });
           }
         }
+        if (sections.length > 0) {
+          rows.push({
+            item: { commandId: `hdr-${menu.id}-panel`, label: 'Panel', header: true },
+            parent: null,
+          });
+          for (const sec of sections) {
+            rows.push({ item: { commandId: `panel-show-${sec.id}`, label: `Show ${sec.label}` }, parent: null });
+            rows.push({ item: { commandId: `panel-expand-${sec.id}`, label: `Expand ${sec.label}` }, parent: null });
+          }
+        }
         const rowItems = rows.map((row) => row.item);
         const step = (from: number, dir: 1 | -1): void => {
-          setFocusIdx(stepFocus(rowItems, enabledCommands, from, dir));
+          setFocusIdx(stepFocus(rowItems, effectiveEnabled, from, dir));
         };
         const activateRow = (rowIdx: number): void => {
           const row = rows[rowIdx];
           if (!row || row.item.header) return;
+          if (row.item.commandId.startsWith('panel-show-') || row.item.commandId.startsWith('panel-expand-')) {
+            if (!effectiveEnabled.has(row.item.commandId)) return;
+            const sectionId = row.item.commandId.replace(/^panel-(show|expand)-/, '');
+            openMenuTo(null);
+            onPanelSection?.(
+              row.item.commandId.startsWith('panel-show-') ? 'toggle-show' : 'toggle-expand',
+              sectionId,
+            );
+            return;
+          }
           if (row.parent === null && row.item.children) {
             // Parent rows expand; their own command never dispatches.
             setOpenSub(row.item.commandId);
@@ -594,7 +668,7 @@ export default function AppMenu({
             if (firstChild >= 0) setFocusIdx(firstChild);
             return;
           }
-          if (!enabledCommands.has(row.item.commandId)) return;
+          if (!effectiveEnabled.has(row.item.commandId)) return;
           openMenuTo(null);
           onCommand(row.item.commandId);
         };
@@ -629,7 +703,7 @@ export default function AppMenu({
                 e.preventDefault();
                 if (!isOpen) {
                   setOpenMenu(menu.id);
-                  setFocusIdx(stepFocus(rowItems, enabledCommands, -1, e.key === 'ArrowDown' ? 1 : -1));
+                  setFocusIdx(stepFocus(rowItems, effectiveEnabled, -1, e.key === 'ArrowDown' ? 1 : -1));
                 } else {
                   step(focusIdx, e.key === 'ArrowDown' ? 1 : -1);
                 }
@@ -687,7 +761,7 @@ export default function AppMenu({
                   );
                 }
                 if (row.parent !== null) return null;
-                const enabled = enabledCommands.has(item.commandId);
+                const enabled = effectiveEnabled.has(item.commandId);
                 const isParent = !!item.children;
                 const expanded = openSub === item.commandId;
                 // Parents stay clickable while unwired: their click expands.
@@ -714,7 +788,7 @@ export default function AppMenu({
                       onClick={() => activateRow(rowIdx)}
                     >
                       <span className="app-menu-icon" aria-hidden="true">
-                        {checkedCommands.has(item.commandId)
+                        {checkedCommands.has(item.commandId) || panelChecked(item.commandId)
                           ? <CheckGlyph />
                           : ((item.icon && MENU_ICONS[item.icon]) ?? null)}
                       </span>
@@ -729,7 +803,53 @@ export default function AppMenu({
                     {expanded && (
                       <div className="app-menu-submenu" role="menu" aria-label={item.label ?? commandLabel(item.commandId)}>
                         {childIndexes.map(({ row: childRow, index: childIdx }) => {
-                          const childEnabled = enabledCommands.has(childRow.item.commandId);
+                          const childEnabled = effectiveEnabled.has(childRow.item.commandId);
+                          const field = numberFields?.[childRow.item.commandId];
+                          if (field && onNumberCommit) {
+                            // Option rows hosting a numeric field: the button
+                            // toggles the option, the input edits its value.
+                            // Keystrokes stay inside the input so menu
+                            // navigation never hijacks typing.
+                            const fieldId = rowId(menu.id, childRow.item.commandId);
+                            return (
+                              <div
+                                key={childRow.item.commandId}
+                                className={childIdx === focusIdx ? 'app-menu-field focused' : 'app-menu-field'}
+                                onMouseEnter={() => setFocusIdx(childIdx)}
+                              >
+                                <button
+                                  id={fieldId}
+                                  type="button"
+                                  role="menuitem"
+                                  className="app-menu-item app-menu-field-toggle"
+                                  disabled={!childEnabled}
+                                  aria-disabled={!childEnabled}
+                                  tabIndex={-1}
+                                  onClick={() => activateRow(childIdx)}
+                                >
+                                  <span className="app-menu-icon" aria-hidden="true">
+                                    {checkedCommands.has(childRow.item.commandId)
+                                      ? <CheckGlyph />
+                                      : ((childRow.item.icon && MENU_ICONS[childRow.item.icon]) ?? null)}
+                                  </span>
+                                  <span className="app-menu-label">
+                                    {childRow.item.label ?? commandLabel(childRow.item.commandId)}
+                                  </span>
+                                </button>
+                                <span onKeyDown={(e) => e.stopPropagation()}>
+                                  <SnapNumInput
+                                    label={field.label}
+                                    value={field.value}
+                                    min={field.min}
+                                    max={field.max}
+                                    step={field.step}
+                                    disabled={field.disabled || !childEnabled}
+                                    onCommit={(n) => onNumberCommit(childRow.item.commandId, n)}
+                                  />
+                                </span>
+                              </div>
+                            );
+                          }
                           return (
                             <button
                               key={childRow.item.commandId}

@@ -1,5 +1,14 @@
 
-[ ] JSON serialization of the scene graph — walk the paper.project tree and JSON.stringify each item's properties (path segments, styles, transforms, etc.), then reconstruct on load. This is the most common approach for a "native" save format in Paper.js-based editors
+[  ] real clipboard implementation, select-all engine support. (Edit menu).
+
+[ ] CONFIG. SUMMARY BOX WIDGET.  Where the vertical stack of menu buttons was and where they are hidden,
+make a summary box widget and it summarizes, in icons and a layout, the settings for everything, from stroke, to
+fill.  it can make use of its own SVGs.  it will provide a larger preview of what the path is going to do when it draws things,
+both fill and stroke.  when there is a selection, it will change states according to what the path is.  It will have the name
+of the document in the upper left corner.
+
+
+[x] JSON serialization of the scene graph — walk the paper.project tree and JSON.stringify each item's properties (path segments, styles, transforms, etc.), then reconstruct on load. This is the most common approach for a "native" save format in Paper.js-based editors
 
 [x] cmd/ctrl - and = zoom out and zoom in, cmd/ctrl 0 sets to 100%.
 

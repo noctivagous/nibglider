@@ -8,7 +8,7 @@ import {
 } from './engine/engine';
 import { isCommandAvailable, matchAppCommand } from './engine/input/keymap';
 import ControlPanel from './components/ControlPanel';
-import AppMenu from './components/AppMenu';
+import AppMenu, { type MenuPanelSection, type PanelSectionAction } from './components/AppMenu';
 import SettingsWindow from './components/SettingsWindow';
 import OnscreenKeyboard from './components/OnscreenKeyboard';
 import TutorialOverlay from './components/TutorialOverlay';
@@ -16,7 +16,7 @@ import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
 import { autosaveDocument, restorableDocument } from './ui/DocumentGallery';
-import { PanelsManager } from './ui/PanelsManager';
+import { MENU_PANEL_SECTIONS, PanelsManager, sectionLabel } from './ui/PanelsManager';
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
 import { TutorialRunner } from './tutorial/TutorialRunner';
@@ -326,6 +326,55 @@ export default function App() {
   // Re-render on engine changes so menu checkmarks (length unit) stay fresh.
   // Visibility toggles arrive through the gui snapshot above.
   useSyncExternalStore(engine.subscribe, engine.getVersion);
+  // Re-render on panel changes so the menu's Panel toggle groups mirror
+  // live collapsed/hidden section state.
+  useSyncExternalStore(panels.subscribe, panels.getVersion);
+
+  // Snap step fields hosted in the Snapping submenu, mirroring the panel's
+  // units and ranges (see ControlPanel lengthField).
+  const menuLengthField =
+    engine.lengthUnit === 'inch'
+      ? { min: 0.05, max: 10, step: 0.125, unit: 'inches' }
+      : engine.lengthUnit === 'cm'
+        ? { min: 0.5, max: 200, step: 0.5, unit: 'cm' }
+        : { min: 1, max: 500, step: 1, unit: 'pt' };
+  const menuNumberFields = {
+    'snap-angle': {
+      value: engine.angleSnapDegrees,
+      min: 1, max: 90, step: 1,
+      disabled: !engine.isAngleSnappingEnabled,
+      label: 'Angle snap step in degrees',
+    },
+    'snap-length': {
+      value: Math.round(engine.lengthSnapStepInUnit() * 1000) / 1000,
+      min: menuLengthField.min, max: menuLengthField.max, step: menuLengthField.step,
+      disabled: !engine.isLengthSnappingEnabled,
+      label: `Length snap step in ${menuLengthField.unit}`,
+    },
+  };
+  const handleMenuNumberCommit = useCallback((commandId: string, value: number) => {
+    if (commandId === 'snap-angle') engine.setAngleSnapDegrees(value);
+    else if (commandId === 'snap-length') engine.setLengthSnapStepFromUnit(value);
+  }, [engine]);
+
+  // Bottom Panel toggle group per mapped menu, reflecting live section state.
+  const menuPanelSections: Record<string, MenuPanelSection[]> = {};
+  for (const [menuId, ids] of Object.entries(MENU_PANEL_SECTIONS)) {
+    menuPanelSections[menuId] = ids.map((id) => ({
+      id,
+      label: sectionLabel(id),
+      hidden: panels.removed.includes(id),
+      collapsed: !!panels.collapsed[id],
+    }));
+  }
+  const handlePanelSection = useCallback((action: PanelSectionAction, sectionId: string) => {
+    if (action === 'toggle-show') {
+      if (panels.removed.includes(sectionId)) panels.restoreSection(sectionId);
+      else panels.removeSection(sectionId);
+    } else {
+      panels.toggleCollapse(sectionId);
+    }
+  }, [panels]);
   const checkedCommands = new Set<string>([
     ...(ui.controlsVisible ? ['toggle-panel'] : []),
     ...(ui.keyboardVisible ? ['toggle-keyboard'] : []),
@@ -525,6 +574,10 @@ export default function App() {
         enabledCommands={MENU_COMMANDS}
         checkedCommands={checkedCommands}
         onCommand={handleMenuCommand}
+        numberFields={menuNumberFields}
+        onNumberCommit={handleMenuNumberCommit}
+        panelSections={menuPanelSections}
+        onPanelSection={handlePanelSection}
       />
       {ui.openWindowId === 'settings' && (
         <SettingsWindow engine={engine} gui={gui} windowId={ui.openWindowId} />

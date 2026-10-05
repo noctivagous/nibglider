@@ -7,7 +7,6 @@
     <item command="rename-document" icon="rename" />
     <item command="export" icon="export" />
     <item command="import" icon="import" />
-    <item command="tutorial" icon="tutorial" />
     <item command="settings" icon="settings" />
   </menu>
   <menu id="edit" title="Edit">
@@ -47,7 +46,7 @@
     </group>
   </menu>
   <menu id="modes" title="Modes">
-    <item command="rect-shape" label="Rect Keys shape" icon="rect-shape">
+    <item command="rect-shape" label="Rect Keys" icon="rect-shape">
       <option command="rect-shape-rectangle" label="Rectangle" icon="shape-rectangle" />
       <option command="rect-shape-circle" label="Circle" icon="shape-circle" />
       <option command="rect-shape-polygon" label="Regular Polygon" icon="shape-polygon" />
@@ -58,7 +57,7 @@
       <option command="rect-shape-rhombus" label="Rhombus" icon="shape-rhombus" />
       <option command="rect-shape-kite" label="Kite" icon="shape-kite" />
     </item>
-    <item command="circle-shape" label="Circle Keys shape" icon="circle-shape">
+    <item command="circle-shape" label="Circle Keys" icon="circle-shape">
       <option command="circle-shape-circle" label="Circle" icon="shape-circle" />
       <option command="circle-shape-semicircle" label="Semicircle" icon="shape-semicircle" />
       <option command="circle-shape-sector" label="Sector" icon="shape-sector" />
@@ -102,6 +101,9 @@
       <item command="duplicate-selection" label="Duplicate selection" icon="duplicate" />
       <item command="delete-selection" label="Delete selection" icon="delete" shortcut="Backspace" />
     </group>
+  </menu>
+  <menu id="help" title="Help">
+    <item command="tutorial" icon="tutorial" />
   </menu>
   <menu id="debug" title="Debug">
     <item command="reset-settings" label="Reset all settings" icon="reset-settings" />

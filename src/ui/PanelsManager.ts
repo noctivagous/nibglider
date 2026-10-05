@@ -61,6 +61,16 @@ export function sectionLabel(id: string): string {
   return PANEL_SECTIONS.find((section) => section.id === id)?.label ?? id;
 }
 
+/**
+ * Panel sections corresponding to each menu's items. Menus in this map
+ * render a Panel group at the bottom with per-section show/expand toggles
+ * that mirror the section's live collapsed/hidden state.
+ */
+export const MENU_PANEL_SECTIONS: Record<string, string[]> = {
+  modes: ['circleFrameControls', 'rectFrameControls', 'combinatoricsControls', 'snappingControls', 'textControls'],
+  edit: ['historyControls'],
+};
+
 export function sectionLists(orderMap: Record<string, string[]>): Record<string, string[]> {
   const next: Record<string, string[]> = {};
   const placed = new Set<string>();

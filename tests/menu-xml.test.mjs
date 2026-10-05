@@ -43,9 +43,9 @@ function loadMenus() {
 
 test('menus XML parses to the five application menus in order', () => {
   const menus = loadMenus();
-  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'debug']);
+  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'help', 'debug']);
   assert.deepEqual(menus.map((menu) => menu.title), [
-    'File', 'Edit', 'Document and Settings', 'Operations', 'Modes', 'Layers and Objects', 'Debug',
+    'File', 'Edit', 'Document and Settings', 'Operations', 'Modes', 'Layers and Objects', 'Help', 'Debug',
   ]);
 });
 
@@ -144,6 +144,16 @@ test('every submenu option carries its panel icon, and every icon key has an App
   for (const key of referenced) {
     assert.ok(defined.has(key), `icon "${key}" has a glyph in AppMenu.tsx`);
   }
+});
+
+test('help holds the tutorial, and shape parents use the short Keys labels', () => {
+  const menus = loadMenus();
+  const byId = Object.fromEntries(menus.map((menu) => [menu.id, menu]));
+  assert.deepEqual(byId.help.items.map((item) => item.commandId), ['tutorial']);
+  assert.ok(!byId.file.items.some((item) => item.commandId === 'tutorial'));
+  const modesById = Object.fromEntries(byId.modes.items.map((item) => [item.commandId, item]));
+  assert.equal(modesById['rect-shape'].label, 'Rect Keys');
+  assert.equal(modesById['circle-shape'].label, 'Circle Keys');
 });
 
 test('edit holds undo/redo, clipboard, and selection entries', () => {

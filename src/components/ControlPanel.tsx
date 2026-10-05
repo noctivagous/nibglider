@@ -109,7 +109,7 @@ function SnapToggle({
 // Plain numeric field (no steppers) for a snap increment. Typing tolerates
 // intermediate text: the draft shows verbatim while every finite prefix
 // still commits live; blur or Escape discards the draft.
-function SnapNumInput({
+export function SnapNumInput({
   id,
   label,
   value,

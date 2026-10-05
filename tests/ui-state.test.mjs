@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GUIManager, KEYBOARD_WIDTH_DEFAULT } from '../src/ui/GUIManager.ts';
 import { WidgetLayout, statusShiftX } from '../src/ui/WidgetLayout.ts';
-import { APPLICATION_MENUS, PanelsManager, sectionOrder } from '../src/ui/PanelsManager.ts';
+import { APPLICATION_MENUS, MENU_PANEL_SECTIONS, PANEL_SECTIONS, PanelsManager, sectionOrder } from '../src/ui/PanelsManager.ts';
 import { buildKeymapRows, buildStatusSchema } from '../src/ui/StatusPresenter.ts';
 import { resolveKeyboardLayout, resolveKeyVariants } from '../src/engine/input/KeyboardLayoutResolver.ts';
 import { buildChordRows } from '../src/ui/KeymapPresenter.ts';
@@ -95,14 +95,15 @@ test('dragging across a row boundary keeps the requested visual row', () => {
   assert.equal(sectionOrder(again.order).indexOf('textControls'), 6);
 });
 
-test('application menus cover file, edit, document, operations, modes, layers, and debug', () => {
+test('application menus cover file, edit, document, operations, modes, layers, help, and debug', () => {
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
-  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'debug']);
+  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'help', 'debug']);
   assert.equal(byId.file.title, 'File');
   assert.deepEqual(byId.file.items.map((item) => item.commandId), [
-    'open-gallery', 'new-document', 'save-gallery', 'rename-document', 'export', 'import', 'tutorial',
+    'open-gallery', 'new-document', 'save-gallery', 'rename-document', 'export', 'import',
     'settings',
   ]);
+  assert.deepEqual(byId.help.items.map((item) => item.commandId), ['tutorial']);
   assert.ok(byId.document.items.some((item) => item.commandId === 'length-unit'));
   // Object control lives in Layers, not Operations.
   assert.ok(!byId.operations.items.some((item) => item.commandId === 'group'));
@@ -119,6 +120,20 @@ test('application menus cover file, edit, document, operations, modes, layers, a
     assert.ok(parent?.children && parent.children.length > 0, `modes menu lists ${id} submenu`);
   }
   assert.deepEqual(byId.debug.items.map((item) => item.commandId), ['reset-settings']);
+});
+
+test('menu panel sections map to known panel sections', () => {
+  const known = new Set(PANEL_SECTIONS.map((section) => section.id));
+  assert.deepEqual(MENU_PANEL_SECTIONS.modes, [
+    'circleFrameControls', 'rectFrameControls', 'combinatoricsControls', 'snappingControls', 'textControls',
+  ]);
+  assert.deepEqual(MENU_PANEL_SECTIONS.edit, ['historyControls']);
+  for (const [menuId, ids] of Object.entries(MENU_PANEL_SECTIONS)) {
+    assert.ok(APPLICATION_MENUS.some((menu) => menu.id === menuId), `${menuId} is a real menu`);
+    for (const id of ids) {
+      assert.ok(known.has(id), `${id} is a real panel section`);
+    }
+  }
 });
 
 test('operations menu groups dialog entries and carries rail shortcuts and icons', () => {
@@ -149,7 +164,6 @@ test('operations menu groups dialog entries and carries rail shortcuts and icons
     'rename-document': 'rename',
     export: 'export',
     import: 'import',
-    tutorial: 'tutorial',
     settings: 'settings',
   });
 });
