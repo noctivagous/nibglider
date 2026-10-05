@@ -2095,6 +2095,20 @@ export class NibGliderEngine {
     }
   }
 
+  /** Live union size of the top-level selection in document points, for the
+   * Scale dialog readout. Null when nothing is selected. */
+  selectionSize(): { width: number; height: number } | null {
+    const items = this.topLevelSelected();
+    if (items.length === 0) return null;
+    try {
+      const b = this.selection.collectiveBounds(items);
+      if (!b || !Number.isFinite(b.width) || !Number.isFinite(b.height)) return null;
+      return { width: Math.max(0, b.width), height: Math.max(0, b.height) };
+    } catch {
+      return null;
+    }
+  }
+
   // Live preview mutators: applied incrementally by the Operations modal
   // as its numeric field changes. No history here — the modal records one
   // undo entry for the net delta when the user commits.

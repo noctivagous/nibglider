@@ -32,6 +32,12 @@ import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import DocumentGallery, { type GalleryMode } from './DocumentGallery';
 import NewDocumentDialog, { type NewDocumentSpec } from './NewDocumentDialog';
 import { renameTarget, saveTarget, type FileCommand } from '../ui/fileCommands';
+import {
+  formatInUnit,
+  pointsToUnit,
+  targetScalePercent,
+  unitLabel,
+} from '../engine/document/MeasurementUnits';
 import KeymapWidget from './KeymapWidget';
 import WidgetHandle from './WidgetHandle';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
@@ -602,15 +608,129 @@ function SectionTitleButton({
 // Modal dialog for the Operations entries that need input (scale, rotate).
 // The transform previews live on the page as the field changes; OK commits
 // one undo entry for the net delta, Cancel inverts the applied preview.
+const SCALE_SIZE_UNITS: LengthUnit[] = ['pt', 'pica', 'inch', 'ft', 'mm', 'cm', 'm'];
+
+function trimDims(value: number): string {
+  return String(Math.round(value * 1000) / 1000);
+}
+
+// Scale-by-size section: target width/height in a chosen unit plus a live
+// readout of the selection size. Scaling stays uniform (the engine previews
+// one factor about the center), so the aspect from dialog-open is locked and
+// editing either axis drives the same percent draft as the slider.
+function ScaleSizeFields({
+  baseW,
+  baseH,
+  live,
+  defaultUnit,
+  onDraft,
+}: {
+  baseW: number;
+  baseH: number;
+  live: { width: number; height: number } | null;
+  defaultUnit: LengthUnit;
+  onDraft: (percent: number) => void;
+}) {
+  const sized = baseW > 0 && baseH > 0;
+  const aspect = sized ? baseH / baseW : 0;
+  const [unit, setUnit] = useState<LengthUnit>(defaultUnit);
+  const [targetW, setTargetW] = useState(() => trimDims(pointsToUnit(baseW, defaultUnit)));
+  const [targetH, setTargetH] = useState(() => trimDims(pointsToUnit(baseH, defaultUnit)));
+  const [error, setError] = useState<string | null>(null);
+
+  const changeUnit = (next: LengthUnit) => {
+    setUnit(next);
+    setTargetW(trimDims(pointsToUnit(baseW, next)));
+    setTargetH(trimDims(pointsToUnit(baseH, next)));
+    setError(null);
+  };
+  const commitAxis = (raw: string, axis: 'w' | 'h') => {
+    if (axis === 'w') setTargetW(raw);
+    else setTargetH(raw);
+    const v = Number(raw);
+    if (!sized || raw.trim() === '' || !Number.isFinite(v) || v <= 0) {
+      setError(sized ? 'Enter a positive target size.' : null);
+      return;
+    }
+    setError(null);
+    if (axis === 'w') setTargetH(trimDims(v * aspect));
+    else setTargetW(trimDims(v / aspect));
+    onDraft(targetScalePercent(axis === 'w' ? baseW : baseH, v, unit));
+  };
+
+  return (
+    <>
+      <p className="op-modal-readout" aria-live="polite">
+        {live
+          ? `Current size: ${formatInUnit(live.width, unit)} × ${formatInUnit(live.height, unit)}`
+          : 'Current size: no selection'}
+      </p>
+      {sized ? (
+        <div className="op-modal-size">
+          <label className="op-modal-size-field">
+            <span>Width</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-label="Target width"
+              value={targetW}
+              onChange={(e) => commitAxis(e.target.value, 'w')}
+            />
+          </label>
+          <span className="op-modal-times" aria-hidden="true">×</span>
+          <label className="op-modal-size-field">
+            <span>Height</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              aria-label="Target height"
+              value={targetH}
+              onChange={(e) => commitAxis(e.target.value, 'h')}
+            />
+          </label>
+          <label className="op-modal-size-field">
+            <span>Unit</span>
+            <select
+              className="op-modal-select"
+              aria-label="Target size unit"
+              value={unit}
+              onChange={(e) => changeUnit(e.target.value as LengthUnit)}
+            >
+              {SCALE_SIZE_UNITS.map((option) => (
+                <option key={option} value={option}>
+                  {unitLabel(option)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : (
+        <p className="op-modal-hint">Target size needs a selection with positive width and height.</p>
+      )}
+      {error ? (
+        <p className="op-modal-error" role="alert">{error}</p>
+      ) : (
+        <p className="op-modal-hint">Aspect locked — scaling stays uniform.</p>
+      )}
+    </>
+  );
+}
+
 function OperationDialog({
   kind,
   draft,
+  base,
+  live,
+  defaultUnit,
   onDraft,
   onCommit,
   onCancel,
 }: {
   kind: 'scale' | 'rotate';
   draft: number;
+  base: { width: number; height: number } | null;
+  live: { width: number; height: number } | null;
+  defaultUnit: LengthUnit;
   onDraft: (n: number) => void;
   onCommit: () => void;
   onCancel: () => void;
@@ -668,6 +788,15 @@ function OperationDialog({
             </span>
           </span>
         </label>
+        {kind === 'scale' && base ? (
+          <ScaleSizeFields
+            baseW={base.width}
+            baseH={base.height}
+            live={live}
+            defaultUnit={defaultUnit}
+            onDraft={onDraft}
+          />
+        ) : null}
         <p className="op-modal-hint">Previewing live on the page.</p>
         <div className="op-modal-actions">
           <button type="button" onClick={onCancel}>
@@ -2666,10 +2795,11 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     [panels],
   );
   const isRemoved = useCallback((id: string) => removedList.includes(id), [removedList]);
-  // Scale/rotate modal dialog with a live on-page preview. Its rail trigger
-  // is archived; the dialog stays for the future top Operations wiring.
+  // Scale/rotate modal dialog with a live on-page preview, opened from the
+  // top Operations menu. Scale captures the selection size at open so target
+  // dimensions resolve against unscaled bounds.
   const [opDialog, setOpDialog] = useState<
-    | { kind: 'scale'; draft: number; applied: number }
+    | { kind: 'scale'; draft: number; applied: number; baseW: number; baseH: number }
     | { kind: 'rotate'; draft: number; applied: number }
     | null
   >(null);
@@ -2868,11 +2998,12 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   const openOperationDialog = useCallback((kind: 'scale' | 'rotate') => {
     if (!engine.canTransformSelection()) return;
     dismissSelects();
-    setOpDialog(
-      kind === 'scale'
-        ? { kind, draft: 100, applied: 1 }
-        : { kind, draft: 0, applied: 0 },
-    );
+    if (kind === 'scale') {
+      const base = engine.selectionSize() ?? { width: 0, height: 0 };
+      setOpDialog({ kind, draft: 100, applied: 1, baseW: base.width, baseH: base.height });
+      return;
+    }
+    setOpDialog({ kind, draft: 0, applied: 0 });
   }, [engine, dismissSelects]);
   useImperativeHandle(
     ref,
@@ -3879,6 +4010,9 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         <OperationDialog
           kind={opDialog.kind}
           draft={opDialog.draft}
+          base={opDialog.kind === 'scale' ? { width: opDialog.baseW, height: opDialog.baseH } : null}
+          live={engine.selectionSize()}
+          defaultUnit={engine.lengthUnit}
           onDraft={handleOpDraft}
           onCommit={commitOpDialog}
           onCancel={cancelOpDialog}

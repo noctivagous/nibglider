@@ -14,6 +14,7 @@ import {
   pointsToUnit,
   resolveRatioToPoints,
   systemUnits,
+  targetScalePercent,
   unitLabel,
   unitToPoints,
 } from '../src/engine/document/MeasurementUnits.ts';
@@ -109,6 +110,16 @@ test('ratio tab multiplies a ratio by a unit length', () => {
   assert.throws(() => resolveRatioToPoints(0, 9, 1, 'pt'));
   assert.throws(() => resolveRatioToPoints(16, 9, -1, 'pt'));
   assert.throws(() => resolveRatioToPoints(16, 9, 1, 'bad'));
+});
+
+test('target scale percent maps a current size to a target length', () => {
+  assert.equal(targetScalePercent(100, 100, 'pt'), 100);
+  assert.equal(targetScalePercent(100, 2, 'inch'), 144);
+  approx(targetScalePercent(72, 25.4, 'mm'), 100);
+  assert.equal(targetScalePercent(50, 1, 'ft'), 1728);
+  assert.throws(() => targetScalePercent(0, 10, 'pt'), /positive/);
+  assert.throws(() => targetScalePercent(10, 0, 'pt'), /positive/);
+  assert.throws(() => targetScalePercent(10, 5, 'bad'), /Unsupported length unit/);
 });
 
 test('unit systems default to English with SI and English ranges', () => {

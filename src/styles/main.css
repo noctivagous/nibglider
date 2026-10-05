@@ -4112,6 +4112,52 @@ kbd,
   color: var(--dp-text-3);
 }
 
+.op-modal-readout {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: var(--dp-text-1);
+}
+
+.op-modal-error {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: #f0a0a0;
+}
+
+.op-modal-size {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.op-modal-size-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.75rem;
+  color: var(--dp-text-3);
+}
+
+.op-modal-size-field input[type="text"],
+.op-modal-select {
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 0;
+  color: var(--dp-text-1);
+  font: inherit;
+  padding: 4px 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.op-modal-times {
+  color: var(--dp-text-3);
+  padding-bottom: 5px;
+}
+
 .op-modal-actions {
   display: flex;
   justify-content: flex-end;

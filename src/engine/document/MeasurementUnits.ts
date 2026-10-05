@@ -211,6 +211,21 @@ export function resolveRatioToPoints(
   return { widthPt: a * scalePt, heightPt: b * scalePt };
 }
 
+/** Absolute scale percent mapping a current size to a target length:
+ * 100 keeps the size, 200 doubles it. Throws on non-positive or unknown
+ * inputs; the Scale dialog validates entry before calling. */
+export function targetScalePercent(
+  currentPt: number,
+  target: number,
+  unit: LengthUnit,
+): number {
+  finite(currentPt, 'Current size');
+  if (currentPt <= 0) throw new Error('Current size must be positive');
+  finite(target, 'Target size');
+  if (target <= 0) throw new Error('Target size must be positive');
+  return (unitToPoints(target, unit) / currentPt) * 100;
+}
+
 /** Clamp for dialog entry: DocumentManager already rejects non-positive
  * sizes; this keeps absurd values out before they get there. */
 export const MAX_DIMENSION_PT = 20000;

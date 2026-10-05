@@ -120,6 +120,20 @@ test('engine document revision follows committed scene edits, undo/redo, and pag
   } finally { s.project.remove(); }
 });
 
+test('selection size reports live union bounds for the scale dialog', () => {
+  const s = scope(); const engine = new NibGliderEngine(s, () => {});
+  try {
+    assert.equal(engine.selectionSize(), null);
+    const rect = new s.Path.Rectangle({ from: [0, 0], to: [40, 30] });
+    engine.addItemToSelection(rect);
+    assert.deepEqual(engine.selectionSize(), { width: 40, height: 30 });
+    engine.scaleSelectionPreview(2);
+    assert.deepEqual(engine.selectionSize(), { width: 80, height: 60 });
+    engine.scaleSelectionPreview(0.5);
+    assert.deepEqual(engine.selectionSize(), { width: 40, height: 30 });
+  } finally { engine.cancelCurrentDrawingOperation(); s.project.remove(); }
+});
+
 test('z pan-lock glues the canvas to the cursor until any key', () => {
   const s = scope(); const engine = new NibGliderEngine(s, () => {});
   const key = (code, k, mods = {}) => ({
