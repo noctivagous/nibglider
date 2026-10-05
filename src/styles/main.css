@@ -4171,6 +4171,10 @@ kbd,
 .app-menu-trigger.open {
   background: var(--dp-bg-3);
 }
+.app-menu-trigger:focus-visible {
+  outline: 1px solid var(--dp-accent);
+  outline-offset: -1px;
+}
 .app-menu-dropdown {
   position: absolute;
   top: 100%;
@@ -4190,6 +4194,11 @@ kbd,
   font-size: 0.6875rem;
   letter-spacing: 0.04em;
 }
+.app-menu-sep {
+  height: 1px;
+  margin: 4px 10px 0;
+  background: var(--dp-border-soft);
+}
 .app-menu-item {
   display: flex;
   align-items: center;
@@ -4205,8 +4214,12 @@ kbd,
   padding: 6px 10px;
   cursor: pointer;
 }
-.app-menu-item:hover:not(:disabled) {
-  background: var(--dp-bg-3);
+.app-menu-item.focused {
+  background: var(--dp-accent-soft);
+  color: var(--dp-text-1);
+}
+.app-menu-item.focused .app-menu-icon {
+  color: inherit;
 }
 .app-menu-item:disabled {
   color: var(--dp-text-3);

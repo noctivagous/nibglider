@@ -1,10 +1,14 @@
 // Application menu bar. Renders menu definitions (PanelsManager
 // APPLICATION_MENUS) as dropdown menus; items dispatch through onCommand and
-// items without a wired handler render disabled. Owns only its open-menu
-// state. Tested indirectly through App wiring; menu defs from
-// tests/ui-state.test.mjs.
+// items without a wired handler render disabled. Owns its open-menu and
+// row-focus state: mouse hover and arrow keys share one `focused` highlight
+// (accent-soft, like the rail's CustomSelect), Enter activates, Escape
+// closes, Left/Right move between menus. Tested indirectly through App
+// wiring; menu defs from tests/ui-state.test.mjs, stepping rules from
+// tests/menu-navigation.test.mjs.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { MenuDef } from '../ui/PanelsManager';
+import { stepFocus } from '../ui/menuNavigation';
 
 function commandLabel(commandId: string): string {
   return commandId
@@ -73,6 +77,10 @@ const MENU_ICONS: Record<string, ReactNode> = {
   ),
 };
 
+function rowId(menuId: string, commandId: string): string {
+  return `appmenu-${menuId}-${commandId}`;
+}
+
 export default function AppMenu({
   menus,
   enabledCommands,
@@ -84,15 +92,29 @@ export default function AppMenu({
   onCommand: (commandId: string) => void;
 }) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [focusIdx, setFocusIdx] = useState<number>(-1);
   const barRef = useRef<HTMLDivElement | null>(null);
+  const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  const openMenuTo = (menuId: string | null): void => {
+    setOpenMenu(menuId);
+    setFocusIdx(-1);
+  };
+
+  const activateIdx = (menu: MenuDef, index: number): void => {
+    const item = menu.items[index];
+    if (!item || item.header || !enabledCommands.has(item.commandId)) return;
+    openMenuTo(null);
+    onCommand(item.commandId);
+  };
 
   useEffect(() => {
     if (!openMenu) return;
     const onPointerDown = (event: PointerEvent): void => {
-      if (barRef.current && !barRef.current.contains(event.target as Node)) setOpenMenu(null);
+      if (barRef.current && !barRef.current.contains(event.target as Node)) openMenuTo(null);
     };
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpenMenu(null);
+      if (event.key === 'Escape') openMenuTo(null);
     };
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
@@ -104,28 +126,73 @@ export default function AppMenu({
 
   return (
     <div ref={barRef} className="app-menu-bar" role="menubar" aria-label="Application">
-      {menus.map((menu) => (
+      {menus.map((menu, menuIndex) => {
+        const isOpen = openMenu === menu.id;
+        const focusedId = isOpen && focusIdx >= 0 && !menu.items[focusIdx]?.header
+          ? rowId(menu.id, menu.items[focusIdx].commandId)
+          : undefined;
+        return (
         <div key={menu.id} className="app-menu">
           <button
+            ref={(el) => {
+              if (el) triggerRefs.current.set(menu.id, el);
+              else triggerRefs.current.delete(menu.id);
+            }}
             type="button"
-            className={openMenu === menu.id ? 'app-menu-trigger open' : 'app-menu-trigger'}
+            className={isOpen ? 'app-menu-trigger open' : 'app-menu-trigger'}
             data-tutorial-id={`menu-${menu.id}`}
             aria-haspopup="menu"
-            aria-expanded={openMenu === menu.id}
-            onClick={() => setOpenMenu(openMenu === menu.id ? null : menu.id)}
+            aria-expanded={isOpen}
+            aria-activedescendant={focusedId}
+            aria-controls={isOpen ? `appmenu-dropdown-${menu.id}` : undefined}
+            onClick={() => openMenuTo(isOpen ? null : menu.id)}
             onMouseEnter={() => {
-              if (openMenu && openMenu !== menu.id) setOpenMenu(menu.id);
+              if (openMenu && !isOpen) openMenuTo(menu.id);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (!isOpen) {
+                  setOpenMenu(menu.id);
+                  setFocusIdx(stepFocus(menu.items, enabledCommands, -1, e.key === 'ArrowDown' ? 1 : -1));
+                } else {
+                  setFocusIdx(stepFocus(menu.items, enabledCommands, focusIdx, e.key === 'ArrowDown' ? 1 : -1));
+                }
+              } else if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (isOpen && focusIdx >= 0) activateIdx(menu, focusIdx);
+                else openMenuTo(menu.id);
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                openMenuTo(null);
+              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                const next = menus[(menuIndex + (e.key === 'ArrowRight' ? 1 : menus.length - 1)) % menus.length];
+                if (next) {
+                  openMenuTo(next.id);
+                  triggerRefs.current.get(next.id)?.focus();
+                }
+              }
             }}
           >
             {menu.title}
           </button>
-          {openMenu === menu.id && (
-            <div className="app-menu-dropdown" role="menu" aria-label={menu.title}>
-              {menu.items.map((item) => {
+          {isOpen && (
+            <div
+              id={`appmenu-dropdown-${menu.id}`}
+              className="app-menu-dropdown"
+              role="menu"
+              aria-label={menu.title}
+              onMouseLeave={() => setFocusIdx(-1)}
+            >
+              {menu.items.map((item, itemIndex) => {
                 if (item.header) {
                   return (
-                    <div key={item.commandId} className="app-menu-group" role="presentation">
-                      <span>{item.label ?? commandLabel(item.commandId)}</span>
+                    <div key={item.commandId}>
+                      {itemIndex > 0 && <div className="app-menu-sep" role="separator" />}
+                      <div className="app-menu-group" role="presentation">
+                        <span>{item.label ?? commandLabel(item.commandId)}</span>
+                      </div>
                     </div>
                   );
                 }
@@ -133,15 +200,15 @@ export default function AppMenu({
                 return (
                   <button
                     key={item.commandId}
+                    id={rowId(menu.id, item.commandId)}
                     type="button"
                     role="menuitem"
-                    className="app-menu-item"
+                    className={itemIndex === focusIdx ? 'app-menu-item focused' : 'app-menu-item'}
                     disabled={!enabled}
                     aria-disabled={!enabled}
-                    onClick={() => {
-                      setOpenMenu(null);
-                      onCommand(item.commandId);
-                    }}
+                    tabIndex={-1}
+                    onMouseEnter={() => setFocusIdx(itemIndex)}
+                    onClick={() => activateIdx(menu, itemIndex)}
                   >
                     <span className="app-menu-icon" aria-hidden="true">
                       {(item.icon && MENU_ICONS[item.icon]) ?? null}
@@ -158,7 +225,8 @@ export default function AppMenu({
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
