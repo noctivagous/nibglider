@@ -39,6 +39,7 @@ import {
   unitLabel,
 } from '../engine/document/MeasurementUnits';
 import KeymapWidget from './KeymapWidget';
+import ConfigSummaryBox from './ConfigSummaryBox';
 import WidgetHandle from './WidgetHandle';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
 import NumericStepper from './NumericStepper';
@@ -3193,6 +3194,26 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   return (
     <div className="panel-shell">
       <div className="panel-side">
+        <ConfigSummaryBox
+          docName={docName}
+          docDirty={docDirty}
+          selectedCount={engine.selectedItems.length}
+          selection={sel}
+          globals={{
+            strokeOn: engine.strokeEnabled,
+            strokeColor: engine.globalStrokeColor,
+            strokeWidth: engine.globalStrokeWidth,
+            strokeCap: engine.globalStrokeCap,
+            strokeJoin: engine.globalStrokeJoin,
+            strokePosition: engine.globalStrokePosition,
+            miterLimit: engine.globalMiterLimit,
+            dashLength: engine.globalDashLength,
+            gapLength: engine.globalGapLength,
+            fillOn: engine.fillEnabled,
+            fillColor: engine.globalFillColor,
+            fillSpec: engine.fillSpec(),
+          }}
+        />
         <KeymapWidget engine={engine} />
       </div>
       <div
