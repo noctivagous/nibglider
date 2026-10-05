@@ -188,7 +188,7 @@ const ENTRIES: SettingEntry[] = [
   num('snap.angleStep', (e) => e.angleSnapDegrees, (e, v) => e.setAngleSnapDegrees(v)),
   bool('snap.length', (e) => e.isLengthSnappingEnabled, (e, v) => e.setLengthSnappingEnabled(v)),
   num('snap.lengthStep', (e) => e.lengthSnapStep, (e, v) => e.setLengthSnapStep(v)),
-  en('snap.lengthUnit', ['pt', 'inch', 'cm'], (e) => e.lengthUnit, (e, v) => e.setLengthUnit(v as never)),
+  en('snap.lengthUnit', ['pt', 'pica', 'inch', 'ft', 'mm', 'cm', 'm'], (e) => e.lengthUnit, (e, v) => e.setLengthUnit(v as never)),
   bool('snap.aspect', (e) => e.isAspectSnappingEnabled, (e, v) => e.setAspectSnappingEnabled(v)),
   str('snap.aspectRatio', (e) => e.aspectRatioKey(), (e, v) => e.setAspectRatioKey(v)),
   // Shapes.

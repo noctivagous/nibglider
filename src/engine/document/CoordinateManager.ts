@@ -1,4 +1,5 @@
 import type { LengthUnit } from '../types';
+import { pointsToUnit, unitToPoints } from './MeasurementUnits';
 
 export interface DocumentPoint { x: number; y: number }
 export type SVGLengthUnit = 'px' | 'pt' | 'pc' | 'in' | 'cm' | 'mm' | 'q';
@@ -16,18 +17,12 @@ export class CoordinateManager {
 
   toPoints(value: number, unit: LengthUnit): number {
     this.finite(value);
-    if (unit === 'inch') return value * PT_PER_INCH;
-    if (unit === 'cm') return value * PT_PER_CM;
-    if (unit === 'pt') return value;
-    throw new Error(`Unsupported length unit: ${unit}`);
+    return unitToPoints(value, unit);
   }
 
   fromPoints(points: number, unit: LengthUnit): number {
     this.finite(points);
-    if (unit === 'inch') return points / PT_PER_INCH;
-    if (unit === 'cm') return points / PT_PER_CM;
-    if (unit === 'pt') return points;
-    throw new Error(`Unsupported length unit: ${unit}`);
+    return pointsToUnit(points, unit);
   }
 
   svgToPoints(value: number, unit: SVGLengthUnit = 'px'): number {

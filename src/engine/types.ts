@@ -18,7 +18,8 @@ export type ShapeType =
   | 'rectangle_diagonal'
   | 'rectangle_two_edges'
   | 'rectangle_centerline'
-  | 'rectangle_select';
+  | 'rectangle_select'
+  | 'rectangle_export_frame';
 
 /** How the Circle by Radius tool anchors its preview: press point is the
  * center (origin), or a fixed circumference point with the cursor as center. */
@@ -119,8 +120,10 @@ export interface FillSpec {
 
 export type GridType = 'square' | 'diamond';
 
-/** Display unit for snapping length inputs. Stored values stay in points. */
-export type LengthUnit = 'pt' | 'inch' | 'cm';
+/** Display unit for length inputs. Stored values stay in points. SI users
+ * stay within mm..m, English users within inches..feet; pt and pica ride
+ * along in both. Conversions live in document/MeasurementUnits. */
+export type LengthUnit = 'pt' | 'pica' | 'inch' | 'ft' | 'mm' | 'cm' | 'm';
 
 // Compatibility exports for existing callers. CoordinateManager owns the
 // conversion rules and finite-value checks.

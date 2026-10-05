@@ -28,6 +28,7 @@ import {
 import { clearNibGliderSettings } from '../tutorial/tutorialProgress';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import DocumentGallery, { type GalleryMode } from './DocumentGallery';
+import NewDocumentDialog, { type NewDocumentSpec } from './NewDocumentDialog';
 import KeymapWidget from './KeymapWidget';
 import WidgetHandle from './WidgetHandle';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
@@ -2577,7 +2578,10 @@ export default function ControlPanel({
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LENGTH_UNIT_KEY);
-      if (raw === 'pt' || raw === 'inch' || raw === 'cm') {
+      if (
+        raw === 'pt' || raw === 'pica' || raw === 'inch' || raw === 'ft' ||
+        raw === 'mm' || raw === 'cm' || raw === 'm'
+      ) {
         engine.setLengthUnit(raw);
       }
     } catch {
@@ -2878,6 +2882,9 @@ export default function ControlPanel({
   // and after every mutation while the dialog is showing.
   const [galleryMode, setGalleryMode] = useState<GalleryMode | null>(null);
   const [galleryDocs, setGalleryDocs] = useState<GalleryDoc[]>([]);
+  // New Document dialog: opened from File > New, applies the chosen canvas
+  // size on confirm (dirty guard included) instead of wiping immediately.
+  const [newDocOpen, setNewDocOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const refreshGallery = useCallback(() => {
     setGalleryDocs(galleryListDocuments(browserStore()));
@@ -2941,6 +2948,23 @@ export default function ControlPanel({
     },
     [refreshGallery],
   );
+  const handleNewDocumentConfirm = useCallback(
+    (spec: NewDocumentSpec) => {
+      if (
+        engine.isDocumentDirty() &&
+        !window.confirm('Start a new document? Unsaved changes will be lost.')
+      ) {
+        return;
+      }
+      engine.setPageDimensions(spec.widthPt, spec.heightPt, 'pt');
+      engine.setPageDisplayUnit(spec.unit);
+      engine.newDocument();
+      gallerySetCurrent(browserStore(), null);
+      engine.markDocumentClean();
+      setNewDocOpen(false);
+    },
+    [engine],
+  );
   const handleImportFile = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -2969,15 +2993,8 @@ export default function ControlPanel({
           openGallery('open');
           break;
         case 'file-new':
-          if (
-            engine.isDocumentDirty() &&
-            !window.confirm('Start a new document? Unsaved changes will be lost.')
-          ) {
-            break;
-          }
-          engine.newDocument();
-          gallerySetCurrent(browserStore(), null);
-          engine.markDocumentClean();
+          dismissSelects();
+          setNewDocOpen(true);
           break;
         case 'file-save': {
           const id = galleryCurrentId(browserStore());
@@ -4239,6 +4256,12 @@ export default function ControlPanel({
           onRename={handleGalleryRename}
           onDelete={handleGalleryDelete}
           onClose={() => setGalleryMode(null)}
+        />
+      ) : null}
+      {newDocOpen ? (
+        <NewDocumentDialog
+          onConfirm={handleNewDocumentConfirm}
+          onClose={() => setNewDocOpen(false)}
         />
       ) : null}
     </div>

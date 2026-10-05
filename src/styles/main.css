@@ -219,6 +219,126 @@ article {
   color: #e0a3a3;
 }
 
+/* Export Frame in-canvas GUI: mounted while exactly one frame is selected,
+   withdrawn on deselect. Same dark-pro card treatment as the status HUD. */
+#exportFrameCard {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 500;
+  width: 220px;
+  background: rgba(13, 17, 22, 0.92);
+  border: 1px solid #0b0e12;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 4px 14px rgba(0, 0, 0, 0.5);
+  font-family: Monospace, monospace;
+  font-size: 12px;
+  color: #e8edf3;
+  padding: 8px 10px;
+}
+
+#exportFrameCard .ef-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+#exportFrameCard .ef-title {
+  font-weight: 700;
+}
+
+#exportFrameCard .ef-meta {
+  flex: 1;
+  opacity: 0.75;
+  font-size: 11px;
+}
+
+#exportFrameCard .ef-close {
+  background: none;
+  border: none;
+  color: #e8edf3;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+#exportFrameCard .ef-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#exportFrameCard .ef-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#exportFrameCard .ef-label {
+  flex: 0 0 64px;
+}
+
+#exportFrameCard .ef-text,
+#exportFrameCard .ef-number,
+#exportFrameCard .ef-select {
+  flex: 1;
+  min-width: 0;
+  background: #1d242e;
+  border: 1px solid #8fa3bd;
+  border-radius: 4px;
+  color: #e8edf3;
+  font: inherit;
+  padding: 2px 6px;
+}
+
+#exportFrameCard .ef-export {
+  font: inherit;
+  color: #06121f;
+  background: #2dd4bf;
+  border: 1px solid #0b0e12;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+#exportFrameCard .ef-popover-btn {
+  font: inherit;
+  color: #e8edf3;
+  background: #2b3542;
+  border: 1px solid #8fa3bd;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  width: 100%;
+}
+
+#exportFrameCard .ef-popover {
+  margin-top: 6px;
+  border-top: 1px solid #2b3542;
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#exportFrameCard .ef-delete {
+  margin-top: 8px;
+  background: none;
+  border: none;
+  color: #e0a3a3;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+#exportFrameCard .ef-error {
+  color: #e0a3a3;
+}
+
 /* Keymap table widget: semitransparent dark-pro table mounted underneath
    the application menus. Display-only; pointer events fall through. */
 #controlPanel .panel-side #keymapWidget {
@@ -2003,6 +2123,235 @@ body {
 
 .gallery-quiet:hover {
   color: var(--dp-text-1);
+}
+
+/* New Document dialog: same dark pro-GUI chrome as the gallery dialog,
+   wider, with a tab strip occupying the content area. */
+.newdoc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 12, 17, 0.6);
+}
+
+.newdoc-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(600px, calc(100vh - 64px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 22%),
+    linear-gradient(to bottom, #242e3a, #161c24);
+  border: 1px solid var(--dp-border);
+  border-radius: 8px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 12px 32px rgba(0, 0, 0, 0.65);
+  font-family: var(--font-tech-mono);
+  font-size: 0.8125rem;
+  color: var(--dp-text-2);
+}
+
+.newdoc-dialog:focus {
+  outline: none;
+}
+
+.newdoc-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.newdoc-tab {
+  flex: 1;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--dp-text-3);
+  font: inherit;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+
+.newdoc-tab:hover {
+  color: var(--dp-text-1);
+}
+
+.newdoc-tab.active {
+  background: var(--dp-accent-soft);
+  border-color: var(--dp-accent);
+  color: #fff;
+}
+
+.newdoc-system {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  padding-left: 6px;
+  border-left: 1px solid var(--dp-border);
+}
+
+.newdoc-system-option {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--dp-text-3);
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.newdoc-system-option.active {
+  color: var(--dp-text-1);
+  border-color: var(--dp-border);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.newdoc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 180px;
+}
+
+.newdoc-group-label {
+  font-size: 0.75rem;
+  color: var(--dp-text-3);
+  letter-spacing: 0.04em;
+}
+
+.newdoc-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.newdoc-preset {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  background: none;
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  color: var(--dp-text-2);
+  font: inherit;
+  padding: 7px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.newdoc-preset:hover {
+  color: var(--dp-text-1);
+  border-color: var(--dp-text-3);
+}
+
+.newdoc-preset.active {
+  background: var(--dp-accent-soft);
+  border-color: var(--dp-accent);
+  color: #fff;
+}
+
+.newdoc-preset-dims {
+  color: var(--dp-text-3);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.newdoc-preset.active .newdoc-preset-dims {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.newdoc-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.newdoc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.newdoc-field-label {
+  font-size: 0.75rem;
+  color: var(--dp-text-3);
+}
+
+.newdoc-input,
+.newdoc-select {
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  color: var(--dp-text-1);
+  font: inherit;
+  padding: 6px 8px;
+  min-width: 0;
+}
+
+.newdoc-times {
+  color: var(--dp-text-3);
+  padding-bottom: 7px;
+}
+
+.newdoc-orient {
+  display: flex;
+  gap: 4px;
+}
+
+.newdoc-orient-option {
+  background: none;
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  color: var(--dp-text-3);
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.newdoc-orient-option.active {
+  color: var(--dp-text-1);
+  border-color: var(--dp-text-3);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.newdoc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--dp-border);
+  padding-top: 10px;
+}
+
+.newdoc-preview {
+  color: var(--dp-text-1);
+}
+
+.newdoc-note {
+  display: block;
+  color: var(--dp-text-3);
+  font-size: 0.75rem;
+}
+
+.newdoc-error {
+  color: #f0a0a0;
+  font-size: 0.75rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

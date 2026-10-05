@@ -58,6 +58,22 @@ import { QuadTool } from './drawing/QuadTool';
 import { DrawingSession } from './drawing/DrawingSession';
 import type { DrawingHost } from './drawing/DrawingHost';
 import { SceneRepository, type RetainedPath } from './scene/SceneRepository';
+import {
+  EXPORT_FRAME_KEY,
+  EXPORT_FRAME_RECORD,
+  exportFrameItems,
+  frameArtwork,
+  isExportFrameItem,
+  readExportFrame,
+} from './scene/exportFrames';
+import {
+  createExportFrame,
+  resolveExportBoxes,
+  splitFrameBoxes,
+  validateExportFrame,
+  type ExportFrameBox,
+  type ExportFrameRecord,
+} from './model/NGExportFrame';
 import { SelectionManager } from './scene/SelectionManager';
 import { HistoryManager } from './history/HistoryManager';
 import { TransformManager } from './history/TransformManager';
@@ -719,6 +735,7 @@ export class NibGliderEngine {
       hide(this.previewLine);
       hide(this.previewPath);
       hide(this.previewRect);
+      for (const frame of this.exportFrameItems()) hide(frame);
       this.selection.suspendGlow();
       const exported = project.exportSVG({ asString: true });
       return typeof exported === 'string' ? exported : '';
@@ -736,6 +753,263 @@ export class NibGliderEngine {
       try {
         this.scope.view?.update();
       } catch { /* Headless. */ }
+    }
+  }
+
+  // --- Export frames (Rect Keys > In-Canvas Elements > EXPORT FRAME) ---
+  // Frames are selectable Paper rectangles on the artwork layer, so native
+  // save, undo, and marquee-select keep working with no format change. They
+  // are never artwork: whole-scene export hides them, and frame export
+  // crops via the SVG viewBox without clipping the live elements.
+  exportFrameItems(): AnyItem[] {
+    const layer = this.layers.activeLayer;
+    return layer ? exportFrameItems([...layer.children]) : [];
+  }
+
+  /** Deposit a frame with undo + selection. Used by Rect-Key drawing, the
+   * panel, and tests. Returns null for degenerate rects. */
+  depositExportFrame(rect: ExportFrameBox, opts?: { name?: string }): AnyItem | null {
+    if (this.isLiveDrawing) return null;
+    const before = this.contentItems();
+    const selectedBefore = [...this.selectedItems];
+    const placed = this.placeExportFrameItem(rect, opts);
+    if (!placed) return null;
+    this.addItemToSelection(placed);
+    this.recordSceneCommand('Deposit export frame', before, selectedBefore, [placed]);
+    this.updateTextContent(); this.notify();
+    return placed;
+  }
+
+  /** Build, tag, and mount a frame item without history. The Rect-Key tool
+   * finish path uses this; the outer deposit commit owns undo. */
+  placeExportFrameItem(rect: ExportFrameBox, opts?: { name?: string }): AnyItem | null {
+    if (!Number.isFinite(rect.x) || !Number.isFinite(rect.y)
+      || !(rect.width > 0) || !(rect.height > 0)) return null;
+    const layer = this.layers.activeLayer;
+    if (!layer) return null;
+    let record: ExportFrameRecord;
+    try {
+      record = createExportFrame(rect, { name: opts?.name });
+    } catch {
+      return null;
+    }
+    const item = new this.scope.Path.Rectangle({
+      point: new this.scope.Point(rect.x, rect.y),
+      size: new this.scope.Size(rect.width, rect.height),
+    });
+    try {
+      item.strokeColor = new this.scope.Color(0.42, 0.42, 0.45);
+      item.fillColor = null;
+      item.strokeWidth = 1;
+      item.dashArray = [6, 4];
+      item.name = record.name;
+      item.data[EXPORT_FRAME_KEY] = true;
+      item.data[EXPORT_FRAME_RECORD] = record;
+    } catch {
+      try { item.remove(); } catch { /* Detached already. */ }
+      return null;
+    }
+    try {
+      layer.addChild(item);
+    } catch {
+      try { item.remove(); } catch { /* Detached already. */ }
+      return null;
+    }
+    return item;
+  }
+
+  private exportFrameItemById(id: string): AnyItem | null {
+    for (const item of this.exportFrameItems()) {
+      try {
+        if (item.data?.[EXPORT_FRAME_RECORD]?.id === id) return item;
+      } catch { /* Detached already. */ }
+    }
+    return null;
+  }
+
+  private liveFrameRecord(item: AnyItem): ExportFrameRecord | null {
+    const record = readExportFrame(item);
+    if (!record) return null;
+    // Geometry truth is the live item so dragged/resized frames stay exact.
+    try {
+      const b = item.bounds;
+      if (b && b.width > 0 && b.height > 0) {
+        record.rect = { x: b.x, y: b.y, width: b.width, height: b.height };
+      }
+    } catch { /* Detached already. */ }
+    return record;
+  }
+
+  listExportFrames(): ExportFrameRecord[] {
+    const out: ExportFrameRecord[] = [];
+    for (const item of this.exportFrameItems()) {
+      const record = this.liveFrameRecord(item);
+      if (record) out.push(record);
+    }
+    return out;
+  }
+
+  getExportFrame(id: string): ExportFrameRecord | null {
+    const item = this.exportFrameItemById(id);
+    return item ? this.liveFrameRecord(item) : null;
+  }
+
+  /** The frame whose GUI is mounted: exactly one selected frame. */
+  selectedExportFrame(): ExportFrameRecord | null {
+    const selected = this.selectedItems.filter(isExportFrameItem);
+    if (selected.length !== 1) return null;
+    return this.liveFrameRecord(selected[0]);
+  }
+
+  updateExportFrame(id: string, patch: Partial<Pick<ExportFrameRecord, 'name' | 'format' | 'scale' | 'background'>>): boolean {
+    const item = this.exportFrameItemById(id);
+    if (!item) return false;
+    const current = this.liveFrameRecord(item);
+    if (!current) return false;
+    const next: ExportFrameRecord = { ...current, ...patch, id: current.id, rect: current.rect, boxes: current.boxes };
+    if (typeof next.name !== 'string' || next.name.trim().length === 0) return false;
+    try {
+      validateExportFrame(next);
+    } catch {
+      return false;
+    }
+    try {
+      item.data[EXPORT_FRAME_RECORD] = next;
+      if (patch.name !== undefined) item.name = next.name;
+    } catch {
+      return false;
+    }
+    this.documentManager.markEdited('scene');
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  /** Configure N export boxes inside the frame (1 = full frame). */
+  setExportFrameBoxCount(id: string, count: number): boolean {
+    const item = this.exportFrameItemById(id);
+    if (!item) return false;
+    const current = this.liveFrameRecord(item);
+    if (!current) return false;
+    let boxes: ExportFrameBox[];
+    try {
+      boxes = count === 1 ? [] : splitFrameBoxes(count);
+    } catch {
+      return false;
+    }
+    const next: ExportFrameRecord = { ...current, boxes };
+    try {
+      validateExportFrame(next);
+    } catch {
+      return false;
+    }
+    try {
+      item.data[EXPORT_FRAME_RECORD] = next;
+    } catch {
+      return false;
+    }
+    this.documentManager.markEdited('scene');
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  deleteExportFrame(id: string): boolean {
+    const item = this.exportFrameItemById(id);
+    if (!item || this.isLiveDrawing) return false;
+    const before = this.contentItems();
+    const selBefore = [...this.selectedItems];
+    this.removeItemFromSelection(item);
+    try { item.remove(); } catch { /* Detached already. */ }
+    this.history.recordDelete(before, selBefore);
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  /** Absolute export boxes for a frame (full frame when unconfigured).
+   * Pure geometry: the unit tests cover this while the DOM-bound SVG
+   * serializer (like exportSceneSVG) is verified in the browser. */
+  exportFrameBoxes(id: string): ExportFrameBox[] | null {
+    const item = this.exportFrameItemById(id);
+    const record = item ? this.liveFrameRecord(item) : null;
+    if (!item || !record) return null;
+    try {
+      return resolveExportBoxes(record);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Export one SVG per configured box, cropped to the box via the SVG
+   * viewBox. Live artwork is never clipped or modified. Needs DOM (Paper
+   * serializes through document.createElementNS), like exportSceneSVG. */
+  exportFrameSVG(id: string): { box: ExportFrameBox; svg: string }[] | null {
+    const boxes = this.exportFrameBoxes(id);
+    if (!boxes) return null;
+    const project = this.scope.project;
+    if (!project) return null;
+    const hidden: AnyItem[] = [];
+    const hide = (target: AnyItem): void => {
+      try {
+        if (target && target.visible !== false && !hidden.includes(target)) {
+          target.visible = false;
+          hidden.push(target);
+        }
+      } catch { /* Detached already. */ }
+    };
+    try {
+      for (const layer of (project.layers ?? []) as AnyItem[]) {
+        try { if (layer && layer.guide) hide(layer); } catch { /* ignore */ }
+      }
+      hide(this.gridLayer);
+      hide(this.guideLayer);
+      hide(this.gridCursor);
+      hide(this.pathSnapCursor);
+      hide(this.pointSnapCursor);
+      hide(this.previewInner);
+      hide(this.previewSplineText);
+      hide(this.previewShape);
+      hide(this.previewLine);
+      hide(this.previewPath);
+      hide(this.previewRect);
+      for (const frame of this.exportFrameItems()) hide(frame);
+      this.selection.suspendGlow();
+      const out: { box: ExportFrameBox; svg: string }[] = [];
+      for (const box of boxes) {
+        const bounds = new this.scope.Rectangle(
+          new this.scope.Point(box.x, box.y),
+          new this.scope.Size(box.width, box.height),
+        );
+        const exported = project.exportSVG({ asString: true, bounds });
+        if (typeof exported !== 'string' || exported.length === 0) return null;
+        out.push({ box: { ...box }, svg: exported });
+      }
+      return out;
+    } catch {
+      return null;
+    } finally {
+      try { this.selection.restoreGlow(); } catch { /* Headless. */ }
+      for (const target of hidden) {
+        try { target.visible = true; } catch { /* ignore */ }
+      }
+      try { this.scope.view?.update(); } catch { /* Headless. */ }
+    }
+  }
+
+  /** Rect-Key entry: begin an export-frame drag, or deposit it on second press. */
+  exportFrameKC(): void {
+    this.finishOrBeginRect(() => this.rectangleTool.beginExportFrame());
+  }
+
+  /** Artwork contained in or intersecting the frame. Shown in the frame GUI. */
+  exportFrameArtworkCount(id: string): number {
+    const item = this.exportFrameItemById(id);
+    const record = item ? this.liveFrameRecord(item) : null;
+    if (!item || !record) return 0;
+    const layer = this.layers.activeLayer;
+    if (!layer) return 0;
+    try {
+      return frameArtwork(record, [...layer.children]).length;
+    } catch {
+      return 0;
     }
   }
 
@@ -1114,7 +1388,11 @@ export class NibGliderEngine {
   lengthUnit: LengthUnit = 'pt';
 
   setLengthUnit(u: LengthUnit): void {
-    if (u !== 'pt' && u !== 'inch' && u !== 'cm') return;
+    try {
+      this.coordinates.fromPoints(1, u);
+    } catch {
+      return;
+    }
     if (this.lengthUnit === u) return;
     this.lengthUnit = u;
     this.updateTextContent();
@@ -2119,11 +2397,13 @@ export class NibGliderEngine {
   }
 
   private finishOrBeginRect(begin: () => 'finish' | 'advance' | 'started' | 'noop'): void {
+    // Read the label before the tool clears the session on finish.
+    const frameDeposit = this.shapeType === 'rectangle_export_frame';
     const result = begin();
     if (result === 'finish') {
       const snap = this.captureDeposit();
       const placed = this.endShapeAsStroke();
-      this.recordSceneCommand('Deposit shape', snap.before, snap.selected, placed);
+      this.recordSceneCommand(frameDeposit ? 'Deposit export frame' : 'Deposit shape', snap.before, snap.selected, placed);
       this.updateTextContent();
       return;
     }
