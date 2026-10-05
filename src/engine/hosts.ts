@@ -53,6 +53,7 @@ export function createDrawingHost(engine: Surface): DrawingHost {
     removeFromSelection: (item) => engine.selection.remove(item),
     dropItem: (item) => engine.dropItem(item),
     place: (item, opts) => engine.placeDeposited(item, opts),
+    depositExportFrame: (rect) => engine.placeExportFrameItem(rect),
     capture: () => engine.captureDeposit(),
     commit: (label: string, snap: { before: Item[]; selected: Item[]; retained: Map<string, unknown> }, placed: Item[], retain?: boolean) => {
       engine.recordSceneCommand(label, snap.before, snap.selected, placed, retain ? snap.retained : undefined);
@@ -169,6 +170,7 @@ export function createKeyboardHost(engine: Surface): KeyboardHost {
     rectCenterlineKC: () => engine.rectCenterlineKC(),
     rectDiagonalKC: () => engine.rectDiagonalKC(),
     rectTwoEdgesKC: () => engine.rectTwoEdgesKC(),
+    rectExportFrameKC: () => engine.rectExportFrameKC(),
     selectionRectKC: () => engine.selectionRectKC(),
     polyLineKC: () => engine.polyLineKC(),
     splinePointKC: () => engine.splinePointKC(),

@@ -5,9 +5,8 @@
 // window registry names it.
 import { useState } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
-import type { GUIManager } from '../ui/GUIManager';
+import { browserStore, type GUIManager } from '../ui/GUIManager';
 import {
-  browserStore,
   currentId as galleryCurrentId,
   currentName as galleryCurrentName,
   docDisplayName as galleryDisplayName,

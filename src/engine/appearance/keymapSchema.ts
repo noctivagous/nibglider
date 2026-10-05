@@ -101,6 +101,9 @@ export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
     } else if (shapeType === 'rectangle_diagonal') {
       rows.push(row(['rect-diagonal'], 'Finish drawing'));
       rows.push(row(['stamp'], 'Stamp'));
+    } else if (shapeType === 'rectangle_export_frame') {
+      rows.push(row(['rect-export-frame'], 'Finish frame'));
+      rows.push(row(['stamp'], 'Stamp'));
     } else if (shapeType === 'rectangle_two_edges') {
       if (!snap.hasSecondEdge) {
         rows.push(row(['rect-two-edges'], 'Start the second edge'));

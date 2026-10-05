@@ -94,6 +94,27 @@ export class RectangleTool {
     return 'started';
   }
 
+  /** Export frame: first press starts the rect drag, second press deposits. */
+  beginExportFrame(): RectStart {
+    const session = this.host.session;
+    if (session.shapeType === 'rectangle_export_frame') return 'finish';
+    if (session.isDrawingShape || !session.mousePt) return 'noop';
+    const scope = this.host.scope();
+    session.resetLiveAdjust();
+    session.shapeStartPoint = session.mousePt.clone();
+    session.shapeType = 'rectangle_export_frame';
+    session.isDrawingShape = true;
+    session.previewShape = new scope.Shape.Rectangle(session.shapeStartPoint, new scope.Size(0, 0));
+    this.host.stylePreviewFrame(session.previewShape, 1);
+    this.host.addToActive(session.previewShape);
+    session.previewLine = new scope.Path({
+      segments: [session.shapeStartPoint, session.shapeStartPoint],
+      strokeColor: new scope.Color(0.5), strokeWidth: 1, strokeDashArray: [4, 4],
+    });
+    this.host.addToActive(session.previewLine);
+    return 'started';
+  }
+
   beginDiagonal(): RectStart {
     const session = this.host.session;
     if (session.shapeType === 'rectangle_diagonal') return 'finish';
@@ -151,8 +172,12 @@ export class RectangleTool {
       ], session.previewRect);
       return;
     }
-    if (session.shapeType !== 'rectangle_diagonal' && session.shapeType !== 'rectangle_select') return;
-    const k = session.shapeType === 'rectangle_select' ? 1 : this.host.rectDiagonalScale();
+    if (session.shapeType !== 'rectangle_diagonal'
+      && session.shapeType !== 'rectangle_select'
+      && session.shapeType !== 'rectangle_export_frame') return;
+    const k = session.shapeType === 'rectangle_select' || session.shapeType === 'rectangle_export_frame'
+      ? 1
+      : this.host.rectDiagonalScale();
     const dx = (session.mousePt.x - session.shapeStartPoint.x) * k;
     const dy = (session.mousePt.y - session.shapeStartPoint.y) * k;
     const farPt = session.shapeStartPoint.add(new scope.Point(dx, dy));
@@ -165,8 +190,25 @@ export class RectangleTool {
     this.refreshFrame(null, session.previewShape);
   }
 
+  /** Live frame rect from the drag preview, or null when degenerate. */
+  private previewFrameRect(): { x: number; y: number; width: number; height: number } | null {
+    const session = this.host.session;
+    const preview = session.previewShape;
+    if (!preview?.bounds) return null;
+    const b = preview.bounds;
+    if (!(b.width > 0) || !(b.height > 0)) return null;
+    return { x: b.x, y: b.y, width: b.width, height: b.height };
+  }
+
   stamp(): boolean {
     if (!this.active) return false;
+    if (this.host.session.shapeType === 'rectangle_export_frame') {
+      const rect = this.previewFrameRect();
+      if (!rect) return true;
+      const placed = this.host.depositExportFrame(rect);
+      if (placed) placed.selected = false;
+      return true;
+    }
     if (this.host.rectangleInnerShapeType() !== 'rectangle') {
       const stamped = this.host.createRectFrameShape('stroke');
       if (stamped) {
@@ -185,6 +227,15 @@ export class RectangleTool {
     if (!this.active) return [];
     const session = this.host.session;
     const scope = this.host.scope();
+    if (session.shapeType === 'rectangle_export_frame') {
+      const rect = this.previewFrameRect();
+      const placed = rect ? this.host.depositExportFrame(rect) : null;
+      this.host.session.clearShape();
+      this.host.session.resetLiveAdjust();
+      this.host.updateTextContent();
+      this.host.notify();
+      return placed ? [placed] : [];
+    }
     const shapeOnly = this.host.rectangleInnerShapeType() !== 'rectangle';
     let finalPath: Item = null;
     if (session.shapeType === 'rectangle_diagonal') {

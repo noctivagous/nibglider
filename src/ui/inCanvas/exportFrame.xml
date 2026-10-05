@@ -1,0 +1,15 @@
+<!-- Export Frame In-Canvas Element GUI (Rect Keys > In-Canvas Elements >
+  EXPORT FRAME). Mounted around the frame while it is selected, withdrawn on
+  deselect. Inline controls stay on the canvas; the popover button moves box
+  editing into a popover window so the canvas stays uncluttered. -->
+<inCanvas id="exportFrame" title="Export Frame">
+  <field key="name" label="Name" type="text" />
+  <select key="format" label="Format">
+    <option value="svg" label="SVG" />
+  </select>
+  <field key="scale" label="Scale" type="number" min="0.25" max="8" step="0.25" />
+  <exportButton label="Export frame" />
+  <popoverButton label="Frame boxes…">
+    <field key="boxCount" label="Boxes" type="number" min="1" max="8" step="1" />
+  </popoverButton>
+</inCanvas>

@@ -106,6 +106,8 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
       state.push(L('meta', [T('Width: ' + Math.round(snap.shapeWidth) + 'pt')]));
     } else if (shapeType === 'rectangle_select') {
       state.push(L('title', [T('Selection Rectangle')]));
+    } else if (shapeType === 'rectangle_export_frame') {
+      state.push(L('title', [T('Export Frame')]));
     }
     if (snap.aspectLabel) state.push(L('meta', [T('Aspect ' + snap.aspectLabel)]));
     if (shapeType != null && shapeType.startsWith('circle_')) {
@@ -132,6 +134,8 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
     } else if (shapeType === 'rectangle_select') {
       steps.push(L('hint', [T('Move mouse to adjust the selection.')]));
       steps.push(L('hint', [T('Finish the selection, or cancel.')]));
+    } else if (shapeType === 'rectangle_export_frame') {
+      steps.push(L('hint', [T('Finish the frame, or stamp it.')]));
     }
   }
   if (snap.drawingQuad) {

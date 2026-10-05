@@ -56,6 +56,7 @@ export interface DrawingHost {
   removeFromSelection(item: Item): void;
   dropItem(item: Item): void;
   place(item: Item, opts?: PlaceOptions): Item | null;
+  depositExportFrame(rect: { x: number; y: number; width: number; height: number }): Item | null;
   capture(): DepositSnap;
   commit(label: string, snap: DepositSnap, placed: Item[], retain?: boolean): void;
   isRetained(shape: Item): boolean;

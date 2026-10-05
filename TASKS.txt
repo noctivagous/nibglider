@@ -1,11 +1,80 @@
 
-[  ] real clipboard implementation, select-all engine support. (Edit menu).
 
-[ ] CONFIG. SUMMARY BOX WIDGET.  Where the vertical stack of menu buttons was and where they are hidden,
+[  ]  Convert app GUI (panels, sections) to an XML scheme comparable to XAML, XUL, or nibx, 
+where it is rendering from provided XML, but we don't want it to be too rigid so we can add different
+conventions in the future.  We also will want some layout elements, possibly some form elements.
+The goal is to add some structure and then some consequent clarity to the GUI system we have
+because we will let the user drag some things around on screen to reposition them or resize them
+and adding new sections.
+
+
+
+[  ] real clipboard implementation, select-all engine support. (Edit menu).
+   Pasting should support pasting SVG into vectors on the page,
+   Rich text, including markdown or RTF into a new EditableText element that can be set to Display Text (single line)
+   or Body Text (multiline).  Then if the data is CSV
+
+ 		[ ] Rect Keys > In-Canvas Elements > Data Table
+ 
+
+ [x] The new document dialog should allow the user to select from different sizes, allows
+ choosing dimension based on target (working space, print, image).  
+  The app should have this aspect prepared for internationalization, SI Units or English Units
+ and we will set the default to English Units and the different sizes the user can choose from.
+ In the new document window We will distinguish
+ between two types of new document starting points: how big the working canvas is for users
+ who are interested first in just having a workspace where to work vs. what the output is.  
+ There is no contradiction because the default new document will be a canvas of 16:9 x PT,
+ 1920:1080pt.  Notably, we want a tab where the user can start with a ratio and then multiply
+ it by a unit of measurements so this New Document window will center around a traditional dark pro gui
+ tab occupying the content area of the window.  Letting the user have a workspace that is
+ not identical to output is OK because we have a feature called Export Frame
+ and the user will be able to export from sections of the canvas with stationary frames
+ that have interactive controls.  
+ We want to make sure along with this there is a data foundation for measurement and page units, whether the user
+is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app should
+be aware of pt, inch, pica, cm.  users will stay within mm to m for SI
+and inches to feet for English Units.
+
+ 
+ 
+
+ 		 [x]  Rect Keys > In-Canvas Elements > EXPORT FRAME - crops objects to the frame that
+          are contained in or intersect with it for export.  does not clip the elements.  
+          purpose is to establish permanent frames stored in the document for 
+          exporting images within the document.  example: multiple icon
+          sizes are in a document but the document's purpose
+          isn't for printing them individually on sheets of paper.  
+          for this, the Export Frame can be configured
+          have multiple boxes in its bounds or the Export Frame
+          
+          Requires possibly that a new type of element be established, In-Canvas Elements
+          and when clicked on they insert GUI into the canvas that allows the user
+          to control what they do.  Some will be, for example, Repeat portals that
+          control how their frame repeat their content.  When deselected, they
+          withdraw their GUI elements.  Their GUI elements will be stored in
+          XML files.   It's ok if the XML files have conventions specific to In-Canvas Elements. 
+          They will have a convention for forms of controls.  One option
+          they have for their controls is not to insert all of the GUI but to instead
+          insert buttons that open up popover windows that do contain the controls,
+          so that some  In-Canvas Elements can contain many controls without
+          cluttering the canvas.  But they will be able to display information and controls
+          around the frame.  When an Export Frame is clicked on, the user can export
+          that frame from the GUI that comes out.
+ 
+ 
+ 
+ When there is a new document. in the code we want to set the data foundation for measurement and page units, whether the user
+is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app should
+be aware of pt, inch, pica, cm.  users will stay within mm to m for SI
+and inches to feet for English Units.
+
+[x] CONFIG. SUMMARY BOX WIDGET.  Where the vertical stack of panel card "rail" menu buttons was and where they are hidden,
 make a summary box widget and it summarizes, in icons and a layout, the settings for everything, from stroke, to
 fill.  it can make use of its own SVGs.  it will provide a larger preview of what the path is going to do when it draws things,
 both fill and stroke.  when there is a selection, it will change states according to what the path is.  It will have the name
 of the document in the upper left corner.
+  (Done: ConfigSummaryBox in panel-side rail slot + ConfigSummary resolver + tests/config-summary.test.mjs.)
 
 
 [x] JSON serialization of the scene graph — walk the paper.project tree and JSON.stringify each item's properties (path segments, styles, transforms, etc.), then reconstruct on load. This is the most common approach for a "native" save format in Paper.js-based editors
@@ -44,10 +113,7 @@ stack (current), and grid.  still hover to show.  top left is File (icon), top r
   
   Operations and Modes operations.
   
-  [ ] in the code we want to set the data foundation for measurement and page units, whether the user
-is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app should
-be aware of pt, inch, pica, cm.  users will stay within mm to m for SI
-and inches to feet for English Units.
+ 
 
 [ ] Shift + stroke thicken and stroke thin (C and V) should increase by a larger increment like how
 scale and rotate keys go up when Shift is pressed.
@@ -105,7 +171,7 @@ IN-DRAWING WIDGETS AND ACTOR OBJECTS
    [ ]  Rect Keys > In-Canvas Elements > CROP FRAME  - crops objects to the frame that
    are contained in or intersect with it.
    
-  		 [ ]  Rect Keys > In-Canvas Elements > EXPORT FRAME - crops objects to the frame that
+  		 [x]  Rect Keys > In-Canvas Elements > EXPORT FRAME - crops objects to the frame that
           are contained in or intersect with it for export.  does not clip the elements.  
           purpose is to establish permanent frames stored in the document for 
           exporting images within the document.  example: multiple icon

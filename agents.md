@@ -42,21 +42,43 @@ Core tech: React 19, TypeScript, Vite, Paper.js for canvas, opentype.js for font
 - `engine.ts` — Main entry point
 - `EngineContext.ts` — DI container
 - `types.ts` — Core types
-- `drawing/` — All drawing tools and sessions
-- `geometry/` — Path resolution, boolean ops, splines
-- `snapping/` — Snap calculations and management
-- `input/` — Keyboard controller, keymaps, modifiers
-- `document/` — Document, layers, viewport, coordinates
-- `scene/` — Selection, combinatorics, renderers
-- `model/` — NGPath, NGShape, NGGroup, NGText, NGImage
-- `appearance/` — Styles, text layout, stroke position
-- `history/` — Undo/redo, transform manager
+- `engineSettings.ts` — Engine configuration
+- `hosts.ts` — Host interfaces
+- `undoManager.ts` — Undo/redo coordination
+- `fontMetrics.ts` — Font measurement utilities
+- `drawing/` — RectangleTool, QuadTool, CircleTool, PathTool, DrawingSession, PathDrawingSession, DrawingHost, PathRenderer, stampFrame
+- `geometry/` — ShapeFactory, RectangleGeometry, booleanResolver, pathResolver, compositeExpansion, splineInterpolation
+- `snapping/` — SnappingManager, GridRenderer, snappingMath
+- `input/` — KeyboardController, keymap, InputManager, PointerController, KeySettingsRegistry, KeyboardLayoutResolver, ModifierStateTracker, KeySettingsViewModel
+- `document/` — CoordinateManager, SceneIO, DropController, ViewportManager, DocumentManager, LayerManager, MeasurementUnits
+- `scene/` — SelectionManager, CombinatoricsManager, DrawableRenderer, SceneRepository, exportFrames
+- `model/` — NGPath, NGShape, NGGroup, NGText, NGImage, NGDrawable, NGExportFrame, serialization, geometryResolution
+- `appearance/` — StyleManager, TextLayout, strokePosition, statusSchema, keymapSchema
+- `history/` — HistoryManager, TransformManager
 
-**UI modules** (in `src/ui/`, `src/components/`):
-- `ControlPanel.tsx` — Main control panel
-- `PanelsManager.ts` — Panel layout management
+**UI modules** (in `src/ui/`):
 - `GUIManager.ts` — GUI orchestration
+- `PanelsManager.ts` — Panel layout management
 - `KeyboardViewModel.ts` — On-screen keyboard state
+- `fileCommands.ts` — File operations
+- `inCanvasGui.ts` — In-canvas GUI
+- `menuNavigation.ts`, `menuXML.ts`, `xmlParser.ts`, `windowXML.ts` — Menu/window XML system
+- `WidgetLayout.ts`, `KeymapPresenter.ts`, `StatusPresenter.ts`, `PreviewBoxPresenter.ts` — Widget presenters
+- `DocumentGallery.ts` — Document gallery
+
+**Components** (in `src/components/`):
+- `ControlPanel.tsx` — Main control panel
+- `AppMenu.tsx` — Application menu
+- `SettingsWindow.tsx` — Settings dialog
+- `NewDocumentDialog.tsx`, `ExportFramePopover.tsx` — Dialogs
+- `OnscreenKeyboard.tsx`, `KeymapWidget.tsx`, `KeySettingsPopover.tsx` — Keyboard UI
+- `DocumentGallery.tsx`, `TutorialOverlay.tsx`, `DemoOverlay.tsx`, `StatusOverlay.tsx` — Overlays
+- `WidgetHandle.tsx`, `CustomSelect.tsx`, `FontFamilySelect.tsx`, `NumericStepper.tsx` — Widgets
+- `selectMenuPolicy.ts` — Menu policies
+
+**Tutorial system** (in `src/tutorial/`):
+- `TutorialRunner.ts`, `tutorialLoader.ts`, `tutorialSchema.ts`, `tutorialProgress.ts`
+- `demonstrationPlayer.ts`, `completionDetectors.ts`, `TargetResolver.ts`
 
 ## Testing
 
@@ -73,17 +95,18 @@ Core tech: React 19, TypeScript, Vite, Paper.js for canvas, opentype.js for font
 ## Agent Coordination
 
 When working on tasks, identify the relevant subsystem:
-- **Engine core**: `src/engine/engine.ts`, `EngineContext.ts`, `types.ts`
+- **Engine core**: `src/engine/engine.ts`, `EngineContext.ts`, `types.ts`, `engineSettings.ts`
 - **Drawing tools**: `src/engine/drawing/`
 - **Geometry/math**: `src/engine/geometry/`, `src/engine/snapping/`
-- **Input/keyboard**: `src/engine/input/`, `src/ui/KeyboardViewModel.ts`
+- **Input/keyboard**: `src/engine/input/`, `src/ui/KeyboardViewModel.ts`, `src/components/OnscreenKeyboard.tsx`
 - **UI components**: `src/components/`, `src/ui/`
 - **Document/viewport**: `src/engine/document/`
 - **Selection/combinatorics**: `src/engine/scene/SelectionManager.ts`, `CombinatoricsManager.ts`
 - **Text/typography**: `src/engine/appearance/TextLayout.ts`
 - **Styling**: `src/engine/appearance/StyleManager.ts`, `strokePosition.ts`
+- **Tutorial system**: `src/tutorial/`, `src/components/TutorialOverlay.tsx`
 - **Parametric components**: Tasks under "PARAMETRIC ADAPTIVE SHAPES" in TASKS.txt
 - **Repeat/pattern**: Tasks under "REPEAT" in TASKS.txt
 - **Export/manufacture**: Tasks under "MANUFACTURE" in TASKS.txt
 
-Cross-cutting: keyboard shortcuts (input ↔ UI), snap system (geometry ↔ drawing ↔ selection), live preview (drawing ↔ parametric ↔ UI), undo/history (engine ↔ all mutation).
+Cross-cutting: keyboard shortcuts (input ↔ UI), snap system (geometry ↔ drawing ↔ selection), live preview (drawing ↔ parametric ↔ UI), undo/history (engine ↔ all mutation), tutorial system (tutorial ↔ UI ↔ engine).

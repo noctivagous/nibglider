@@ -65,6 +65,7 @@ export interface KeyboardHost {
   rectCenterlineKC(): void;
   rectDiagonalKC(): void;
   rectTwoEdgesKC(): void;
+  rectExportFrameKC(): void;
   selectionRectKC(): void;
   polyLineKC(): void;
   splinePointKC(): void;
@@ -238,6 +239,9 @@ export class KeyboardController {
         return;
       case 'rect-two-edges':
         host.rectTwoEdgesKC();
+        return;
+      case 'rect-export-frame':
+        host.rectExportFrameKC();
         return;
       case 'sharp-point':
         host.polyLineKC();
