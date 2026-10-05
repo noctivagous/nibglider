@@ -1978,6 +1978,24 @@ export class NibGliderEngine {
     });
   }
 
+  // --- Quad-frame shapes: the selected Rect Keys shape fitted to the quad
+  // corners (bilinear), used by the quad-by-4-pts key once three corners are
+  // fixed. Returns null for the plain 'rectangle' setting or degenerate
+  // corners; the caller then deposits the raw quad.
+  createQuadFrameShape(styleOrPreview = 'stroke', corners?: AnyItem[] | null): AnyItem {
+    const pts = corners ?? [];
+    const quad = pts.length === 4 ? pts.map((p) => xy(p)) : null;
+    return this.shapes.createQuadFrameShape({
+      styleOrPreview,
+      innerType: this.rectangleInnerShapeType,
+      params: this.rectangleInnerShapeParams,
+      shapeType: this.shapeType,
+      orientation: this.rectangleOrientation,
+      guideAngle: this.shapeGuideAngle,
+      corners: quad && quad.every((p) => p != null) ? (quad as [any, any, any, any]) : null,
+    });
+  }
+
   rectCenterlineKC(): void {
     this.finishOrBeginRect(() => this.rectangleTool.beginCenterline());
   }

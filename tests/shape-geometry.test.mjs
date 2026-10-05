@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   circleInnerShapeUnitPoints,
   parallelogramFrameST,
+  quadArea,
+  quadFramePoint,
   rectFrameBasis,
   rotST,
   trapezoidFrameST,
@@ -38,6 +40,22 @@ test('frame quads clamp shear and orientation turns 90 degrees', () => {
   }
   assert.deepEqual(rotST(0, 0, 1), [1, 0]);
   assert.deepEqual(rotST(1, 0, 1), [1, 1]);
+});
+
+test('quad bilinear map pins corners, averages the center, and flags degeneracy', () => {
+  const square = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
+  assert.deepEqual(quadFramePoint(square, 0, 0), { x: 0, y: 0 });
+  assert.deepEqual(quadFramePoint(square, 1, 0), { x: 100, y: 0 });
+  assert.deepEqual(quadFramePoint(square, 1, 1), { x: 100, y: 100 });
+  assert.deepEqual(quadFramePoint(square, 0, 1), { x: 0, y: 100 });
+  assert.deepEqual(quadFramePoint(square, 0.5, 0.5), { x: 50, y: 50 });
+  // Orientation 1 maps (s, t) through rotST first: (0, 0) reads as (1, 0).
+  assert.deepEqual(quadFramePoint(square, 0, 0, 1), { x: 100, y: 0 });
+  const trap = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 80, y: 100 }, { x: 20, y: 100 }];
+  assert.deepEqual(quadFramePoint(trap, 0.5, 0.5), { x: 50, y: 50 });
+  assert.ok(quadArea(square) > 0);
+  assert.ok(quadArea(trap) > 0);
+  assert.equal(quadArea([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 0 }, { x: 30, y: 0 }]), 0);
 });
 
 test('supershape radius, sector clamp, and semantic records preserve parameters', () => {

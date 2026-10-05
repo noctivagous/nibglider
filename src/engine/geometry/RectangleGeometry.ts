@@ -7,6 +7,9 @@ import type { Vec2 } from '../model/geometryResolution';
 
 export type UnitPoint = [number, number];
 
+/** Four quad corners in click order: P0, P1, P2, P3. */
+export type QuadCorners = [Vec2, Vec2, Vec2, Vec2];
+
 export interface FrameBasis { o: Vec2; u: Vec2; v: Vec2 }
 
 export interface RectFrameInput {
@@ -122,6 +125,33 @@ export function fitUnitCoords(unit: UnitPoint[]): UnitPoint[] | null {
 export function framePoint(basis: FrameBasis, s: number, t: number, orientation = 0): Vec2 {
   const [rs, rt] = rotST(s, t, orientation);
   return add(basis.o, add(mul(basis.u, rs), mul(basis.v, rt)));
+}
+
+/**
+ * Bilinear map of unit-square (s, t) onto a general quad. Corners stay
+ * pinned: (0,0)->P0, (1,0)->P1, (1,1)->P2, (0,1)->P3. Reduces to the affine
+ * frame map when the quad is a parallelogram.
+ */
+export function quadFramePoint(corners: QuadCorners, s: number, t: number, orientation = 0): Vec2 {
+  const [rs, rt] = rotST(s, t, orientation);
+  const [p0, p1, p2, p3] = corners;
+  const a = (1 - rs) * (1 - rt);
+  const b = rs * (1 - rt);
+  const c = rs * rt;
+  const d = (1 - rs) * rt;
+  return {
+    x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+    y: a * p0.y + b * p1.y + c * p2.y + d * p3.y,
+  };
+}
+
+/** Shoelace area of a quad; near zero means the corners are degenerate. */
+export function quadArea(corners: QuadCorners): number {
+  const [p0, p1, p2, p3] = corners;
+  return Math.abs(
+    (p0.x * p1.y + p1.x * p2.y + p2.x * p3.y + p3.x * p0.y) -
+    (p0.y * p1.x + p1.y * p2.x + p2.y * p3.x + p3.y * p0.x),
+  ) / 2;
 }
 
 export function placeUnitPoints(

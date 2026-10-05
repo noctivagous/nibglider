@@ -48,6 +48,7 @@ export interface DrawingHost {
   shapePartOf(item: Item): Item;
   createInnerShape(center: Item, radius: number, style: string, rotation?: number): Item;
   createRectFrameShape(style: string): Item;
+  createQuadFrameShape(style: string, corners?: Item[] | null): Item;
   drawInnerShape(frame: Item, style: string): void;
   refreshSplineText(): void;
   clearSplineText(): void;

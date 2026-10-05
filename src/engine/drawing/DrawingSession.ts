@@ -14,6 +14,8 @@ export class DrawingSession {
   shapeWidth = 90;
   quadPath: Item = null;
   quadPointCount = 0;
+  /** Fixed quad corners in click order (rubber-band live point excluded). */
+  quadFixed: Item[] = [];
   shapeGuideAngle = 0;
   liveScale = 1;
   liveRotateOffset = 0;
@@ -80,11 +82,18 @@ export class DrawingSession {
     this.releaseQuad();
   }
 
-  /** Drop the live reference without removing a quad that was just deposited. */
+  /**
+   * Drop the live reference without removing a quad that was just deposited.
+   * The fitted-shape preview is an overlay and never the deposited item, so
+   * it is detached here as well.
+   */
   releaseQuad(): void {
     this.quadPath = null;
     this.isDrawingQuad = false;
     this.quadPointCount = 0;
+    this.quadFixed = [];
+    this.detach(this.previewInner);
+    this.previewInner = null;
   }
 
   /** Drop every live drawing item and return to idle. Drag-lock and UI notify stay with the caller. */

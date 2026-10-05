@@ -45,6 +45,7 @@ export function createDrawingHost(engine: Surface): DrawingHost {
     shapePartOf: (item) => engine.shapePartOf(item),
     createInnerShape: (center, radius, style, rotation) => engine.createInnerShape(center, radius, style, rotation),
     createRectFrameShape: (style) => engine.createRectFrameShape(style),
+    createQuadFrameShape: (style, corners) => engine.createQuadFrameShape(style, corners),
     drawInnerShape: (frame, style) => engine.drawInnerShape(frame, style),
     refreshSplineText: () => engine.refreshSplineTextPreview(),
     clearSplineText: () => engine.clearSplineTextPreview(),

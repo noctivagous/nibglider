@@ -102,6 +102,54 @@ test('circle END deposits the preview size when the stroke is thick', () => {
   } finally { cleanup(); }
 });
 
+test('quad with a Rect Keys shape previews after three points and deposits the fitted shape', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    e.rectangleInnerShapeType = 'kite';
+    for (const point of [[0, 0], [100, 0], [100, 100]]) {
+      e.mousePt = new s.Point(point[0], point[1]);
+      e.quadPointKC();
+    }
+    assert.equal(e.isDrawingQuad, true);
+    assert.equal(e.quadPointCount, 3);
+    // Live fourth corner still on the third point: no preview yet.
+    assert.equal(e.previewInner, null);
+    e.pointer.onMouseMove({ point: new s.Point(0, 100) });
+    assert.ok(e.previewInner);
+    assert.equal(e.previewInner.segments.length, 4);
+    e.mousePt = new s.Point(0, 100);
+    e.quadPointKC();
+    assert.equal(e.isDrawingQuad, false);
+    assert.equal(e.previewInner, null);
+    assert.equal(e.quadPointCount, 0);
+    const deposited = layer.children[layer.children.length - 1];
+    assert.equal(deposited.closed, true);
+    assert.equal(deposited.segments.length, 4);
+    // Kite fitted to the unit-square quad: edge midpoints and thirds.
+    const pts = deposited.segments.map((seg) => [seg.point.x, seg.point.y]);
+    assert.deepEqual(pts[0], [50, 0]);
+    assert.deepEqual(pts[2], [50, 100]);
+    assert.equal(e.undoLabel(), 'Deposit shape');
+    e.undo();
+    assert.equal(e.previewInner, null);
+  } finally { cleanup(); }
+});
+
+test('quad with a Rect Keys shape falls back to the raw quad when corners are degenerate', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    e.rectangleInnerShapeType = 'circle';
+    const before = layer.children.length;
+    for (const point of [[0, 0], [10, 0], [20, 0], [30, 0]]) {
+      e.mousePt = new s.Point(point[0], point[1]);
+      e.quadPointKC();
+    }
+    assert.equal(e.isDrawingQuad, false);
+    assert.equal(layer.children.length, before + 1);
+    assert.equal(layer.children[before].closed, true);
+  } finally { cleanup(); }
+});
+
 test('rectangle diagonal cancel drops the frame and a fitted stamp does not end the session', () => {
   const { s, e, layer, cleanup } = engine();
   try {

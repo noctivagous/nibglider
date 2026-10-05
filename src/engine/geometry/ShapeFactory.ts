@@ -23,11 +23,14 @@ import {
   framePoint,
   parallelogramFrameST,
   placeUnitPoints,
+  quadArea,
+  quadFramePoint,
   rectFrameBasis,
   rotST,
   rotWell,
   squareShear,
   trapezoidFrameST,
+  type QuadCorners,
   type RectFrameInput,
   type UnitPoint,
 } from './RectangleGeometry';
@@ -79,6 +82,16 @@ export interface RectFrameBuild {
   orientation: number;
   guideAngle: number;
   frame: RectFrameInput;
+}
+
+export interface QuadFrameBuild {
+  styleOrPreview?: string;
+  innerType: string;
+  params: InnerShapeParams;
+  shapeType: string | null;
+  orientation: number;
+  guideAngle: number;
+  corners: QuadCorners | null;
 }
 
 export class ShapeFactory {
@@ -288,6 +301,88 @@ export class ShapeFactory {
       }
       case 'parallelogram': {
         const quad = parallelogramFrameST(frameAngleShear(basis.u, basis.v, params.angle));
+        path = new scope.Path({ segments: quad.map(([s, t]) => P(s, t)), closed: true });
+        break;
+      }
+      case 'rhombus':
+        path = new scope.Path({ segments: [P(0.5, 0), P(1, 0.5), P(0.5, 1), P(0, 0.5)], closed: true });
+        break;
+      case 'kite':
+        path = new scope.Path({
+          segments: build.shapeType === 'rectangle_centerline'
+            ? [P(0, 0.5), P(1 / 3, 0), P(1, 0.5), P(1 / 3, 1)]
+            : [P(0.5, 0), P(1, 1 / 3), P(0.5, 1), P(0, 1 / 3)],
+          closed: true,
+        });
+        break;
+      case 'circle':
+      case 'polygon': {
+        const sides = build.innerType === 'circle' ? 72 : params.sides || 6;
+        const start = (build.guideAngle * Math.PI) / 180;
+        const unit: UnitPoint[] = [];
+        for (let i = 0; i < sides; i++) {
+          const a = start + (i / sides) * Math.PI * 2;
+          unit.push([Math.cos(a), Math.sin(a)]);
+        }
+        path = this.pathFromFitted(unit, P);
+        break;
+      }
+      case 'supershape': {
+        const { m = 3, n1 = 0.2, n2 = 1.7, n3 = 1.7, a1 = 1, a2 = 1 } = params;
+        const unit: UnitPoint[] = [];
+        for (let i = 0; i <= SUPERSHAPE_STEPS; i++) {
+          const phi = (i / SUPERSHAPE_STEPS) * Math.PI * 2;
+          const r = supershapeRadius(phi, m, n1, n2, n3, a1, a2) || 0;
+          unit.push([r * Math.cos(phi), r * Math.sin(phi)]);
+        }
+        path = this.pathFromFitted(unit, P);
+        break;
+      }
+      default:
+        break;
+    }
+    if (!path) return null;
+    if (isPreview) {
+      path.strokeColor = this.hooks.globalStrokeColor();
+      path.strokeWidth = this.hooks.globalStrokeWidth();
+      path.strokeDasharray = [3, 3];
+      path.opacity = 0.7;
+      path.fillColor = null;
+    }
+    this.hooks.applyStrokeGeometry(path);
+    return this.hooks.withShapeText(path, isPreview);
+  }
+
+  /**
+   * The selected Rect Keys shape fitted to a general quad frame. Mirrors
+   * createRectFrameShape, but the (s, t) projection is the bilinear map over
+   * the four corners instead of the affine rect basis. Returns null for the
+   * plain 'rectangle' setting (the caller deposits the raw quad) and for
+   * missing or degenerate corners.
+   */
+  createQuadFrameShape(build: QuadFrameBuild): Item {
+    const scope = this.scope;
+    const corners = build.corners;
+    if (!corners || quadArea(corners) < 1e-6) return null;
+    if (build.innerType === 'rectangle') return null;
+    const P = (s: number, t: number): Item => {
+      const q = quadFramePoint(corners, s, t, build.orientation);
+      return new scope.Point(q.x, q.y);
+    };
+    const isPreview = (build.styleOrPreview ?? 'stroke') === 'preview';
+    const params = build.params;
+    let path: Item = null;
+    switch (build.innerType) {
+      case 'rightTriangle':
+        path = new scope.Path({ segments: [P(0, 1), P(1, 1), P(0, 0)], closed: true });
+        break;
+      case 'trapezoid': {
+        const quad = trapezoidFrameST(squareShear(params.angle));
+        path = new scope.Path({ segments: quad.map(([s, t]) => P(s, t)), closed: true });
+        break;
+      }
+      case 'parallelogram': {
+        const quad = parallelogramFrameST(squareShear(params.angle));
         path = new scope.Path({ segments: quad.map(([s, t]) => P(s, t)), closed: true });
         break;
       }
