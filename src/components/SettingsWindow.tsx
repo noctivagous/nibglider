@@ -23,6 +23,12 @@ const BINDINGS: Record<string, SettingBinding> = {
     get: (engine) => engine.perspectiveCircle,
     set: (engine, value) => engine.setPerspectiveCircle(value === true || value === 'true'),
   },
+  textPasteLocation: {
+    get: (engine) => engine.textPasteLocation,
+    set: (engine, value) => {
+      if (value === 'crosshair' || value === 'view-center') engine.setTextPasteLocation(value);
+    },
+  },
 };
 
 function SwitchControl({

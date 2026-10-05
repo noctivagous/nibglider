@@ -11,8 +11,8 @@ test('settings window XML loads the Projection section with both switches', () =
   assert.ok(!('error' in result), 'error' in result ? result.error : 'parse failed');
   const spec = result.spec;
   assert.equal(spec.id, 'settings');
-  assert.equal(spec.sections.length, 1);
-  const [section] = spec.sections;
+  assert.equal(spec.sections.length, 2);
+  const [section, text] = spec.sections;
   assert.equal(section.id, 'projection');
   assert.equal(section.controls.length, 2);
   const [mapping, circle] = section.controls;
@@ -22,6 +22,13 @@ test('settings window XML loads the Projection section with both switches', () =
   assert.deepEqual(mapping.options.map((o) => o.label), ['Bilinear', 'Perspective']);
   assert.equal(circle.kind, 'toggle');
   assert.equal(circle.key, 'perspectiveCircle');
+  assert.equal(text.id, 'text');
+  assert.equal(text.controls.length, 1);
+  const [pasteLocation] = text.controls;
+  assert.equal(pasteLocation.kind, 'switch');
+  assert.equal(pasteLocation.key, 'textPasteLocation');
+  assert.equal(pasteLocation.label, 'Text pastes at Location');
+  assert.deepEqual(pasteLocation.options.map((o) => o.value), ['crosshair', 'view-center']);
 });
 
 test('window XML falls back to ids and rejects malformed definitions', () => {

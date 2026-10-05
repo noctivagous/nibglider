@@ -135,6 +135,7 @@ import type {
   StrokePosition,
   TextJustification,
   TextMode,
+  TextPasteLocation,
   TextSpec,
 } from './types';
 
@@ -168,6 +169,7 @@ export type {
   StrokePosition,
   TextJustification,
   TextMode,
+  TextPasteLocation,
   TextSpec,
 } from './types';
 export {
@@ -371,6 +373,9 @@ export class NibGliderEngine {
   // the interior) instead of the bare shape.
   textModeEnabled = false;
   textMode: TextMode = 'display';
+  // Settings window "Text pastes at Location": pasted text anchors at the
+  // crosshair (cursor point, else view center) or always at the view center.
+  textPasteLocation: TextPasteLocation = 'crosshair';
   displayFlow: DisplayFlow = 'exterior';
   glyphOrientation: GlyphOrientation = 'outward';
   // Vertical anchoring of Display glyphs on open spline strokes: Above
@@ -1627,6 +1632,13 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  setTextPasteLocation(mode: TextPasteLocation): void {
+    if (mode !== 'crosshair' && mode !== 'view-center') return;
+    this.textPasteLocation = mode;
+    this.updateTextContent();
+    this.notify();
+  }
+
   setDisplayFlow(f: DisplayFlow): void {
     if (f !== 'interior' && f !== 'exterior') return;
     this.displayFlow = f;
@@ -2260,7 +2272,7 @@ export class NibGliderEngine {
       return false;
     }
     if (placed.length === 0) return false;
-    this.centerPlacedOn(placed, at);
+    this.centerPlacedOn(placed, this.pasteTarget(at));
     this.selection.restore(placed);
     this.recordSceneCommand(
       placed.length > 1 ? `Paste ${placed.length} items` : 'Paste',
@@ -2277,7 +2289,7 @@ export class NibGliderEngine {
     const placed = this.ingestSvg(svg);
     if (!placed) return false;
     try { placed.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
-    this.centerPlacedOn([placed], at);
+    this.centerPlacedOn([placed], this.pasteTarget(at));
     this.fitPlacedToView(placed);
     this.selection.restore([placed]);
     this.recordSceneCommand('Paste', before, selectedBefore, [placed]);
@@ -2286,14 +2298,15 @@ export class NibGliderEngine {
   }
 
   /** Plain text becomes a standalone editable text item: single-line pastes
-   * are Display Text, multiline pastes are Body Text. */
+   * are Display Text pinned by their lower-left corner, multiline pastes
+   * are Body Text pinned by their top-left corner. */
   pastePlainText(text: string, at?: AnyItem): boolean {
     if (this.isLiveDrawing || typeof text !== 'string') return false;
     const clean = text.replace(/\r\n?/g, '\n');
     if (!clean.trim()) return false;
     const before = this.contentItems();
     const selectedBefore = [...this.selectedItems];
-    const target = this.pasteTarget(at);
+    const target = this.pasteTarget(at, true);
     const spec = this.globalText;
     const cfg = this.textLayoutConfig();
     const size = Math.max(4, spec.fontSize);
@@ -2315,6 +2328,7 @@ export class NibGliderEngine {
       const pt: AnyItem = new this.scope.PointText(target);
       pt.content = clean.trim();
       styleText(pt, 'display');
+      this.anchorTextCornerOn(pt, target, 'bottomLeft');
       placed = pt;
       label = 'Paste display text';
     } else {
@@ -2329,7 +2343,7 @@ export class NibGliderEngine {
       }
       group.data.textKind = 'body';
       group.data.editableText = true;
-      this.centerPlacedOn([group], target);
+      this.anchorTextCornerOn(group, target, 'topLeft');
       placed = group;
       label = 'Paste body text';
     }
@@ -2415,15 +2429,18 @@ export class NibGliderEngine {
   }
 
   /** Paste/drop target in project coordinates: explicit point, cursor, or
-   * view center. Repeated pastes cascade so they never stack exactly. */
-  private pasteTarget(explicit?: AnyItem): AnyItem {
+   * view center. Repeated pastes cascade so they never stack exactly. Text
+   * pastes honor the "Text pastes at Location" setting: view-center skips
+   * the cursor and always uses the view center. */
+  private pasteTarget(explicit?: AnyItem, forText = false): AnyItem {
     this.pasteCascade += 1;
     const step = 16 * (this.pasteCascade % 8);
     let base: AnyItem = null;
     if (explicit) {
       try { base = explicit.clone(); } catch { base = explicit; }
     }
-    if (!base && this.mousePt) {
+    const useCursor = !forText || this.textPasteLocation === 'crosshair';
+    if (!base && useCursor && this.mousePt) {
       try { base = this.mousePt.clone(); } catch { base = null; }
     }
     if (!base) {
@@ -2441,10 +2458,9 @@ export class NibGliderEngine {
   }
 
   /** Translate placed items as a block so their collective center lands on
-   * the target, preserving relative layout. */
-  private centerPlacedOn(placed: AnyItem[], at?: AnyItem): void {
+   * the already-resolved target, preserving relative layout. */
+  private centerPlacedOn(placed: AnyItem[], target: AnyItem): void {
     try {
-      const target = this.pasteTarget(at);
       const bounds = this.selection.collectiveBounds(placed);
       if (!bounds || !bounds.center) return;
       const delta = target.subtract(bounds.center);
@@ -2453,6 +2469,20 @@ export class NibGliderEngine {
       }
     } catch {
       // Placement never fails a paste: items stay where they decoded.
+    }
+  }
+
+  /** Pin a bounds corner of freshly pasted text onto the target: a
+   * single-line Display Text item sits its lower-left corner on the
+   * crosshair, multiline Body Text hangs its top-left corner from it. */
+  private anchorTextCornerOn(item: AnyItem, target: AnyItem, corner: 'bottomLeft' | 'topLeft'): void {
+    try {
+      const bounds = item.bounds;
+      const point = bounds?.[corner];
+      if (!point) return;
+      item.translate(target.subtract(point));
+    } catch {
+      // Anchoring never fails a paste: the item stays where it was created.
     }
   }
 

@@ -57,6 +57,7 @@ function mutate(engine) {
   engine.setCombineMode('union');
   engine.setQuadMapping('projective');
   engine.setPerspectiveCircle(true);
+  engine.setTextPasteLocation('view-center');
 }
 
 function checkMutated(e) {
@@ -92,6 +93,7 @@ function checkMutated(e) {
   assert.equal(e.combineMode, 'union');
   assert.equal(e.quadMapping, 'projective');
   assert.equal(e.perspectiveCircle, true);
+  assert.equal(e.textPasteLocation, 'view-center');
 }
 
 test('settings round-trip across paint, shapes, text, grid, and modes', () => {

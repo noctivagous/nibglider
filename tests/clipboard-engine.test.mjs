@@ -73,6 +73,54 @@ test('plain text pastes as display or body editable text', () => {
   } finally { cleanup(); }
 });
 
+test('pasted text pins corners to the target', () => {
+  const { scope, engine, cleanup } = setup();
+  try {
+    const close = (actual, expected, label) => {
+      assert.ok(Math.abs(actual - expected) < 1e-6, `${label}: ${actual} ~= ${expected}`);
+    };
+    // Fresh engine: first paste cascades one step (16, 16).
+    const at = new scope.Point(100, 200);
+    assert.equal(engine.pastePlainText('hi', at), true);
+    const display = engine.selectedItems[0];
+    close(display.bounds.bottomLeft.x, at.x + 16, 'display left');
+    close(display.bounds.bottomLeft.y, at.y + 16, 'display bottom');
+    // Second paste cascades two steps (32, 32).
+    const at2 = new scope.Point(50, 60);
+    assert.equal(engine.pastePlainText('one\ntwo', at2), true);
+    const body = engine.selectedItems[0];
+    close(body.bounds.topLeft.x, at2.x + 32, 'body left');
+    close(body.bounds.topLeft.y, at2.y + 32, 'body top');
+  } finally { cleanup(); }
+});
+
+test('text paste location setting chooses crosshair or view center', () => {
+  const first = setup();
+  try {
+    first.engine.mousePt = new first.scope.Point(500, 500);
+    assert.equal(first.engine.textPasteLocation, 'crosshair');
+    assert.equal(first.engine.pastePlainText('hi'), true);
+    const atCrosshair = first.engine.selectedItems[0].bounds.bottomLeft;
+    assert.ok(Math.abs(atCrosshair.x - 516) < 1e-6);
+    assert.ok(Math.abs(atCrosshair.y - 516) < 1e-6);
+    first.engine.setTextPasteLocation('view-center');
+    assert.equal(first.engine.textPasteLocation, 'view-center');
+    // Invalid values are ignored.
+    first.engine.setTextPasteLocation('elsewhere');
+    assert.equal(first.engine.textPasteLocation, 'view-center');
+  } finally { first.cleanup(); }
+  const second = setup();
+  try {
+    second.engine.mousePt = new second.scope.Point(500, 500);
+    second.engine.setTextPasteLocation('view-center');
+    assert.equal(second.engine.pastePlainText('hi'), true);
+    const atCenter = second.engine.selectedItems[0].bounds.bottomLeft;
+    const viewCenter = second.scope.view.center;
+    assert.ok(Math.abs(atCenter.x - (viewCenter.x + 16)) < 1e-6);
+    assert.ok(Math.abs(atCenter.y - (viewCenter.y + 16)) < 1e-6);
+  } finally { second.cleanup(); }
+});
+
 test('drop string routing matches paste classification', () => {
   const { scope, cleanup } = setup();
   try {

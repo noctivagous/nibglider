@@ -7,4 +7,10 @@
     </switch>
     <toggle key="perspectiveCircle" label="Use perspective on Circle" />
   </section>
+  <section id="text" title="Text">
+    <switch key="textPasteLocation" label="Text pastes at Location">
+      <option value="crosshair" label="Crosshair" />
+      <option value="view-center" label="View center" />
+    </switch>
+  </section>
 </window>

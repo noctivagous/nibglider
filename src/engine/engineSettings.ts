@@ -235,6 +235,7 @@ const ENTRIES: SettingEntry[] = [
   num('text.displayOffset', (e) => e.displayOffset, (e, v) => e.setDisplayOffset(v)),
   num('text.circGap', (e) => e.circumferenceGap, (e, v) => e.setCircumferenceGap(v)),
   num('text.circAngle', (e) => e.circumferenceAngleOffset, (e, v) => e.setCircumferenceAngleOffset(v)),
+  en('text.pasteLocation', ['crosshair', 'view-center'], (e) => e.textPasteLocation, (e, v) => e.setTextPasteLocation(v as never)),
   // Modes.
   en('combine.mode', ['none', 'union', 'subtract', 'intersect'], (e) => e.combineMode, (e, v) => e.setCombineMode(v as never)),
   en('quad.mapping', ['bilinear', 'projective'], (e) => e.quadMapping, (e, v) => e.setQuadMapping(v as QuadMapping)),

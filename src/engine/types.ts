@@ -90,6 +90,10 @@ export interface TextSpec {
 /** Text Mode content: flowing display type vs. contained body type. */
 export type TextMode = 'display' | 'body';
 
+/** Where pasted text lands: at the crosshair (cursor, else view center) or
+ * always at the view center. */
+export type TextPasteLocation = 'crosshair' | 'view-center';
+
 /** Display Text placement relative to the shape boundary. */
 export type DisplayFlow = 'interior' | 'exterior';
 
