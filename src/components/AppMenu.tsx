@@ -39,6 +39,45 @@ function MenuGlyph({ children, size = 15 }: { children: ReactNode; size?: number
   );
 }
 
+// Panel-section artwork reused verbatim: the shape thumbs and combinatorics
+// buttons draw in a 16x14 box, the snap toggles in a 12x12 box. Separate
+// wrappers keep the original coordinates instead of rescaling into 24x24.
+function Thumb1614({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 16 14"
+      width="15"
+      height="13"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function Thumb1212({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      width="13"
+      height="13"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {children}
+    </svg>
+  );
+}
+
 function CheckGlyph() {
   return (
     <svg
@@ -282,6 +321,149 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M4 12 a8 8 0 1 0 2.34 5.66" />
       <path d="M4 20.5 V16 h4.5" />
     </MenuGlyph>
+  ),
+  // Shape silhouettes from the panel's Circle/Rect Keys custom selects.
+  'shape-circle': (
+    <Thumb1614>
+      <circle cx="8" cy="7" r="5" />
+    </Thumb1614>
+  ),
+  'shape-semicircle': (
+    <Thumb1614>
+      <path d="M3 9.5 A5 5 0 0 1 13 9.5 Z" />
+    </Thumb1614>
+  ),
+  'shape-sector': (
+    <Thumb1614>
+      <path d="M8 7 L11.8 3.2 A5.4 5.4 0 0 1 11.8 10.8 Z" />
+    </Thumb1614>
+  ),
+  'shape-segment': (
+    <Thumb1614>
+      <circle cx="8" cy="7" r="5" />
+      <path d="M3.6 9.6 H12.4" />
+    </Thumb1614>
+  ),
+  'shape-polygon': (
+    <Thumb1614>
+      <path d="M8 1.8 L12.4 4.4 V9.6 L8 12.2 L3.6 9.6 V4.4 Z" />
+    </Thumb1614>
+  ),
+  'shape-supershape': (
+    <Thumb1614>
+      <path d="M8 1.2 C8.8 4.8 10 6 13.8 7 C10 8 8.8 9.2 8 12.8 C7.2 9.2 6 8 2.2 7 C6 6 7.2 4.8 8 1.2 Z" />
+    </Thumb1614>
+  ),
+  'shape-trapezoid': (
+    <Thumb1614>
+      <path d="M4.2 11.5 L6 2.8 H10 L11.8 11.5 Z" />
+    </Thumb1614>
+  ),
+  'shape-parallelogram': (
+    <Thumb1614>
+      <path d="M6.8 2.8 H13 L9.2 11.2 H3 Z" />
+    </Thumb1614>
+  ),
+  'shape-rightTriangle': (
+    <Thumb1614>
+      <path d="M4.5 2.8 V11.2 H11.5 Z" />
+    </Thumb1614>
+  ),
+  'shape-rhombus': (
+    <Thumb1614>
+      <path d="M8 1.8 L12.8 7 L8 12.2 L3.2 7 Z" />
+    </Thumb1614>
+  ),
+  'shape-kite': (
+    <Thumb1614>
+      <path d="M8 1.5 L11 6.5 L8 12.5 L5 6.5 Z" />
+    </Thumb1614>
+  ),
+  'shape-rectangle': (
+    <Thumb1614>
+      <path d="M2.8 3.2 H13.2 V10.8 H2.8 Z" />
+    </Thumb1614>
+  ),
+  // Snapping artwork from the panel's snap toggle buttons.
+  'snap-grid': (
+    <Thumb1212>
+      <circle cx="2.5" cy="2.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="6" cy="2.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="9.5" cy="2.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="2.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="6" cy="6" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="9.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="2.5" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="6" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="9.5" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+    </Thumb1212>
+  ),
+  'snap-path': (
+    <Thumb1212>
+      <path d="M1.5 9 C4 9 4 3.5 6.5 3.5 S9.5 6 10.5 6" />
+      <circle cx="1.5" cy="9" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="10.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
+    </Thumb1212>
+  ),
+  'snap-points': (
+    <Thumb1212>
+      <path d="M2 9.5 L6 4 L10 7" />
+      <circle cx="2" cy="9.5" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="6" cy="4" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="7" r="1.2" fill="currentColor" stroke="none" />
+    </Thumb1212>
+  ),
+  'snap-angle': (
+    <Thumb1212>
+      <path d="M1.5 10.5 H10.5 M1.5 10.5 L8.5 2" />
+      <path d="M4.8 10.5 A3.4 3.4 0 0 0 4.2 7.6" />
+    </Thumb1212>
+  ),
+  'snap-length': (
+    <Thumb1212>
+      <path d="M2 6 H10 M2 6 L4 4 M2 6 L4 8 M10 6 L8 4 M10 6 L8 8" />
+    </Thumb1212>
+  ),
+  'snap-aspect': (
+    <Thumb1212>
+      <path d="M1 2.5 H11 V9.5 H1 Z M6 2.5 V9.5" />
+    </Thumb1212>
+  ),
+  // Combinatorics artwork from the panel's combine-mode buttons.
+  'combinatorics-none': (
+    <Thumb1614>
+      <circle cx="8" cy="7" r="3.6" />
+      <path d="M5.5 9.5 L10.5 4.5" />
+    </Thumb1614>
+  ),
+  'combinatorics-union': (
+    <Thumb1614>
+      <circle cx="6" cy="7" r="3.6" />
+      <circle cx="10" cy="7" r="3.6" />
+    </Thumb1614>
+  ),
+  'combinatorics-subtract': (
+    <Thumb1614>
+      <circle cx="6" cy="7" r="3.6" />
+      <circle cx="10" cy="7" r="3.6" strokeDasharray="2 1.4" opacity="0.55" />
+    </Thumb1614>
+  ),
+  'combinatorics-intersect': (
+    <Thumb1614>
+      <path d="M6 3.4 A3.6 3.6 0 0 1 6 10.6 A3.6 3.6 0 0 1 6 3.4 Z M10 3.4 A3.6 3.6 0 0 0 10 10.6 A3.6 3.6 0 0 0 10 3.4 Z" />
+    </Thumb1614>
+  ),
+  // Text modes have no panel artwork; ragged lines for Display,
+  // justified lines for Body.
+  'textmode-display': (
+    <Thumb1614>
+      <path d="M2.5 3.5 h11 M2.5 7 h11 M2.5 10.5 h7" />
+    </Thumb1614>
+  ),
+  'textmode-body': (
+    <Thumb1614>
+      <path d="M2.5 3.5 h11 M2.5 7 h11 M2.5 10.5 h11" />
+    </Thumb1614>
   ),
 };
 

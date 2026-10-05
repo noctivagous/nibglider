@@ -119,6 +119,33 @@ test('operations holds repeat and dialogs, modes holds the mode parents; layers 
   ]);
 });
 
+test('every submenu option carries its panel icon, and every icon key has an AppMenu glyph', () => {
+  const menus = loadMenus();
+  const options = menus
+    .flatMap((menu) => menu.items)
+    .flatMap((item) => item.children ?? []);
+  assert.ok(options.length > 0);
+  for (const option of options) {
+    // Length units are text-only in the panel too, so they keep no icon.
+    if (option.commandId.startsWith('length-unit-')) continue;
+    assert.equal(typeof option.icon, 'string', `${option.commandId} carries an icon`);
+  }
+  const referenced = new Set();
+  for (const item of menus.flatMap((menu) => menu.items)) {
+    if (item.icon) referenced.add(item.icon);
+    for (const child of item.children ?? []) {
+      if (child.icon) referenced.add(child.icon);
+    }
+  }
+  const appMenu = readFileSync(new URL('../src/components/AppMenu.tsx', import.meta.url), 'utf8');
+  const defined = new Set(
+    [...appMenu.matchAll(/^  ('([\w-]+)'|([\w-]+)): \($/gm)].map((m) => m[2] ?? m[3]),
+  );
+  for (const key of referenced) {
+    assert.ok(defined.has(key), `icon "${key}" has a glyph in AppMenu.tsx`);
+  }
+});
+
 test('edit holds undo/redo, clipboard, and selection entries', () => {
   const menus = loadMenus();
   const edit = menus.find((menu) => menu.id === 'edit');
