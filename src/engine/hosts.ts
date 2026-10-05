@@ -125,6 +125,7 @@ export function createPointerHost(engine: Surface): PointerHost {
     clearMoveGesture: () => { engine.transforms.cancelDrag(); },
     topUserGroupOf: (item) => engine.topUserGroupOf(item),
     isNonContentItem: (item) => engine.isNonContentItem(item),
+    updateCanvasCursor: (dragging, point) => { engine.updateCanvasCursor(dragging, point); },
   };
 }
 

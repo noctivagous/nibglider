@@ -62,6 +62,7 @@ export interface PointerHost {
   clearMoveGesture(): void;
   topUserGroupOf(item: Item): Item;
   isNonContentItem(item: Item): boolean;
+  updateCanvasCursor(dragging: boolean, point: Item | null): void;
 }
 
 export class PointerController {
@@ -80,13 +81,14 @@ export class PointerController {
       host.clearOutSelection();
       host.clearMoveGesture();
       host.beginPan(event.point);
-      this.setCanvasCursor('grabbing');
+      host.updateCanvasCursor(false, event.point);
       host.updateTextContent();
       return;
     }
     host.endPan();
     this.applyHitSelection(hit);
     host.beginMoveGesture();
+    host.updateCanvasCursor(false, event.point);
   }
 
   onMouseMove(event: paper.MouseEvent): void {
@@ -172,6 +174,7 @@ export class PointerController {
       }
     }
     if (host.isDrawingQuad()) host.updateLiveQuad();
+    host.updateCanvasCursor(host.isInDragLock(), originalPoint);
   }
 
   onMouseDrag(event: paper.MouseEvent): void {
@@ -182,6 +185,7 @@ export class PointerController {
     }
     if (host.isPanning()) {
       host.panTo(event.point, event.delta);
+      host.updateCanvasCursor(false, event.point);
       return;
     }
     host.setMousePt(host.snapToGrid(event.point));
@@ -189,11 +193,13 @@ export class PointerController {
     const delta = host.mousePt().subtract(host.lastMousePt());
     host.moveSelectionBy(delta);
     host.setLastMousePt(host.mousePt());
+    host.updateCanvasCursor(true, event.point);
   }
 
   releasePointer(): void {
     this.endPan();
     this.host.commitMoveGesture();
+    this.host.updateCanvasCursor(false, this.host.mousePt());
   }
 
   hitTestUnderCursor(): void {
@@ -206,12 +212,7 @@ export class PointerController {
     const host = this.host;
     if (!host.isPanning()) return;
     host.endPan();
-    this.setCanvasCursor('');
-  }
-
-  private setCanvasCursor(cursor: string): void {
-    const el = this.host.scope().view && this.host.scope().view.element;
-    if (el) (el as HTMLElement).style.cursor = cursor;
+    host.updateCanvasCursor(false, host.mousePt());
   }
 
   private handleDragLock(): void {

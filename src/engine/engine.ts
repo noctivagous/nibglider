@@ -48,6 +48,11 @@ import {
 } from './document/SceneIO';
 import { buildStatusSchema } from './appearance/statusSchema';
 import { buildKeymapRows } from './appearance/keymapSchema';
+import {
+  idleCursorContext,
+  resolveCanvasCursor,
+  type CanvasCursorContext,
+} from './appearance/cursorState';
 import { EngineContext } from './EngineContext';
 import { createDrawingHost, createKeyboardHost, createPointerHost } from './hosts';
 import { modifiersOf } from './input/ModifierStateTracker';
@@ -1981,6 +1986,7 @@ export class NibGliderEngine {
     if (status && !this.isInDragLock) this.beginMoveGesture();
     if (!status && this.isInDragLock) this.commitMoveGesture();
     this.isInDragLock = status;
+    this.updateCanvasCursor(false, this.mousePt);
     this.updateTextContent();
     this.notify();
   }
@@ -1994,14 +2000,51 @@ export class NibGliderEngine {
       if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad || !this.mousePt) return;
       this.lastMousePt = null;
       this.viewport.beginPan(this.mousePt.clone());
-      this.setCanvasCursor('grabbing');
     } else {
       this.viewport.endPan();
-      this.setCanvasCursor('');
     }
     this.isPanLocked = on;
+    this.updateCanvasCursor(false, this.mousePt);
     this.updateTextContent();
     this.notify();
+  }
+
+  /** Last CSS cursor value applied to the canvas element. */
+  lastCursorCss = '';
+
+  /** Resolve the canvas cursor from live pan/drag/snap/hover state and apply
+   * it to the view element. Snap flags come from the indicator visibility the
+   * pointer pass just set; returns the applied CSS value. */
+  updateCanvasCursor(dragging = false, point: AnyItem = null): string {
+    const context: CanvasCursorContext = idleCursorContext();
+    context.panning = this.viewport.isPanning;
+    context.panLocked = this.isPanLocked;
+    context.dragging = dragging || this.isInDragLock;
+    context.drawing = this.isLiveDrawing;
+    context.snapPoint = !!this.pointSnapCursor?.visible;
+    context.snapPath = !!this.pathSnapCursor?.visible && !context.snapPoint;
+    context.snapGrid = !!this.gridCursor?.visible;
+    context.hoverContent = !context.panning && !context.panLocked && !context.dragging &&
+      !context.drawing && !!point && this.isContentHit(point);
+    const resolved = resolveCanvasCursor(context);
+    this.setCanvasCursor(resolved.css);
+    this.lastCursorCss = resolved.css;
+    return resolved.css;
+  }
+
+  private isContentHit(point: AnyItem): boolean {
+    try {
+      if (!point || !this.scope.project) return false;
+      return !!this.scope.project.hitTest(point, {
+        segments: true,
+        stroke: true,
+        fill: true,
+        tolerance: 5,
+        match: (hit: AnyItem) => !this.isNonContentItem(hit),
+      });
+    } catch {
+      return false;
+    }
   }
 
   private setCanvasCursor(cursor: string): void {

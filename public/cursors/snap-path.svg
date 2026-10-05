@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- snap-path: hovering near a curve. Hotspot: 12 12. Fallback: crosshair. -->
+  <g fill="none" stroke-linecap="round">
+    <circle cx="12" cy="12" r="8.5" stroke="#000" stroke-width="3.5" opacity="0.85"/>
+    <circle cx="12" cy="12" r="8.5" stroke="#fff" stroke-width="1.6"/>
+    <path d="M5 15c2.5 0 2.5-6 5-6s2 3 4.5 3 2-1.5 4.5-1.5" stroke="#000" stroke-width="3" opacity="0.85"/>
+    <path d="M5 15c2.5 0 2.5-6 5-6s2 3 4.5 3 2-1.5 4.5-1.5" stroke="#ffd43b" stroke-width="1.6"/>
+  </g>
+</svg>
