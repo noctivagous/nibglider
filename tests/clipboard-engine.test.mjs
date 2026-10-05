@@ -121,6 +121,59 @@ test('text paste location setting chooses crosshair or view center', () => {
   } finally { second.cleanup(); }
 });
 
+test('editable text selection loads into selectionText and setters apply', () => {
+  const { engine, rect, cleanup } = setup();
+  try {
+    assert.equal(engine.selectionText(), null);
+    assert.equal(engine.selectedEditableKind(), null);
+    const path = rect(10);
+    engine.addItemToSelection(path);
+    assert.equal(engine.selectionText(), null);
+    engine.clearOutSelection();
+    assert.equal(engine.pastePlainText('hello'), true);
+    const spec = engine.selectionText();
+    assert.equal(spec.content, 'hello');
+    assert.equal(engine.selectedEditableKind(), 'display');
+    engine.setTextFontSize(48);
+    assert.equal(engine.selectedItems[0].fontSize, 48);
+    assert.equal(engine.globalText.fontSize, 48);
+    engine.setTextContent('bye');
+    assert.equal(engine.selectedItems[0].content, 'bye');
+    assert.equal(engine.selectionText().content, 'bye');
+    engine.setTextFontFamily('Courier');
+    assert.equal(engine.selectedItems[0].fontFamily, 'Courier');
+    engine.setTextFontWeight('bold');
+    assert.equal(engine.selectedItems[0].fontWeight, 'bold');
+    engine.setTextJustification('left');
+    assert.equal(engine.selectedItems[0].justification, 'left');
+    engine.setTextLeading(2);
+    assert.ok(Math.abs(engine.selectedItems[0].leading - 96) < 1e-6);
+    engine.setTextItalic(true);
+    assert.equal(engine.selectedItems[0].data.italic, true);
+    engine.setTextItalic(false);
+    assert.equal(engine.selectedItems[0].data.italic, false);
+  } finally { cleanup(); }
+});
+
+test('body text edits rebuild lines and keep the top-left pin', () => {
+  const { engine, cleanup } = setup();
+  try {
+    assert.equal(engine.pastePlainText('one\ntwo'), true);
+    assert.equal(engine.selectedEditableKind(), 'body');
+    assert.equal(engine.selectionText().content, 'one\ntwo');
+    const before = engine.selectedItems[0].bounds.topLeft;
+    engine.setTextContent('a\nb\nc');
+    const group = engine.selectedItems[0];
+    assert.deepEqual(group.children.map((c) => c.content), ['a', 'b', 'c']);
+    assert.equal(engine.selectionText().content, 'a\nb\nc');
+    const after = group.bounds.topLeft;
+    assert.ok(Math.abs(after.x - before.x) < 1e-6, `x pinned: ${after.x} ~= ${before.x}`);
+    assert.ok(Math.abs(after.y - before.y) < 1e-6, `y pinned: ${after.y} ~= ${before.y}`);
+    engine.setTextFontSize(40);
+    assert.ok(group.children.every((c) => c.fontSize === 40));
+  } finally { cleanup(); }
+});
+
 test('drop string routing matches paste classification', () => {
   const { scope, cleanup } = setup();
   try {

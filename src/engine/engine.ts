@@ -1582,6 +1582,7 @@ export class NibGliderEngine {
 
   setTextContent(v: string): void {
     this.setText({ content: v });
+    this.applyToEditableText((_lines, root) => this.setEditableContent(root, v));
   }
 
   setTextLine2(v: string): void {
@@ -1591,30 +1592,276 @@ export class NibGliderEngine {
   setTextFontFamily(v: string): void {
     if (!v) return;
     this.setText({ fontFamily: v });
+    this.applyToEditableText((lines) => {
+      for (const line of lines) line.fontFamily = v;
+    });
   }
 
   setTextFontSize(v: number): void {
     if (!Number.isFinite(v)) return;
-    this.setText({ fontSize: Math.max(4, Math.min(400, v)) });
+    const size = Math.max(4, Math.min(400, v));
+    this.setText({ fontSize: size });
+    this.applyToEditableText((lines) => {
+      for (const line of lines) {
+        const current = line.fontSize;
+        const factor = Number.isFinite(current) && current > 0 && Number.isFinite(line.leading)
+          ? line.leading / current
+          : this.globalText.leading;
+        line.fontSize = size;
+        line.leading = factor * size;
+      }
+    }, true);
   }
 
   setTextFontWeight(v: string): void {
     if (!v) return;
     this.setText({ fontWeight: v });
+    this.applyToEditableText((lines) => {
+      for (const line of lines) line.fontWeight = v;
+    });
   }
 
   setTextItalic(v: boolean): void {
-    this.setText({ italic: !!v });
+    const on = !!v;
+    this.setText({ italic: on });
+    this.applyToEditableText((lines) => {
+      for (const line of lines) this.setLineItalic(line, on);
+    });
   }
 
   setTextJustification(v: TextJustification): void {
     if (v !== 'left' && v !== 'center' && v !== 'right') return;
     this.setText({ justification: v });
+    this.applyToEditableText((lines) => {
+      for (const line of lines) line.justification = v;
+    });
   }
 
   setTextLeading(v: number): void {
     if (!Number.isFinite(v)) return;
-    this.setText({ leading: Math.max(0.8, Math.min(3, v)) });
+    const factor = Math.max(0.8, Math.min(3, v));
+    this.setText({ leading: factor });
+    this.applyToEditableText((lines) => {
+      for (const line of lines) {
+        const size = line.fontSize;
+        line.leading = (Number.isFinite(size) && size > 0 ? size : this.globalText.fontSize) * factor;
+      }
+    }, true);
+  }
+
+  // --- Editable text selection sync (Text panel) ---
+  // Selecting a pasted EditableText object loads its live properties into
+  // the Text flyout (selectionText), and the text setters above apply to
+  // the object as well as the global defaults — mirroring how stroke and
+  // fill setters treat selected paths. Shape-attached text (isShapeText
+  // without editableText) stays creation-driven and is untouched. Like the
+  // stroke/fill path, object edits mark the document edited but record no
+  // history entry.
+
+  /** Top-level selected items that are standalone editable text. */
+  editableTextRoots(): AnyItem[] {
+    return this.topLevelSelected().filter((item) => !!item?.data?.editableText);
+  }
+
+  /** The PointText lines backing an editable root. */
+  private editableLines(root: AnyItem): AnyItem[] {
+    if (!root) return [];
+    try {
+      if (root.className === 'PointText') return [root];
+      if (Array.isArray(root.children)) {
+        return root.children.filter((child: AnyItem) => child && child.className === 'PointText');
+      }
+    } catch { /* Detached mid-read. */ }
+    return [];
+  }
+
+  selectedEditableKind(): 'display' | 'body' | null {
+    const roots = this.editableTextRoots();
+    if (roots.length === 0) return null;
+    return roots[0]?.data?.textKind === 'body' ? 'body' : 'display';
+  }
+
+  /** Panel spec for the Text flyout: the first selected editable text's
+   * live properties, or null when no editable text is selected (the panel
+   * then shows the global defaults). */
+  selectionText(): TextSpec | null {
+    const roots = this.editableTextRoots();
+    if (roots.length === 0) return null;
+    const base = this.globalText;
+    const contents: string[] = [];
+    for (const root of roots) {
+      for (const line of this.editableLines(root)) {
+        try { contents.push(String(line.content ?? '')); } catch { /* Skip unreadable lines. */ }
+      }
+    }
+    const first = this.editableLines(roots[0])[0];
+    const size = first && Number.isFinite(first.fontSize) && first.fontSize > 0
+      ? first.fontSize as number
+      : base.fontSize;
+    const factor = first && Number.isFinite(first.leading) && size > 0
+      ? (first.leading as number) / size
+      : null;
+    let fontFamily = base.fontFamily;
+    try {
+      if (first && typeof first.fontFamily === 'string' && first.fontFamily) fontFamily = first.fontFamily;
+    } catch { /* Keep the default. */ }
+    let fontWeight = base.fontWeight;
+    try {
+      if (first && typeof first.fontWeight === 'string' && first.fontWeight) fontWeight = first.fontWeight;
+    } catch { /* Keep the default. */ }
+    let italic = base.italic;
+    try {
+      if (first) italic = first.data?.italic === true;
+    } catch { /* Keep the default. */ }
+    const justification = first?.justification;
+    return {
+      content: contents.join('\n'),
+      line2: base.line2,
+      fontFamily,
+      fontSize: size,
+      fontWeight,
+      italic,
+      justification: justification === 'left' || justification === 'right' || justification === 'center'
+        ? justification
+        : base.justification,
+      leading: factor !== null ? Math.max(0.8, Math.min(3, factor)) : base.leading,
+    };
+  }
+
+  /** Run a mutation over every selected editable root's lines, keeping each
+   * root pinned by its anchor corner (lower-left for display, top-left for
+   * body). The restack flag re-flows multiline roots afterwards (needed
+   * after size/leading changes). Returns true when a root was updated. */
+  private applyToEditableText(
+    apply: (lines: AnyItem[], root: AnyItem) => void,
+    restack = false,
+  ): boolean {
+    const roots = this.editableTextRoots();
+    if (roots.length === 0) return false;
+    let touched = false;
+    for (const root of roots) {
+      const lines = this.editableLines(root);
+      if (lines.length === 0) continue;
+      const body = root.data?.textKind === 'body';
+      let corner: AnyItem = null;
+      try {
+        const bounds = root.bounds;
+        const point = body ? bounds?.topLeft : bounds?.bottomLeft;
+        corner = point && point.clone ? point.clone() : null;
+      } catch { corner = null; }
+      try {
+        apply(lines, root);
+        touched = true;
+      } catch { /* One bad root must not sink the others. */ }
+      if (restack) this.restackBodyLines(root);
+      if (corner) this.anchorTextCornerOn(root, corner, body ? 'topLeft' : 'bottomLeft');
+    }
+    if (touched) this.documentManager.markEdited('scene');
+    return touched;
+  }
+
+  /** Re-flow a multiline root's lines from the first line's position and
+   * leading. Single-line roots are untouched. */
+  private restackBodyLines(root: AnyItem): void {
+    if (!root || root.className === 'PointText') return;
+    const lines = this.editableLines(root);
+    if (lines.length < 2) return;
+    let origin: AnyItem = null;
+    let step = 0;
+    try {
+      origin = lines[0].position && lines[0].position.clone ? lines[0].position.clone() : null;
+      step = Number(lines[0].leading);
+    } catch { return; }
+    if (!origin || !(step > 0)) return;
+    lines.forEach((line, i) => {
+      if (i === 0) return;
+      try {
+        line.position = new this.scope.Point(origin.x, origin.y + i * step);
+      } catch { /* Keep the line where it is. */ }
+    });
+  }
+
+  private copyTextStyle(from: AnyItem, to: AnyItem, kind: 'display' | 'body'): void {
+    to.fontFamily = from.fontFamily;
+    to.fontSize = from.fontSize;
+    to.fontWeight = from.fontWeight;
+    try { to.fillColor = from.fillColor; } catch { /* Keep the default paint. */ }
+    to.strokeColor = null;
+    to.justification = from.justification;
+    to.leading = from.leading;
+    to.data.textKind = kind;
+    to.data.editableText = true;
+    to.data.italicShear = false;
+    let italic = false;
+    try { italic = from.data?.italic === true; } catch { /* Not italic. */ }
+    this.setLineItalic(to, italic);
+  }
+
+  /** Paper has no native fontStyle and the global italic flag is
+   * render-inert, so editable text synthesizes italics with a tracked shear
+   * (tan 12°), keeping toggling idempotent. Re-pinning by the caller absorbs
+   * the translation component. */
+  private setLineItalic(line: AnyItem, on: boolean): void {
+    let applied = false;
+    try { applied = line.data?.italicShear === true; } catch { /* Assume unslanted. */ }
+    if (on && !applied) {
+      try { line.shear(-0.2126, 0); line.data.italicShear = true; } catch { /* Leave unslanted. */ }
+    } else if (!on && applied) {
+      try { line.shear(0.2126, 0); line.data.italicShear = false; } catch { /* Keep the slant. */ }
+    }
+    try { line.data.italic = on; } catch { /* Flag is best-effort. */ }
+  }
+
+  /** Replace a root's text: display roots take the whole string, body roots
+   * rebuild their lines (adding/removing children to match) and re-flow. */
+  private setEditableContent(root: AnyItem, text: string): void {
+    const lines = this.editableLines(root);
+    if (lines.length === 0) return;
+    if (root.className === 'PointText') {
+      lines[0].content = text;
+      return;
+    }
+    const wanted = splitBodyLines(text);
+    const template = lines[0];
+    let anchor: AnyItem = null;
+    let step = 0;
+    try {
+      anchor = template.position && template.position.clone ? template.position.clone() : null;
+      step = Number(template.leading);
+    } catch { /* Fall through with no anchor. */ }
+    if (!anchor || !(step > 0)) {
+      try {
+        anchor = new this.scope.Point(root.bounds?.center?.x ?? 0, root.bounds?.center?.y ?? 0);
+        step = Math.max(4, this.globalText.fontSize) * 1.2;
+      } catch { anchor = null; }
+    }
+    let current = this.editableLines(root);
+    while (current.length > wanted.length) {
+      try { current[current.length - 1].remove(); } catch { break; }
+      const next = this.editableLines(root);
+      if (next.length === current.length) break;
+      current = next;
+    }
+    while (current.length < wanted.length) {
+      const pt: AnyItem = new this.scope.PointText(new this.scope.Point(0, 0));
+      this.copyTextStyle(template, pt, 'body');
+      try { root.addChild(pt); } catch { break; }
+      const next = this.editableLines(root);
+      if (next.length === current.length) break;
+      current = next;
+    }
+    const final = this.editableLines(root);
+    final.forEach((pt, i) => {
+      pt.content = wanted[i] ?? ' ';
+      if (anchor) {
+        try {
+          pt.position = new this.scope.Point(
+            (anchor as AnyItem).x,
+            (anchor as AnyItem).y + i * step,
+          );
+        } catch { /* Keep the line where it is. */ }
+      }
+    });
   }
 
   setTextModeEnabled(v: boolean): void {

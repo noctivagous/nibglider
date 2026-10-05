@@ -1829,16 +1829,23 @@ function TextPreviewBox({ spec, large }: { spec: TextSpec; large?: boolean }) {
 function TextParams({
   engine,
   spec,
+  kind,
 }: {
   engine: NibGliderEngine;
   spec: TextSpec;
+  kind: 'display' | 'body' | null;
 }) {
-  const textMode = engine.textMode;
+  // Editing an existing object: creation-only controls (Kind, Flow,
+  // Orientation, Spline, rings, Line 2) hide, and mode-dependent rows follow
+  // the object's kind instead of the global text mode.
+  const editingObject = kind !== null;
+  const mode = kind ?? engine.textMode;
   const displayFlow = engine.displayFlow;
   const glyphOrientation = engine.glyphOrientation;
   const splineTextPlacement = engine.splineTextPlacement;
   return (
     <div className="panelParameters">
+      {editingObject ? null : (
       <span className="param-item">
         <label>Kind</label>
         <div className="seg-ctrl seg-text" role="group" aria-label="Text kind">
@@ -1852,7 +1859,7 @@ function TextParams({
               key={opt.value}
               type="button"
               title={opt.label}
-              className={textMode === opt.value ? 'active' : undefined}
+              className={engine.textMode === opt.value ? 'active' : undefined}
               onClick={() => engine.setTextMode(opt.value)}
             >
               {opt.label}
@@ -1860,7 +1867,8 @@ function TextParams({
           ))}
         </div>
       </span>
-      {textMode === 'display' ? (
+      )}
+      {mode === 'display' && !editingObject ? (
         <>
           <div className="flyout-trio-row">
             <span className="param-item">
@@ -2028,6 +2036,7 @@ function TextParams({
           onChange={(e) => engine.setTextContent(e.target.value)}
         />
       </span>
+      {editingObject ? null : (
       <span className="param-item">
         <label htmlFor="textLine2Input">Line 2 (second ring)</label>
         <input
@@ -2039,6 +2048,7 @@ function TextParams({
           onChange={(e) => engine.setTextLine2(e.target.value)}
         />
       </span>
+      )}
       <div className="flyout-inline-row param-item">
         <label>Typeface</label>
         <FontFamilySelect
@@ -2093,7 +2103,7 @@ function TextParams({
           </div>
         </span>
       </div>
-      {textMode === 'body' ? (
+      {mode === 'body' ? (
         <span className="param-item">
           <label>Align</label>
           <div className="seg-ctrl" role="group" aria-label="Text alignment">
@@ -3048,6 +3058,10 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   const fillOn = sel ? sel.fillOn : engine.fillEnabled;
   const fillColor = sel ? sel.fillColor : engine.globalFillColor;
   const fillSpec = sel ? sel.fillSpec : engine.fillSpec();
+  // Text panel: when editable text is selected the flyout reflects the
+  // selection (first editable root) instead of the globals.
+  const editableKind = engine.selectedEditableKind();
+  const textSpec = engine.selectionText() ?? engine.globalText;
 
   // Length snap field in the current display unit.
   const lengthField =
@@ -3557,19 +3571,19 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             onMouseLeave={scheduleHoverClose}
             onClick={() => toggleFlyout('text')}
           >
-            <TextPreviewBox spec={engine.globalText} />
+            <TextPreviewBox spec={textSpec} />
           </button>
           <ShapeParamsFlyout
             open={paramsFlyout === 'text'}
             triggerRef={textPreviewRef}
             tone="text"
             title="Text"
-            preview={<TextPreviewBox spec={engine.globalText} large />}
+            preview={<TextPreviewBox spec={textSpec} large />}
             onClose={closeFlyout}
             onMenuMouseEnter={cancelHoverClose}
             onMenuMouseLeave={scheduleHoverClose}
           >
-            <TextParams engine={engine} spec={engine.globalText} />
+            <TextParams engine={engine} spec={textSpec} kind={editableKind} />
           </ShapeParamsFlyout>
         </header>
       </PanelSection>
