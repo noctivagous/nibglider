@@ -79,6 +79,13 @@ export class ViewportManager {
     this.changed();
   }
   endPan(): void { this.panning = false; this.panCenter = null; this.panPoint = null; }
+  /** Absolute center placement (scrollbars, board navigation). Honors the
+   * same artwork-reachability clamp as every other pan path. */
+  setCenter(point: paper.Point): void {
+    this.scope.view.center = point;
+    this.clampCenter();
+    this.changed();
+  }
   /** Two-finger trackpad pan: screen-pixel deltas shift the view, honoring
    * zoom. Content follows the fingers, like drag-pan without the button.
    * Each axis is capped per event so a spike cannot fling the view. */

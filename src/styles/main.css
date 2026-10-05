@@ -5007,6 +5007,36 @@ kbd,
   background: var(--dp-accent-soft);
   border-color: var(--dp-accent);
 }
+
+.settings-number,
+.settings-select {
+  background: var(--dp-bg-1);
+  border: 1px solid var(--dp-border);
+  border-radius: 4px;
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 4px 8px;
+}
+
+.settings-number {
+  width: 5.5rem;
+}
+
+.settings-apply {
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 4px;
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.settings-apply:hover {
+  border-color: var(--dp-accent);
+}
 .settings-unknown,
 .settings-error {
   color: var(--dp-text-2);
@@ -5014,4 +5044,79 @@ kbd,
 }
 .settings-error {
   padding: 12px;
+}
+
+/* Custom canvas scrollbars: always-visible right + bottom bars over the
+   canvas, below the overlay stack. Same dark-pro treatment as the panel
+   scrollbars; overlay only, never shifting canvas layout. */
+#canvasScrollbars {
+  position: absolute;
+  inset: 0;
+  z-index: 400;
+  pointer-events: none;
+}
+
+.csb-track-h,
+.csb-track-v {
+  position: absolute;
+  pointer-events: auto;
+  background: rgba(13, 17, 22, 0.72);
+  touch-action: none;
+}
+
+.csb-track-h {
+  left: 0;
+  right: 12px;
+  bottom: 0;
+  height: 12px;
+  border-top: 1px solid var(--dp-border);
+}
+
+.csb-track-v {
+  top: 0;
+  bottom: 12px;
+  right: 0;
+  width: 12px;
+  border-left: 1px solid var(--dp-border);
+}
+
+.csb-corner {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  background: rgba(13, 17, 22, 0.72);
+  border-top: 1px solid var(--dp-border);
+  border-left: 1px solid var(--dp-border);
+  pointer-events: none;
+}
+
+.csb-thumb {
+  position: absolute;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 4px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.csb-track-h .csb-thumb {
+  top: 2px;
+  bottom: 2px;
+}
+
+.csb-track-v .csb-thumb {
+  left: 2px;
+  right: 2px;
+}
+
+.csb-thumb:hover {
+  background: var(--dp-border);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .csb-thumb {
+    transition: background 120ms ease;
+  }
 }

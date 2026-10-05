@@ -14,6 +14,7 @@ import ContextMenu from './components/ContextMenu';
 import SettingsWindow from './components/SettingsWindow';
 import DocumentInfoWindow from './components/DocumentInfoWindow';
 import OnscreenKeyboard from './components/OnscreenKeyboard';
+import CanvasScrollbars from './components/CanvasScrollbars';
 import TutorialOverlay from './components/TutorialOverlay';
 import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
@@ -626,6 +627,7 @@ export default function App() {
           tabIndex={0}
           ref={canvasRef}
         />
+        <CanvasScrollbars engine={engine} />
         <div id="topOverlayStack">
           <div
             id="controlPanel"

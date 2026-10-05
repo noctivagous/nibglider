@@ -102,6 +102,8 @@ import { GridRenderer } from './snapping/GridRenderer';
 import { SnappingManager } from './snapping/SnappingManager';
 import { LayerManager } from './document/LayerManager';
 import { CoordinateManager } from './document/CoordinateManager';
+import { DrawingBoard, type BoardRect } from './document/DrawingBoard';
+import type { UnitSystem } from './document/MeasurementUnits';
 import { ViewportManager } from './document/ViewportManager';
 import { DocumentManager, type DocumentChange, type PageSettings } from './document/DocumentManager';
 import type { NGPathDrawable } from './model/NGDrawable';
@@ -190,6 +192,17 @@ export {
 type AnyItem = any;
 
 export type WheelGesture = 'pinch' | 'pan' | 'zoom';
+
+/** View snapshot for the canvas scrollbars: center and size in project
+ * coordinates plus the DrawingBoard rect. Null while no view exists. */
+export interface ViewState {
+  centerX: number;
+  centerY: number;
+  zoom: number;
+  viewWidth: number;
+  viewHeight: number;
+  board: BoardRect;
+}
 /** Pinch deltas arrive much smaller than wheel notches; this gain keeps the
  * trackpad pinch zoom pace comparable to the scroll-wheel pace. */
 export const TRACKPAD_PINCH_GAIN = 3;
@@ -305,6 +318,10 @@ export class NibGliderEngine {
   gridCursor: AnyItem = null;
   pathSnapCursor: AnyItem = null;
   pointSnapCursor: AnyItem = null;
+  // --- DrawingBoard (finite canvas bounds, centered on the origin) ---
+  readonly drawingBoard = new DrawingBoard();
+  boardLayer: AnyItem = null;
+  boardOutline: AnyItem = null;
 
   // --- Snapping flags ---
   isGridSnappingEnabled = false;
@@ -534,6 +551,8 @@ export class NibGliderEngine {
     this.context.layers = new LayerManager(scope);
     this.context.viewport = new ViewportManager(scope, () => this.afterViewChange(), () => {
       const items = this.contentItems();
+      // Pan-clamp stays artwork-only (existing contract): the board is a
+      // bounds reference for display and scrollbars, not a pan constraint.
       return items.length > 0 ? this.collectiveBounds(items) : null;
     });
     this.context.documentManager = new DocumentManager();
@@ -1212,6 +1231,9 @@ export class NibGliderEngine {
       if (this.isDrawingShape) this.updateShapePreview();
     });
 
+    // setup() replaces the project, so the board outline is repainted on
+    // every attach (StrictMode remounts included).
+    this.drawBoard();
     this.updatePreviewBox();
     this.updateTextContent();
   }
@@ -2140,6 +2162,130 @@ export class NibGliderEngine {
   clearGrid(): void {
     this.gridRenderer.clear();
     this.gridCursor = this.gridRenderer.gridCursor;
+  }
+
+  // --- DrawingBoard (finite canvas bounds) ---
+  drawingBoardRect(): BoardRect { return this.drawingBoard.rect(); }
+
+  setDrawingBoardSize(width: number, height: number, unit: LengthUnit): void {
+    try {
+      this.drawingBoard.setSize(width, height, unit);
+    } catch {
+      return;
+    }
+    this.drawBoard();
+    this.updateTextContent(); this.notify();
+  }
+
+  setDrawingBoardSizePt(widthPt: number, heightPt: number): void {
+    try {
+      this.drawingBoard.setSizePt(widthPt, heightPt);
+    } catch {
+      return;
+    }
+    this.drawBoard();
+    this.updateTextContent(); this.notify();
+  }
+
+  resetDrawingBoard(system: UnitSystem = 'english'): void {
+    this.drawingBoard.reset(system);
+    this.drawBoard();
+    this.updateTextContent(); this.notify();
+  }
+
+  private ensureBoardLayer(): AnyItem | null {
+    try {
+      const scope = this.scope;
+      const project = scope.project;
+      if (!project) return null;
+      let layer = this.boardLayer;
+      if (!layer || layer.project !== project) {
+        layer = new scope.Layer();
+        layer.name = 'boardLayer';
+        this.boardLayer = layer;
+        this.boardOutline = null;
+      }
+      layer.guide = true;
+      layer.locked = true;
+      layer.sendToBack();
+      const active = this.layers.activeLayer;
+      if (active && active !== layer) active.activate();
+      return layer;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Redraw the board outline. Guide-layer chrome: never content, never
+   * exported, hidden with the other guides on print. */
+  drawBoard(): void {
+    const layer = this.ensureBoardLayer();
+    if (!layer) return;
+    try {
+      const scope = this.scope;
+      layer.removeChildren();
+      const board = this.drawingBoard.rect();
+      const shape = new scope.Path.Rectangle(
+        new scope.Rectangle(
+          new scope.Point(board.x, board.y),
+          new scope.Size(board.width, board.height),
+        ),
+      );
+      shape.fillColor = new scope.Color(0.13, 0.16, 0.21, 1);
+      shape.strokeColor = new scope.Color(0.3, 0.36, 0.43, 1);
+      shape.strokeWidth = 1 / (scope.view.zoom || 1);
+      shape.guide = true;
+      shape.locked = true;
+      if (!shape.data) shape.data = {};
+      shape.data.isDrawingBoard = true;
+      layer.addChild(shape);
+      layer.sendToBack();
+      this.boardOutline = shape;
+      scope.view?.update();
+    } catch {
+      // Headless: no view to paint.
+    }
+  }
+
+  /** Keep the 1px board outline constant on screen across zoom. */
+  private syncBoardStroke(): void {
+    try {
+      if (!this.boardOutline) return;
+      this.boardOutline.strokeWidth = 1 / (this.scope.view.zoom || 1);
+    } catch {
+      // Headless.
+    }
+  }
+
+  // --- View state (scrollbars) ---
+  getViewState(): ViewState | null {
+    try {
+      const view = this.scope.view;
+      if (!view || !view.center || !view.bounds) return null;
+      const bounds = view.bounds;
+      if (!(bounds.width > 0) || !(bounds.height > 0)) return null;
+      return {
+        centerX: view.center.x,
+        centerY: view.center.y,
+        zoom: view.zoom || 1,
+        viewWidth: bounds.width,
+        viewHeight: bounds.height,
+        board: this.drawingBoard.rect(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Absolute pan by project coordinates (scrollbar drags). Honors the
+   * same artwork clamp as every other pan path. */
+  scrollViewTo(x: number, y: number): void {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    try {
+      this.viewport.setCenter(new this.scope.Point(x, y));
+    } catch {
+      // Headless: no view to move.
+    }
   }
 
   snapToGrid(point: AnyItem): AnyItem { return this.snapping.grid(point); }
@@ -3436,6 +3582,27 @@ export class NibGliderEngine {
 
   private afterViewChange(): void {
     if (this.isGridEnabled) this.drawGrid();
+    this.syncBoardStroke();
+    this.emitView();
+  }
+
+  // --- View subscription (scrollbars) ---
+  // Pan/zoom change view state only, never document state, so they publish
+  // on this lightweight channel instead of notify(): the full app does not
+  // rerender on every pan event, only view subscribers do.
+  private readonly viewListeners = new Set<() => void>();
+  private viewVersion = 0;
+
+  subscribeView = (fn: () => void): (() => void) => {
+    this.viewListeners.add(fn);
+    return () => { this.viewListeners.delete(fn); };
+  };
+
+  getViewVersion = (): number => this.viewVersion;
+
+  private emitView(): void {
+    this.viewVersion++;
+    this.viewListeners.forEach((fn) => fn());
   }
 
   // Zoom around the view center, honoring min/max zoom.

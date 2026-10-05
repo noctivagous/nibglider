@@ -80,7 +80,7 @@ and inches to feet for English Units.
           that frame from the GUI that comes out.
  
  
- [ ] Alt+,: Scroll Wheel Changes Object Draw Level (with number visible).  
+ [ ] Alt+L / Middle Click on object: Scroll Wheel Changes Object Draw Level (with number visible).  
 
 [x] When there is a new document. in the code we want to set the data foundation for measurement and page units, whether the user
 is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app should

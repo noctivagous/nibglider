@@ -1,8 +1,13 @@
 // Settings window: renders an XML window spec (settings.xml) with controls
 // bound to engine settings. Unknown setting keys render as disabled rows so
 // a future window never silently drops a control. A spec that fails to parse
-// renders an error box. Mounted by App when the window registry names it.
+// renders an error box. The Drawing Board section below is custom (not from
+// XML) until windowXML gains numeric controls. Mounted by App when the
+// window registry names it.
+import { useState, useSyncExternalStore } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
+import type { LengthUnit } from '../engine/types';
+import { pointsToUnit } from '../engine/document/MeasurementUnits';
 import type { GUIManager } from '../ui/GUIManager';
 import { parseWindowXML, type WindowControl } from '../ui/windowXML';
 import settingsXML from '../ui/windows/settings.xml?raw';
@@ -85,6 +90,105 @@ function ToggleControl({
   );
 }
 
+const BOARD_UNITS: LengthUnit[] = ['mm', 'cm', 'm', 'inch', 'ft', 'pt', 'pica'];
+
+function defaultBoardUnit(engine: NibGliderEngine): LengthUnit {
+  const unit = engine.lengthUnit;
+  if (unit === 'mm' || unit === 'cm' || unit === 'm') return 'm';
+  if (unit === 'inch' || unit === 'ft') return 'ft';
+  return 'ft';
+}
+
+function BoardSettings({ engine }: { engine: NibGliderEngine }) {
+  // Rerender when the board (or any setting) changes elsewhere.
+  useSyncExternalStore(engine.subscribe, engine.getVersion);
+  const board = engine.drawingBoardRect();
+  const [unit, setUnit] = useState<LengthUnit>(() => defaultBoardUnit(engine));
+  const [widthText, setWidthText] = useState(() => String(pointsToUnit(board.width, defaultBoardUnit(engine))));
+  const [heightText, setHeightText] = useState(() => String(pointsToUnit(board.height, defaultBoardUnit(engine))));
+  const [error, setError] = useState<string | null>(null);
+
+  const apply = (width: number, height: number, nextUnit: LengthUnit): boolean => {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      setError('Board dimensions must be positive numbers.');
+      return false;
+    }
+    setError(null);
+    engine.setDrawingBoardSize(width, height, nextUnit);
+    return true;
+  };
+
+  const preset = (width: number, height: number, nextUnit: LengthUnit): void => {
+    setUnit(nextUnit);
+    setWidthText(String(width));
+    setHeightText(String(height));
+    setError(null);
+    engine.setDrawingBoardSize(width, height, nextUnit);
+  };
+
+  return (
+    <div className="settings-section">
+      <div className="settings-section-title">Drawing Board</div>
+      <div className="settings-row">
+        <span className="settings-label">Size</span>
+        <input
+          className="settings-number"
+          type="number"
+          min={0}
+          step="any"
+          aria-label="Board width"
+          value={widthText}
+          onChange={(event) => setWidthText(event.target.value)}
+        />
+        <span aria-hidden="true">×</span>
+        <input
+          className="settings-number"
+          type="number"
+          min={0}
+          step="any"
+          aria-label="Board height"
+          value={heightText}
+          onChange={(event) => setHeightText(event.target.value)}
+        />
+        <select
+          className="settings-select"
+          aria-label="Board unit"
+          value={unit}
+          onChange={(event) => {
+            const next = event.target.value as LengthUnit;
+            setUnit(next);
+            try {
+              setWidthText(String(pointsToUnit(board.width, next)));
+              setHeightText(String(pointsToUnit(board.height, next)));
+            } catch {
+              // Unknown unit: keep the typed values.
+            }
+          }}
+        >
+          {BOARD_UNITS.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="settings-apply"
+          onClick={() => apply(Number(widthText), Number(heightText), unit)}
+        >
+          Apply
+        </button>
+      </div>
+      <div className="settings-row">
+        <span className="settings-label">Presets</span>
+        <div className="settings-segment" role="group" aria-label="Board presets">
+          <button type="button" className="settings-option" onClick={() => preset(1, 1, 'm')}>1 m × 1 m</button>
+          <button type="button" className="settings-option" onClick={() => preset(3, 3, 'ft')}>3 ft × 3 ft</button>
+        </div>
+      </div>
+      {error && <div className="settings-error" role="alert">{error}</div>}
+    </div>
+  );
+}
+
 export default function SettingsWindow({
   engine, gui, windowId,
 }: {
@@ -112,16 +216,19 @@ export default function SettingsWindow({
         {'error' in parsed ? (
           <div className="settings-error" role="alert">{parsed.error}</div>
         ) : (
-          parsed.spec.sections.map((section) => (
-            <div key={section.id} className="settings-section">
-              <div className="settings-section-title">{section.title}</div>
-              {section.controls.map((control) => (
-                control.kind === 'switch'
-                  ? <SwitchControl key={control.key} control={control} engine={engine} />
-                  : <ToggleControl key={control.key} control={control} engine={engine} />
-              ))}
-            </div>
-          ))
+          <>
+            {parsed.spec.sections.map((section) => (
+              <div key={section.id} className="settings-section">
+                <div className="settings-section-title">{section.title}</div>
+                {section.controls.map((control) => (
+                  control.kind === 'switch'
+                    ? <SwitchControl key={control.key} control={control} engine={engine} />
+                    : <ToggleControl key={control.key} control={control} engine={engine} />
+                ))}
+              </div>
+            ))}
+            <BoardSettings engine={engine} />
+          </>
         )}
       </div>
     </div>
