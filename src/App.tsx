@@ -3,6 +3,8 @@ import paper from 'paper';
 import { NibGliderEngine, type KeyActivity } from './engine/engine';
 import { isCommandAvailable, matchAppCommand } from './engine/input/keymap';
 import ControlPanel from './components/ControlPanel';
+import AppMenu from './components/AppMenu';
+import SettingsWindow from './components/SettingsWindow';
 import OnscreenKeyboard from './components/OnscreenKeyboard';
 import TutorialOverlay from './components/TutorialOverlay';
 import WidgetHandle from './components/WidgetHandle';
@@ -33,6 +35,9 @@ import helloTutorialRaw from '../tutorials/hello-rectangle.tutorial.json?raw';
 // Section title labels in the panel are hidden; icons, keys, and hover
 // tooltips still identify each section.
 const HIDE_SECTION_TITLES = true;
+
+/** Menu commands with a wired handler; everything else renders disabled. */
+const MENU_COMMANDS: Set<string> = new Set(['settings', 'tutorial']);
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -232,6 +237,11 @@ export default function App() {
     tutorialRunner.start();
   }, [tutorialRunner]);
 
+  const handleMenuCommand = useCallback((commandId: string) => {
+    if (commandId === 'settings') gui.openWindow('settings');
+    else if (commandId === 'tutorial') startTutorial();
+  }, [gui, startTutorial]);
+
   // New users (config flag on, no completion recorded) land in the tutorial.
   // startTutorial is idempotent, so StrictMode's double-effect is harmless.
   useEffect(() => {
@@ -409,6 +419,14 @@ export default function App() {
 
   return (
     <div id="mainLayout">
+      <AppMenu
+        menus={panels.menus}
+        enabledCommands={MENU_COMMANDS}
+        onCommand={handleMenuCommand}
+      />
+      {ui.openWindowId === 'settings' && (
+        <SettingsWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
+      )}
       <div id="canvasContainer">
         <canvas
           id="nibgliderCanvas"

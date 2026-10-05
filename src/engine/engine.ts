@@ -1156,6 +1156,17 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  // Quad-fitted circle override for the Projection settings section: fitted
+  // circles use the projective mapper even when the global mapping above is
+  // bilinear. Other shapes always follow the global mapping.
+  perspectiveCircle = false;
+
+  setPerspectiveCircle(on: boolean): void {
+    this.perspectiveCircle = on === true;
+    this.updateTextContent();
+    this.notify();
+  }
+
   setRectangleOrientation(o: number): void {
     const v = Number.isFinite(o) ? Math.round(o) : 0;
     this.rectangleOrientation = ((v % 4) + 4) % 4;
@@ -2008,6 +2019,7 @@ export class NibGliderEngine {
       guideAngle: this.shapeGuideAngle,
       corners: quad && quad.every((p) => p != null) ? (quad as [any, any, any, any]) : null,
       mapping: this.quadMapping,
+      perspectiveCircle: this.perspectiveCircle,
     });
   }
 

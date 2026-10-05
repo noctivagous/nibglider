@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<window id="settings" title="Settings">
+  <section id="projection" title="Projection">
+    <switch key="quadMapping" label="Frame mapping">
+      <option value="bilinear" label="Bilinear" />
+      <option value="projective" label="Perspective" />
+    </switch>
+    <toggle key="perspectiveCircle" label="Use perspective on Circle" />
+  </section>
+</window>

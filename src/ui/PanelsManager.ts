@@ -15,6 +15,7 @@ export const APPLICATION_MENUS: MenuDef[] = [
       { commandId: 'open-gallery' }, { commandId: 'new-document' },
       { commandId: 'save-gallery' }, { commandId: 'rename-document' },
       { commandId: 'export' }, { commandId: 'import' }, { commandId: 'tutorial' },
+      { commandId: 'settings' },
     ],
   },
   {

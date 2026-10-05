@@ -27,6 +27,8 @@ export interface GUISnapshot {
   statusVisible: boolean;
   showSpacebar: boolean;
   menuLayout: MenuLayout;
+  /** Id of the XML-defined window currently open, or null. */
+  openWindowId: string | null;
 }
 
 function memoryStore(): KeyValueStore {
@@ -71,6 +73,8 @@ export class GUIManager {
   statusVisible: boolean;
   showSpacebar = false;
   menuLayout: MenuLayout;
+  /** XML-defined window currently open; window content itself is transient. */
+  openWindowId: string | null = null;
   private snapshot: GUISnapshot;
   private readonly listeners = new Set<() => void>();
 
@@ -116,6 +120,19 @@ export class GUIManager {
     this.emit();
   }
 
+  openWindow(windowId: string): void {
+    if (typeof windowId !== 'string' || windowId.trim() === '') return;
+    if (this.openWindowId === windowId) return;
+    this.openWindowId = windowId;
+    this.emit();
+  }
+
+  closeWindow(): void {
+    if (this.openWindowId == null) return;
+    this.openWindowId = null;
+    this.emit();
+  }
+
   private setFlag(field: 'keyboardVisible' | 'controlsVisible' | 'statusVisible', key: string, visible: boolean): void {
     this[field] = visible;
     this.persist(key, visible ? '1' : '0');
@@ -134,6 +151,7 @@ export class GUIManager {
       statusVisible: this.statusVisible,
       showSpacebar: this.showSpacebar,
       menuLayout: this.menuLayout,
+      openWindowId: this.openWindowId,
     };
   }
 

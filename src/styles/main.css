@@ -4143,3 +4143,170 @@ kbd,
   background: #ffd34d;
   border-radius: 50%;
 }
+
+/* Application menu bar: one row above the canvas, menus drop downward. */
+.app-menu-bar {
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  background: var(--dp-bg-1);
+  border-bottom: 1px solid var(--dp-border-soft);
+  font-family: var(--font-tech-label);
+  padding: 0 8px;
+  z-index: 900;
+}
+.app-menu {
+  position: relative;
+}
+.app-menu-trigger {
+  background: none;
+  border: none;
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.app-menu-trigger:hover,
+.app-menu-trigger.open {
+  background: var(--dp-bg-3);
+}
+.app-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 180px;
+  background: var(--dp-bg-2);
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(8, 10, 14, 0.45);
+  z-index: 950;
+}
+.app-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.app-menu-item:hover:not(:disabled) {
+  background: var(--dp-bg-3);
+}
+.app-menu-item:disabled {
+  color: var(--dp-text-3);
+  cursor: default;
+}
+
+/* Settings window: centered dialog over a click-to-close backdrop. Above the
+   panel widgets and select menus (up to 10100) but below the tutorial
+   overlay (10200), which must keep topping every app layer. */
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 14, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10150;
+}
+.settings-window {
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  background: var(--dp-bg-1);
+  color: var(--dp-text-1);
+  border: 1px solid var(--dp-border);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(8, 10, 14, 0.5);
+  font-family: var(--font-tech-label);
+}
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dp-border-soft);
+}
+.settings-title {
+  font-family: var(--font-tech-title);
+  font-size: 0.9375rem;
+}
+.settings-close {
+  background: none;
+  border: none;
+  color: var(--dp-text-2);
+  font-size: 1.125rem;
+  line-height: 1;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.settings-close:hover {
+  color: var(--dp-text-1);
+}
+.settings-section {
+  padding: 10px 12px 14px;
+}
+.settings-section-title {
+  font-size: 0.8125rem;
+  color: var(--dp-text-2);
+  margin-bottom: 8px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+.settings-label {
+  font-size: 0.8125rem;
+}
+.settings-segment {
+  display: flex;
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.settings-option {
+  background: none;
+  border: none;
+  color: var(--dp-text-2);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.settings-option.active {
+  background: var(--dp-accent-soft);
+  color: var(--dp-text-1);
+}
+.settings-toggle {
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.settings-toggle.active {
+  background: var(--dp-accent-soft);
+  border-color: var(--dp-accent);
+}
+.settings-unknown,
+.settings-error {
+  color: var(--dp-text-2);
+  font-size: 0.75rem;
+}
+.settings-error {
+  padding: 12px;
+}

@@ -178,6 +178,34 @@ test('quad projective mapping shifts the fitted shape off the bilinear midpoints
   } finally { cleanup(); }
 });
 
+test('quad circle override uses projective mapping while the global mapping stays bilinear', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    e.quadMapping = 'bilinear';
+    e.setPerspectiveCircle(true);
+    e.rectangleInnerShapeType = 'circle';
+    for (const point of [[0, 0], [200, 0], [160, 200], [40, 200]]) {
+      e.mousePt = new s.Point(point[0], point[1]);
+      e.quadPointKC();
+    }
+    assert.equal(e.isDrawingQuad, false);
+    const deposited = layer.children[layer.children.length - 1];
+    assert.equal(deposited.closed, true);
+    assert.equal(deposited.segments.length, 72);
+    // Unit-circle vertex at angle 0 maps through (s, t) = (1, 0.5):
+    // projective (175, 125), bilinear (180, 100).
+    let nearProjective = Infinity;
+    let nearBilinear = Infinity;
+    for (const seg of deposited.segments) {
+      nearProjective = Math.min(nearProjective, Math.hypot(seg.point.x - 175, seg.point.y - 125));
+      nearBilinear = Math.min(nearBilinear, Math.hypot(seg.point.x - 180, seg.point.y - 100));
+    }
+    assert.ok(nearProjective < 1e-6);
+    assert.ok(nearBilinear > 1);
+    e.undo();
+  } finally { cleanup(); }
+});
+
 test('quad projective mapping falls back to the raw quad on a concave frame', () => {
   const { s, e, layer, cleanup } = engine();
   try {
@@ -190,6 +218,23 @@ test('quad projective mapping falls back to the raw quad on a concave frame', ()
     }
     assert.equal(e.isDrawingQuad, false);
     assert.equal(e.previewInner, null);
+    assert.equal(layer.children.length, before + 1);
+    assert.equal(layer.children[before].closed, true);
+  } finally { cleanup(); }
+});
+
+test('quad circle override still falls back to the raw quad on a concave frame', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    e.quadMapping = 'bilinear';
+    e.setPerspectiveCircle(true);
+    e.rectangleInnerShapeType = 'circle';
+    const before = layer.children.length;
+    for (const point of [[0, 0], [200, 0], [200, 200], [100, 60]]) {
+      e.mousePt = new s.Point(point[0], point[1]);
+      e.quadPointKC();
+    }
+    assert.equal(e.isDrawingQuad, false);
     assert.equal(layer.children.length, before + 1);
     assert.equal(layer.children[before].closed, true);
   } finally { cleanup(); }

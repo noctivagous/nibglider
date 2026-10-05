@@ -94,6 +94,8 @@ export interface QuadFrameBuild {
   guideAngle: number;
   corners: QuadCorners | null;
   mapping?: QuadMapping;
+  /** Force the projective mapper for fitted circles regardless of mapping. */
+  perspectiveCircle?: boolean;
 }
 
 export class ShapeFactory {
@@ -359,7 +361,8 @@ export class ShapeFactory {
    * The selected Rect Keys shape fitted to a general quad frame. Mirrors
    * createRectFrameShape, but the (s, t) projection maps over the four
    * quad corners instead of the affine rect basis: bilinear by default, or
-   * projective when requested and the frame is convex and well-conditioned.
+   * projective when requested (or forced for circles by perspectiveCircle)
+   * and the frame is convex and well-conditioned.
    * Returns null for the plain 'rectangle' setting (the caller deposits the
    * raw quad) and for missing, degenerate, or projectively unusable corners.
    */
@@ -368,7 +371,10 @@ export class ShapeFactory {
     const corners = build.corners;
     if (!corners || quadArea(corners) < 1e-6) return null;
     if (build.innerType === 'rectangle') return null;
-    const toPt = quadFrameMapper(corners, build.orientation, build.mapping ?? 'bilinear');
+    const mapping = build.innerType === 'circle' && build.perspectiveCircle
+      ? 'projective'
+      : (build.mapping ?? 'bilinear');
+    const toPt = quadFrameMapper(corners, build.orientation, mapping);
     if (!toPt) return null;
     const P = (s: number, t: number): Item => {
       const q = toPt(s, t);

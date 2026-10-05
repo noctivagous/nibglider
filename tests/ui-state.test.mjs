@@ -99,6 +99,7 @@ test('application menus cover file, document, operations, and layers', () => {
   assert.equal(byId.file.title, 'File');
   assert.deepEqual(byId.file.items.map((item) => item.commandId), [
     'open-gallery', 'new-document', 'save-gallery', 'rename-document', 'export', 'import', 'tutorial',
+    'settings',
   ]);
   assert.ok(byId.document.items.some((item) => item.commandId === 'length-unit'));
   assert.ok(byId.operations.items.some((item) => item.commandId === 'group'));
@@ -320,4 +321,25 @@ test('onscreen caps open settings instead of running the drawing command', () =>
   assert.equal(keycapClick({
     settingsId: undefined, settingsSummary: undefined, clickable: false, commandId: 'circle-radius',
   }), 'none');
+});
+
+test('window registry opens one window at a time and emits snapshots', () => {
+  const gui = new GUIManager(store());
+  assert.equal(gui.openWindowId, null);
+  assert.equal(gui.getSnapshot().openWindowId, null);
+  let emissions = 0;
+  const unsubscribe = gui.subscribe(() => { emissions++; });
+  try {
+    gui.openWindow('settings');
+    assert.equal(gui.openWindowId, 'settings');
+    assert.equal(gui.getSnapshot().openWindowId, 'settings');
+    gui.openWindow('settings');
+    gui.openWindow('');
+    gui.openWindow('other');
+    assert.equal(gui.openWindowId, 'other');
+    gui.closeWindow();
+    assert.equal(gui.openWindowId, null);
+    gui.closeWindow();
+    assert.equal(emissions, 3);
+  } finally { unsubscribe(); }
 });
