@@ -117,6 +117,51 @@ test('page claims its content layer without stealing activation', () => {
   } finally { cleanup(); }
 });
 
+test('pt documents snap pages to the 20pt grid', () => {
+  const { engine, cleanup } = openEngine();
+  try {
+    engine.applyPageSpec(800, 600, 'pt');
+    assert.equal(engine.gridSpacing, 20);
+    assert.deepEqual([engine.pageRect().width, engine.pageRect().height], [800, 600]);
+    engine.applyPageSpec(810, 605, 'pt');
+    assert.deepEqual([engine.pageRect().width, engine.pageRect().height], [800, 600]);
+  } finally { cleanup(); }
+});
+
+test('board auto-grows to contain an oversized page', () => {
+  const { engine, cleanup } = openEngine();
+  try {
+    const before = engine.drawingBoardRect();
+    engine.setPageDimensions(before.width + 1000, before.height - 100, 'pt');
+    const board = engine.drawingBoardRect();
+    const page = engine.pageRect();
+    assert.equal(board.width, page.width);
+    assert.equal(board.height, before.height);
+    assert.ok(board.x <= page.x && board.y <= page.y);
+  } finally { cleanup(); }
+});
+
+test('board settings cannot shrink below the pages', () => {
+  const { engine, cleanup } = openEngine();
+  try {
+    engine.setPageDimensions(800, 600, 'pt');
+    engine.setDrawingBoardSizePt(100, 100);
+    const board = engine.drawingBoardRect();
+    assert.ok(board.width >= 800 && board.height >= 600);
+    engine.setDrawingBoardSize(1, 1, 'm');
+    assert.ok(engine.drawingBoardRect().width >= 800);
+  } finally { cleanup(); }
+});
+
+test('page sheet stays dark on the dark board', () => {
+  const { engine, cleanup } = openEngine();
+  try {
+    engine.setPageDimensions(800, 600, 'pt');
+    const fill = engine.pageOutline.fillColor;
+    assert.ok(fill.red < 0.5 && fill.green < 0.5 && fill.blue < 0.5);
+  } finally { cleanup(); }
+});
+
 test('board holds a second page with its own layer mapping', () => {
   const { scope, engine, cleanup } = openEngine();
   try {

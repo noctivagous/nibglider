@@ -742,6 +742,7 @@ export class NibGliderEngine {
     this.documentManager.setPageSize(width, height, unit);
     // documentManager.subscribe already notifies; repaint the page sheet.
     this.ensurePageLayer();
+    this.growBoardToContainPages();
     this.drawWorkspace();
   }
 
@@ -759,6 +760,7 @@ export class NibGliderEngine {
     }
     this.documentManager.setDisplayUnit(unit);
     this.ensurePageLayer();
+    this.growBoardToContainPages();
     this.drawWorkspace();
   }
 
@@ -781,6 +783,7 @@ export class NibGliderEngine {
     }
     const page = this.documentManager.addPage(widthPt, heightPt, unit);
     this.ensurePageLayer();
+    this.growBoardToContainPages();
     this.drawWorkspace();
     return page;
   }
@@ -2281,7 +2284,9 @@ export class NibGliderEngine {
 
   setDrawingBoardSize(width: number, height: number, unit: LengthUnit): void {
     try {
+      this.coordinates.fromPoints(1, unit); // Validate the unit first.
       this.drawingBoard.setSize(width, height, unit);
+      this.clampBoardToPages();
     } catch {
       return;
     }
@@ -2290,13 +2295,48 @@ export class NibGliderEngine {
   }
 
   setDrawingBoardSizePt(widthPt: number, heightPt: number): void {
+    if (!Number.isFinite(widthPt) || !Number.isFinite(heightPt) || widthPt <= 0 || heightPt <= 0) return;
     try {
       this.drawingBoard.setSizePt(widthPt, heightPt);
+      this.clampBoardToPages();
     } catch {
       return;
     }
     this.drawBoard();
     this.updateTextContent(); this.notify();
+  }
+
+  /** Widest/tallest page extents, or zero with no pages. */
+  private pagesExtent(): { width: number; height: number } {
+    let width = 0;
+    let height = 0;
+    for (const page of this.documentManager.pageList) {
+      width = Math.max(width, page.widthPt);
+      height = Math.max(height, page.heightPt);
+    }
+    return { width, height };
+  }
+
+  /** The board always contains every page: never shrink below them.
+   * Board and pages share the origin center, so this is a per-axis max. */
+  private clampBoardToPages(): void {
+    const need = this.pagesExtent();
+    const board = this.drawingBoard.rect();
+    if (need.width > board.width || need.height > board.height) {
+      this.drawingBoard.setSizePt(Math.max(board.width, need.width), Math.max(board.height, need.height));
+    }
+  }
+
+  /** Grow the board after page changes so an oversized page never hangs
+   * off the working space. Persists like any board resize. */
+  private growBoardToContainPages(): void {
+    const before = this.drawingBoard.rect();
+    this.clampBoardToPages();
+    const after = this.drawingBoard.rect();
+    if (after.width !== before.width || after.height !== before.height) {
+      this.drawBoard();
+      this.updateTextContent(); this.notify();
+    }
   }
 
   resetDrawingBoard(system: UnitSystem = 'english'): void {
@@ -2372,8 +2412,10 @@ export class NibGliderEngine {
             new scope.Size(page.width, page.height),
           ),
         );
-        pageShape.fillColor = new scope.Color(0.93, 0.93, 0.92, 1);
-        pageShape.strokeColor = new scope.Color(0.55, 0.58, 0.62, 1);
+        // Dark sheet on the dark board (a future Document Settings
+        // window will make page appearance configurable).
+        pageShape.fillColor = new scope.Color(0.16, 0.19, 0.24, 1);
+        pageShape.strokeColor = new scope.Color(0.48, 0.54, 0.62, 1);
         pageShape.strokeWidth = stroke;
         this.mountWorkspaceChrome(pageShape, { isPage: true });
         layer.addChild(pageShape);
