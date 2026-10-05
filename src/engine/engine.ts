@@ -53,6 +53,10 @@ import {
   splitBodyLines,
 } from './document/clipboardIngest';
 import {
+  editableBaselines,
+  resolveTextMoveDelta,
+} from './snapping/textSnap';
+import {
   blobToDataUrl,
   readSystemClipboard,
   writeSystemClipboard,
@@ -2254,6 +2258,38 @@ export class NibGliderEngine {
     this.setIsInDragLock(false);
   }
 
+  /** Drag-move entry for the pointer host. With grid snapping on and
+   * editable text in the selection, the delta is re-resolved so baselines
+   * land on grid lines first, box edges second. Nudges and other exact
+   * moves call the transform layer directly and stay exact. */
+  moveSelectionBy(delta: AnyItem, snapText = false): void {
+    let advance = delta;
+    if (snapText && this.isGridSnappingEnabled && delta) {
+      const spacing = this.gridSpacing;
+      const roots = this.editableTextRoots();
+      if (spacing > 0 && roots.length > 0) {
+        try {
+          const baselines: number[] = [];
+          for (const root of roots) {
+            for (const guide of editableBaselines(this.scope, root)) {
+              if (Number.isFinite(guide.point?.y)) baselines.push(guide.point.y);
+            }
+          }
+          const bounds = this.selection.collectiveBounds(this.topLevelSelected());
+          const resolved = resolveTextMoveDelta({
+            baselines,
+            top: bounds?.top,
+            bottom: bounds?.bottom,
+            left: bounds?.left,
+            right: bounds?.right,
+          }, delta.x, delta.y, spacing);
+          advance = new this.scope.Point(resolved.dx, resolved.dy);
+        } catch { advance = delta; }
+      }
+    }
+    this.transforms.moveSelectionBy(advance);
+  }
+
   setIsInDragLock(status: boolean): void {
     if (status && !this.isInDragLock) this.beginMoveGesture();
     if (!status && this.isInDragLock) this.commitMoveGesture();
@@ -3310,7 +3346,7 @@ export class NibGliderEngine {
     item.guide = true;
     item.locked = true;
     if (!item.data) item.data = {};
-    item.data.isCentroidMarker = true;
+    if (!item.data.isBaselineGuide) item.data.isCentroidMarker = true;
     const layer = this.ensureGuideLayer();
     if (item.layer !== layer) layer.addChild(item);
   }

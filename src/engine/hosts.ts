@@ -95,7 +95,7 @@ export function createPointerHost(engine: Surface): PointerHost {
     isCompositePathDrawing: () => engine.compositePathTool.active,
     quadPath: () => engine.quadPath,
     selectedItems: () => engine.selectedItems,
-    moveSelectionBy: (delta) => engine.transforms.moveSelectionBy(delta),
+    moveSelectionBy: (delta) => engine.moveSelectionBy(delta, true),
     toggleSelection: (item) => engine.selection.toggle(item),
     isInDragLock: () => engine.isInDragLock,
     mousePt: () => engine.mousePt,

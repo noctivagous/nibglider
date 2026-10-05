@@ -1,6 +1,7 @@
 // Selection intent and Paper mutations. HistoryManager records undo entries.
 import { HistoryManager } from '../history/HistoryManager';
 import { localCentroidOf } from '../geometry/shapeCenters';
+import { editableBaselines } from '../snapping/textSnap';
 import { SceneRepository } from './SceneRepository';
 
 type Item = any;
@@ -14,6 +15,11 @@ export interface CentroidMarkerHost {
 /** Marker radius in document points. Green matches the point-snap centroid. */
 const CENTROID_MARK_RADIUS = 3;
 const CENTROID_MARK_FILL = '#69db7c';
+/** Baseline rules for selected editable text. Teal reads against every snap
+ * color (yellow points, blue midpoints, green centroids, red paths). */
+const BASELINE_GUIDE_COLOR = '#63e6be';
+/** Rule overhang past the text box on each side, in document points. */
+const BASELINE_GUIDE_PAD = 12;
 
 /** Floating Marker parity: selected drawables carry a two-tone halo — a light
  * Paper selection outline over a dark blurred glow — so the selection reads
@@ -109,8 +115,43 @@ export class SelectionManager {
           this.centroidMarks.push(mark);
         } catch { /* Detached mid-refresh. */ }
       }
+      for (const rule of this.baselineRules(item)) {
+        if (this.centroidHost) this.centroidHost.mount(rule);
+        this.centroidMarks.push(rule);
+      }
     }
     this.refresh();
+  }
+
+  /** Baseline rules for a selected editable text root: one horizontal rule
+   * per line through its baseline, spanning the text box plus overhang.
+   * Guide-flagged, so they never select, snap, print, or count as content.
+   * Rebuilt with the centroid marks, so they track moves for free. */
+  private baselineRules(item: Item): Item[] {
+    if (!item?.data?.editableText || !this.scene.isInScene(item)) return [];
+    const out: Item[] = [];
+    try {
+      const guides = editableBaselines(this.scene.scope, item);
+      if (guides.length === 0) return [];
+      const bounds = item.bounds;
+      const half = bounds && Number.isFinite(bounds.width)
+        ? bounds.width / 2 + BASELINE_GUIDE_PAD
+        : BASELINE_GUIDE_PAD * 2;
+      for (const guide of guides) {
+        const rule: Item = new this.scene.scope.Path.Line(
+          guide.point.subtract(guide.dir.multiply(half)),
+          guide.point.add(guide.dir.multiply(half)),
+        );
+        rule.strokeColor = new this.scene.scope.Color(BASELINE_GUIDE_COLOR);
+        rule.strokeWidth = 1;
+        rule.guide = true;
+        rule.locked = true;
+        if (!rule.data) rule.data = {};
+        rule.data.isBaselineGuide = true;
+        out.push(rule);
+      }
+    } catch { /* Detached mid-refresh. */ }
+    return out;
   }
   private centroidPoints(item: Item): Item[] {
     const out: Item[] = [];
