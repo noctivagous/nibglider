@@ -3882,6 +3882,7 @@ kbd {
 #controlPanel .pane-body label,
 #controlPanel .check-row,
 #controlPanel .panelParameters .param-item label,
+#controlPanel .titlebar-single .param-item label,
 #controlPanel .seg-ctrl button {
   font-family: var(--font-tech-label);
 }
