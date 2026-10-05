@@ -19,14 +19,14 @@ function commandLabel(commandId: string): string {
     .join(' ');
 }
 
-// File-menu glyphs, mirroring the vertical rail's card icons (ControlPanel)
+// Menu glyphs, mirroring the vertical rail's card icons (ControlPanel)
 // so the horizontal menu carries the same artwork to the left of each label.
-function FileMenuGlyph({ children }: { children: ReactNode }) {
+function MenuGlyph({ children, size = 15 }: { children: ReactNode; size?: number }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      width="15"
-      height="15"
+      width={size}
+      height={size}
       aria-hidden="true"
       fill="none"
       stroke="currentColor"
@@ -59,41 +59,270 @@ function CheckGlyph() {
 
 const MENU_ICONS: Record<string, ReactNode> = {
   open: (
-    <FileMenuGlyph>
+    <MenuGlyph>
       <path d="M3 7 h6 l2 2 h10 v9 H3 Z" />
       <path d="M3 7 v10" />
-    </FileMenuGlyph>
+    </MenuGlyph>
   ),
   new: (
-    <FileMenuGlyph>
+    <MenuGlyph>
       <path d="M7 3 h7 l4 4 v14 H7 Z" />
       <path d="M12 11 v6 M9 14 h6" />
-    </FileMenuGlyph>
+    </MenuGlyph>
   ),
   save: (
-    <FileMenuGlyph>
+    <MenuGlyph>
       <path d="M5 4 h11 l3 3 v13 H5 Z" />
       <path d="M8 4 v5 h7 V4" />
       <path d="M8 20 v-6 h8 v6" />
-    </FileMenuGlyph>
+    </MenuGlyph>
   ),
   rename: (
-    <FileMenuGlyph>
+    <MenuGlyph>
       <path d="M4 20 l1 -4 L16 5 l3 3 L8 19 Z" />
       <path d="M14 7 l3 3" />
-    </FileMenuGlyph>
+    </MenuGlyph>
   ),
   export: (
-    <FileMenuGlyph>
+    <MenuGlyph>
       <path d="M4 14 v6 h16 v-6" />
       <path d="M12 3 v10 M8 7 l4 -4 4 4" />
-    </FileMenuGlyph>
+    </MenuGlyph>
   ),
   import: (
-    <FileMenuGlyph>
+    <MenuGlyph>
       <path d="M4 14 v6 h16 v-6" />
       <path d="M12 4 v10 M8 10 l4 4 4 -4" />
-    </FileMenuGlyph>
+    </MenuGlyph>
+  ),
+  tutorial: (
+    <MenuGlyph>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M10 8.5 l6 3.5 -6 3.5 Z" />
+    </MenuGlyph>
+  ),
+  settings: (
+    <MenuGlyph>
+      <circle cx="12" cy="12" r="3.5" />
+      <path d="M12 2.5 v4 M12 17.5 v4 M2.5 12 h4 M17.5 12 h4" />
+    </MenuGlyph>
+  ),
+  undo: (
+    <MenuGlyph>
+      <path d="M4 9 h11 a5 5 0 0 1 0 10 h-9" />
+      <path d="M8 5 L4 9 l4 4" />
+    </MenuGlyph>
+  ),
+  redo: (
+    <MenuGlyph>
+      <path d="M20 9 H9 a5 5 0 0 0 0 10 h9" />
+      <path d="M16 5 l4 4 -4 4" />
+    </MenuGlyph>
+  ),
+  cut: (
+    <MenuGlyph>
+      <circle cx="6" cy="6.5" r="2.5" />
+      <circle cx="6" cy="17.5" r="2.5" />
+      <path d="M8 7.5 L20 19 M8 16.5 L20 5" />
+    </MenuGlyph>
+  ),
+  copy: (
+    <MenuGlyph>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M15 5 V4 H4 v11 h1" />
+    </MenuGlyph>
+  ),
+  paste: (
+    <MenuGlyph>
+      <rect x="5" y="5" width="14" height="16" rx="2" />
+      <rect x="9" y="2.5" width="6" height="4" rx="1" />
+      <path d="M9 12 h6 M9 16 h6" />
+    </MenuGlyph>
+  ),
+  duplicate: (
+    <MenuGlyph>
+      <rect x="3" y="7" width="8" height="10" />
+      <rect x="13" y="7" width="8" height="10" />
+    </MenuGlyph>
+  ),
+  delete: (
+    <MenuGlyph>
+      <path d="M4 7 h16 M9 7 V4 h6 v3 M6 7 l1 13 h10 l1 -13" />
+      <path d="M10 11 v6 M14 11 v6" />
+    </MenuGlyph>
+  ),
+  'select-all': (
+    <MenuGlyph>
+      <rect x="4" y="4" width="16" height="16" rx="1" strokeDasharray="3 2" />
+      <path d="M9 9 h6 v6 h-6 Z" />
+    </MenuGlyph>
+  ),
+  'page-size': (
+    <MenuGlyph>
+      <rect x="6" y="3" width="12" height="18" />
+      <path d="M3 6 H1.5 M3 18 H1.5 M21 6 h1.5 M21 18 h1.5" />
+    </MenuGlyph>
+  ),
+  'length-unit': (
+    <MenuGlyph>
+      <path d="M3 17 L17 3 l4 4 L7 21 Z" />
+      <path d="M8 16 l1.5 1.5 M11 13 l1.5 1.5 M14 10 l1.5 1.5" />
+    </MenuGlyph>
+  ),
+  'reset-zoom': (
+    <MenuGlyph>
+      <circle cx="10.5" cy="10.5" r="6" />
+      <path d="M15.5 15.5 L21 21" />
+      <path d="M10.5 8.5 v4 M8.5 10.5 h4" />
+    </MenuGlyph>
+  ),
+  'toggle-panel': (
+    <MenuGlyph>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9.5 4 v16" />
+    </MenuGlyph>
+  ),
+  'toggle-keyboard': (
+    <MenuGlyph>
+      <rect x="2.5" y="7" width="19" height="11" rx="2" />
+      <path d="M6 11 h1 M10 11 h1 M14 11 h1 M18 11 h1 M7 14.5 h10" />
+    </MenuGlyph>
+  ),
+  'toggle-status': (
+    <MenuGlyph>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M12 8 v.5 M12 11.5 V16" />
+    </MenuGlyph>
+  ),
+  'rect-shape': (
+    <MenuGlyph>
+      <rect x="5" y="7" width="14" height="10" />
+    </MenuGlyph>
+  ),
+  'circle-shape': (
+    <MenuGlyph>
+      <circle cx="12" cy="12" r="8" />
+    </MenuGlyph>
+  ),
+  combinatorics: (
+    <MenuGlyph>
+      <circle cx="9" cy="12" r="6" />
+      <circle cx="15" cy="12" r="6" />
+    </MenuGlyph>
+  ),
+  snapping: (
+    <MenuGlyph>
+      <path d="M7 4 v6 a5 5 0 0 0 10 0 V4" />
+      <path d="M7 7 h4 M13 7 h4" />
+    </MenuGlyph>
+  ),
+  'text-mode': (
+    <MenuGlyph>
+      <path d="M5 5 h14 M12 5 v14" />
+    </MenuGlyph>
+  ),
+  'repeat-grid': (
+    <MenuGlyph>
+      <rect x="4" y="4" width="6" height="6" />
+      <rect x="14" y="4" width="6" height="6" />
+      <rect x="4" y="14" width="6" height="6" />
+      <rect x="14" y="14" width="6" height="6" />
+    </MenuGlyph>
+  ),
+  'repeat-circle': (
+    <MenuGlyph>
+      <circle cx="12" cy="12" r="2.5" />
+      <circle cx="12" cy="4.5" r="1" />
+      <circle cx="19.5" cy="12" r="1" />
+      <circle cx="12" cy="19.5" r="1" />
+      <circle cx="4.5" cy="12" r="1" />
+    </MenuGlyph>
+  ),
+  'scale-dialog': (
+    <MenuGlyph>
+      <path d="M4 9 V4 h5 M15 4 h5 v5 M20 15 v5 h-5 M9 20 H4 v-5" />
+      <path d="M9 15 L15 9" />
+    </MenuGlyph>
+  ),
+  'rotate-dialog': (
+    <MenuGlyph>
+      <path d="M20 12 a8 8 0 1 1 -2.5 -5.8" />
+      <path d="M18 3.5 V8 h-4.5" />
+    </MenuGlyph>
+  ),
+  select: (
+    <MenuGlyph>
+      <path d="M6 3 L18 12 l-7 1 -2.5 7 Z" />
+    </MenuGlyph>
+  ),
+  'bring-to-front': (
+    <MenuGlyph>
+      <path d="M4 14 l8 -6 8 6 M4 19 l8 -6 8 6" />
+    </MenuGlyph>
+  ),
+  'send-to-back': (
+    <MenuGlyph>
+      <path d="M4 5 l8 6 8 -6 M4 10 l8 6 8 -6" />
+    </MenuGlyph>
+  ),
+  group: (
+    <MenuGlyph>
+      <rect x="3" y="10" width="9" height="9" />
+      <rect x="12" y="5" width="9" height="9" />
+    </MenuGlyph>
+  ),
+  ungroup: (
+    <MenuGlyph>
+      <rect x="2" y="8" width="8" height="8" />
+      <rect x="14" y="8" width="8" height="8" />
+    </MenuGlyph>
+  ),
+  'reset-settings': (
+    <MenuGlyph>
+      <path d="M4 12 a8 8 0 1 0 2.34 5.66" />
+      <path d="M4 20.5 V16 h4.5" />
+    </MenuGlyph>
+  ),
+};
+
+/** Glyphs for the top-level menu triggers, left of each title in the bar. */
+const TRIGGER_ICONS: Record<string, ReactNode> = {
+  file: (
+    <MenuGlyph size={13}>
+      <path d="M6 3 h8 l4 4 v14 H6 Z" />
+      <path d="M14 3 v4 h4" />
+    </MenuGlyph>
+  ),
+  edit: (
+    <MenuGlyph size={13}>
+      <path d="M4 20 l1 -4 L16 5 l3 3 L8 19 Z" />
+      <path d="M14 7 l3 3" />
+    </MenuGlyph>
+  ),
+  document: (
+    <MenuGlyph size={13}>
+      <rect x="5" y="3" width="14" height="18" rx="1" />
+      <path d="M8 8 h8 M8 12 h8 M8 16 h5" />
+    </MenuGlyph>
+  ),
+  operations: (
+    <MenuGlyph size={13}>
+      <path d="M4 7 h16 M4 17 h16" />
+      <circle cx="9" cy="7" r="2.2" />
+      <circle cx="15" cy="17" r="2.2" />
+    </MenuGlyph>
+  ),
+  layers: (
+    <MenuGlyph size={13}>
+      <path d="M12 3 l9 5 -9 5 -9 -5 Z" />
+      <path d="M3 13 l9 5 9 -5" />
+    </MenuGlyph>
+  ),
+  debug: (
+    <MenuGlyph size={13}>
+      <circle cx="12" cy="13" r="6" />
+      <path d="M12 7 V4 M8 9 L5 6 M16 9 l3 -3 M6 13 H3 M21 13 h-3 M8 17 l-3 3 M16 17 l3 3" />
+    </MenuGlyph>
   ),
 };
 
@@ -241,6 +470,9 @@ export default function AppMenu({
               }
             }}
           >
+            <span className="app-menu-trigger-icon" aria-hidden="true">
+              {TRIGGER_ICONS[menu.id] ?? null}
+            </span>
             {menu.title}
           </button>
           {isOpen && (
@@ -324,7 +556,9 @@ export default function AppMenu({
                               onClick={() => activateRow(childIdx)}
                             >
                               <span className="app-menu-icon" aria-hidden="true">
-                                {checkedCommands.has(childRow.item.commandId) ? <CheckGlyph /> : null}
+                                {checkedCommands.has(childRow.item.commandId)
+                                  ? <CheckGlyph />
+                                  : ((childRow.item.icon && MENU_ICONS[childRow.item.icon]) ?? null)}
                               </span>
                               <span className="app-menu-label">
                                 {childRow.item.label ?? commandLabel(childRow.item.commandId)}

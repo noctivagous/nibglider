@@ -45,6 +45,9 @@ const HIDE_SECTION_TITLES = true;
 /** Menu commands with a wired handler; everything else renders disabled. */
 const MENU_COMMANDS: Set<string> = new Set([
   'settings', 'tutorial', 'reset-settings',
+  'undo', 'redo',
+  // Cut, copy, paste, and select-all have no engine support yet, so they
+  // stay out of this set and render disabled until they are wired.
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
   'bring-to-front', 'send-to-back', 'duplicate-selection',
@@ -274,6 +277,8 @@ export default function App() {
   const handleMenuCommand = useCallback((commandId: string) => {
     if (commandId === 'settings') gui.openWindow('settings');
     else if (commandId === 'tutorial') startTutorial();
+    else if (commandId === 'undo') engine.undo();
+    else if (commandId === 'redo') engine.redo();
     else if (commandId === 'reset-settings') {
       try {
         clearNibGliderSettings(localStorage);

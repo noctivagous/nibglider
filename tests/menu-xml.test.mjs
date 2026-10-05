@@ -11,6 +11,7 @@ const MENUS_URL = new URL('../src/ui/menus/menus.xml', import.meta.url);
 // typo, a missing handler, or a dead handler fails here instead of silently.
 const WIRED_COMMANDS = [
   'settings', 'tutorial', 'reset-settings',
+  'undo', 'redo',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
   'bring-to-front', 'send-to-back', 'duplicate-selection',
@@ -31,6 +32,7 @@ const PLACEHOLDER_COMMANDS = [
   'export', 'import', 'page-size', 'length-unit', 'reset-zoom', 'select',
   'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
   'repeat-grid', 'repeat-circle', 'scale-dialog', 'rotate-dialog',
+  'cut', 'copy', 'paste', 'select-all',
 ];
 
 function loadMenus() {
@@ -41,9 +43,9 @@ function loadMenus() {
 
 test('menus XML parses to the five application menus in order', () => {
   const menus = loadMenus();
-  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'document', 'operations', 'layers', 'debug']);
+  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'layers', 'debug']);
   assert.deepEqual(menus.map((menu) => menu.title), [
-    'File', 'Document and Settings', 'Operations and Modes', 'Layers and Objects', 'Debug',
+    'File', 'Edit', 'Document and Settings', 'Operations and Modes', 'Layers and Objects', 'Debug',
   ]);
 });
 
@@ -112,6 +114,31 @@ test('operations holds modes, repeat, and dialogs; layers holds object control',
     'hdr-layers-1', 'bring-to-front', 'send-to-back',
     'hdr-layers-2', 'group', 'ungroup-selection', 'duplicate-selection', 'delete-selection',
   ]);
+});
+
+test('edit holds undo/redo, clipboard, and selection entries', () => {
+  const menus = loadMenus();
+  const edit = menus.find((menu) => menu.id === 'edit');
+  assert.deepEqual(edit.items.map((item) => item.commandId), [
+    'undo', 'redo',
+    'hdr-edit-1', 'cut', 'copy', 'paste',
+    'hdr-edit-2', 'duplicate-selection', 'delete-selection', 'select-all',
+  ]);
+  assert.deepEqual(
+    edit.items.filter((item) => item.header).map((item) => item.label),
+    ['Clipboard', 'Selection'],
+  );
+  const byId = Object.fromEntries(edit.items.map((item) => [item.commandId, item]));
+  assert.equal(byId.undo.shortcut, primaryShortcut('Z'));
+  assert.equal(byId.redo.shortcut, primaryShortcut('Z', true));
+  assert.equal(byId.cut.shortcut, primaryShortcut('X'));
+  assert.equal(byId.copy.shortcut, primaryShortcut('C'));
+  assert.equal(byId.paste.shortcut, primaryShortcut('V'));
+  assert.equal(byId['select-all'].shortcut, primaryShortcut('A'));
+  assert.equal(byId['delete-selection'].shortcut, 'Backspace');
+  for (const id of ['undo', 'redo', 'cut', 'copy', 'paste', 'select-all']) {
+    assert.equal(typeof byId[id].icon, 'string', `${id} carries an icon`);
+  }
 });
 
 test('length-unit carries the three unit options as a submenu', () => {

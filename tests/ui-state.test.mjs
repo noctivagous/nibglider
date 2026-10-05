@@ -95,9 +95,9 @@ test('dragging across a row boundary keeps the requested visual row', () => {
   assert.equal(sectionOrder(again.order).indexOf('textControls'), 6);
 });
 
-test('application menus cover file, document, operations, layers, and debug', () => {
+test('application menus cover file, edit, document, operations, layers, and debug', () => {
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
-  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'document', 'operations', 'layers', 'debug']);
+  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'layers', 'debug']);
   assert.equal(byId.file.title, 'File');
   assert.deepEqual(byId.file.items.map((item) => item.commandId), [
     'open-gallery', 'new-document', 'save-gallery', 'rename-document', 'export', 'import', 'tutorial',
@@ -149,6 +149,8 @@ test('operations menu groups dialog entries and carries rail shortcuts and icons
     'rename-document': 'rename',
     export: 'export',
     import: 'import',
+    tutorial: 'tutorial',
+    settings: 'settings',
   });
 });
 

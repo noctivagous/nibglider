@@ -7,24 +7,38 @@
     <item command="rename-document" icon="rename" />
     <item command="export" icon="export" />
     <item command="import" icon="import" />
-    <item command="tutorial" />
-    <item command="settings" />
+    <item command="tutorial" icon="tutorial" />
+    <item command="settings" icon="settings" />
+  </menu>
+  <menu id="edit" title="Edit">
+    <item command="undo" icon="undo" shortcut="Primary+Z" />
+    <item command="redo" icon="redo" shortcut="Primary+Shift+Z" />
+    <group label="Clipboard">
+      <item command="cut" icon="cut" shortcut="Primary+X" />
+      <item command="copy" icon="copy" shortcut="Primary+C" />
+      <item command="paste" icon="paste" shortcut="Primary+V" />
+    </group>
+    <group label="Selection">
+      <item command="duplicate-selection" label="Duplicate selection" icon="duplicate" />
+      <item command="delete-selection" label="Delete selection" icon="delete" shortcut="Backspace" />
+      <item command="select-all" label="Select all" icon="select-all" shortcut="Primary+A" />
+    </group>
   </menu>
   <menu id="document" title="Document and Settings">
-    <item command="page-size" />
-    <item command="length-unit" label="Length unit">
+    <item command="page-size" icon="page-size" />
+    <item command="length-unit" label="Length unit" icon="length-unit">
       <option command="length-unit-pt" label="Points (pt)" />
       <option command="length-unit-inch" label="Inches" />
       <option command="length-unit-cm" label="Centimeters (cm)" />
     </item>
-    <item command="reset-zoom" />
-    <item command="toggle-panel" />
-    <item command="toggle-keyboard" />
-    <item command="toggle-status" />
+    <item command="reset-zoom" icon="reset-zoom" />
+    <item command="toggle-panel" icon="toggle-panel" />
+    <item command="toggle-keyboard" icon="toggle-keyboard" />
+    <item command="toggle-status" icon="toggle-status" />
   </menu>
   <menu id="operations" title="Operations and Modes">
     <group label="Modes">
-      <item command="rect-shape" label="Rect Keys shape">
+      <item command="rect-shape" label="Rect Keys shape" icon="rect-shape">
         <option command="rect-shape-rectangle" label="Rectangle" />
         <option command="rect-shape-circle" label="Circle" />
         <option command="rect-shape-polygon" label="Regular Polygon" />
@@ -35,7 +49,7 @@
         <option command="rect-shape-rhombus" label="Rhombus" />
         <option command="rect-shape-kite" label="Kite" />
       </item>
-      <item command="circle-shape" label="Circle Keys shape">
+      <item command="circle-shape" label="Circle Keys shape" icon="circle-shape">
         <option command="circle-shape-circle" label="Circle" />
         <option command="circle-shape-semicircle" label="Semicircle" />
         <option command="circle-shape-sector" label="Sector" />
@@ -48,13 +62,13 @@
         <option command="circle-shape-rhombus" label="Rhombus" />
         <option command="circle-shape-kite" label="Kite" />
       </item>
-      <item command="combinatorics" label="Combinatorics">
+      <item command="combinatorics" label="Combinatorics" icon="combinatorics">
         <option command="combinatorics-none" label="Off" />
         <option command="combinatorics-union" label="Union" />
         <option command="combinatorics-subtract" label="Subtract" />
         <option command="combinatorics-intersect" label="Intersect" />
       </item>
-      <item command="snapping" label="Snapping">
+      <item command="snapping" label="Snapping" icon="snapping">
         <option command="snap-grid" label="Grid" />
         <option command="snap-path" label="Path" />
         <option command="snap-points" label="Points" />
@@ -62,34 +76,34 @@
         <option command="snap-length" label="Length" />
         <option command="snap-aspect" label="Aspect" />
       </item>
-      <item command="text-mode" label="Text mode">
+      <item command="text-mode" label="Text mode" icon="text-mode">
         <option command="text-mode-display" label="Display" />
         <option command="text-mode-body" label="Body" />
       </item>
     </group>
     <group label="Repeat">
-      <item command="repeat-grid" label="Repeat grid (future)" />
-      <item command="repeat-circle" label="Repeat circle (future)" />
+      <item command="repeat-grid" label="Repeat grid (future)" icon="repeat-grid" />
+      <item command="repeat-circle" label="Repeat circle (future)" icon="repeat-circle" />
     </group>
     <group label="With dialog">
-      <item command="scale-dialog" label="Scale…" />
-      <item command="rotate-dialog" label="Rotate…" />
+      <item command="scale-dialog" label="Scale…" icon="scale-dialog" />
+      <item command="rotate-dialog" label="Rotate…" icon="rotate-dialog" />
     </group>
   </menu>
   <menu id="layers" title="Layers and Objects">
-    <item command="select" label="Select" />
+    <item command="select" label="Select" icon="select" />
     <group label="Order">
-      <item command="bring-to-front" label="Bring to front" />
-      <item command="send-to-back" label="Send to back" />
+      <item command="bring-to-front" label="Bring to front" icon="bring-to-front" />
+      <item command="send-to-back" label="Send to back" icon="send-to-back" />
     </group>
     <group label="Selection">
-      <item command="group" label="Group selection" shortcut="Primary+G" />
-      <item command="ungroup-selection" label="Ungroup selection" shortcut="Primary+Shift+G" />
-      <item command="duplicate-selection" label="Duplicate selection" />
-      <item command="delete-selection" label="Delete selection" shortcut="Backspace" />
+      <item command="group" label="Group selection" icon="group" shortcut="Primary+G" />
+      <item command="ungroup-selection" label="Ungroup selection" icon="ungroup" shortcut="Primary+Shift+G" />
+      <item command="duplicate-selection" label="Duplicate selection" icon="duplicate" />
+      <item command="delete-selection" label="Delete selection" icon="delete" shortcut="Backspace" />
     </group>
   </menu>
   <menu id="debug" title="Debug">
-    <item command="reset-settings" label="Reset all settings" />
+    <item command="reset-settings" label="Reset all settings" icon="reset-settings" />
   </menu>
 </menus>

@@ -4159,6 +4159,9 @@ kbd,
   position: relative;
 }
 .app-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: none;
   border: none;
   color: var(--dp-text-1);
@@ -4166,6 +4169,13 @@ kbd,
   font-size: 0.8125rem;
   padding: 6px 12px;
   cursor: pointer;
+}
+.app-menu-trigger-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--dp-text-2);
 }
 .app-menu-trigger:hover,
 .app-menu-trigger.open {
