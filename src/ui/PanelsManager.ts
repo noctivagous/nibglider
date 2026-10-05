@@ -31,6 +31,12 @@ if ('error' in parsedMenus) {
 }
 export const APPLICATION_MENUS: MenuDef[] = 'menus' in parsedMenus ? parsedMenus.menus : [];
 
+/**
+ * Canvas right-click menu: defined in menus.xml like the menu bar, but
+ * rendered as a floating popup (see ContextMenu) instead of a bar trigger.
+ */
+export const CONTEXT_MENU_ID = 'context-object';
+
 export const PANEL_GROUP_IDS = ['paint', 'keys', 'snap'] as const;
 export type PanelGroupId = (typeof PANEL_GROUP_IDS)[number];
 

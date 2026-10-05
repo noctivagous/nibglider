@@ -43,11 +43,11 @@ function loadMenus() {
   return result.menus;
 }
 
-test('menus XML parses to the five application menus in order', () => {
+test('menus XML parses to the application menus in order', () => {
   const menus = loadMenus();
-  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'help', 'debug']);
+  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
   assert.deepEqual(menus.map((menu) => menu.title), [
-    'File', 'Edit', 'Document and Settings', 'Operations', 'Modes', 'Layers and Objects', 'Help', 'Debug',
+    'File', 'Edit', 'Document and Settings', 'Operations', 'Modes', 'Layers and Objects', 'Object', 'Help', 'Debug',
   ]);
 });
 

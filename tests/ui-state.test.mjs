@@ -95,9 +95,9 @@ test('dragging across a row boundary keeps the requested visual row', () => {
   assert.equal(sectionOrder(again.order).indexOf('textControls'), 6);
 });
 
-test('application menus cover file, edit, document, operations, modes, layers, help, and debug', () => {
+test('application menus cover file, edit, document, operations, modes, layers, context-object, help, and debug', () => {
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
-  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'help', 'debug']);
+  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
   assert.equal(byId.file.title, 'File');
   assert.deepEqual(byId.file.items.map((item) => item.commandId), [
     'open-gallery', 'new-document', 'save-gallery', 'rename-document', 'export', 'import',
@@ -120,6 +120,12 @@ test('application menus cover file, edit, document, operations, modes, layers, h
     assert.ok(parent?.children && parent.children.length > 0, `modes menu lists ${id} submenu`);
   }
   assert.deepEqual(byId.debug.items.map((item) => item.commandId), ['reset-settings']);
+  // Canvas right-click menu mirrors the Layers Order group.
+  assert.equal(byId['context-object'].title, 'Object');
+  assert.deepEqual(
+    byId['context-object'].items.map((item) => item.commandId),
+    ['hdr-context-object-1', 'bring-to-front', 'send-to-back'],
+  );
 });
 
 test('menu panel sections map to known panel sections', () => {

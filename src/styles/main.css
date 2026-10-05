@@ -4896,6 +4896,18 @@ kbd,
   outline: 2px solid var(--dp-accent);
   outline-offset: 1px;
 }
+/* Canvas right-click menu: the app-menu-dropdown look as a viewport-fixed
+   popup. Above panel widgets and select menus (up to 10150) but below the
+   settings backdrop and tutorial overlay (10200+). */
+.app-menu-dropdown.context-menu {
+  position: fixed;
+  top: auto;
+  left: auto;
+  z-index: 10180;
+}
+.app-menu-dropdown.context-menu:focus {
+  outline: none;
+}
 
 /* Settings window: centered dialog over a click-to-close backdrop. Above the
    panel widgets and select menus (up to 10100) but below the tutorial

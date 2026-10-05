@@ -10,6 +10,7 @@ import { isCommandAvailable, matchAppCommand } from './engine/input/keymap';
 import ControlPanel, { type ControlPanelHandle } from './components/ControlPanel';
 import { FILE_COMMANDS, type FileCommand } from './ui/fileCommands';
 import AppMenu, { type MenuPanelSection, type PanelSectionAction } from './components/AppMenu';
+import ContextMenu from './components/ContextMenu';
 import SettingsWindow from './components/SettingsWindow';
 import DocumentInfoWindow from './components/DocumentInfoWindow';
 import OnscreenKeyboard from './components/OnscreenKeyboard';
@@ -19,7 +20,7 @@ import StatusOverlay from './components/StatusOverlay';
 import ExportFramePopover from './components/ExportFramePopover';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
 import { autosaveDocument, restorableDocument } from './ui/DocumentGallery';
-import { MENU_PANEL_SECTIONS, PanelsManager, sectionLabel } from './ui/PanelsManager';
+import { CONTEXT_MENU_ID, MENU_PANEL_SECTIONS, PanelsManager, sectionLabel } from './ui/PanelsManager';
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
 import { TutorialRunner } from './tutorial/TutorialRunner';
@@ -104,6 +105,9 @@ export default function App() {
   const [demoCursor, setDemoCursor] = useState<{ x: number; y: number } | null>(null);
   const [demoPointAt, setDemoPointAt] = useState<{ target: string; label?: string } | null>(null);
   const [demoSettingsKey, setDemoSettingsKey] = useState<string | null>(null);
+  // Canvas right-click popup position; null while closed. Right-clicks never
+  // change the selection — the menu acts on whatever is already selected.
+  const [contextMenuAt, setContextMenuAt] = useState<{ x: number; y: number } | null>(null);
   const demoCursorRef = useRef<{ x: number; y: number } | null>(null);
   const setGhost = useCallback((pos: { x: number; y: number } | null) => {
     demoCursorRef.current = pos;
@@ -582,10 +586,17 @@ export default function App() {
     };
   }, [engine, gui]);
 
+  // Right-click menu definition and enablement: order commands need a
+  // selection, so they render disabled on an empty-canvas right-click.
+  const contextMenuDef = panels.menus.find((menu) => menu.id === CONTEXT_MENU_ID);
+  const contextEnabled = engine.selectedItems.length > 0
+    ? MENU_COMMANDS
+    : new Set([...MENU_COMMANDS].filter((id) => id !== 'bring-to-front' && id !== 'send-to-back'));
+
   return (
     <div id="mainLayout">
       <AppMenu
-        menus={panels.menus}
+        menus={panels.menus.filter((menu) => menu.id !== CONTEXT_MENU_ID)}
         enabledCommands={MENU_COMMANDS}
         checkedCommands={checkedCommands}
         onCommand={handleMenuCommand}
@@ -600,7 +611,13 @@ export default function App() {
       {ui.openWindowId === 'document-info' && (
         <DocumentInfoWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
       )}
-      <div id="canvasContainer">
+      <div
+        id="canvasContainer"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setContextMenuAt({ x: e.clientX, y: e.clientY });
+        }}
+      >
         <canvas
           id="nibgliderCanvas"
           className="nibglider-canvas"
@@ -676,6 +693,18 @@ export default function App() {
           </div>
         </div>
       </div>
+      {contextMenuAt && contextMenuDef && (
+        <ContextMenu
+          menu={contextMenuDef}
+          position={contextMenuAt}
+          enabledCommands={contextEnabled}
+          onCommand={(id) => {
+            setContextMenuAt(null);
+            handleMenuCommand(id);
+          }}
+          onClose={() => setContextMenuAt(null)}
+        />
+      )}
       {tutorialSnap.status === 'active' && tutorialRunner.currentStep && tutorialSnap.tutorial && (
         <TutorialOverlay
           key={tutorialRunner.currentStep.id}
