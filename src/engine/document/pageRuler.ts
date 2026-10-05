@@ -1,7 +1,9 @@
-// PageRuler tick math: major ticks on board-grid lines across one page
+// PageRuler tick math: major ticks on grid lines across one measured
 // edge, minors splitting each major cell into quarters. Offsets run
-// from the page corner (the ruler origin), in points; labels are unit
-// values for majors, null for minors. Pure and unit-tested from
+// from the edge corner (the ruler origin), in points; labels are unit
+// values of the absolute grid coordinate for majors, null for minors.
+// phasePt is the project coordinate of the corner, so edges that start
+// off-grid still land majors on grid lines. Pure and unit-tested from
 // tests/drawing-page.test.mjs; the overlay component only maps offsets
 // to pixels.
 import type { LengthUnit } from '../types';
@@ -22,17 +24,18 @@ export function tickLabel(offsetPt: number, unit: LengthUnit): string {
 
 const MINOR_DIVISIONS = 4;
 
-/** What the rulers measure: the page when set, else the board. Units
- * follow the rect (page unit, else the display length unit). */
+/** What the rulers measure: the page when set, else the artwork
+ * bounds, else the visible canvas. Units follow the rect (page unit,
+ * else the display length unit). */
 export interface RulerSource { rect: FrameRect; unit: LengthUnit }
 
 export function rulerSource(
   page: FrameRect | null,
   pageUnit: LengthUnit,
-  board: FrameRect,
+  fallback: FrameRect,
   displayUnit: LengthUnit,
 ): RulerSource {
-  return page ? { rect: page, unit: pageUnit } : { rect: board, unit: displayUnit };
+  return page ? { rect: page, unit: pageUnit } : { rect: fallback, unit: displayUnit };
 }
 
 /** Offsets of labeled majors, thinned so labels keep minLabelPx apart.
@@ -42,16 +45,21 @@ export function labeledMajors(
   spacingPt: number,
   minLabelPx: number,
   pxPerPt: number,
+  phasePt = 0,
 ): number[] {
   if (!Number.isFinite(sizePt) || !(sizePt > 0)) return [];
   if (!Number.isFinite(spacingPt) || !(spacingPt > 0)) return [];
   if (!Number.isFinite(pxPerPt) || !(pxPerPt > 0)) return [];
+  if (!Number.isFinite(phasePt)) return [];
   const stride = Math.max(1, Math.ceil(minLabelPx / Math.max(spacingPt * pxPerPt, 1e-9)));
   const out: number[] = [];
   const epsilon = spacingPt / 1e6;
-  const majorCount = Math.floor((sizePt + epsilon) / spacingPt);
-  for (let k = 0; k <= majorCount; k += 1) {
-    if (k % stride === 0) out.push(Math.min(k * spacingPt, sizePt));
+  const firstK = Math.ceil((phasePt - epsilon) / spacingPt) + 0;
+  const lastK = Math.floor((phasePt + sizePt + epsilon) / spacingPt);
+  let index = 0;
+  for (let k = firstK; k <= lastK; k += 1) {
+    if (index % stride === 0) out.push(k * spacingPt - phasePt + 0);
+    index += 1;
   }
   return out;
 }
@@ -95,23 +103,30 @@ export function computeRulerTicks(
   sizePt: number,
   spacingPt: number,
   unit: LengthUnit,
+  phasePt = 0,
 ): RulerTick[] {
   if (!Number.isFinite(sizePt) || !(sizePt > 0)) return [];
   if (!Number.isFinite(spacingPt) || !(spacingPt > 0)) return [];
+  if (!Number.isFinite(phasePt)) return [];
   pointsToUnit(1, unit); // Validate the unit even for degenerate sizes.
   const ticks: RulerTick[] = [];
   const epsilon = spacingPt / 1e6;
-  const majorCount = Math.floor((sizePt + epsilon) / spacingPt);
-  for (let k = 0; k <= majorCount; k += 1) {
-    const at = Math.min(k * spacingPt, sizePt);
-    if (k > 0) {
+  // ceil/floor of a near-zero negative yields -0; normalize once so
+  // offsets compare cleanly downstream.
+  const firstK = Math.ceil((phasePt - epsilon) / spacingPt) + 0;
+  const lastK = Math.floor((phasePt + sizePt + epsilon) / spacingPt);
+  let prevMajor: number | null = null;
+  for (let k = firstK; k <= lastK; k += 1) {
+    const at = k * spacingPt - phasePt + 0;
+    if (prevMajor !== null) {
       for (let d = 1; d < MINOR_DIVISIONS; d += 1) {
-        const minor = (k - 1) * spacingPt + (d * spacingPt) / MINOR_DIVISIONS;
-        if (minor < epsilon || minor > sizePt - epsilon) continue;
+        const minor = prevMajor + (d * spacingPt) / MINOR_DIVISIONS;
+        if (minor < prevMajor + epsilon || minor > at - epsilon) continue;
         ticks.push({ offsetPt: minor, major: false, label: null });
       }
     }
-    ticks.push({ offsetPt: at, major: true, label: tickLabel(at, unit) });
+    ticks.push({ offsetPt: at, major: true, label: tickLabel(k * spacingPt, unit) });
+    prevMajor = at;
   }
   ticks.sort((a, b) => a.offsetPt - b.offsetPt);
   return ticks;

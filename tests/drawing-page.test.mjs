@@ -105,12 +105,22 @@ test('page-frame tracks hug the page screen rect', () => {
   assert.equal(moved.corner.left, -122);
 });
 
-test('ruler source falls back to the board without a page', () => {
-  const board = { x: -100, y: -50, width: 200, height: 100 };
-  const withPage = rulerSource({ x: 0, y: 0, width: 10, height: 10 }, 'inch', board, 'pt');
+test('ruler source falls back past the page', () => {
+  const artwork = { x: -100, y: -50, width: 200, height: 100 };
+  const withPage = rulerSource({ x: 0, y: 0, width: 10, height: 10 }, 'inch', artwork, 'pt');
   assert.deepEqual(withPage, { rect: { x: 0, y: 0, width: 10, height: 10 }, unit: 'inch' });
-  const withoutPage = rulerSource(null, 'inch', board, 'pt');
-  assert.deepEqual(withoutPage, { rect: board, unit: 'pt' });
+  const withoutPage = rulerSource(null, 'inch', artwork, 'pt');
+  assert.deepEqual(withoutPage, { rect: artwork, unit: 'pt' });
+});
+
+test('off-grid edges still land majors on grid lines', () => {
+  const ticks = computeRulerTicks(100, 18, 'inch', 10);
+  const majors = ticks.filter((t) => t.major);
+  assert.deepEqual(majors.map((t) => t.offsetPt), [8, 26, 44, 62, 80, 98]);
+  assert.equal(majors[0].label, '0.25');
+  assert.deepEqual(labeledMajors(100, 18, 16, 1, 10), [8, 26, 44, 62, 80, 98]);
+  // Phase zero keeps the historical on-grid behavior.
+  assert.deepEqual(labeledMajors(72, 18, 16, 1), [0, 18, 36, 54, 72]);
 });
 
 test('labeled majors stride with zoom', () => {
@@ -205,32 +215,7 @@ test('pt documents snap pages to the 20pt grid', () => {
   } finally { cleanup(); }
 });
 
-test('board auto-grows to contain an oversized page', () => {
-  const { engine, cleanup } = openEngine();
-  try {
-    const before = engine.drawingBoardRect();
-    engine.setPageDimensions(before.width + 1000, before.height - 100, 'pt');
-    const board = engine.drawingBoardRect();
-    const page = engine.pageRect();
-    assert.equal(board.width, page.width);
-    assert.equal(board.height, before.height);
-    assert.ok(board.x <= page.x && board.y <= page.y);
-  } finally { cleanup(); }
-});
-
-test('board settings cannot shrink below the pages', () => {
-  const { engine, cleanup } = openEngine();
-  try {
-    engine.setPageDimensions(800, 600, 'pt');
-    engine.setDrawingBoardSizePt(100, 100);
-    const board = engine.drawingBoardRect();
-    assert.ok(board.width >= 800 && board.height >= 600);
-    engine.setDrawingBoardSize(1, 1, 'm');
-    assert.ok(engine.drawingBoardRect().width >= 800);
-  } finally { cleanup(); }
-});
-
-test('page sheet stays dark on the dark board', () => {
+test('page sheet stays dark on the dark canvas', () => {
   const { engine, cleanup } = openEngine();
   try {
     engine.setPageDimensions(800, 600, 'pt');
@@ -239,7 +224,79 @@ test('page sheet stays dark on the dark board', () => {
   } finally { cleanup(); }
 });
 
-test('board holds a second page with its own layer mapping', () => {
+test('grid dots cover the page rect', () => {
+  const { engine, cleanup } = openEngine();
+  try {
+    engine.setGridEnabled(true);
+    engine.applyPageSpec(612, 792, 'inch');
+    const page = engine.pageRect();
+    let inside = 0;
+    for (const dot of [...engine.gridLayer.children]) {
+      const p = dot.position;
+      if (p.x >= page.x && p.x <= page.x + page.width && p.y >= page.y && p.y <= page.y + page.height) {
+        inside += 1;
+      }
+    }
+    assert.ok(inside > 0);
+  } finally { cleanup(); }
+});
+
+test('new document centers the page', () => {
+  const { scope, engine, cleanup } = openEngine();
+  try {
+    const far = new scope.Path.Rectangle({ from: [5000, 5000], to: [5100, 5100] });
+    engine.addItemToSelection(far);
+    engine.applyPageSpec(612, 792, 'inch');
+    engine.newDocument();
+    assert.ok(Math.abs(scope.view.center.x) < 1e-6);
+    assert.ok(Math.abs(scope.view.center.y) < 1e-6);
+  } finally { cleanup(); }
+});
+
+test('user page paints centered on a guide layer, never as content', () => {
+  const shared = store();
+  const { engine, cleanup } = openEngine(shared);
+  try {
+    engine.setPageDimensions(800, 600, 'pt');
+    const page = engine.pageRect();
+    assert.deepEqual(page, { x: -400, y: -300, width: 800, height: 600 });
+    assert.ok(engine.pageOutline);
+    assert.equal(engine.pageOutline.guide, true);
+    assert.equal(engine.pageOutline.layer, engine.pageLayer);
+    assert.equal(engine.pageLayer.guide, true);
+    assert.equal(engine.documentStats().objectCount, 0);
+  } finally { cleanup(); }
+});
+
+test('page repaint keeps the content layer active with a selection', () => {
+  const shared = store();
+  const { scope, engine, cleanup } = openEngine(shared);
+  try {
+    const rect = new scope.Path.Rectangle({ from: [0, 0], to: [40, 40] });
+    engine.addItemToSelection(rect);
+    const active = scope.project.activeLayer;
+    engine.drawPage();
+    assert.equal(scope.project.activeLayer, active);
+    engine.setPageDimensions(800, 600, 'pt');
+    assert.equal(scope.project.activeLayer, active);
+  } finally { cleanup(); }
+});
+
+test('grid stays above the page sheet through pan and repaint', () => {
+  const { engine, cleanup } = openEngine();
+  try {
+    engine.setGridEnabled(true);
+    engine.setPageDimensions(800, 600, 'pt');
+    const above = () => engine.pageLayer.index < engine.gridLayer.index;
+    assert.ok(above());
+    engine.scrollViewTo(200, 150);
+    assert.ok(above());
+    engine.setGridSpacing(20);
+    assert.ok(above());
+  } finally { cleanup(); }
+});
+
+test('document holds a second page with its own layer mapping', () => {
   const { scope, engine, cleanup } = openEngine();
   try {
     engine.applyPageSpec(612, 792, 'inch');

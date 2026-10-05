@@ -1,7 +1,7 @@
 // Pure scrollbar geometry for the custom canvas scrollbars. The scroll
-// range on each axis is the union of the DrawingBoard span and the
-// current view span, so thumbs stay on-track even when panned into
-// empty space. Ratios are 0..1; callers map them to pixels.
+// range on each axis is the union of the content span (page, artwork)
+// and the current view span, so thumbs stay on-track even when panned
+// into empty space. Ratios are 0..1; callers map them to pixels.
 // Tested from tests/canvas-scrollbars.test.mjs.
 export interface ScrollGeometry {
   /** Fraction of the track the thumb fills (0..1). */

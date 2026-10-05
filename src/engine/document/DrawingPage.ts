@@ -1,5 +1,5 @@
-// DrawingPage: a named sheet on the DrawingBoard. The board is the
-// entire working space; each page is a user-dimensioned sheet on top
+// DrawingPage: a named sheet on the infinite canvas. Each page is a
+// user-dimensioned sheet (New Document dimensions) floating on top
 // of it (New Document dimensions). The board owns a page list with an
 // active page so multi-page documents need no remodel — only the UI
 // exposes one page today. Layer ownership is conceptual: each page

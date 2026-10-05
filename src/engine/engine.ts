@@ -102,13 +102,13 @@ import { GridRenderer } from './snapping/GridRenderer';
 import { SnappingManager } from './snapping/SnappingManager';
 import { LayerManager } from './document/LayerManager';
 import { CoordinateManager } from './document/CoordinateManager';
-import { DrawingBoard, type BoardRect } from './document/DrawingBoard';
 import {
   drawingPageRect,
   snapPageToGrid,
   type DrawingPage,
+  type DrawingPageRect,
 } from './document/DrawingPage';
-import { defaultGridSpacingPt, type UnitSystem } from './document/MeasurementUnits';
+import { defaultGridSpacingPt } from './document/MeasurementUnits';
 import { ViewportManager } from './document/ViewportManager';
 import { DocumentManager, type DocumentChange, type PageSettings } from './document/DocumentManager';
 import type { NGPathDrawable } from './model/NGDrawable';
@@ -198,8 +198,9 @@ type AnyItem = any;
 
 export type WheelGesture = 'pinch' | 'pan' | 'zoom';
 
-/** View snapshot for the canvas scrollbars: center and size in project
- * coordinates plus the DrawingBoard rect. Null while no view exists. */
+/** View snapshot for the canvas scrollbars and rulers: center and size
+ * in project coordinates, plus the page sheet and the artwork bounds
+ * (each null when absent). Null while no view exists. */
 /** Ruler placement: viewer edges (fixed to the canvas container) or the
  * DrawingPage frame (travels with the page). A Document Settings option. */
 export type RulerPlacement = 'viewer' | 'page';
@@ -210,9 +211,10 @@ export interface ViewState {
   zoom: number;
   viewWidth: number;
   viewHeight: number;
-  board: BoardRect;
   /** User page sheet; null until page dimensions are set. */
-  page: BoardRect | null;
+  page: DrawingPageRect | null;
+  /** Union bounds of the artwork; null on an empty canvas. */
+  artwork: DrawingPageRect | null;
 }
 /** Pinch deltas arrive much smaller than wheel notches; this gain keeps the
  * trackpad pinch zoom pace comparable to the scroll-wheel pace. */
@@ -329,10 +331,8 @@ export class NibGliderEngine {
   gridCursor: AnyItem = null;
   pathSnapCursor: AnyItem = null;
   pointSnapCursor: AnyItem = null;
-  // --- DrawingBoard (the working space) + user page (the sheet on top) ---
-  readonly drawingBoard = new DrawingBoard();
-  boardLayer: AnyItem = null;
-  boardOutline: AnyItem = null;
+  // --- DrawingPage (the finite sheet on the infinite canvas) ---
+  pageLayer: AnyItem = null;
   pageOutline: AnyItem = null;
 
   // --- Snapping flags ---
@@ -746,8 +746,7 @@ export class NibGliderEngine {
     this.documentManager.setPageSize(width, height, unit);
     // documentManager.subscribe already notifies; repaint the page sheet.
     this.ensurePageLayer();
-    this.growBoardToContainPages();
-    this.drawWorkspace();
+    this.drawPage();
   }
 
   /** New-document entry: dimensions snap to the unit grid, the display
@@ -764,8 +763,19 @@ export class NibGliderEngine {
     }
     this.documentManager.setDisplayUnit(unit);
     this.ensurePageLayer();
-    this.growBoardToContainPages();
-    this.drawWorkspace();
+    this.centerOnCanvas();
+    this.drawPage();
+  }
+
+  /** Center the view on the canvas origin (the page center), so a new
+   * document opens with the page centered. Artwork clamping still
+   * applies, so callers clear first when exact centering matters. */
+  private centerOnCanvas(): void {
+    try {
+      this.viewport.setCenter(new this.scope.Point(0, 0));
+    } catch {
+      // Headless: no view to move.
+    }
   }
 
   /** Active DrawingPage record (a copy), null until dimensions are set. */
@@ -774,21 +784,19 @@ export class NibGliderEngine {
     return page ? { ...page } : null;
   }
 
-  /** Every page on the board; one entry today, more for multi-page later. */
+  /** Every page in the document; one entry today, more for multi-page later. */
   get drawingPages(): DrawingPage[] {
     return this.documentManager.pageList;
   }
 
-  /** Append a page (points) and make it active. The board can hold more
-   * than one; the UI activates among them. */
+  /** Append a page (points) and make it active. The UI activates among them. */
   addDrawingPage(widthPt: number, heightPt: number, unit: LengthUnit = 'pt'): DrawingPage | null {
     if (!Number.isFinite(widthPt) || !Number.isFinite(heightPt) || widthPt <= 0 || heightPt <= 0) {
       return null;
     }
     const page = this.documentManager.addPage(widthPt, heightPt, unit);
     this.ensurePageLayer();
-    this.growBoardToContainPages();
-    this.drawWorkspace();
+    this.drawPage();
     return page;
   }
 
@@ -796,14 +804,15 @@ export class NibGliderEngine {
   setActiveDrawingPage(id: string): boolean {
     if (!this.documentManager.setActivePage(id)) return false;
     this.ensurePageLayer();
-    this.drawWorkspace();
+    this.drawPage();
     return true;
   }
 
   /** Bind the active page to its Paper content layer: rejoin by recorded
    * layer id, else claim the current active content layer (fresh page,
-   * or a new Paper project after attach). Never leaves a guide layer
-   * active — the layer-capture lesson from ensureBoardLayer applies. */
+   * or a new Paper project after attach). Captures the active layer
+   * before creating anything: new Layer() activates itself, and
+   * sendToBack() on the active layer hands activation elsewhere. */
   private ensurePageLayer(): AnyItem | null {
     try {
       const project = this.scope.project;
@@ -831,9 +840,9 @@ export class NibGliderEngine {
     }
   }
 
-  /** User page rect, centered on the project origin like the board. Null
-   * until New Document (or setPageDimensions) assigns page dimensions. */
-  pageRect(): BoardRect | null {
+  /** User page rect, centered on the canvas origin. Null until New
+   * Document (or setPageDimensions) assigns page dimensions. */
+  pageRect(): DrawingPageRect | null {
     const page = this.documentManager.activePage();
     if (!page) return null;
     return drawingPageRect(page);
@@ -868,18 +877,20 @@ export class NibGliderEngine {
 
   // --- Document session: gallery new/open/save support + SVG transfer ---
   // All mutators record one undo entry and refresh paint/status bridges.
-  /** Remove every artwork item and clear the selection (New document). */
+  /** Remove every artwork item and clear the selection (New document).
+   * Recenters on the workspace so the page opens centered. */
   newDocument(): void {
     if (this.isLiveDrawing) return;
     const before = this.contentItems();
     const selectedBefore = [...this.selectedItems];
-    if (before.length === 0) return;
+    if (before.length === 0) { this.centerOnCanvas(); return; }
     this.clearOutSelection();
     for (const item of before) {
       try { item.remove(); } catch { /* Detached already. */ }
     }
     this.scene.pruneRecords();
     this.recordSceneCommand('New document', before, selectedBefore, []);
+    this.centerOnCanvas();
     this.updateTextContent(); this.notify();
   }
 
@@ -1356,11 +1367,11 @@ export class NibGliderEngine {
       if (this.isDrawingShape) this.updateShapePreview();
     });
 
-    // setup() replaces the project, so the workspace (board + page) is
-    // repainted on every attach (StrictMode remounts included). The
-    // page rebinds to the new project's content layer first.
+    // setup() replaces the project, so the page sheet is repainted on
+    // every attach (StrictMode remounts included). The page rebinds to
+    // the new project's content layer first.
     this.ensurePageLayer();
-    this.drawWorkspace();
+    this.drawPage();
     this.updatePreviewBox();
     this.updateTextContent();
   }
@@ -2296,6 +2307,19 @@ export class NibGliderEngine {
   drawGrid(): void {
     this.gridRenderer.draw(this.gridType, this.gridSpacing);
     this.gridLayer = this.gridRenderer.gridLayer;
+    // The solid page sheet must never cover the grid: both paint with
+    // sendToBack, so restack grid above the page chrome after every
+    // draw. moveAbove (unlike sendToBack) never migrates activation.
+    try {
+      const chrome = this.pageLayer;
+      const grid = this.gridLayer;
+      const project = this.scope.project;
+      if (chrome && grid && chrome !== grid && chrome.project === project && grid.project === project) {
+        grid.moveAbove(chrome);
+      }
+    } catch {
+      // Keep previous stacking.
+    }
   }
 
   clearGrid(): void {
@@ -2303,73 +2327,7 @@ export class NibGliderEngine {
     this.gridCursor = this.gridRenderer.gridCursor;
   }
 
-  // --- DrawingBoard (finite canvas bounds) ---
-  drawingBoardRect(): BoardRect { return this.drawingBoard.rect(); }
-
-  setDrawingBoardSize(width: number, height: number, unit: LengthUnit): void {
-    try {
-      this.coordinates.fromPoints(1, unit); // Validate the unit first.
-      this.drawingBoard.setSize(width, height, unit);
-      this.clampBoardToPages();
-    } catch {
-      return;
-    }
-    this.drawBoard();
-    this.updateTextContent(); this.notify();
-  }
-
-  setDrawingBoardSizePt(widthPt: number, heightPt: number): void {
-    if (!Number.isFinite(widthPt) || !Number.isFinite(heightPt) || widthPt <= 0 || heightPt <= 0) return;
-    try {
-      this.drawingBoard.setSizePt(widthPt, heightPt);
-      this.clampBoardToPages();
-    } catch {
-      return;
-    }
-    this.drawBoard();
-    this.updateTextContent(); this.notify();
-  }
-
-  /** Widest/tallest page extents, or zero with no pages. */
-  private pagesExtent(): { width: number; height: number } {
-    let width = 0;
-    let height = 0;
-    for (const page of this.documentManager.pageList) {
-      width = Math.max(width, page.widthPt);
-      height = Math.max(height, page.heightPt);
-    }
-    return { width, height };
-  }
-
-  /** The board always contains every page: never shrink below them.
-   * Board and pages share the origin center, so this is a per-axis max. */
-  private clampBoardToPages(): void {
-    const need = this.pagesExtent();
-    const board = this.drawingBoard.rect();
-    if (need.width > board.width || need.height > board.height) {
-      this.drawingBoard.setSizePt(Math.max(board.width, need.width), Math.max(board.height, need.height));
-    }
-  }
-
-  /** Grow the board after page changes so an oversized page never hangs
-   * off the working space. Persists like any board resize. */
-  private growBoardToContainPages(): void {
-    const before = this.drawingBoard.rect();
-    this.clampBoardToPages();
-    const after = this.drawingBoard.rect();
-    if (after.width !== before.width || after.height !== before.height) {
-      this.drawBoard();
-      this.updateTextContent(); this.notify();
-    }
-  }
-
-  resetDrawingBoard(system: UnitSystem = 'english'): void {
-    this.drawingBoard.reset(system);
-    this.drawBoard();
-    this.updateTextContent(); this.notify();
-  }
-
-  private ensureBoardLayer(): AnyItem | null {
+  private ensurePageChromeLayer(): AnyItem | null {
     try {
       const scope = this.scope;
       const project = scope.project;
@@ -2377,12 +2335,11 @@ export class NibGliderEngine {
       // Capture before creating: new Layer() activates itself, and
       // sendToBack() on the active layer hands activation elsewhere.
       const active = this.layers.activeOrNull;
-      let layer = this.boardLayer;
+      let layer = this.pageLayer;
       if (!layer || layer.project !== project) {
         layer = new scope.Layer();
-        layer.name = 'boardLayer';
-        this.boardLayer = layer;
-        this.boardOutline = null;
+        layer.name = 'pageLayer';
+        this.pageLayer = layer;
         this.pageOutline = null;
       }
       layer.guide = true;
@@ -2395,39 +2352,16 @@ export class NibGliderEngine {
     }
   }
 
-  /** Redraw the board outline. Kept as the entry point tests and older
-   * callers use; paints the full workspace (board + page). */
-  drawBoard(): void {
-    this.drawWorkspace();
-  }
-
-  /** Repaint the workspace: the DrawingBoard working space with the user
-   * page sheet on top of it (when page dimensions are set). One shared
-   * guide layer, so the page always stacks above the board. Guide-layer
-   * chrome throughout: never content, never exported, hidden with the
-   * other guides on print. */
-  drawWorkspace(): void {
-    const layer = this.ensureBoardLayer();
+  /** Repaint the page sheet on the infinite canvas (when page
+   * dimensions are set). Guide-layer chrome: never content, never
+   * exported, hidden with the other guides on print. */
+  drawPage(): void {
+    const layer = this.ensurePageChromeLayer();
     if (!layer) return;
     try {
       const scope = this.scope;
       layer.removeChildren();
-      this.boardOutline = null;
       this.pageOutline = null;
-      const stroke = 1 / (scope.view.zoom || 1);
-      const board = this.drawingBoard.rect();
-      const boardShape = new scope.Path.Rectangle(
-        new scope.Rectangle(
-          new scope.Point(board.x, board.y),
-          new scope.Size(board.width, board.height),
-        ),
-      );
-      boardShape.fillColor = new scope.Color(0.13, 0.16, 0.21, 1);
-      boardShape.strokeColor = new scope.Color(0.3, 0.36, 0.43, 1);
-      boardShape.strokeWidth = stroke;
-      this.mountWorkspaceChrome(boardShape, { isDrawingBoard: true });
-      layer.addChild(boardShape);
-      this.boardOutline = boardShape;
       const page = this.pageRect();
       if (page) {
         const pageShape = new scope.Path.Rectangle(
@@ -2436,12 +2370,15 @@ export class NibGliderEngine {
             new scope.Size(page.width, page.height),
           ),
         );
-        // Dark sheet on the dark board (a future Document Settings
-        // window will make page appearance configurable).
+        // Dark sheet on the dark canvas (Document Settings will make
+        // page appearance configurable).
         pageShape.fillColor = new scope.Color(0.16, 0.19, 0.24, 1);
         pageShape.strokeColor = new scope.Color(0.48, 0.54, 0.62, 1);
-        pageShape.strokeWidth = stroke;
-        this.mountWorkspaceChrome(pageShape, { isPage: true });
+        pageShape.strokeWidth = 1 / (scope.view.zoom || 1);
+        pageShape.guide = true;
+        pageShape.locked = true;
+        if (!pageShape.data) pageShape.data = {};
+        pageShape.data.isPage = true;
         layer.addChild(pageShape);
         this.pageOutline = pageShape;
       }
@@ -2452,19 +2389,10 @@ export class NibGliderEngine {
     }
   }
 
-  private mountWorkspaceChrome(shape: AnyItem, data: Record<string, boolean>): void {
-    shape.guide = true;
-    shape.locked = true;
-    if (!shape.data) shape.data = {};
-    Object.assign(shape.data, data);
-  }
-
-  /** Keep the 1px workspace outlines constant on screen across zoom. */
-  private syncWorkspaceStroke(): void {
+  /** Keep the 1px page outline constant on screen across zoom. */
+  private syncPageStroke(): void {
     try {
-      const stroke = 1 / (this.scope.view.zoom || 1);
-      if (this.boardOutline) this.boardOutline.strokeWidth = stroke;
-      if (this.pageOutline) this.pageOutline.strokeWidth = stroke;
+      if (this.pageOutline) this.pageOutline.strokeWidth = 1 / (this.scope.view.zoom || 1);
     } catch {
       // Headless.
     }
@@ -2483,9 +2411,24 @@ export class NibGliderEngine {
         zoom: view.zoom || 1,
         viewWidth: bounds.width,
         viewHeight: bounds.height,
-        board: this.drawingBoard.rect(),
         page: this.pageRect(),
+        artwork: this.artworkRect(),
       };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Union bounds of the artwork in project coordinates; null when the
+   * canvas holds no artwork. Separate from contentItems so Pan-clamp
+   * callers keep their own contract. */
+  private artworkRect(): DrawingPageRect | null {
+    try {
+      const items = this.contentItems();
+      if (items.length === 0) return null;
+      const bounds = this.collectiveBounds(items);
+      if (!bounds || !(bounds.width > 0) || !(bounds.height > 0)) return null;
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
     } catch {
       return null;
     }
@@ -3796,7 +3739,7 @@ export class NibGliderEngine {
 
   private afterViewChange(): void {
     if (this.isGridEnabled) this.drawGrid();
-    this.syncWorkspaceStroke();
+    this.syncPageStroke();
     this.emitView();
   }
 

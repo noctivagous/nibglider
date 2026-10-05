@@ -1,6 +1,7 @@
 // PageRuler overlay: top + left rulers for the active DrawingPage,
-// falling back to the DrawingBoard when no page is set (rulers are
-// always visible). Two placements (a Document Settings option):
+// falling back to the artwork bounds, else the visible canvas, when no
+// page is set (rulers are always visible). Two placements (a Document
+// Settings option):
 // viewer edges fixed to the canvas container, or the page frame
 // traveling with the page (viewer rendering when there is no page).
 // An optional guide layer projects the labeled majors to the canvas
@@ -49,14 +50,15 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
   const state = engine.getViewState();
   if (!state || !(container.width > 0)) return <div id="pageRuler" ref={wrapRef} aria-hidden="true" />;
   const page = engine.pageRect();
-  const source = rulerSource(page, engine.getPageSettings().unit, state.board, engine.lengthUnit);
+  const pxPerPt = container.width / state.viewWidth;
+  const viewLeft = state.centerX - state.viewWidth / 2;
+  const viewTop = state.centerY - state.viewHeight / 2;
+  const fallback = state.artwork ?? { x: viewLeft, y: viewTop, width: state.viewWidth, height: state.viewHeight };
+  const source = rulerSource(page, engine.getPageSettings().unit, fallback, engine.lengthUnit);
   const rect = source.rect;
   const unit = source.unit;
   const spacing = engine.gridSpacing;
   const placement = page && engine.rulerPlacement === 'page' ? 'page' : 'viewer';
-  const pxPerPt = container.width / state.viewWidth;
-  const viewLeft = state.centerX - state.viewWidth / 2;
-  const viewTop = state.centerY - state.viewHeight / 2;
   /** Container px for a project coordinate. */
   const toContainer = (project: number, viewStart: number): number => (project - viewStart) * pxPerPt;
 
@@ -68,12 +70,13 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
     rectStart: number,
     pad: number,
     labeled: Set<number>,
+    phasePt: number,
   ): ReactNode => {
     if (!(trackLenPx > 0)) return null;
     const showMinors = ((spacing / 4) * trackLenPx) / sizePt >= MINOR_MIN_PX;
     return (
       <>
-        {computeRulerTicks(sizePt, spacing, unit).map((tick, i) => {
+        {computeRulerTicks(sizePt, spacing, unit, phasePt).map((tick, i) => {
           if (!tick.major && !showMinors) return null;
           const pos = toLocal(rectStart + tick.offsetPt);
           if (pos < pad - 1 || pos > pad + trackLenPx + 1) return null;
@@ -113,8 +116,8 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
     );
   };
 
-  const labeledH = labeledMajors(rect.width, spacing, LABEL_MIN_PX, pxPerPt);
-  const labeledV = labeledMajors(rect.height, spacing, LABEL_MIN_PX, pxPerPt);
+  const labeledH = labeledMajors(rect.width, spacing, LABEL_MIN_PX, pxPerPt, rect.x);
+  const labeledV = labeledMajors(rect.height, spacing, LABEL_MIN_PX, pxPerPt, rect.y);
   const labeledHSet = new Set(labeledH);
   const labeledVSet = new Set(labeledV);
 
@@ -132,13 +135,13 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
           className="pruler-track-h frame"
           style={{ left: frame.top.left, top: frame.top.top, width: frame.top.width }}
         >
-          {renderTicks(true, page.width * pxPerPt, (p) => (p - page.x) * pxPerPt, page.width, page.x, 0, labeledHSet)}
+          {renderTicks(true, page.width * pxPerPt, (p) => (p - page.x) * pxPerPt, page.width, page.x, 0, labeledHSet, page.x)}
         </div>
         <div
           className="pruler-track-v frame"
           style={{ left: frame.left.left, top: frame.left.top, height: frame.left.height }}
         >
-          {renderTicks(false, page.height * pxPerPt, (p) => (p - page.y) * pxPerPt, page.height, page.y, 0, labeledVSet)}
+          {renderTicks(false, page.height * pxPerPt, (p) => (p - page.y) * pxPerPt, page.height, page.y, 0, labeledVSet, page.y)}
         </div>
         <div className="pruler-corner frame" style={{ left: frame.corner.left, top: frame.corner.top }}>{unit}</div>
       </div>
@@ -151,10 +154,10 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
     <div id="pageRuler" ref={wrapRef} aria-hidden="true">
       {renderGuides(labeledH, labeledV)}
       <div className="pruler-track-h">
-        {renderTicks(true, topLen, (p) => RULER + (p - viewLeft) * pxPerPt, rect.width, rect.x, RULER, labeledHSet)}
+        {renderTicks(true, topLen, (p) => RULER + (p - viewLeft) * pxPerPt, rect.width, rect.x, RULER, labeledHSet, rect.x)}
       </div>
       <div className="pruler-track-v">
-        {renderTicks(false, leftLen, (p) => RULER + (p - viewTop) * pxPerPt, rect.height, rect.y, RULER, labeledVSet)}
+        {renderTicks(false, leftLen, (p) => RULER + (p - viewTop) * pxPerPt, rect.height, rect.y, RULER, labeledVSet, rect.y)}
       </div>
       <div className="pruler-corner">{unit}</div>
     </div>

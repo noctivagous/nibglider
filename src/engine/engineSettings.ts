@@ -243,15 +243,6 @@ const ENTRIES: SettingEntry[] = [
   en('combine.mode', ['none', 'union', 'subtract', 'intersect'], (e) => e.combineMode, (e, v) => e.setCombineMode(v as never)),
   en('quad.mapping', ['bilinear', 'projective'], (e) => e.quadMapping, (e, v) => e.setQuadMapping(v as QuadMapping)),
   bool('quad.perspectiveCircle', (e) => e.perspectiveCircle, (e, v) => e.setPerspectiveCircle(v)),
-  // DrawingBoard canvas bounds, stored in points (unit lives in the dialog).
-  num('board.widthPt', (e) => e.drawingBoardRect().width, (e, v) => {
-    const current = e.drawingBoardRect();
-    e.setDrawingBoardSizePt(v, current.height);
-  }),
-  num('board.heightPt', (e) => e.drawingBoardRect().height, (e, v) => {
-    const current = e.drawingBoardRect();
-    e.setDrawingBoardSizePt(current.width, v);
-  }),
 ];
 
 export function snapshotEngineSettings(engine: NibGliderEngine): Record<string, unknown> {

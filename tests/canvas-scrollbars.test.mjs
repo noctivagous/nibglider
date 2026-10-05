@@ -20,14 +20,14 @@ function openEngine(shared) {
   return { scope, engine, cleanup: () => scope.project.remove() };
 }
 
-test('view covering the board yields a full thumb', () => {
+test('view covering the content yields a full thumb', () => {
   const geo = computeScrollGeometry(-500, 1000, -100, 200);
   assert.equal(geo.sizeRatio, 1);
   assert.equal(geo.offsetRatio, 0);
 });
 
 test('zoomed-in view yields a proportional thumb and offset', () => {
-  // Board 0..1000, view 250..500.
+  // Content 0..1000, view 250..500.
   const geo = computeScrollGeometry(250, 250, 0, 1000);
   assert.ok(Math.abs(geo.sizeRatio - 0.25) < 1e-9);
   assert.ok(Math.abs(geo.offsetRatio - 250 / 750) < 1e-9);
@@ -35,8 +35,8 @@ test('zoomed-in view yields a proportional thumb and offset', () => {
   assert.equal(geo.rangeSize, 1000);
 });
 
-test('range is the board/view union when panned outside', () => {
-  // Board 0..100, view 200..300 (fully outside in empty space).
+test('range is the content/view union when panned outside', () => {
+  // Content 0..100, view 200..300 (fully outside in empty space).
   const geo = computeScrollGeometry(200, 100, 0, 100);
   assert.equal(geo.rangeMin, 0);
   assert.equal(geo.rangeSize, 300);
@@ -84,7 +84,7 @@ test('paging moves by most of a viewport and clamps to the range', () => {
   assert.equal(scrollCenterForPage(100, 250, -1, 0, 1000), 125);
 });
 
-test('engine view state tracks the board and notifies subscribers', () => {
+test('engine view state tracks page and artwork and notifies subscribers', () => {
   const { engine, cleanup } = openEngine();
   try {
     let notifications = 0;
@@ -93,7 +93,8 @@ test('engine view state tracks the board and notifies subscribers', () => {
     const state = engine.getViewState();
     assert.ok(state);
     assert.ok(state.viewWidth > 0 && state.viewHeight > 0);
-    assert.equal(state.board.width, engine.drawingBoardRect().width);
+    assert.equal(state.page, null);
+    assert.equal(state.artwork, null);
     engine.scrollViewTo(state.centerX + 50, state.centerY);
     const moved = engine.getViewState();
     assert.ok(moved);
@@ -110,13 +111,14 @@ test('engine view state tracks the board and notifies subscribers', () => {
   } finally { cleanup(); }
 });
 
-test('board resize flows into the next view snapshot', () => {
-  const { engine, cleanup } = openEngine();
+test('artwork flows into the next view snapshot', () => {
+  const { scope, engine, cleanup } = openEngine();
   try {
-    engine.setDrawingBoardSize(1, 1, 'm');
+    assert.equal(engine.getViewState()?.artwork, null);
+    new scope.Path.Rectangle({ from: [10, 20], to: [110, 120] });
     const state = engine.getViewState();
     assert.ok(state);
-    assert.equal(state.board.width, engine.drawingBoardRect().width);
+    assert.deepEqual(state.artwork, { x: 10, y: 20, width: 100, height: 100 });
   } finally { cleanup(); }
 });
 
@@ -128,7 +130,7 @@ test('user page flows into the view snapshot for scrollbar range', () => {
     const state = engine.getViewState();
     assert.ok(state);
     assert.deepEqual(state.page, { x: -400, y: -300, width: 800, height: 600 });
-    const content = unionRects(state.board, state.page);
+    const content = unionRects(state.page, state.artwork);
     assert.ok(content.width >= 800 && content.height >= 600);
   } finally { cleanup(); }
 });

@@ -15,3 +15,13 @@
                                                                                                                                       
   I'd stay with the shear unless you're willing to fund the face registry — faux oblique is what canvas italic would have synthesized 
   anyway. Want me to keep it, strip it to metadata-only, or scope out the true-face work?  
+  
+  
+  • Paper.js has no bounded canvas. "Fixed bounds equivalent to the canvas" would be emulated — a giant rect plus a hard pan clamp.   
+    That's doable but buys little: one rect is already free to render at any size, and the emulation adds real edge cases (zoomed out 
+    farther than the board, artwork past the edge, clamp math when the view is bigger than the bounds).                               
+  • Infinite pan is already built and tested. The clamp deliberately lets you pan into empty space while guaranteeing the artwork     
+    stays reachable, and the scrollbars already span board/page/view union. The earlier experiment of clamping to the board broke the 
+    document-boundary contract — a fixed-bounds model would reopen exactly that.                                                      
+  • The standard editor model is infinite canvas + finite sheet. Figma/Illustrator work this way: unbounded space, with the board as  
+    "the paper" — the visual background, the scrollbar anchor, the thing pages live on. That's what we have.     
