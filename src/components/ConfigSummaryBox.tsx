@@ -98,7 +98,7 @@ export default function ConfigSummaryBox({
   const previewWidth = paint.strokeOn ? Math.max(0.75, Math.min(10, paint.strokeWidth)) : 0;
   const dashOn = paint.dashLength > 0 || paint.gapLength > 0;
   const stateLabel =
-    mode === 'selection' ? (mixed ? `${selectedCount} selected` : 'Selection') : 'Defaults';
+    mode === 'selection' ? (mixed ? `${selectedCount} selected` : 'Selection') : 'Global';
 
   return (
     <div
@@ -120,7 +120,7 @@ export default function ConfigSummaryBox({
           {docName}
           {docDirty ? ' •' : null}
         </span>
-        <span className={`cfg-state ${mode}`} title={mode === 'selection' ? 'Showing the selected path' : 'Showing the defaults for the next path'}>
+        <span className={`cfg-state ${mode}`} title={mode === 'selection' ? 'Showing the selected path' : 'Showing the global settings the next path will use'}>
           {stateLabel}
         </span>
       </div>
