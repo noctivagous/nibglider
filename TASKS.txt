@@ -1,4 +1,11 @@
 
+[ ] What other technical fonts or style resources would assist in making the app?
+
+[ ] The first thing the tutorial will do when it
+
+[ ]  menu item under grid section menu:  Sync Grid Snapping to Grid Visibility.
+turn on by default.  toggling on either turns the other on.
+
 
 [  ]  Convert app GUI (panels, sections) to an XML scheme comparable to XAML, XUL, or nibx, 
 where it is rendering from provided XML, but we don't want it to be too rigid so we can add different
@@ -7,15 +14,25 @@ The goal is to add some structure and then some consequent clarity to the GUI sy
 because we will let the user drag some things around on screen to reposition them or resize them
 and adding new sections.
 
-
-
 [  ] real clipboard implementation, select-all engine support. (Edit menu).
-   Pasting should support pasting SVG into vectors on the page,
+   Pasting should support pasting SVG into vectors on the page, pasting other image data types.
    Rich text, including markdown or RTF into a new EditableText element that can be set to Display Text (single line)
-   or Body Text (multiline).  Then if the data is CSV
+   or Body Text (multiline).  Anything the user can paste should be droppable onto the canvas as well
+   and vice-versa.
+        [ ] for the clipboard, if the data is CSV, it pastes as a Data Table.
+         Rect Keys > In-Canvas Elements > Data Table - allows adding rows and cols.
+ 		We need a geometry element for grids if we don't have one and this Data Table element
+ 		will make use of it.  The geometry element for grids.
+ 		
+		[ ] In-Canvas Elements > Text Controls - will be reused by some for styling selected text.
+ 		
+We want to make a geometry element for grids.  This will be used in different parts of the
+app for a wide range of purposes.  It will have all of the setters and getters necessary.
+For repeating an element in a grid, it will be able to make use of any positioning point necessary
+from this grid geometry element. 
+    -- for the clipboard, if the data is CSV, it pastes the data as a Data Table. 
+    -- for the 
 
- 		[ ] Rect Keys > In-Canvas Elements > Data Table
- 
 
  [x] The new document dialog should allow the user to select from different sizes, allows
  choosing dimension based on target (working space, print, image).  
@@ -63,26 +80,30 @@ and inches to feet for English Units.
           that frame from the GUI that comes out.
  
  
- 
- When there is a new document. in the code we want to set the data foundation for measurement and page units, whether the user
+
+[x] When there is a new document. in the code we want to set the data foundation for measurement and page units, whether the user
 is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app should
 be aware of pt, inch, pica, cm.  users will stay within mm to m for SI
 and inches to feet for English Units.
 
-[x] CONFIG. SUMMARY BOX WIDGET.  Where the vertical stack of panel card "rail" menu buttons was and where they are hidden,
+[-] CONFIG. SUMMARY BOX WIDGET.  Where the vertical stack of panel card "rail" menu buttons was and where they are hidden,
 make a summary box widget and it summarizes, in icons and a layout, the settings for everything, from stroke, to
 fill.  it can make use of its own SVGs.  it will provide a larger preview of what the path is going to do when it draws things,
 both fill and stroke.  when there is a selection, it will change states according to what the path is.  It will have the name
 of the document in the upper left corner.
   (Done: ConfigSummaryBox in panel-side rail slot + ConfigSummary resolver + tests/config-summary.test.mjs.)
+		[ ] zoom level
+		[ ] if Length snapping is on, shows live length of radius or spline segment.
+        [ ] if angle snapping is on, shows live angle of radius or spline segment.
 
 
 [x] JSON serialization of the scene graph — walk the paper.project tree and JSON.stringify each item's properties (path segments, styles, transforms, etc.), then reconstruct on load. This is the most common approach for a "native" save format in Paper.js-based editors
 
 [x] cmd/ctrl - and = zoom out and zoom in, cmd/ctrl 0 sets to 100%.
 
-[ ]  When selected, shapes should reveal their centroids or circle origins. 
-[ ] for Point snapping, shapes should respond with point hits on their centroids.  a regular polygon or
+[ ] Selection styling setting - current, selection rectangle outline.
+[x]  When selected, shapes should reveal their centroids or circle origins. 
+[x] for Point snapping, shapes should respond with point hits on the centroids.  a regular polygon or
 circle should have point snaps on circle origins.
 
 
@@ -96,7 +117,6 @@ what we want, it is the direct analog of rect keys stretching a circle into a re
     option, not as the default. 
 ---
 
-[ ]  menu item under grid section menu:  Sync Grid Snapping to Grid Visibility
 
 ---
 
@@ -131,13 +151,13 @@ SUBDIVISION SECTION of Panel Widget
   - subdivide rectangles and regular polygons
 
 CURSOR STATES 
-
-[ ] When the cursor hovers over a snapping point, it should change to indicate this.
+[x] When the cursor hovers over a snapping point, it should change to indicate this.
+[x] make icons for other states.
 
 PANEL SECTION CONTROLS
 
 [ ] When the panel section is dragged into a new spot, the others that move
-should animate with their rearrangment.
+should animate with their rearrangement, not just jump.
 
 [ ] Hovering over the stroke stepper numeric text field  will show a vertical slider
 flyout popover.  a numeric text field with this attribute and accompanying
@@ -218,18 +238,25 @@ COMBINATORICS
 [x]  Make it so that the Panel rows wrap and if there aren't enough rows it will make new ones.
 we will do this in place of the current scheme where if the viewport shrinks horizontally
 the panel sections abridge.
-[ ] improve dragging of panel sections such that dragging it takes the entire section with
+[x] improve dragging of panel sections such that dragging it takes the entire section with
 the cursor during drag, not just the drag handle, and placing it in different areas will
 push the different sections around. 
 
 SHAPE SCHEMA
-[ ] A shape like a circle segment was drawn with a circle origin.
+[x] A shape like a circle segment was drawn with a circle origin.
 If Point Snapping is on, we want to be able to get to that circle origin.
 
 TEXT
 
-[ ] Text: Editable Text vs. Vector Shapes
+[ ] - Type At Cursor / Type Text - P key.  press and if no selection of objects, starts typing
+on single line that follows cursor.  alt+W key stamps it.  Begins capturing keyboard input for type. 
+Press Return/Enter to finalize.  Follows Text mode settings.
 
+[ ] Text: Editable Text obj vs. Vector Shapes
+   Editable Text will retain: [Display Text | Body Text | Sign Text].
+   In-Canvas Element > Editable Text will show text editing controls
+   in the canvas because it is In-Canvas Element.
+   
 [ ] Text shape mode, Sign Text: [Display Text | Body Text | Sign Text]
    Sign Text - Text is placed inside the shape
    and made to fit it.  Common for traditional sign work.
@@ -244,11 +271,7 @@ TEXT
 they can be clicked by the user, might be printed.
 
 
-[ ] - Type At Cursor / Type Text - P key.  press and if no selection of objects, starts typing
-on single line that follows cursor.  alt+W key stamps it.  Begins capturing keyboard input for type. 
-Press Return/Enter to finalize.  Follows Text mode settings.
-
-
+GRID
 [ ] add different grid presentation variations.  for example, it may
 still snap to a 10x10 pt grid.  We may want inch intervals emphasized
 but then have snapping at the 1/8 inch level.  In the dropdown for grid,
@@ -272,8 +295,6 @@ Moves to Path Manip. KB Layout or shows number keys as Path manip keys:
   this parameter is whether it is relative or absolute interval.  for absolute interval of 10pt, the distance of 10pt 
   snapping will be available.  can combine absolute and relative 
 
-INFO SECTION OF PANEL
-[ ] if Length snapping is on, shows live length of radius or spline segment.
 
 PARAMETRIC ADAPTIVE SHAPES
 [ ] Shape will respond to live drawing information.  for radial stamp, 
@@ -486,6 +507,18 @@ SNAPPING
  there are stock shapes.
  [ ] Because of parametric component objects, the spline keys can be made to draw shapes like ribbons
  because the Ribbon parametric component object will be designed to take in spline information.
+ 
+ APP USER MEDIA GALLERY
+Vector-drawing and photo editing apps historically 
+have never been connected with the output that
+users generate, with users generating images and then storing
+them on the hard drive and the app not knowing about them.
+The app can have a Media Gallery where the user stores raster
+outputs.  The Media Gallery is a database that stores user
+information and can be a place for scrapbook.
+ [  ] Instant Export Canvas to Download (SVG)
+ [ ] Export > Export to Media Gallery
+ 
  
 ----
 
