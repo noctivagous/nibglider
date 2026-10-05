@@ -1,7 +1,9 @@
 import {
+  forwardRef,
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
@@ -29,6 +31,7 @@ import { clearNibGliderSettings } from '../tutorial/tutorialProgress';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import DocumentGallery, { type GalleryMode } from './DocumentGallery';
 import NewDocumentDialog, { type NewDocumentSpec } from './NewDocumentDialog';
+import { renameTarget, saveTarget, type FileCommand } from '../ui/fileCommands';
 import KeymapWidget from './KeymapWidget';
 import WidgetHandle from './WidgetHandle';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
@@ -175,80 +178,6 @@ function CheckIcon({ children }: { children: ReactNode }) {
     >
       {children}
     </svg>
-  );
-}
-
-// Glyph for a File menu card button: icon stacked above a short label.
-function FileCardIcon({ children }: { children: ReactNode }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {children}
-    </svg>
-  );
-}
-
-function OpenCardIcon() {
-  return (
-    <FileCardIcon>
-      <path d="M3 7 h6 l2 2 h10 v9 H3 Z" />
-      <path d="M3 7 v10" />
-    </FileCardIcon>
-  );
-}
-
-function NewCardIcon() {
-  return (
-    <FileCardIcon>
-      <path d="M7 3 h7 l4 4 v14 H7 Z" />
-      <path d="M12 11 v6 M9 14 h6" />
-    </FileCardIcon>
-  );
-}
-
-function SaveCardIcon() {
-  return (
-    <FileCardIcon>
-      <path d="M5 4 h11 l3 3 v13 H5 Z" />
-      <path d="M8 4 v5 h7 V4" />
-      <path d="M8 20 v-6 h8 v6" />
-    </FileCardIcon>
-  );
-}
-
-function RenameCardIcon() {
-  return (
-    <FileCardIcon>
-      <path d="M4 20 l1 -4 L16 5 l3 3 L8 19 Z" />
-      <path d="M14 7 l3 3" />
-    </FileCardIcon>
-  );
-}
-
-function ExportCardIcon() {
-  return (
-    <FileCardIcon>
-      <path d="M4 14 v6 h16 v-6" />
-      <path d="M12 3 v10 M8 7 l4 -4 4 4" />
-    </FileCardIcon>
-  );
-}
-
-function ImportCardIcon() {
-  return (
-    <FileCardIcon>
-      <path d="M4 14 v6 h16 v-6" />
-      <path d="M12 4 v10 M8 10 l4 4 4 -4" />
-    </FileCardIcon>
   );
 }
 
@@ -2511,18 +2440,22 @@ const RECT_OPTION_TREE: CustomSelectOption[] = [
   shapeLeaf('supershape', RECT_SHAPE_LABELS),
 ];
 
-export default function ControlPanel({
-  engine,
-  onTutorialRequest,
-  panels: panelsProp,
-}: {
+/** Actions the top File menu forwards to the panel, which owns the
+ * gallery and New Document dialogs. */
+export interface ControlPanelHandle {
+  dispatchFileCommand: (command: FileCommand) => void;
+}
+
+const ControlPanel = forwardRef<ControlPanelHandle, {
   engine: NibGliderEngine;
-  onTutorialRequest?: () => void;
   /** Shared layout manager. When omitted the panel owns one internally.
    * App passes its own instance so live demonstrations can expand the
    * sections their scripts point at. */
   panels?: PanelsManager;
-}) {
+}>(function ControlPanel({
+  engine,
+  panels: panelsProp,
+}, ref) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
     'circle' | 'rect' | 'stroke' | 'fill' | 'text' | null
@@ -2742,7 +2675,6 @@ export default function ControlPanel({
   const isRemoved = useCallback((id: string) => removedList.includes(id), [removedList]);
   // Operations rail box: immediate entries act on the selection at once;
   // scale/rotate open the modal dialog with a live on-page preview.
-  const [fileValue, setFileValue] = useState('file-none');
   const [docValue, setDocValue] = useState('doc-none');
   const [opValue, setOpValue] = useState('ops-none');
   const [layersValue, setLayersValue] = useState('layers-none');
@@ -2858,18 +2790,6 @@ export default function ControlPanel({
   // cards (Export, Import) render as beveled grid buttons; Learn stays a
   // plain row. All cards are backed by the gallery store and the engine's
   // document-session API.
-  const FILE_OPTIONS: CustomSelectOption[] = [
-    { value: 'hdr-file-doc', label: 'Document', header: true, columns: 2 },
-    { value: 'file-open', label: 'Open', card: true, image: <OpenCardIcon />, title: 'Open a document from the gallery' },
-    { value: 'file-new', label: 'New', card: true, image: <NewCardIcon />, title: 'Start a new document' },
-    { value: 'file-save', label: 'Save', card: true, image: <SaveCardIcon />, title: 'Save to the gallery' },
-    { value: 'file-rename', label: 'Rename', card: true, image: <RenameCardIcon />, title: 'Rename the open document' },
-    { value: 'hdr-file-transfer', label: 'Transfer', header: true, columns: 2 },
-    { value: 'file-export', label: 'Export', card: true, image: <ExportCardIcon />, title: 'Download the scene as SVG' },
-    { value: 'file-import', label: 'Import', card: true, image: <ImportCardIcon />, title: 'Import an SVG file into the scene' },
-    { value: 'hdr-file-learn', label: 'Learn', header: true },
-    { value: 'file-tutorial', label: 'Tutorial', title: 'Start the guided tutorial' },
-  ];
   // Open document name for the page title and the rail label. The panel
   // re-renders on every engine change, and every gallery mutation ends in
   // a state update, so both stay fresh without a store subscription.
@@ -2965,6 +2885,48 @@ export default function ControlPanel({
     },
     [engine],
   );
+  const exportSceneAsSVG = useCallback(() => {
+    const svg = engine.exportSceneSVG();
+    if (!svg) return;
+    const name = galleryCurrentName(browserStore()) ?? 'untitled';
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${name}.svg`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, [engine]);
+  // Top File menu entry point: the menu bar owns the File menu, the panel
+  // owns the dialogs, so App forwards commands here.
+  const dispatchFileCommand = useCallback((command: FileCommand) => {
+    dismissSelects();
+    switch (command) {
+      case 'open-gallery':
+        openGallery('open');
+        break;
+      case 'new-document':
+        setNewDocOpen(true);
+        break;
+      case 'save-gallery': {
+        const target = saveTarget(browserStore());
+        if (target.kind === 'direct') saveSceneToGallery(target.name);
+        else openGallery('save');
+        break;
+      }
+      case 'rename-document':
+        openGallery(renameTarget(browserStore()));
+        break;
+      case 'export':
+        exportSceneAsSVG();
+        break;
+      case 'import':
+        importInputRef.current?.click();
+        break;
+    }
+  }, [dismissSelects, exportSceneAsSVG, openGallery, saveSceneToGallery]);
+  useImperativeHandle(ref, () => ({ dispatchFileCommand }), [dispatchFileCommand]);
   const handleImportFile = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -2980,56 +2942,6 @@ export default function ControlPanel({
       reader.readAsText(file);
     },
     [engine],
-  );
-  const handleFile = useCallback(
-    (v: string) => {
-      if (v === 'file-none') return;
-      dismissSelects();
-      switch (v) {
-        case 'file-tutorial':
-          onTutorialRequest?.();
-          break;
-        case 'file-open':
-          openGallery('open');
-          break;
-        case 'file-new':
-          dismissSelects();
-          setNewDocOpen(true);
-          break;
-        case 'file-save': {
-          const id = galleryCurrentId(browserStore());
-          if (id) saveSceneToGallery(galleryCurrentName(browserStore()) ?? 'Untitled');
-          else openGallery('save');
-          break;
-        }
-        case 'file-rename':
-          if (galleryCurrentId(browserStore())) openGallery('rename');
-          else openGallery('save');
-          break;
-        case 'file-export': {
-          const svg = engine.exportSceneSVG();
-          if (!svg) break;
-          const name = galleryCurrentName(browserStore()) ?? 'untitled';
-          const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
-          const anchor = document.createElement('a');
-          anchor.href = url;
-          anchor.download = `${name}.svg`;
-          document.body.appendChild(anchor);
-          anchor.click();
-          anchor.remove();
-          window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-          break;
-        }
-        case 'file-import':
-          importInputRef.current?.click();
-          break;
-        default:
-          break;
-      }
-      // Reset to the placeholder label after acting.
-      setFileValue('file-none');
-    },
-    [dismissSelects, engine, onTutorialRequest, openGallery, saveSceneToGallery],
   );
   // Document and Settings menu: document controls only. Section restore
   // and settings reset live in the Sections and Debug menus below.
@@ -3312,20 +3224,6 @@ export default function ControlPanel({
           >
             {docName}
             {docDirty ? ' •' : null}
-          </div>
-          <div className="rail-box" title="File: documents, import, export" data-tutorial-id="menu-file">
-            <CustomSelect
-              id="panelFileSelect"
-              ariaLabel="File"
-              placeholder="File"
-              value={fileValue}
-              options={FILE_OPTIONS}
-              onChange={handleFile}
-              openOnHover
-              stickyOnClick
-              onHoverOpen={handleSelectHoverOpen}
-              forceCloseKey={selectCloseKey}
-            />
           </div>
           <div className="rail-box" title="Document and Settings" data-tutorial-id="menu-document">
             <CustomSelect
@@ -4266,4 +4164,6 @@ export default function ControlPanel({
       ) : null}
     </div>
   );
-}
+});
+
+export default ControlPanel;

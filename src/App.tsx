@@ -7,13 +7,15 @@ import {
   type RectangleInnerShape,
 } from './engine/engine';
 import { isCommandAvailable, matchAppCommand } from './engine/input/keymap';
-import ControlPanel from './components/ControlPanel';
+import ControlPanel, { type ControlPanelHandle } from './components/ControlPanel';
+import { FILE_COMMANDS, type FileCommand } from './ui/fileCommands';
 import AppMenu, { type MenuPanelSection, type PanelSectionAction } from './components/AppMenu';
 import SettingsWindow from './components/SettingsWindow';
 import OnscreenKeyboard from './components/OnscreenKeyboard';
 import TutorialOverlay from './components/TutorialOverlay';
 import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
+import ExportFramePopover from './components/ExportFramePopover';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
 import { autosaveDocument, restorableDocument } from './ui/DocumentGallery';
 import { MENU_PANEL_SECTIONS, PanelsManager, sectionLabel } from './ui/PanelsManager';
@@ -44,6 +46,7 @@ const HIDE_SECTION_TITLES = true;
 
 /** Menu commands with a wired handler; everything else renders disabled. */
 const MENU_COMMANDS: Set<string> = new Set([
+  ...FILE_COMMANDS,
   'settings', 'tutorial', 'reset-settings',
   'undo', 'redo',
   // Cut, copy, paste, and select-all have no engine support yet, so they
@@ -274,7 +277,12 @@ export default function App() {
     tutorialRunner.start();
   }, [tutorialRunner]);
 
+  const controlPanelRef = useRef<ControlPanelHandle>(null);
   const handleMenuCommand = useCallback((commandId: string) => {
+    if ((FILE_COMMANDS as readonly string[]).includes(commandId)) {
+      controlPanelRef.current?.dispatchFileCommand(commandId as FileCommand);
+      return;
+    }
     if (commandId === 'settings') gui.openWindow('settings');
     else if (commandId === 'tutorial') startTutorial();
     else if (commandId === 'undo') engine.undo();
@@ -602,13 +610,14 @@ export default function App() {
             aria-hidden={!ui.controlsVisible}
             inert={!ui.controlsVisible}
           >
-            <ControlPanel engine={engine} onTutorialRequest={startTutorial} panels={panels} />
+            <ControlPanel ref={controlPanelRef} engine={engine} panels={panels} />
           </div>
           <StatusOverlay
             engine={engine}
             hidden={!ui.statusVisible}
             shiftX={layoutSnap.statusShiftX}
           />
+          <ExportFramePopover engine={engine} />
         </div>
         <div className="corner-div">
           <div

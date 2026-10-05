@@ -10,6 +10,8 @@ const MENUS_URL = new URL('../src/ui/menus/menus.xml', import.meta.url);
 // the XML renders disabled until it is wired. Keep both lists explicit so a
 // typo, a missing handler, or a dead handler fails here instead of silently.
 const WIRED_COMMANDS = [
+  'open-gallery', 'new-document', 'save-gallery', 'rename-document',
+  'export', 'import',
   'settings', 'tutorial', 'reset-settings',
   'undo', 'redo',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
@@ -28,8 +30,7 @@ const WIRED_COMMANDS = [
   'text-mode-display', 'text-mode-body',
 ];
 const PLACEHOLDER_COMMANDS = [
-  'open-gallery', 'new-document', 'save-gallery', 'rename-document',
-  'export', 'import', 'page-size', 'length-unit', 'reset-zoom', 'select',
+  'page-size', 'length-unit', 'reset-zoom', 'select',
   'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
   'repeat-grid', 'repeat-circle', 'scale-dialog', 'rotate-dialog',
   'cut', 'copy', 'paste', 'select-all',
