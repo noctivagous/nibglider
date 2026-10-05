@@ -4249,6 +4249,32 @@ kbd,
   font-size: 0.6875rem;
   white-space: nowrap;
 }
+.app-menu-parent {
+  position: relative;
+}
+.app-menu-submenu {
+  position: absolute;
+  left: 100%;
+  top: -5px;
+  min-width: 200px;
+  background: var(--dp-bg-2);
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(8, 10, 14, 0.45);
+  z-index: 960;
+}
+.app-menu-caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--dp-text-3);
+}
+.app-menu-item.focused .app-menu-caret {
+  border-left-color: currentColor;
+}
 
 /* Settings window: centered dialog over a click-to-close backdrop. Above the
    panel widgets and select menus (up to 10100) but below the tutorial

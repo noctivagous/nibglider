@@ -9,11 +9,14 @@ const MENUS_URL = new URL('../src/ui/menus/menus.xml', import.meta.url);
 // Commands with a handler in App.tsx handleMenuCommand. Everything else in
 // the XML renders disabled until it is wired. Keep both lists explicit so a
 // typo, a missing handler, or a dead handler fails here instead of silently.
-const WIRED_COMMANDS = ['settings', 'tutorial', 'reset-settings'];
+const WIRED_COMMANDS = [
+  'settings', 'tutorial', 'reset-settings',
+  'toggle-panel', 'toggle-keyboard', 'toggle-status',
+  'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
+];
 const PLACEHOLDER_COMMANDS = [
   'open-gallery', 'new-document', 'save-gallery', 'rename-document',
-  'export', 'import', 'page-size', 'length-unit', 'reset-zoom',
-  'toggle-panel', 'toggle-keyboard', 'toggle-status', 'group',
+  'export', 'import', 'page-size', 'length-unit', 'reset-zoom', 'group',
   'delete-selection', 'scale-dialog', 'rotate-dialog', 'select',
   'bring-to-front', 'send-to-back', 'duplicate-selection',
 ];
@@ -35,6 +38,7 @@ test('menus XML parses to the five application menus in order', () => {
 test('every menu command is either wired or an explicit placeholder', () => {
   const commands = loadMenus()
     .flatMap((menu) => menu.items)
+    .flatMap((item) => [item, ...(item.children ?? [])])
     .filter((item) => !item.header)
     .map((item) => item.commandId);
   const known = new Set([...WIRED_COMMANDS, ...PLACEHOLDER_COMMANDS]);
@@ -75,12 +79,28 @@ test('items fall back to the command id and menus to the menu id', () => {
   }]);
 });
 
+test('length-unit carries the three unit options as a submenu', () => {
+  const menus = loadMenus();
+  const doc = menus.find((menu) => menu.id === 'document');
+  const unit = doc.items.find((item) => item.commandId === 'length-unit');
+  assert.deepEqual(unit.children.map((child) => child.commandId), [
+    'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
+  ]);
+  assert.deepEqual(unit.children.map((child) => child.label), [
+    'Points (pt)', 'Inches', 'Centimeters (cm)',
+  ]);
+});
+
 test('menu XML rejects malformed definitions', () => {
   for (const xml of [
     '<menu id="m"><item command="c"/></menu>',
     '<menus><menu><item command="c"/></menu></menus>',
     '<menus><menu id="m"><item/></menu></menus>',
     '<menus><menu id="m"><item command="c">text</item></menu></menus>',
+    '<menus><menu id="m"><item command="c"><item command="d"/></item></menu></menus>',
+    '<menus><menu id="m"><item command="c"><option/></item></menu></menus>',
+    '<menus><menu id="m"><item command="c"><option command="d"><option command="e"/></option></item></menu></menus>',
+    '<menus><menu id="m"><option command="d"/></menu></menus>',
     '<menus><menu id="m"><group><item command="c"/></group></menu></menus>',
     '<menus><menu id="m"><group label="G"><toggle/></group></menu></menus>',
     '<menus><menu id="m"><item command="c" shortcut="Primary+"/></menu></menus>',

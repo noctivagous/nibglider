@@ -38,7 +38,11 @@ import helloTutorialRaw from '../tutorials/hello-rectangle.tutorial.json?raw';
 const HIDE_SECTION_TITLES = true;
 
 /** Menu commands with a wired handler; everything else renders disabled. */
-const MENU_COMMANDS: Set<string> = new Set(['settings', 'tutorial', 'reset-settings']);
+const MENU_COMMANDS: Set<string> = new Set([
+  'settings', 'tutorial', 'reset-settings',
+  'toggle-panel', 'toggle-keyboard', 'toggle-status',
+  'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
+]);
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -248,8 +252,23 @@ export default function App() {
         clearNibGliderSettings(localStorage);
       } catch { /* Storage can be unavailable in private browsing. */ }
       window.location.reload();
-    }
-  }, [gui, startTutorial]);
+    } else if (commandId === 'toggle-panel') gui.toggleControls();
+    else if (commandId === 'toggle-keyboard') gui.toggleKeyboard();
+    else if (commandId === 'toggle-status') gui.toggleStatus();
+    else if (commandId === 'length-unit-pt') engine.setLengthUnit('pt');
+    else if (commandId === 'length-unit-inch') engine.setLengthUnit('inch');
+    else if (commandId === 'length-unit-cm') engine.setLengthUnit('cm');
+  }, [engine, gui, startTutorial]);
+
+  // Re-render on engine changes so menu checkmarks (length unit) stay fresh.
+  // Visibility toggles arrive through the gui snapshot above.
+  useSyncExternalStore(engine.subscribe, engine.getVersion);
+  const checkedCommands = new Set<string>([
+    ...(ui.controlsVisible ? ['toggle-panel'] : []),
+    ...(ui.keyboardVisible ? ['toggle-keyboard'] : []),
+    ...(ui.statusVisible ? ['toggle-status'] : []),
+    `length-unit-${engine.lengthUnit}`,
+  ]);
 
   // New users (config flag on, no completion recorded) land in the tutorial.
   // startTutorial is idempotent, so StrictMode's double-effect is harmless.
@@ -431,6 +450,7 @@ export default function App() {
       <AppMenu
         menus={panels.menus}
         enabledCommands={MENU_COMMANDS}
+        checkedCommands={checkedCommands}
         onCommand={handleMenuCommand}
       />
       {ui.openWindowId === 'settings' && (

@@ -8,6 +8,8 @@
 //   <menus> <menu (id, title)> ...
 //     <item (command, label?, shortcut?, icon?) />
 //     <group (label)> <item/> ... </group>
+// An <item> may carry <option (command, label?) /> children instead, which
+// renders the row as an expandable submenu parent.
 // A group emits a header row (commandId hdr-<menu>-<n>, counting groups in
 // the menu from 1) followed by its items; bare items and groups may mix in
 // document order. Menu titles and item labels fall back to the id/command
@@ -30,17 +32,31 @@ function resolveShortcut(raw: string): string | null {
 
 function parseItem(node: XmlNode, menuId: string): MenuItemDef | string {
   const command = node.attrs['command'];
-  if (!command) return `<item> in menu "${menuId}" is missing its command attribute`;
-  if (node.children.length > 0) return `<item command="${command}"> takes no children`;
+  if (!command) return `<${node.tag}> in menu "${menuId}" is missing its command attribute`;
   const item: MenuItemDef = { commandId: command };
   if (node.attrs['label'] !== undefined) item.label = node.attrs['label'];
   if (node.attrs['icon'] !== undefined) item.icon = node.attrs['icon'];
   if (node.attrs['shortcut'] !== undefined) {
     const resolved = resolveShortcut(node.attrs['shortcut']);
     if (resolved == null) {
-      return `<item command="${command}"> has a malformed shortcut (use Primary+G, Primary+Shift+G, or a literal like Backspace)`;
+      return `<${node.tag} command="${command}"> has a malformed shortcut (use Primary+G, Primary+Shift+G, or a literal like Backspace)`;
     }
     item.shortcut = resolved;
+  }
+  const options = node.children;
+  if (options.length > 0) {
+    if (node.tag !== 'item') return `<${node.tag} command="${command}"> takes no children`;
+    const children: MenuItemDef[] = [];
+    for (const sub of options) {
+      if (sub.tag !== 'option') {
+        return `<item command="${command}"> only accepts <option> children, found <${sub.tag}>`;
+      }
+      const parsed = parseItem(sub, menuId);
+      if (typeof parsed === 'string') return parsed;
+      if (parsed.children) return `<option command="${parsed.commandId}"> takes no children`;
+      children.push(parsed);
+    }
+    item.children = children;
   }
   return item;
 }

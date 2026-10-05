@@ -18,6 +18,8 @@ export interface MenuItemDef {
   shortcut?: string;
   /** Icon key rendered to the left of the label (see AppMenu icon map). */
   icon?: string;
+  /** Submenu entries; presence renders the row as an expandable parent. */
+  children?: MenuItemDef[];
 }
 export interface MenuDef { id: string; title: string; items: MenuItemDef[] }
 

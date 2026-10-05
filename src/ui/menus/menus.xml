@@ -12,7 +12,11 @@
   </menu>
   <menu id="document" title="Document and Settings">
     <item command="page-size" />
-    <item command="length-unit" />
+    <item command="length-unit" label="Length unit">
+      <option command="length-unit-pt" label="Points (pt)" />
+      <option command="length-unit-inch" label="Inches" />
+      <option command="length-unit-cm" label="Centimeters (cm)" />
+    </item>
     <item command="reset-zoom" />
     <item command="toggle-panel" />
     <item command="toggle-keyboard" />
