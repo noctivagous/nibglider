@@ -113,5 +113,6 @@
   </menu>
   <menu id="debug" title="Debug">
     <item command="reset-settings" label="Reset all settings" icon="reset-settings" />
+    <item command="empty-canvas" label="Empty Canvas of Objects" icon="delete" />
   </menu>
 </menus>

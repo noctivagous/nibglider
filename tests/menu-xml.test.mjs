@@ -13,7 +13,7 @@ const WIRED_COMMANDS = [
   'open-gallery', 'new-document', 'save-gallery', 'rename-document',
   'export', 'import',
   'scale-dialog', 'rotate-dialog',
-  'settings', 'tutorial', 'reset-settings',
+  'settings', 'tutorial', 'reset-settings', 'empty-canvas',
   'undo', 'redo',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',

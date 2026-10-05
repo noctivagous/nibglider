@@ -49,7 +49,7 @@ const HIDE_SECTION_TITLES = true;
 /** Menu commands with a wired handler; everything else renders disabled. */
 const MENU_COMMANDS: Set<string> = new Set([
   ...FILE_COMMANDS,
-  'settings', 'tutorial', 'reset-settings',
+  'settings', 'tutorial', 'reset-settings', 'empty-canvas',
   'undo', 'redo',
   'cut', 'copy', 'paste', 'select-all',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
@@ -301,7 +301,8 @@ export default function App() {
         clearNibGliderSettings(localStorage);
       } catch { /* Storage can be unavailable in private browsing. */ }
       window.location.reload();
-    } else if (commandId === 'toggle-panel') gui.toggleControls();
+    } else if (commandId === 'empty-canvas') engine.newDocument();
+    else if (commandId === 'toggle-panel') gui.toggleControls();
     else if (commandId === 'toggle-keyboard') gui.toggleKeyboard();
     else if (commandId === 'toggle-status') gui.toggleStatus();
     else if (commandId === 'length-unit-pt') engine.setLengthUnit('pt');
