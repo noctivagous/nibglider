@@ -8,7 +8,7 @@ import {
   snapPageToGrid,
 } from '../src/engine/document/DrawingPage.ts';
 import { defaultGridSpacingPt, pointsPerUnit } from '../src/engine/document/MeasurementUnits.ts';
-import { computeRulerTicks, pageFrameTracks } from '../src/engine/document/pageRuler.ts';
+import { computeRulerTicks, labeledMajors, pageFrameTracks, rulerSource } from '../src/engine/document/pageRuler.ts';
 
 function store(seed = {}) {
   const mem = new Map(Object.entries(seed));
@@ -103,6 +103,46 @@ test('page-frame tracks hug the page screen rect', () => {
   );
   assert.equal(moved.top.left, -100);
   assert.equal(moved.corner.left, -122);
+});
+
+test('ruler source falls back to the board without a page', () => {
+  const board = { x: -100, y: -50, width: 200, height: 100 };
+  const withPage = rulerSource({ x: 0, y: 0, width: 10, height: 10 }, 'inch', board, 'pt');
+  assert.deepEqual(withPage, { rect: { x: 0, y: 0, width: 10, height: 10 }, unit: 'inch' });
+  const withoutPage = rulerSource(null, 'inch', board, 'pt');
+  assert.deepEqual(withoutPage, { rect: board, unit: 'pt' });
+});
+
+test('labeled majors stride with zoom', () => {
+  // Dense majors all label; sparse ones thin out.
+  assert.deepEqual(labeledMajors(72, 18, 16, 1), [0, 18, 36, 54, 72]);
+  assert.deepEqual(labeledMajors(144, 18, 64, 1), [0, 72, 144]);
+});
+
+test('ruler guides default off, toggle, and persist', () => {
+  const shared = store();
+  const first = openEngine(shared);
+  try {
+    assert.equal(first.engine.rulerGuides, false);
+    first.engine.setRulerGuides(true);
+    assert.equal(first.engine.rulerGuides, true);
+  } finally { first.cleanup(); }
+  const second = openEngine(shared);
+  try {
+    assert.equal(second.engine.rulerGuides, true);
+  } finally { second.cleanup(); }
+});
+
+test('document settings window defines ruler placement and guides', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { parseWindowXML } = await import('../src/engine/../ui/windowXML.ts');
+  const xml = readFileSync(new URL('../src/ui/windows/document-settings.xml', import.meta.url), 'utf8');
+  const parsed = parseWindowXML(xml);
+  assert.ok('spec' in parsed);
+  const rulers = parsed.spec.sections.find((s) => s.id === 'rulers');
+  assert.ok(rulers);
+  const keys = rulers.controls.map((c) => c.key).sort();
+  assert.deepEqual(keys, ['rulerGuides', 'rulerPlacement']);
 });
 
 test('engine drawingPage is null until dimensions are set', () => {

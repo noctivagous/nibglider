@@ -5208,6 +5208,27 @@ kbd,
   white-space: nowrap;
 }
 
+/* Optional ruler guide lines: labeled majors projected to the canvas
+   edges. Display-only; pointer events fall through with the rest. */
+.pruler-guide-v,
+.pruler-guide-h {
+  position: absolute;
+  background: var(--dp-border-soft);
+  pointer-events: none;
+}
+
+.pruler-guide-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.pruler-guide-h {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
 .pruler-track-h .pruler-label {
   bottom: 12px;
   left: 2px;

@@ -848,6 +848,16 @@ export class NibGliderEngine {
     this.rulerPlacement = v;
     this.updateTextContent(); this.notify();
   }
+
+  /** Ruler guide lines from labeled majors to the canvas edges. Off by
+   * default; a Document Settings option. */
+  rulerGuides = false;
+
+  setRulerGuides(v: boolean): void {
+    if (v === this.rulerGuides) return;
+    this.rulerGuides = v;
+    this.updateTextContent(); this.notify();
+  }
   setPageDisplayUnit(unit: LengthUnit): void { this.documentManager.setDisplayUnit(unit); }
   subscribeDocumentChanges(listener: (change: DocumentChange) => void): () => void {
     return this.documentManager.subscribe(listener);

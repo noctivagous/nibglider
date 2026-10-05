@@ -22,6 +22,40 @@ export function tickLabel(offsetPt: number, unit: LengthUnit): string {
 
 const MINOR_DIVISIONS = 4;
 
+/** What the rulers measure: the page when set, else the board. Units
+ * follow the rect (page unit, else the display length unit). */
+export interface RulerSource { rect: FrameRect; unit: LengthUnit }
+
+export function rulerSource(
+  page: FrameRect | null,
+  pageUnit: LengthUnit,
+  board: FrameRect,
+  displayUnit: LengthUnit,
+): RulerSource {
+  return page ? { rect: page, unit: pageUnit } : { rect: board, unit: displayUnit };
+}
+
+/** Offsets of labeled majors, thinned so labels keep minLabelPx apart.
+ * Guide lines reuse this set so lines and labels always agree. */
+export function labeledMajors(
+  sizePt: number,
+  spacingPt: number,
+  minLabelPx: number,
+  pxPerPt: number,
+): number[] {
+  if (!Number.isFinite(sizePt) || !(sizePt > 0)) return [];
+  if (!Number.isFinite(spacingPt) || !(spacingPt > 0)) return [];
+  if (!Number.isFinite(pxPerPt) || !(pxPerPt > 0)) return [];
+  const stride = Math.max(1, Math.ceil(minLabelPx / Math.max(spacingPt * pxPerPt, 1e-9)));
+  const out: number[] = [];
+  const epsilon = spacingPt / 1e6;
+  const majorCount = Math.floor((sizePt + epsilon) / spacingPt);
+  for (let k = 0; k <= majorCount; k += 1) {
+    if (k % stride === 0) out.push(Math.min(k * spacingPt, sizePt));
+  }
+  return out;
+}
+
 export interface FrameView { centerX: number; centerY: number; viewWidth: number; viewHeight: number }
 export interface FrameRect { x: number; y: number; width: number; height: number }
 export interface FrameSize { width: number; height: number }

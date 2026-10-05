@@ -183,6 +183,7 @@ const ENTRIES: SettingEntry[] = [
   en('grid.type', ['square', 'diamond'], (e) => e.gridType, (e, v) => e.setGridType(v as never)),
   num('grid.spacing', (e) => e.gridSpacing, (e, v) => e.setGridSpacing(v)),
   en('ruler.placement', ['viewer', 'page'], (e) => e.rulerPlacement, (e, v) => e.setRulerPlacement(v as never)),
+  bool('ruler.guides', (e) => e.rulerGuides, (e, v) => e.setRulerGuides(v)),
   bool('snap.grid', (e) => e.isGridSnappingEnabled, (e, v) => e.setGridSnappingEnabled(v)),
   bool('snap.path', (e) => e.isPathSnappingEnabled, (e, v) => e.setPathSnappingEnabled(v)),
   bool('snap.point', (e) => e.isPointSnappingEnabled, (e, v) => e.setPointSnappingEnabled(v)),

@@ -3,6 +3,7 @@
 // Same renderer contract as SettingsWindow; today it owns ruler
 // placement, later page appearance and other document chrome.
 // Mounted by App when the window registry names it.
+import { useSyncExternalStore } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
 import type { GUIManager } from '../ui/GUIManager';
 import { parseWindowXML, type WindowControl } from '../ui/windowXML';
@@ -19,6 +20,10 @@ const BINDINGS: Record<string, SettingBinding> = {
     set: (engine, value) => {
       if (value === 'viewer' || value === 'page') engine.setRulerPlacement(value);
     },
+  },
+  rulerGuides: {
+    get: (engine) => engine.rulerGuides,
+    set: (engine, value) => engine.setRulerGuides(value === true || value === 'true'),
   },
 };
 
@@ -52,6 +57,30 @@ function SwitchControl({
   );
 }
 
+function ToggleControl({
+  control, engine,
+}: {
+  control: Extract<WindowControl, { kind: 'toggle' }>;
+  engine: NibGliderEngine;
+}) {
+  const binding = BINDINGS[control.key];
+  const pressed = binding ? binding.get(engine) === true : false;
+  return (
+    <div className="settings-row">
+      <button
+        type="button"
+        className={pressed ? 'settings-toggle active' : 'settings-toggle'}
+        aria-pressed={pressed}
+        disabled={!binding}
+        onClick={() => binding?.set(engine, !pressed)}
+      >
+        {control.label}
+      </button>
+      {!binding && <span className="settings-unknown">Unknown setting: {control.key}</span>}
+    </div>
+  );
+}
+
 export default function DocumentSettingsWindow({
   engine, gui, windowId,
 }: {
@@ -59,6 +88,8 @@ export default function DocumentSettingsWindow({
   gui: GUIManager;
   windowId: string;
 }) {
+  // Rerender when a control commits (engine notifies on every setter).
+  useSyncExternalStore(engine.subscribe, engine.getVersion);
   if (windowId !== 'document-settings') return null;
   const parsed = parseWindowXML(documentSettingsXML);
   return (
@@ -85,7 +116,7 @@ export default function DocumentSettingsWindow({
               {section.controls.map((control) => (
                 control.kind === 'switch'
                   ? <SwitchControl key={control.key} control={control} engine={engine} />
-                  : <span key={control.key} className="settings-unknown">Unsupported control: {control.key}</span>
+                  : <ToggleControl key={control.key} control={control} engine={engine} />
               ))}
             </div>
           ))
