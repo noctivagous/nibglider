@@ -8,7 +8,7 @@ import { HistoryManager } from '../src/engine/history/HistoryManager.ts';
 import { TransformManager } from '../src/engine/history/TransformManager.ts';
 import { buildKeymapRows, buildStatusSchema } from '../src/ui/StatusPresenter.ts';
 import { resolveKeyVariants } from '../src/engine/input/KeyboardLayoutResolver.ts';
-import { isPrimaryTransformKey, keyboardPlatform } from '../src/engine/input/keymap.ts';
+import { isAltTransformKey, isPrimaryTransformKey, keyboardPlatform } from '../src/engine/input/keymap.ts';
 
 // Command+T on macOS/iOS, Ctrl+T on PC: the test host reports whichever
 // platform it runs on, so drive the matching chord.
@@ -112,6 +112,15 @@ test('S and V yield to transform live keys while the mode is on', () => {
   const selected = keyState({ selectedCount: 1 });
   assert.equal(resolveKeyVariants('KeyT', primary, selected)[0].commandId, 'transform-mode');
   assert.equal(resolveKeyVariants('KeyT', NO_MODS, selected).length, 0);
+  // Alt/Option+T is the browser-safe alias on every platform.
+  const alt = { ...NO_MODS, alt: true };
+  assert.equal(resolveKeyVariants('KeyT', alt, selected)[0].commandId, 'transform-mode');
+  const t = (mods) => ({ code: 'KeyT', shiftKey: false, altKey: false, ...mods });
+  assert.equal(isAltTransformKey({ ...t({ altKey: true }), key: 't', ctrlKey: false, metaKey: false }), true);
+  // Option+T yields '†' on macOS; the code still matches.
+  assert.equal(isAltTransformKey({ ...t({ altKey: true }), key: '†', ctrlKey: false, metaKey: false }), true);
+  assert.equal(isAltTransformKey({ ...t({ altKey: true }), key: 't', ctrlKey: true, metaKey: false }), false);
+  assert.equal(isAltTransformKey({ ...t({ altKey: false }), key: 't', ctrlKey: false, metaKey: false }), false);
 });
 
 test('primary transform chord is command on mac and control on pc', () => {
@@ -201,6 +210,17 @@ test('live shear commits with undo and esc cancels the next gesture', () => {
     assert.equal(engine.history.canUndo(), false);
     assert.equal(engine.history.redoLabel(), 'Shear horizontal');
     void committed;
+  } finally { cleanup(); }
+});
+
+test('alt+T toggles transform mode on and off', () => {
+  const { engine, rect, key, cleanup } = engineSetup();
+  try {
+    engine.addItemToSelection(rect());
+    engine.handleKeyDown(key('KeyT', 't', { altKey: true }));
+    assert.equal(engine.isTransformMode, true);
+    engine.handleKeyDown(key('KeyT', 't', { altKey: true }));
+    assert.equal(engine.isTransformMode, false);
   } finally { cleanup(); }
 });
 

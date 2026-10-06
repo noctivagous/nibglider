@@ -91,12 +91,21 @@ const meta = (event: KeyboardEvent): boolean =>
   event.metaKey || event.ctrlKey;
 
 /** Transform-controls toggle chord: Command+T on macOS/iOS, Ctrl+T on
- * PC. Shift and Alt are never part of the chord. */
+ * PC. Shift and Alt are never part of the chord. This is the desired
+ * binding (it reaches us in Electron/webview shells); browsers reserve it
+ * in normal tabs, so isAltTransformKey is the working alias there. */
 export function isPrimaryTransformKey(event: KeyboardEvent): boolean {
   const mac = keyboardPlatform() === 'mac';
   const primary = mac ? (event.metaKey && !event.ctrlKey) : (event.ctrlKey && !event.metaKey);
   if (!primary || event.shiftKey || event.altKey) return false;
   return event.code === 'KeyT' || (event.key ?? '').toLowerCase() === 't';
+}
+
+/** Browser-safe toggle alias: Alt+T on PC, Option+T on Mac. Code-based
+ * because Option+T produces the key '†' (not 't') on macOS. */
+export function isAltTransformKey(event: KeyboardEvent): boolean {
+  if (event.ctrlKey || event.metaKey || !event.altKey || event.shiftKey) return false;
+  return event.code === 'KeyT';
 }
 
 const always = (): boolean => true;
@@ -294,7 +303,7 @@ export const KEY_COMMANDS: KeyCommand[] = [
     keycap: 'T',
     group: 'neutral',
     help: 'Toggle transform controls',
-    match: (e) => isPrimaryTransformKey(e),
+    match: (e) => isPrimaryTransformKey(e) || isAltTransformKey(e),
     available: (s) => !drawing(s) && (s.selectedCount > 0 || !!s.isTransformMode),
     exclusive: true,
   },

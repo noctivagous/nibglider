@@ -1,4 +1,7 @@
 
+[ ] Make sure that everything in the UI doesn't have selectable text so that
+Select All doesn't select text in the UI.  
+
 [ ] What other technical fonts or style resources would assist in making the app?
 
 
