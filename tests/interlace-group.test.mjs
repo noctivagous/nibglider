@@ -62,18 +62,22 @@ const groupDrawable = (source) => ({
 test('interlace groups round-trip; plain groups are unaffected', () => {
   const plain = groupDrawable({ childIds: ['a', 'b'] });
   assert.deepEqual(deserializeDrawable(serializeDrawable(plain)), plain);
-  const live = groupDrawable({ childIds: ['a', 'b'], interlace: { phase: 0, padding: 2, firstId: 'a' } });
+  const live = groupDrawable({ childIds: ['a', 'b'], interlace: { phase: 0, padding: 2, firstId: 'a', overrides: {} } });
   assert.deepEqual(deserializeDrawable(serializeDrawable(live)), live);
 });
 
 test('interlace group validation rejects bad params and non-member roles', () => {
-  const good = groupDrawable({ childIds: ['a', 'b'], interlace: { phase: 0, padding: 2, firstId: 'a' } });
+  const good = groupDrawable({ childIds: ['a', 'b'], interlace: { phase: 0, padding: 2, firstId: 'a', overrides: {} } });
   const cases = [
     (d) => { d.source.interlace.phase = 2; },
     (d) => { d.source.interlace.padding = -1; },
     (d) => { d.source.interlace.firstId = 'c'; },
-    (d) => { d.source.interlace = { phase: 0, padding: 2 }; },
+    (d) => { d.source.interlace = { phase: 0, padding: 2, firstId: 'a' }; },
     (d) => { d.source.interlace.extra = true; },
+    (d) => { d.source.interlace.overrides = { 'a>b#0': 'c' }; },
+    (d) => { d.source.interlace.overrides = { 'a>c#0': 'a' }; },
+    (d) => { d.source.interlace.overrides = { 'nope': 'a' }; },
+    (d) => { d.source.interlace.overrides = []; },
   ];
   for (const mutate of cases) {
     const model = deserializeDrawable(serializeDrawable(good));
@@ -100,6 +104,32 @@ test('resolver phase flip swaps every target side', () => {
   const flipped = resolveInterlaceGroup(members(), { phase: 1, padding: 2, firstId: 'a' });
   assert.deepEqual(flipped.gaps.map((gap) => gap.targetId), ['a', 'b']);
   assert.deepEqual(flipped.gaps.map((gap) => Math.round(gap.center.x)), [-25, 25]);
+});
+
+test('resolver honors per-crossing overrides over the alternation', () => {
+  const [a, b] = members();
+  const key0 = `${a.id}>${b.id}#0`;
+  // Baseline alternation from a targets b, then a. Naming b over at the
+  // first crossing targets a there instead; the rest keep alternating.
+  const picked = resolveInterlaceGroup([a, b],
+    { phase: 0, padding: 2, firstId: 'a', overrides: { [key0]: 'b' } });
+  assert.deepEqual(picked.gaps.map((gap) => gap.targetId), ['a', 'a']);
+  assert.deepEqual(picked.gaps.map((gap) => Math.round(gap.center.x)), [-25, 25]);
+  // Unknown keys, non-member values, and out-of-range indices fall back.
+  const lax = resolveInterlaceGroup([a, b], { phase: 0, padding: 2, firstId: 'a',
+    overrides: { nope: 'a', [key0]: 'nobody', [`${a.id}>${b.id}#7`]: 'b' } });
+  assert.deepEqual(lax.gaps.map((gap) => gap.targetId), ['b', 'a']);
+  // Overrides compose with a flipped phase: the pick holds (a over at 0
+  // targets b), the rest flip (phase 1 puts a over at 1, targeting b).
+  const phased = resolveInterlaceGroup([a, b],
+    { phase: 1, padding: 2, firstId: 'a', overrides: { [key0]: 'a' } });
+  assert.deepEqual(phased.gaps.map((gap) => gap.targetId), ['b', 'b']);
+});
+
+test('interlace group overrides round-trip in the model', () => {
+  const live = groupDrawable({ childIds: ['a', 'b'],
+    interlace: { phase: 0, padding: 2, firstId: 'a', overrides: { 'a>b#0': 'b' } } });
+  assert.deepEqual(deserializeDrawable(serializeDrawable(live)), live);
 });
 
 test('resolver honors custom padding and rejects bad input', () => {
@@ -201,6 +231,42 @@ test('param retune flips the weave in place with undo', () => {
   } finally { cleanup(); }
 });
 
+test('group crossing flip picks one crossing with undo', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { crossings } = weavePair(s);
+    const [c0, c1] = crossings;
+    const [strokeA, strokeB] = layer.children;
+    e.addItemToSelection(strokeA);
+    e.addItemToSelection(strokeB);
+    e.interlaceGroupSelection();
+    const weave = () => e.selectedInterlaceWeave();
+    assert.equal(weave().kind, 'group');
+    assert.equal(weave().members, 2);
+    assert.deepEqual(weave().crossings.map((c) => c.number), [1, 2]);
+    // Baseline alternation: member 1 over at crossing 1, member 2 at 2.
+    assert.deepEqual(weave().crossings.map((c) => c.over), [0, 1]);
+    assert.ok(weave().crossings[0].key.endsWith('#0'));
+    // Flip only the first crossing: the canvas follows the pick.
+    e.flipInterlaceCrossing(weave().crossings[0].key);
+    assert.equal(e.undoLabel(), 'Interlace Params');
+    assert.deepEqual(weave().crossings.map((c) => c.over), [1, 1]);
+    assert.equal(isHorizontal(overAt(layer.children[0], s, c0.x, c0.y)), false);
+    assert.equal(isHorizontal(overAt(layer.children[0], s, c1.x, c1.y)), false);
+    // Undo and redo move just that pick back and forth.
+    e.undo();
+    assert.deepEqual(weave().crossings.map((c) => c.over), [0, 1]);
+    e.redo();
+    assert.deepEqual(weave().crossings.map((c) => c.over), [1, 1]);
+    // Unknown keys no-op with a note instead of touching the weave.
+    e.flipInterlaceCrossing('nobody>nobody#9');
+    assert.equal(e.lastCombineNote, 'Crossing not found — the weave may have changed.');
+    assert.deepEqual(weave().crossings.map((c) => c.over), [1, 1]);
+    e.clearOutSelection();
+    assert.equal(e.selectedInterlaceWeave(), null);
+  } finally { cleanup(); }
+});
+
 test('wider padding widens the gaps without regrouping', () => {
   const { s, e, layer, cleanup } = engine();
   try {
@@ -279,7 +345,7 @@ test('interlace in-canvas XML declares the control contract', () => {
   assert.equal(parsed.spec.id, 'interlace');
   assert.deepEqual(
     parsed.spec.controls.map((control) => [control.kind, control.key ?? control.label]),
-    [['toggle', 'alternate'], ['field', 'padding'], ['export', 'Ungroup']],
+    [['toggle', 'alternate'], ['field', 'padding'], ['crossings', 'crossings'], ['export', 'Ungroup']],
   );
 });
 

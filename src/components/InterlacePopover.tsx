@@ -58,14 +58,15 @@ function NumberControl({
   );
 }
 
-// In-canvas GUI for the selected interlace group: mounted while exactly one
-// group is selected, withdrawn on deselect. Controls are driven by
-// src/ui/inCanvas/interlace.xml; phase and padding retune the weave live,
-// Ungroup releases the members like Layers > Ungroup.
+// In-canvas GUI for the selected weave: mounted while exactly one interlace
+// group or one baked weave is selected, withdrawn on deselect. Controls are
+// driven by src/ui/inCanvas/interlace.xml; phase and padding retune a live
+// group, Ungroup releases the members like Layers > Ungroup, and the
+// crossing list flips one crossing's over side in either variant.
 export default function InterlacePopover({ engine }: { engine: NibGliderEngine }) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
-  const group = engine.selectedInterlaceGroup();
-  if (!group) return null;
+  const weave = engine.selectedInterlaceWeave();
+  if (!weave) return null;
   const spec = interlaceSpec();
   if ('error' in spec) {
     return (
@@ -74,34 +75,54 @@ export default function InterlacePopover({ engine }: { engine: NibGliderEngine }
       </div>
     );
   }
+  const isGroup = weave.kind === 'group';
   const renderControl = (control: InCanvasControl): React.ReactNode => {
     switch (control.kind) {
       case 'toggle':
-        if (control.key !== 'alternate') return null;
+        if (!isGroup || control.key !== 'alternate') return null;
         return (
           <label className="ef-row" key={control.key}>
             <span className="ef-label">{control.label}</span>
             <input
               type="checkbox"
               className="ef-toggle"
-              checked={group.phase === 1}
-              onChange={() => engine.setInterlaceParams({ phase: group.phase === 1 ? 0 : 1 })}
+              checked={weave.phase === 1}
+              onChange={() => engine.setInterlaceParams({ phase: weave.phase === 1 ? 0 : 1 })}
             />
           </label>
         );
       case 'field':
-        if (control.key !== 'padding') return null;
+        if (!isGroup || control.key !== 'padding' || weave.padding === undefined) return null;
         return (
           <NumberControl
             key={control.key}
             label={control.label}
-            value={group.padding}
+            value={weave.padding}
             min={control.min}
             step={control.step}
             onCommit={(v) => engine.setInterlaceParams({ padding: v })}
           />
         );
+      case 'crossings':
+        if (control.key !== 'crossings' || weave.crossings.length === 0) return null;
+        return (
+          <div className="ef-row" key={control.key}>
+            <span className="ef-label">{control.label}</span>
+            {weave.crossings.map((cross) => (
+              <button
+                key={cross.key}
+                type="button"
+                className="ef-export"
+                title={`Flip crossing ${cross.number} (now Member ${cross.over + 1} over)`}
+                onClick={() => engine.flipInterlaceCrossing(cross.key)}
+              >
+                {cross.number}: Member {cross.over + 1} over
+              </button>
+            ))}
+          </div>
+        );
       case 'export':
+        if (!isGroup) return null;
         return (
           <button
             key="ungroup"
@@ -121,13 +142,13 @@ export default function InterlacePopover({ engine }: { engine: NibGliderEngine }
       <div className="ef-head">
         <span className="ef-title">{spec.title}</span>
         <span className="ef-meta">
-          {group.members} member{group.members === 1 ? '' : 's'} · phase {group.phase === 0 ? 'A' : 'B'}
+          {weave.members} member{weave.members === 1 ? '' : 's'} · {isGroup ? `phase ${weave.phase === 0 ? 'A' : 'B'}` : 'baked'}
         </span>
         <button
           type="button"
           className="ef-close"
-          title="Deselect group"
-          aria-label="Deselect group"
+          title="Deselect weave"
+          aria-label="Deselect weave"
           onClick={() => engine.clearOutSelection()}
         >
           ×

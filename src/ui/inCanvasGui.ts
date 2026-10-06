@@ -11,6 +11,7 @@
 //     <select (key, label)> <option (value, label)> ... </select>
 //     <toggle (key, label) />
 //     <exportButton (label) />
+//     <crossings (key, label) />
 //     <popoverButton (label)> ...controls... </popoverButton>
 // Field types: text | number. Number fields accept min/max/step.
 // Labels fall back to the key when omitted.
@@ -44,6 +45,12 @@ export interface InCanvasExportControl {
   label: string;
 }
 
+export interface InCanvasCrossingsControl {
+  kind: 'crossings';
+  key: string;
+  label: string;
+}
+
 export interface InCanvasPopoverControl {
   kind: 'popover';
   label: string;
@@ -55,6 +62,7 @@ export type InCanvasControl =
   | InCanvasSelectControl
   | InCanvasToggleControl
   | InCanvasExportControl
+  | InCanvasCrossingsControl
   | InCanvasPopoverControl;
 
 export interface InCanvasSpec {
@@ -120,6 +128,12 @@ function parseControl(node: XmlNode, inPopover: boolean): InCanvasControl | stri
     case 'exportButton': {
       if (node.children.length > 0) return '<exportButton> takes no children';
       return { kind: 'export', label: node.attrs['label'] ?? 'Export' };
+    }
+    case 'crossings': {
+      const key = node.attrs['key'];
+      if (!key) return '<crossings> is missing its key attribute';
+      if (node.children.length > 0) return `<crossings key="${key}"> takes no children`;
+      return { kind: 'crossings', key, label: node.attrs['label'] ?? key };
     }
     case 'popoverButton': {
       if (inPopover) return '<popoverButton> cannot nest inside another <popoverButton>';

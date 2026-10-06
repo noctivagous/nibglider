@@ -342,6 +342,45 @@ test('a third stroke weaves into a baked pair without flipping it', () => {
   } finally { cleanup(); }
 });
 
+test('baked crossing flip picks one crossing and survives re-runs', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { a, b, crossings } = weavePair(s);
+    const [c0, c1] = crossings;
+    e.addItemToSelection(a);
+    e.addItemToSelection(b);
+    e.interlaceSelection();
+    const weave = () => e.selectedInterlaceWeave();
+    assert.equal(weave().kind, 'baked');
+    assert.equal(weave().members, 2);
+    assert.deepEqual(weave().crossings.map((c) => c.over), [0, 1]);
+    // Flip only the first crossing: its over side changes lineage.
+    const overBefore = layer.children.find((child) => child.contains(new s.Point(c0.x, c0.y)));
+    assert.equal(spineHeight(overBefore), 0);
+    e.flipInterlaceCrossing(weave().crossings[0].key);
+    assert.equal(e.undoLabel(), 'Interlace Crossing');
+    assert.equal(layer.children.length, 2);
+    assert.deepEqual(weave().crossings.map((c) => c.over), [1, 1]);
+    const overAfter = layer.children.find((child) => child.contains(new s.Point(c0.x, c0.y)));
+    assert.ok(spineHeight(overAfter) > 20);
+    // The other crossing is untouched: still the zigzag over.
+    const overOther = layer.children.find((child) => child.contains(new s.Point(c1.x, c1.y)));
+    assert.ok(spineHeight(overOther) > 20);
+    // A phase-flipping re-run keeps the explicit pick and flips the rest.
+    e.interlaceSelection();
+    assert.deepEqual(weave().crossings.map((c) => c.over), [1, 0]);
+    // Undo walks back through re-run, flip, and bake.
+    e.undo();
+    assert.deepEqual(weave().crossings.map((c) => c.over), [1, 1]);
+    e.undo();
+    assert.deepEqual(weave().crossings.map((c) => c.over), [0, 1]);
+    e.undo();
+    assert.equal(layer.children.length, 2);
+    assert.ok(layer.children.includes(a));
+    assert.ok(layer.children.includes(b));
+  } finally { cleanup(); }
+});
+
 test('outlined-stroke records interlace on their spines with record widths', () => {
   const s = new paper.PaperScope();
   s.setup(new s.Size(800, 600));

@@ -2827,8 +2827,49 @@ export class NibGliderEngine {
     this.interlace.convertSelectionToGroup();
   }
 
-  setInterlaceParams(patch: { phase?: 0 | 1; padding?: number }): void {
+  setInterlaceParams(patch: { phase?: 0 | 1; padding?: number; overrides?: Record<string, string> }): void {
     this.interlace.setInterlaceParams(patch);
+  }
+
+  /** Flip one crossing's over side in the selected weave (group or baked). */
+  flipInterlaceCrossing(key: string): void {
+    const selected = this.selectedItems;
+    if (selected.length === 1 && selected[0]?.data?.interlaceGroup) {
+      this.interlace.flipGroupCrossing(key);
+    } else {
+      this.interlace.flipBakedCrossing(key);
+    }
+  }
+
+  // Popover state for the selected weave: live group params plus the
+  // crossing list with winners as member indices, or the same shape for a
+  // selected baked weave (no padding control there). Null when neither is
+  // selected.
+  selectedInterlaceWeave(): {
+    kind: 'group' | 'baked';
+    phase: 0 | 1;
+    padding?: number;
+    members: number;
+    crossings: Array<{ key: string; number: number; over: number; x: number; y: number }>;
+  } | null {
+    const groupDesc = this.interlace.describeGroupSelection();
+    if (groupDesc) {
+      const params = this.selectedInterlaceGroup();
+      if (!params) return null;
+      return { kind: 'group', phase: params.phase, padding: params.padding,
+        members: groupDesc.members.length,
+        crossings: groupDesc.crossings.map((cross) => ({
+          key: cross.key, number: cross.number,
+          over: Math.max(0, groupDesc.members.indexOf(cross.overId)), x: cross.x, y: cross.y,
+        })) };
+    }
+    const bakedDesc = this.interlace.describeBakedSelection();
+    if (!bakedDesc) return null;
+    return { kind: 'baked', phase: bakedDesc.phase, members: bakedDesc.members.length,
+      crossings: bakedDesc.crossings.map((cross) => ({
+        key: cross.key, number: cross.number,
+        over: Math.max(0, bakedDesc.members.indexOf(cross.overId)), x: cross.x, y: cross.y,
+      })) };
   }
 
   // The selected interlace group's live params for in-canvas controls,

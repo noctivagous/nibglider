@@ -11,7 +11,7 @@ import type { NGBezierPath, NGCompositePath, NGBSplinePath, NGOutlinedStrokePath
 import type { BezierSegment, ResolvedVectorGeometry, Vec2 } from '../model/geometryResolution';
 import { resolveOutlinedStroke } from '../geometry/outlinedStroke';
 import { resolvePath } from '../geometry/pathResolver';
-import { canvasStrokeOf, gapPadding, gapRectFor, ribbonPolygon } from '../geometry/interlaceWeave';
+import { canvasStrokeOf, crossingKey, gapPadding, gapRectFor, ribbonPolygon } from '../geometry/interlaceWeave';
 import type { WeaveMember } from '../geometry/interlaceWeave';
 import { hasBooleanArea } from '../geometry/booleanResolver';
 
@@ -65,6 +65,8 @@ interface InterlaceMemo {
   sourceId: string | null;
   /** This band's authoring source snapshot; null for record-less strokes. */
   source: WeavableSource | null;
+  /** Per-crossing over picks for the whole weave, shared by every band. */
+  overrides: Record<string, string>;
   width: number;
   cap: string;
   join: string;
@@ -109,10 +111,43 @@ interface WeaveEntry {
   fresh: boolean;
 }
 
+/** Group-side weave params: phase/padding/first plus per-crossing picks. */
+export interface InterlaceGroupParams {
+  phase: 0 | 1;
+  padding: number;
+  firstId: string;
+  overrides: Record<string, string>;
+}
+
 type InterlacePlan =
-  | { kind: 'fresh'; entries: [WeaveEntry, WeaveEntry]; firstId: string; phase: 0 | 1; weave: string; label: string }
-  | { kind: 'rerun'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; label: string }
-  | { kind: 'add'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; label: string };
+  | { kind: 'fresh'; entries: [WeaveEntry, WeaveEntry]; firstId: string; phase: 0 | 1; weave: string; overrides: Record<string, string>; label: string }
+  | { kind: 'rerun'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; overrides: Record<string, string>; label: string }
+  | { kind: 'add'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; overrides: Record<string, string>; label: string };
+
+/** One enumerated crossing: stable key, display number, winner, center. */
+export interface InterlaceCrossingInfo {
+  key: string;
+  number: number;
+  overId: string;
+  underId: string;
+  x: number;
+  y: number;
+}
+
+export interface InterlaceWeaveDescription {
+  members: string[];
+  phase: 0 | 1;
+  crossings: InterlaceCrossingInfo[];
+}
+
+/** Group params equality including the override map. */
+function paramsEqual(a: InterlaceGroupParams, b: InterlaceGroupParams): boolean {
+  if (a.phase !== b.phase || a.padding !== b.padding || a.firstId !== b.firstId) return false;
+  const keysA = Object.keys(a.overrides);
+  const keysB = Object.keys(b.overrides);
+  return keysA.length === keysB.length
+    && keysA.every((key) => b.overrides[key] === a.overrides[key]);
+}
 
 const NO_CROSSINGS_NOTE = 'No crossings — paths do not intersect.';
 const SELECT_NOTE = 'Select two stroked paths first.';
@@ -221,7 +256,7 @@ export class InterlaceManager {
         return null;
       }
       return { kind: 'fresh', entries, firstId: entries[0].id, phase: 0,
-        weave: crypto.randomUUID(), label: 'Interlace' };
+        weave: crypto.randomUUID(), overrides: {}, label: 'Interlace' };
     }
     const keys = new Set(bandItems.map((item) =>
       this.weaveKey(this.memoOf(item)!, item?.data?.drawableId)));
@@ -238,7 +273,7 @@ export class InterlaceManager {
     if (!freshItems.length) {
       const phase = ((1 - this.weavePhase(weaveBands)) as 0 | 1);
       return { kind: 'rerun', entries: ordered, firstId: first.id, phase,
-        weave: this.weaveId(weaveBands), label: 'Interlace' };
+        weave: this.weaveId(weaveBands), overrides: this.weaveOverrides(weaveBands), label: 'Interlace' };
     }
     const fresh: WeaveEntry[] = [];
     try {
@@ -262,7 +297,236 @@ export class InterlaceManager {
       if (!touches) return null;
     }
     return { kind: 'add', entries: all, firstId: first.id,
-      phase: this.weavePhase(weaveBands), weave: this.weaveId(weaveBands), label: 'Interlace Add' };
+      phase: this.weavePhase(weaveBands), weave: this.weaveId(weaveBands),
+      overrides: this.weaveOverrides(weaveBands), label: 'Interlace Add' };
+  }
+
+  // One planned cut per crossing, in display order: pairs run in weave
+  // order, crossings sort along the earlier member, and alternation offsets
+  // by pair ordinal so appended members never shift existing pairs' gaps.
+  // An override naming one pair member takes that crossing over.
+  private planCrossings(
+    entries: WeaveEntry[], spines: Item[], phase: 0 | 1, overrides: Record<string, string>,
+  ): Array<{ key: string; pair: [number, number]; over: number; under: number; center: Vec2 }> {
+    const planned: Array<{ key: string; pair: [number, number]; over: number; under: number; center: Vec2 }> = [];
+    let pairOrdinal = 0;
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        const crossings = this.crossings(spines[i], spines[j]);
+        for (let k = 0; k < crossings.length; k++) {
+          const key = crossingKey(entries[i].id, entries[j].id, k);
+          const explicit = overrides[key];
+          const overFirst = explicit === entries[i].id ? true
+            : explicit === entries[j].id ? false
+            : (k + phase + pairOrdinal) % 2 === 0;
+          planned.push({ key, pair: [i, j], over: overFirst ? i : j, under: overFirst ? j : i,
+            center: crossings[k] });
+        }
+        pairOrdinal++;
+      }
+    }
+    return planned;
+  }
+
+  // Enumerate one weave's crossings for picking UI: members in order plus
+  // every crossing with its stable key, number, winner, and center. The
+  // entries must already lead with the first-role member (as classify and
+  // the group path order them), so keys match the bake exactly.
+  private describeEntries(
+    entries: WeaveEntry[], phase: 0 | 1, overrides: Record<string, string>, temps: Item[],
+  ): InterlaceWeaveDescription | null {
+    const spines = this.entrySpines(entries, temps);
+    if (!spines) return null;
+    const planned = this.planCrossings(entries, spines, phase, overrides);
+    return {
+      members: entries.map((entry) => entry.id),
+      phase,
+      crossings: planned.map((cross, n) => ({
+        key: cross.key,
+        number: n + 1,
+        overId: entries[cross.over].id,
+        underId: entries[cross.under].id,
+        x: Math.round(cross.center.x * 10) / 10,
+        y: Math.round(cross.center.y * 10) / 10,
+      })),
+    };
+  }
+
+  // Baked bands of one weave in the current selection (no fresh strokes):
+  // auto-include unselected bands so partial selections still describe the
+  // whole result. Null unless the selection holds such bands.
+  private selectedBakedBands(): Item[] | null {
+    const selected = [...this.host.selectedItems()].filter((item) => item && this.memoOf(item));
+    if (!selected.length) return null;
+    if ([...this.host.selectedItems()].some((item) => item && !this.memoOf(item))) return null;
+    const keys = new Set(selected.map((item) =>
+      this.weaveKey(this.memoOf(item)!, item?.data?.drawableId)));
+    if (keys.size !== 1) return null;
+    return this.weaveBands([...keys][0], selected);
+  }
+
+  /** Crossing list for the selected baked weave, or null. */
+  describeBakedSelection(): InterlaceWeaveDescription | null {
+    const bands = this.selectedBakedBands();
+    if (!bands) return null;
+    const entries = this.weaveEntries(bands);
+    if (!entries.length) return null;
+    const first = entries.find((entry) => entry.id === this.weaveFirst(bands)) ?? entries[0];
+    const ordered = [first, ...entries.filter((entry) => entry !== first)];
+    const temps: Item[] = [];
+    try {
+      return this.describeEntries(ordered, this.weavePhase(bands), this.weaveOverrides(bands), temps);
+    } finally {
+      for (const temp of temps) this.removeDetached(temp);
+    }
+  }
+
+  /** Flip one baked crossing's over side and re-bake with the phase kept.
+   * The pick is stored as an explicit override, so later phase flips and
+   * added shapes keep it. One scene commit covers the re-bake. */
+  flipBakedCrossing(key: string): void {
+    const host = this.host;
+    const bands = this.selectedBakedBands();
+    if (!bands || typeof key !== 'string' || !key) {
+      host.setCombineNote('Select a baked interlace result first.');
+      host.updateTextContent();
+      host.notify();
+      return;
+    }
+    const snap = host.capture();
+    const temps: Item[] = [];
+    try {
+      const entries = this.weaveEntries(bands);
+      if (!entries.length) {
+        host.setCombineNote('Select a baked interlace result first.');
+        host.updateTextContent();
+        host.notify();
+        return;
+      }
+      const first = entries.find((entry) => entry.id === this.weaveFirst(bands)) ?? entries[0];
+      const ordered = [first, ...entries.filter((entry) => entry !== first)];
+      const phase = this.weavePhase(bands);
+      const weave = this.weaveId(bands);
+      const overrides = this.weaveOverrides(bands);
+      const spines = this.entrySpines(ordered, temps);
+      if (!spines) {
+        host.setCombineNote(EMPTY_NOTE);
+        host.updateTextContent();
+        host.notify();
+        return;
+      }
+      const planned = this.planCrossings(ordered, spines, phase, overrides);
+      const target = planned.find((cross) => cross.key === key);
+      if (!target) {
+        host.setCombineNote('Crossing not found — the weave may have changed.');
+        host.updateTextContent();
+        host.notify();
+        return;
+      }
+      const next = { ...overrides };
+      next[key] = ordered[target.pair[0] === target.over ? target.pair[1] : target.pair[0]].id;
+      if (!this.bakeWeave({ kind: 'rerun', entries: ordered, firstId: first.id,
+        phase, weave, overrides: next, label: 'Interlace Crossing' }, temps, snap)) {
+        host.setCombineNote(EMPTY_NOTE);
+        host.updateTextContent();
+        host.notify();
+        return;
+      }
+      host.setCombineNote('');
+    } finally {
+      for (const temp of temps) this.removeDetached(temp);
+    }
+    host.updateTextContent();
+    host.notify();
+  }
+
+  /** Crossing list for the selected interlace group, or null. */
+  describeGroupSelection(): InterlaceWeaveDescription | null {
+    const selected = this.host.selectedItems();
+    const group = selected.length === 1 ? selected[0] : null;
+    const stored = group?.data?.interlaceGroup;
+    if (!group || !stored || !Array.isArray(stored.members) || stored.members.length !== 2) return null;
+    const params = this.groupParams(stored.params, stored.members);
+    if (!params) return null;
+    const members = stored.members as WeaveMember[];
+    const first = members.find((member) => member.id === params.firstId) ?? members[0];
+    const ordered = [first, ...members.filter((member) => member !== first)];
+    const entries: WeaveEntry[] = ordered.map((member) => ({
+      id: member.id, source: member.source, width: member.stroke.width,
+      style: { ...member.stroke }, item: null, fresh: false,
+    }));
+    const temps: Item[] = [];
+    try {
+      return this.describeEntries(entries, params.phase, params.overrides, temps);
+    } finally {
+      for (const temp of temps) this.removeDetached(temp);
+    }
+  }
+
+  // Normalized group params: phase/padding/first validated, overrides
+  // default to {} on older groups and drop non-member values.
+  private groupParams(raw: unknown, members: WeaveMember[]): InterlaceGroupParams | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const params = raw as Record<string, unknown>;
+    if (params.phase !== 0 && params.phase !== 1) return null;
+    if (!(typeof params.padding === 'number') || !(params.padding >= 0)
+      || !Number.isFinite(params.padding)) return null;
+    if (typeof params.firstId !== 'string') return null;
+    const ids = new Set(members.map((member) => member.id));
+    const overrides: Record<string, string> = {};
+    const rawOverrides = params.overrides;
+    if (rawOverrides !== undefined) {
+      if (!rawOverrides || typeof rawOverrides !== 'object' || Array.isArray(rawOverrides)) return null;
+      for (const [key, over] of Object.entries(rawOverrides as Record<string, unknown>)) {
+        if (typeof over !== 'string' || !ids.has(over)) return null;
+        overrides[key] = over;
+      }
+    }
+    return { phase: params.phase, padding: params.padding, firstId: params.firstId, overrides };
+  }
+
+  /** Flip one group crossing's over side in place with undo. */
+  flipGroupCrossing(key: string): void {
+    const host = this.host;
+    const described = this.describeGroupSelection();
+    if (!described || typeof key !== 'string' || !key) {
+      host.setCombineNote('Select an interlace group first.');
+      host.updateTextContent();
+      host.notify();
+      return;
+    }
+    const target = described.crossings.find((cross) => cross.key === key);
+    if (!target) {
+      host.setCombineNote('Crossing not found — the weave may have changed.');
+      host.updateTextContent();
+      host.notify();
+      return;
+    }
+    const selected = host.selectedItems();
+    const stored = selected[0]?.data?.interlaceGroup;
+    const params = this.groupParams(stored.params, stored.members);
+    if (!params) {
+      host.setCombineNote('Select an interlace group first.');
+      host.updateTextContent();
+      host.notify();
+      return;
+    }
+    const next = { ...params.overrides };
+    next[key] = target.overId === described.members[0] ? described.members[1] : described.members[0];
+    this.setInterlaceParams({ overrides: next });
+  }
+
+  // Stored per-crossing picks of one weave (first band's memo carries them;
+  // every band of a bake shares the same map). Never null.
+  private weaveOverrides(bands: Item[]): Record<string, string> {
+    const memo = this.weaveMemos(bands)[0];
+    const raw = memo?.overrides;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const clean: Record<string, string> = {};
+    for (const [key, over] of Object.entries(raw)) {
+      if (typeof key === 'string' && typeof over === 'string') clean[key] = over;
+    }
+    return clean;
   }
 
   // Every band of one weave in the layer, selected or not, so partial
@@ -376,40 +640,31 @@ export class InterlaceManager {
     const firstIdx = Math.max(0, entries.findIndex((entry) => entry.id === plan.firstId));
     // Pairs in weave order; crossings sort along the earlier member so the
     // two-member case matches the legacy first-role ordering exactly.
-    let pairOrdinal = 0;
+    const planned = this.planCrossings(entries, spines, plan.phase, plan.overrides);
     let cutAny = false;
-    for (let i = 0; i < entries.length; i++) {
-      for (let j = i + 1; j < entries.length; j++) {
-        const crossings = this.crossings(spines[i], spines[j]);
-        for (let k = 0; k < crossings.length; k++) {
-          const overFirst = (k + plan.phase + pairOrdinal) % 2 === 0;
-          const over = overFirst ? i : j;
-          const under = overFirst ? j : i;
-          const cutter = this.gapCutter(crossings[k], spines[over], spines[under],
-            entries[over].width, entries[under].width);
-          if (!cutter) continue;
+    for (const cross of planned) {
+      const cutter = this.gapCutter(cross.center, spines[cross.over], spines[cross.under],
+        entries[cross.over].width, entries[cross.under].width);
+      if (!cutter) continue;
+      try {
+        const target = bands[cross.under];
+        if (!target || typeof target.subtract !== 'function') continue;
+        const cut = target.subtract(cutter, { insert: false });
+        if (cut && hasBooleanArea(cut.area)) {
+          if (target !== entries[cross.under].item) this.removeDetached(target);
+          bands[cross.under] = cut;
           try {
-            const target = bands[under];
-            if (!target || typeof target.subtract !== 'function') continue;
-            const cut = target.subtract(cutter, { insert: false });
-            if (cut && hasBooleanArea(cut.area)) {
-              if (target !== entries[under].item) this.removeDetached(target);
-              bands[under] = cut;
-              try {
-                cut.fillColor = this.fillOf(entries[under].item);
-                cut.strokeColor = null;
-              } catch { /* Style is cosmetic. */ }
-              cutAny = true;
-            } else {
-              this.removeDetached(cut);
-            }
-          } catch {
-            // Keep the band whole at this crossing and try the rest.
-          } finally {
-            this.removeDetached(cutter);
-          }
+            cut.fillColor = this.fillOf(entries[cross.under].item);
+            cut.strokeColor = null;
+          } catch { /* Style is cosmetic. */ }
+          cutAny = true;
+        } else {
+          this.removeDetached(cut);
         }
-        pairOrdinal++;
+      } catch {
+        // Keep the band whole at this crossing and try the rest.
+      } finally {
+        this.removeDetached(cutter);
       }
     }
     if (!cutAny) return false;
@@ -458,6 +713,7 @@ export class InterlaceManager {
         if (!band || band.parent == null) continue;
         const memo: InterlaceMemo = { peer: placed[(i + 1) % placed.length]?.data?.drawableId ?? '',
           phase: plan.phase, first: firstEntry.id, weave: plan.weave, order: [...order], sources,
+          overrides: { ...plan.overrides },
           sourceId: entry.id, source: structuredClone(entry.source),
           width: entry.width, cap: entry.style.cap, join: entry.style.join,
           miterLimit: entry.style.miterLimit, dashLength: entry.style.dashLength,
@@ -534,7 +790,7 @@ export class InterlaceManager {
     }
     const typed = members as WeaveMember[];
     const padding = gapPadding(Math.min(typed[0].stroke.width, typed[1].stroke.width));
-    this.buildGroup(items, typed, { phase: 0, padding, firstId: typed[0].id }, 'Interlace Group');
+    this.buildGroup(items, typed, { phase: 0, padding, firstId: typed[0].id, overrides: {} }, 'Interlace Group');
   }
 
   // Upgrade a baked pair (linked interlace memos) to a live group, keeping
@@ -585,7 +841,7 @@ export class InterlaceManager {
       ? [typed[1], typed[0]] : [typed[0], typed[1]];
     const padding = gapPadding(Math.min(ordered[0].stroke.width, ordered[1].stroke.width));
     this.buildGroup(items, ordered as [WeaveMember, WeaveMember],
-      { phase: existing.phase, padding, firstId: ordered[0].id }, 'Interlace Group');
+      { phase: existing.phase, padding, firstId: ordered[0].id, overrides: {} }, 'Interlace Group');
   }
 
   // Snapshot one selected item to a weave member without touching the scene.
@@ -618,7 +874,7 @@ export class InterlaceManager {
   // Retune a selected group in place: derived displays are swapped inside
   // the same group item (members never move), so selection is untouched and
   // one custom undo entry covers the tweak.
-  setInterlaceParams(patch: { phase?: 0 | 1; padding?: number }): void {
+  setInterlaceParams(patch: { phase?: 0 | 1; padding?: number; overrides?: Record<string, string> }): void {
     const host = this.host;
     const selected = host.selectedItems();
     const group = selected.length === 1 ? selected[0] : null;
@@ -629,10 +885,12 @@ export class InterlaceManager {
       host.notify();
       return;
     }
-    if (patch.phase !== undefined && patch.phase !== 0 && patch.phase !== 1) return;
-    if (patch.padding !== undefined && (!(patch.padding >= 0) || !Number.isFinite(patch.padding))) return;
-    const params = { ...stored.params, ...patch };
-    if (params.phase === stored.params.phase && params.padding === stored.params.padding) return;
+    const normalized = this.groupParams({ ...stored.params, ...(patch as Record<string, unknown>) },
+      stored.members);
+    if (!normalized) return;
+    const before = this.groupParams(stored.params, stored.members);
+    if (before && paramsEqual(before, normalized)) return;
+    const params = normalized;
     const members = [...(group.children ?? [])].filter((child: Item) => !child?.data?.interlaceDisplay);
     if (members.length !== 2) {
       host.setCombineNote('Interlace group members are missing.');
@@ -649,9 +907,9 @@ export class InterlaceManager {
         host.notify();
         return;
       }
-      const oldParams = { ...stored.params };
+      const oldParams = this.groupParams(stored.params, stored.members) ?? params;
       const oldDisplays = [...(group.children ?? [])].filter((child: Item) => child?.data?.interlaceDisplay);
-      const apply = (displays: Item[], active: { phase: 0 | 1; padding: number; firstId: string }): void => {
+      const apply = (displays: Item[], active: InterlaceGroupParams): void => {
         try {
           for (const child of [...(group.children ?? [])]) {
             if (child?.data?.interlaceDisplay) child.remove();
@@ -677,7 +935,7 @@ export class InterlaceManager {
   // Fresh display bands for stored members under params. All temps; the
   // caller places them. Returns null when the weave cannot resolve.
   private weaveDisplays(
-    members: WeaveMember[], params: { phase: 0 | 1; padding: number; firstId: string },
+    members: WeaveMember[], params: InterlaceGroupParams,
     items: Item[], temps: Item[],
   ): Item[] | null {
     const host = this.host;
@@ -721,8 +979,13 @@ export class InterlaceManager {
       temps.push(band);
       bands.push(band);
     }
+    const overrides = params.overrides ?? {};
     for (let i = 0; i < crossings.length; i++) {
-      const overFirst = (i + params.phase) % 2 === 0;
+      const key = crossingKey(ordered[0].id, ordered[1].id, i);
+      const explicit = overrides[key];
+      const overFirst = explicit === ordered[0].id ? true
+        : explicit === ordered[1].id ? false
+        : (i + params.phase) % 2 === 0;
       const over = overFirst ? ordered[0] : ordered[1];
       const under = overFirst ? ordered[1] : ordered[0];
       const spineOver = over === members[0] ? spines[0] : spines[1];
@@ -774,7 +1037,7 @@ export class InterlaceManager {
   // show the weave. Returns true when the group was placed and committed.
   private buildGroup(
     items: Item[], members: WeaveMember[],
-    params: { phase: 0 | 1; padding: number; firstId: string },
+    params: InterlaceGroupParams,
     label: string,
     atIndex?: number,
   ): boolean {
@@ -1155,6 +1418,9 @@ export class InterlaceManager {
     if (!Array.isArray(memo.sources)) memo.sources = [];
     if (typeof memo.sourceId !== 'string') memo.sourceId = null;
     if (memo.source !== null && typeof memo.source !== 'object') memo.source = null;
+    if (!memo.overrides || typeof memo.overrides !== 'object' || Array.isArray(memo.overrides)) {
+      memo.overrides = {};
+    }
     return memo;
   }
 

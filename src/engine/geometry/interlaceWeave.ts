@@ -20,6 +20,13 @@ export function gapPadding(underWidth: number): number {
 
 export interface InterlaceGapRect { angle: number; length: number; width: number }
 
+/** Stable crossing key: pair members in weave order plus the crossing index
+ * along the earlier member's spine. Appended members never shift existing
+ * pairs' keys, so per-crossing picks survive adds. */
+export function crossingKey(earlierId: string, laterId: string, index: number): string {
+  return `${earlierId}>${laterId}#${index}`;
+}
+
 /** Peer-aligned gap footprint: long sides run parallel to the over-band, so
  * the under-band's cut ends parallel the peer. Length spans the under-band
  * even at shallow crossing angles; width clears the over-band plus daylight.
@@ -207,10 +214,11 @@ function checkMember(member: WeaveMember): void {
 
 /** Resolve two member records to band loops plus ordered gap footprints.
  * Exactly two members in v1; crossings sort along the first-role spine and
- * alternate over/under from phase. Throws WeaveError when unresolvable. */
+ * alternate over/under from phase, unless an override names the over member
+ * for that crossing key. Throws WeaveError when unresolvable. */
 export function resolveInterlaceGroup(
   members: [WeaveMember, WeaveMember],
-  params: { phase: 0 | 1; padding: number; firstId: string },
+  params: { phase: 0 | 1; padding: number; firstId: string; overrides?: Record<string, string> },
   tolerance = 0.1,
 ): InterlaceWeave {
   if (!Array.isArray(members) || members.length !== 2) throw new WeaveError('Interlace groups hold exactly two members');
@@ -224,8 +232,13 @@ export function resolveInterlaceGroup(
   const polySecond = centerline(second, tolerance);
   const crossings = weaveCrossings(polyFirst, polySecond);
   if (!crossings.length) throw new WeaveError('Members do not cross');
+  const overrides = params.overrides ?? {};
   const gaps: WeaveGap[] = crossings.map((crossing, i) => {
-    const overFirst = (i + params.phase) % 2 === 0;
+    const key = crossingKey(first.id, second.id, i);
+    const explicit = overrides[key];
+    const overFirst = explicit === first.id ? true
+      : explicit === second.id ? false
+      : (i + params.phase) % 2 === 0;
     const over = overFirst ? first : second;
     const under = overFirst ? second : first;
     const overTan = overFirst ? crossing.tanA : crossing.tanB;
