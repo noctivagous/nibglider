@@ -50,4 +50,20 @@ export interface NGSmoothedPolyline {
   points: Vec2[];
   tension: number;
 }
-export type NGPath = NGBezierPath | NGCompositePath | NGBSplinePath | NGSmoothedPolyline;
+// Live outlined stroke: the spine stays editable authoring truth while
+// resolution renders the expanded stroke band in its place. Cap/join/
+// miter/dash/position mirror the ordinary stroke style features. Boolean
+// results bake the expansion and lower to plain Bézier.
+export interface NGOutlinedStrokePath {
+  id: string;
+  mode: 'outlinedStroke';
+  spine: NGBezierPath | NGCompositePath | NGBSplinePath;
+  width: number;
+  cap: 'butt' | 'round' | 'square';
+  join: 'miter' | 'round' | 'bevel';
+  miterLimit: number;
+  dashLength: number;
+  gapLength: number;
+  position: 'center' | 'inside' | 'outside';
+}
+export type NGPath = NGBezierPath | NGCompositePath | NGBSplinePath | NGSmoothedPolyline | NGOutlinedStrokePath;

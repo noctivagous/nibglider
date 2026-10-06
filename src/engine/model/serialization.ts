@@ -43,9 +43,24 @@ function points(value: unknown, path: string): unknown[] {
   return items;
 }
 export function validatePath(value: unknown, path = 'path'): asserts value is NGPath {
-  const p = record(value, path, ['id', 'mode', 'contours', 'fillRule', 'closed', 'points', 'degree', 'tension']);
+  const p = record(value, path, ['id', 'mode', 'contours', 'fillRule', 'closed', 'points', 'degree', 'tension',
+    'spine', 'width', 'cap', 'join', 'miterLimit', 'dashLength', 'gapLength', 'position']);
   string(p.id, `${path}.id`);
-  choice(p.mode, `${path}.mode`, ['bezier', 'bSpline', 'ngComposite', 'smoothedPolyline']);
+  choice(p.mode, `${path}.mode`, ['bezier', 'bSpline', 'ngComposite', 'smoothedPolyline', 'outlinedStroke']);
+  if (p.mode === 'outlinedStroke') {
+    record(p, path, ['id', 'mode', 'spine', 'width', 'cap', 'join', 'miterLimit', 'dashLength', 'gapLength', 'position']);
+    validatePath(p.spine, `${path}.spine`);
+    const spine = p.spine as unknown as Record<string, unknown>;
+    requireValue(spine.mode !== 'outlinedStroke' && spine.mode !== 'smoothedPolyline', `${path}.spine.mode`, 'non-nested resolvable spine');
+    positive(p.width, `${path}.width`);
+    choice(p.cap, `${path}.cap`, ['butt', 'round', 'square']);
+    choice(p.join, `${path}.join`, ['miter', 'round', 'bevel']);
+    number(p.miterLimit, `${path}.miterLimit`, 1);
+    number(p.dashLength, `${path}.dashLength`, 0);
+    number(p.gapLength, `${path}.gapLength`, 0);
+    choice(p.position, `${path}.position`, ['center', 'inside', 'outside']);
+    return;
+  }
   if (p.mode === 'bezier') {
     record(p, path, ['id', 'mode', 'contours', 'fillRule']);
     choice(p.fillRule, `${path}.fillRule`, ['nonzero', 'evenodd']);

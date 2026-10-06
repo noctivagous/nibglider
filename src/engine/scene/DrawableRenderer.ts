@@ -41,8 +41,17 @@ export class DrawableRenderer {
     // Resolve and construct completely before replacing the previous item.
     const item = this.build(geometry);
     try {
-      item.strokeColor = style.strokeColor === null ? null : new this.scope.Color(style.strokeColor);
-      item.fillColor = style.fillColor === null ? null : new this.scope.Color(style.fillColor);
+      // An outlined stroke renders its stroke as filled geometry: the band
+      // takes the stroke color as fill and paints no canvas stroke of its own.
+      const outlined = drawable.kind === 'path' && drawable.source.mode === 'outlinedStroke';
+      if (outlined) {
+        const paint = style.strokeColor ?? style.fillColor ?? '#000000';
+        item.fillColor = new this.scope.Color(paint);
+        item.strokeColor = null;
+      } else {
+        item.strokeColor = style.strokeColor === null ? null : new this.scope.Color(style.strokeColor);
+        item.fillColor = style.fillColor === null ? null : new this.scope.Color(style.fillColor);
+      }
       item.strokeWidth = style.strokeWidth;
       item.visible = drawable.visible;
       item.locked = drawable.locked;

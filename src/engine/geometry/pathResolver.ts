@@ -8,6 +8,7 @@ import type { BezierSegment, ResolvedVectorGeometry, Vec2 } from '../model/geome
 import { validateDrawable, validatePath } from '../model/serialization';
 import type { NGSupershape } from '../model/NGShape';
 import { resolveCompositePath } from './compositeExpansion';
+import { resolveOutlinedStroke } from './outlinedStroke';
 import { sampleBSpline, type SamplingOptions } from './splineInterpolation';
 
 // Same sample count as ShapeFactory's live Paper supershape. The closed
@@ -44,6 +45,7 @@ export class GeometryResolutionError extends Error {
 
 export function resolvePath(path: NGPath, options: SamplingOptions = {}): ResolvedVectorGeometry {
   validatePath(path);
+  if (path.mode === 'outlinedStroke') return resolveOutlinedStroke(path, options);
   if (path.mode === 'ngComposite') return resolveCompositePath(path, options);
   if (path.mode === 'bSpline') return { kind: 'path', closed: path.closed,
     segments: sampleBSpline(path.points, path.closed, options).map((point) => ({
