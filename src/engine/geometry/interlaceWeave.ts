@@ -35,6 +35,32 @@ export function gapRectFor(overAngle: number, overWidth: number, underWidth: num
   };
 }
 
+/** Closed offset polygon hugging one centerline: side edges run parallel
+ * to the samples (curved when the peer curves), ends are butt caps
+ * perpendicular to the end tangents. Unlike a rotated rectangle, no corner
+ * extends past the window ends, so gap cutters never gouge the under-band
+ * outside the intended footprint. */
+export function ribbonPolygon(centerline: Vec2[], halfWidth: number): Vec2[] {
+  if (!Array.isArray(centerline) || centerline.length < 2) throw new WeaveError('Ribbon needs at least two samples');
+  if (!(halfWidth > 0) || !Number.isFinite(halfWidth)) throw new WeaveError('Ribbon needs a positive half width');
+  const pts: Vec2[] = [];
+  for (const p of centerline) {
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) throw new WeaveError('Ribbon samples must be finite');
+    distinct(pts, { ...p });
+  }
+  if (pts.length < 2) throw new WeaveError('Ribbon samples are degenerate');
+  const normals: Vec2[] = pts.map((p, i) => {
+    const a = pts[Math.max(0, i - 1)]; const b = pts[Math.min(pts.length - 1, i + 1)];
+    const dx = b.x - a.x; const dy = b.y - a.y;
+    const l = Math.hypot(dx, dy);
+    if (!(l > 1e-9)) return { x: 0, y: 1 };
+    return { x: -dy / l, y: dx / l };
+  });
+  const left = pts.map((p, i) => ({ x: p.x + normals[i].x * halfWidth, y: p.y + normals[i].y * halfWidth }));
+  const right = pts.map((p, i) => ({ x: p.x - normals[i].x * halfWidth, y: p.y - normals[i].y * halfWidth }));
+  return [...left, ...right.reverse()];
+}
+
 export type WeaveSpine = NGBezierPath | NGCompositePath | NGBSplinePath | NGOutlinedStrokePath;
 
 export interface WeaveStroke {

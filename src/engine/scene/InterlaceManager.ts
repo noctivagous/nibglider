@@ -7,11 +7,11 @@
 // Public: canInterlaceSelection, interlaceSelection.
 
 import type { CombinatoricsHost } from './CombinatoricsManager';
-import type { NGBezierPath, NGCompositePath, NGBSplinePath, NGPath } from '../model/NGPath';
+import type { NGBezierPath, NGCompositePath, NGBSplinePath, NGOutlinedStrokePath, NGPath } from '../model/NGPath';
 import type { BezierSegment, ResolvedVectorGeometry, Vec2 } from '../model/geometryResolution';
 import { resolveOutlinedStroke } from '../geometry/outlinedStroke';
 import { resolvePath } from '../geometry/pathResolver';
-import { canvasStrokeOf, gapPadding, gapRectFor } from '../geometry/interlaceWeave';
+import { canvasStrokeOf, gapPadding, gapRectFor, ribbonPolygon } from '../geometry/interlaceWeave';
 import type { WeaveMember } from '../geometry/interlaceWeave';
 import { hasBooleanArea } from '../geometry/booleanResolver';
 
@@ -24,15 +24,47 @@ export interface InterlaceHost extends CombinatoricsHost {
   pathSourceOf(item: Item): NGPath | null;
   /** Current geometry of any path item as a Bézier record. */
   bezierSourceOf(item: Item): NGBezierPath;
+  /** Authoring record still held for a past source id (live lookup). */
+  sourceById?(id: string): NGPath | null;
   /** Push one custom undo entry (label, undo, redo). */
   recordCustom(label: string, undo: () => void, redo: () => void): void;
+}
+
+/** Spine modes the weaver can re-expand. Smoothed polylines stay out. */
+type WeavableSource = NGBezierPath | NGCompositePath | NGBSplinePath | NGOutlinedStrokePath;
+
+/** One weave member's authoring truth, kept on every baked band so later
+ * runs and added shapes re-expand from parametric sources instead of a
+ * flattened Bézier snapshot. */
+export interface InterlaceSourceEntry {
+  id: string;
+  source: WeavableSource;
+  width: number;
+  cap: string;
+  join: string;
+  miterLimit: number;
+  dashLength: number;
+  gapLength: number;
+  position: string;
 }
 
 interface InterlaceMemo {
   peer: string;
   phase: 0 | 1;
-  /** Drawable id of the first-role band, keeping roles stable on re-run. */
+  /** First-role source id, keeping roles stable on re-run. Legacy pair
+   * memos hold the first-role band's drawable id instead. */
   first: string;
+  /** Shared bake id; '' on legacy pair memos. */
+  weave: string;
+  /** Member source ids in weave order. */
+  order: string[];
+  /** Full member records; empty on legacy pair memos. */
+  sources: InterlaceSourceEntry[];
+  /** This band's authoring source id, or null when it baked from a plain
+   * canvas stroke with no record. */
+  sourceId: string | null;
+  /** This band's authoring source snapshot; null for record-less strokes. */
+  source: WeavableSource | null;
   width: number;
   cap: string;
   join: string;
@@ -60,10 +92,32 @@ interface Ribbon {
   band: Item;
   width: number;
   style: StrokeStyle;
+  /** Stable authoring source id, or null for record-less canvas strokes. */
+  sourceId: string | null;
+  /** Full authoring record when one exists, else null (Bézier fallback). */
+  authoring: WeavableSource | null;
 }
+
+/** One weave member resolved for a bake: authoring truth plus its scene
+ * item when one is present (fresh strokes and surviving bands). */
+interface WeaveEntry {
+  id: string;
+  source: WeavableSource;
+  width: number;
+  style: StrokeStyle;
+  item: Item | null;
+  fresh: boolean;
+}
+
+type InterlacePlan =
+  | { kind: 'fresh'; entries: [WeaveEntry, WeaveEntry]; firstId: string; phase: 0 | 1; weave: string; label: string }
+  | { kind: 'rerun'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; label: string }
+  | { kind: 'add'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; label: string };
 
 const NO_CROSSINGS_NOTE = 'No crossings — paths do not intersect.';
 const SELECT_NOTE = 'Select two stroked paths first.';
+const ADD_SELECT_NOTE = 'Select a baked interlace result plus new crossing strokes.';
+const MIXED_NOTE = 'Select bands from one baked weave at a time.';
 const EMPTY_NOTE = 'No result — the gaps consumed a band.';
 
 export class InterlaceManager {
@@ -71,14 +125,10 @@ export class InterlaceManager {
   constructor(host: InterlaceHost) { this.host = host; }
 
   canInterlaceSelection(): boolean {
-    const items = this.host.selectedItems();
-    if (items.length !== 2 || !items[0] || !items[1] || items[0] === items[1]) return false;
+    const items = [...this.host.selectedItems()];
     const temps: Item[] = [];
     try {
-      const a = this.ribbonFor(items[0], temps);
-      const b = this.ribbonFor(items[1], temps);
-      if (!a || !b) return false;
-      return this.crossings(a.spine, b.spine).length > 0;
+      return this.classify(items, temps) !== null;
     } catch {
       return false;
     } finally {
@@ -88,141 +138,373 @@ export class InterlaceManager {
 
   interlaceSelection(): void {
     const host = this.host;
-    const items = host.selectedItems();
-    if (items.length !== 2 || !items[0] || !items[1] || items[0] === items[1]) {
-      host.setCombineNote(SELECT_NOTE);
-      host.updateTextContent();
-      host.notify();
-      return;
-    }
+    // Copy refs first: selectedItems() is the live selection array, and
+    // placement edits below would shift it mid-loop.
+    const items = [...host.selectedItems()];
     const snap = host.capture();
     const temps: Item[] = [];
     try {
-      const a = this.ribbonFor(items[0], temps);
-      const b = this.ribbonFor(items[1], temps);
-      if (!a || !b) {
-        host.setCombineNote(SELECT_NOTE);
+      const plan = this.classify(items, temps);
+      if (!plan) {
+        host.setCombineNote(this.failNote(items));
         host.updateTextContent();
         host.notify();
         return;
       }
-      // Fresh runs follow selection order: the first-selected path goes over
-      // at the first crossing along its spine. Re-running on the same pair
-      // keeps those roles (selection order may have flipped under it) and
-      // flips the weave phase instead.
-      const memoA = this.memoOf(items[0]);
-      const memoB = this.memoOf(items[1]);
-      const id0 = items[0].data?.drawableId;
-      const id1 = items[1].data?.drawableId;
-      const existing = (memoA && memoA.peer === id1) ? memoA
-        : (memoB && memoB.peer === id0) ? memoB : null;
-      let phase: 0 | 1 = 0;
-      let first = items[0];
-      if (existing) {
-        phase = ((1 - existing.phase) as 0 | 1);
-        if (existing.first !== id0 && existing.first === id1) {
-          first = items[1];
-        }
-      }
-      const orderA = first === items[0] ? a : b;
-      const orderB = first === items[0] ? b : a;
-      // Crossings sort along the first-role spine, so alternation starts there.
-      const crossings = this.crossings(orderA.spine, orderB.spine);
-      if (!crossings.length) {
-        host.setCombineNote(NO_CROSSINGS_NOTE);
-        host.updateTextContent();
-        host.notify();
-        return;
-      }
-
-      // Snapshot spines before placement changes; removed items stay readable
-      // but detached temps are cheaper to convert while everything is live.
-      const spineContourA = host.bezierSourceOf(orderA.spine).contours[0];
-      const spineContourB = host.bezierSourceOf(orderB.spine).contours[0];
-      let bandA = orderA.band; let bandB = orderB.band;
-      let cutAny = false;
-      for (let i = 0; i < crossings.length; i++) {
-        const overA = (i + phase) % 2 === 0;
-        const underWidth = overA ? orderB.width : orderA.width;
-        const overWidth = overA ? orderA.width : orderB.width;
-        const cutter = this.gapCutter(crossings[i], overA ? orderA.spine : orderB.spine,
-          overA ? orderB.spine : orderA.spine, overWidth, underWidth);
-        if (!cutter) continue;
-        try {
-          const target = overA ? bandB : bandA;
-          if (!target || typeof target.subtract !== 'function') continue;
-          const cut = target.subtract(cutter, { insert: false });
-          if (cut && hasBooleanArea(cut.area)) {
-            if (target !== (overA ? items[1] : items[0])) this.removeDetached(target);
-            if (overA) bandB = cut; else bandA = cut;
-            cutAny = true;
-          } else {
-            this.removeDetached(cut);
-          }
-        } catch {
-          // Keep the band whole at this crossing and try the rest.
-        } finally {
-          this.removeDetached(cutter);
-        }
-      }
-      if (!cutAny) {
+      if (!this.bakeWeave(plan, temps, snap)) {
         host.setCombineNote(EMPTY_NOTE);
         host.updateTextContent();
         host.notify();
         return;
       }
-      const layer = host.activeLayer();
-      for (const band of [bandA, bandB]) {
-        if (band !== items[0] && band !== items[1]) {
-          try { layer.addChild(band); } catch { /* Detached; skip. */ }
-        }
-      }
-      // Only replaced originals leave the scene: a band cut at no crossing
-      // stays in place (single-crossing over side) and keeps its record.
-      // Both originals are captured first because selectedItems() is the live
-      // selection array, so the first removal would shift the second away.
-      const pairs = [[bandA, orderA.item], [bandB, orderB.item]] as Array<[Item, Item]>;
-      for (const [band, original] of pairs) {
-        if (band !== original) {
-          host.removeFromSelection(original);
-          try { original.remove(); } catch { /* Already detached. */ }
-        }
-      }
-      const placed = [bandA, bandB].filter((band) => band && band.parent != null);
-      for (const band of placed) host.prependSelection(band);
-      // New bands bake the expansion and lower to Bézier; untouched originals
-      // keep their live spine records.
-      for (const [band] of pairs) {
-        if (band !== pairs[0][1] && band !== pairs[1][1]) host.retain(band);
-      }
-      // Link the pair so a re-run flips the phase instead of repeating it.
-      // Style, widths, and spine snapshots let the next run re-expand both
-      // bands fresh, and the first-role id keeps roles stable across
-      // selection-order changes.
-      const firstId = bandA?.data?.drawableId;
-      const link = (
-        band: Item, peer: Item, ribbon: Ribbon, contour: { closed: boolean; segments: BezierSegment[] },
-      ): void => {
-        try {
-          if (!band || !peer || band.parent == null || peer.parent == null) return;
-          const memo: InterlaceMemo = { peer: peer.data?.drawableId, phase,
-            first: firstId, width: ribbon.width, cap: ribbon.style.cap, join: ribbon.style.join,
-            miterLimit: ribbon.style.miterLimit, dashLength: ribbon.style.dashLength,
-            gapLength: ribbon.style.gapLength, position: ribbon.style.position,
-            spine: structuredClone(contour) };
-          band.data ??= {};
-          band.data.interlace = memo;
-        } catch { /* Metadata is best-effort. */ }
-      };
-      link(bandA, bandB, orderA, spineContourA);
-      link(bandB, bandA, orderB, spineContourB);
-      host.commit('Interlace', snap, placed);
-      host.setCombineNote(placed.length === 2 ? '' : EMPTY_NOTE);
+      host.setCombineNote('');
     } finally {
       for (const temp of temps) this.removeDetached(temp);
     }
     host.updateTextContent();
     host.notify();
+  }
+
+  // Hint matching the selection shape when classify() rejects it: a mixed
+  // weave selection names the add flow, while two weavable fresh strokes
+  // that merely miss each other keep the legacy no-crossings note.
+  private failNote(items: Item[]): string {
+    if (items.some((item) => this.memoOf(item))) {
+      const keys = new Set(items.map((item) => {
+        const memo = this.memoOf(item);
+        return memo ? this.weaveKey(memo, item?.data?.drawableId) : '';
+      }).filter(Boolean));
+      if (keys.size > 1) return MIXED_NOTE;
+      return ADD_SELECT_NOTE;
+    }
+    if (items.length === 2 && items[0] && items[1] && items[0] !== items[1]) {
+      const local: Item[] = [];
+      try {
+        const a = this.ribbonFor(items[0], local);
+        const b = this.ribbonFor(items[1], local);
+        if (a && b) return NO_CROSSINGS_NOTE;
+      } catch { /* Fall through to the selection hint. */ }
+      finally {
+        for (const temp of local) this.removeDetached(temp);
+      }
+    }
+    return SELECT_NOTE;
+  }
+
+  // Shared weave key for one bake: the v2 weave id, or the legacy pair link.
+  private weaveKey(memo: InterlaceMemo, itemId: unknown): string {
+    if (memo.weave) return `weave:${memo.weave}`;
+    const ids = [typeof itemId === 'string' ? itemId : '', memo.peer].sort();
+    return `legacy:${ids[0]}|${ids[1]}`;
+  }
+
+  // Route a selection to one bake: a fresh pair, a re-run of a whole baked
+  // weave (phase flip), or an add of fresh strokes to a baked weave (phase
+  // kept). Unselected bands of the weave auto-join, so selecting any band
+  // plus new strokes reweaves everything. Temps collect temp spines; the
+  // caller owns disposal.
+  private classify(items: Item[], temps: Item[]): InterlacePlan | null {
+    const clean = items.filter((item) => item);
+    if (!clean.length) return null;
+    const bandItems = clean.filter((item) => this.memoOf(item));
+    const freshItems = clean.filter((item) => !this.memoOf(item));
+    if (!bandItems.length) {
+      if (freshItems.length !== 2 || freshItems[0] === freshItems[1]) return null;
+      const a = this.ribbonFor(freshItems[0], temps);
+      const b = this.ribbonFor(freshItems[1], temps);
+      if (!a || !b) return null;
+      if (!this.crossings(a.spine, b.spine).length) return null;
+      let entries: [WeaveEntry, WeaveEntry];
+      try {
+        entries = [this.entryOf(a, true), this.entryOf(b, true)];
+      } catch {
+        return null;
+      }
+      return { kind: 'fresh', entries, firstId: entries[0].id, phase: 0,
+        weave: crypto.randomUUID(), label: 'Interlace' };
+    }
+    const keys = new Set(bandItems.map((item) =>
+      this.weaveKey(this.memoOf(item)!, item?.data?.drawableId)));
+    if (keys.size !== 1) return null;
+    const key = [...keys][0];
+    const weaveBands = this.weaveBands(key, bandItems);
+    if (!weaveBands.length) return null;
+    const entries = this.weaveEntries(weaveBands);
+    if (!entries.length) return null;
+    const first = entries.find((entry) => entry.id === this.weaveFirst(weaveBands)) ?? entries[0];
+    // Reorder entries so the first-role member leads: pair alternation then
+    // matches the legacy pair behavior exactly.
+    const ordered = [first, ...entries.filter((entry) => entry !== first)];
+    if (!freshItems.length) {
+      const phase = ((1 - this.weavePhase(weaveBands)) as 0 | 1);
+      return { kind: 'rerun', entries: ordered, firstId: first.id, phase,
+        weave: this.weaveId(weaveBands), label: 'Interlace' };
+    }
+    const fresh: WeaveEntry[] = [];
+    try {
+      for (const item of freshItems) {
+        const ribbon = this.ribbonFor(item, temps);
+        if (!ribbon) return null;
+        fresh.push(this.entryOf(ribbon, true));
+      }
+    } catch {
+      return null;
+    }
+    const all = [...ordered, ...fresh];
+    // Every added stroke must cross the existing weave, or it would bake
+    // unchanged and silently join the memo list.
+    const spines = this.entrySpines(ordered, temps);
+    if (!spines) return null;
+    for (const entry of fresh) {
+      const spine = this.entrySpine(entry, temps);
+      if (!spine) return null;
+      const touches = spines.some((other) => this.crossings(spine, other).length > 0);
+      if (!touches) return null;
+    }
+    return { kind: 'add', entries: all, firstId: first.id,
+      phase: this.weavePhase(weaveBands), weave: this.weaveId(weaveBands), label: 'Interlace Add' };
+  }
+
+  // Every band of one weave in the layer, selected or not, so partial
+  // selections still reweave the whole result.
+  private weaveBands(key: string, selected: Item[]): Item[] {
+    const seen = new Set<Item>(selected);
+    let layer: Item[] = [];
+    try {
+      layer = this.host.layerChildren() ?? [];
+    } catch {
+      layer = [];
+    }
+    for (const item of layer) {
+      const memo = this.memoOf(item);
+      if (memo && this.weaveKey(memo, item?.data?.drawableId) === key) seen.add(item);
+    }
+    return [...seen];
+  }
+
+  private weaveMemos(bands: Item[]): InterlaceMemo[] {
+    return bands.map((band) => this.memoOf(band)!).filter(Boolean);
+  }
+
+  private weaveId(bands: Item[]): string {
+    const memo = this.weaveMemos(bands)[0];
+    return memo?.weave || crypto.randomUUID();
+  }
+
+  private weavePhase(bands: Item[]): 0 | 1 {
+    const memo = this.weaveMemos(bands)[0];
+    return memo?.phase === 1 ? 1 : 0;
+  }
+
+  private weaveFirst(bands: Item[]): string {
+    const memos = this.weaveMemos(bands);
+    const first = memos[0]?.first;
+    if (typeof first === 'string' && first) return first;
+    return '';
+  }
+
+  // Member records in weave order: stored v2 sources when every band
+  // carries them, else legacy derivation from pair memos. Legacy entry ids
+  // are band drawable ids, so the stored first-role id still resolves.
+  private weaveEntries(bands: Item[]): WeaveEntry[] {
+    const memos = this.weaveMemos(bands);
+    const ref = memos[0];
+    const bySource = new Map<string, Item>();
+    for (let i = 0; i < bands.length; i++) {
+      const memo = memos[i];
+      bySource.set(memo.sourceId ?? bands[i]?.data?.drawableId ?? `band-${i}`, bands[i]);
+    }
+    let order = Array.isArray(ref.order) ? [...ref.order] : [];
+    if (!order.length || !order.every((id) => bySource.has(id))) {
+      const ids = [...bySource.keys()];
+      const first = typeof ref.first === 'string' && bySource.has(ref.first) ? ref.first : ids[0];
+      order = [first, ...ids.filter((id) => id !== first)];
+    }
+    const stored = new Map((Array.isArray(ref.sources) ? ref.sources : []).map((s) => [s.id, s]));
+    const entries: WeaveEntry[] = [];
+    for (const id of order) {
+      const band = bySource.get(id)!;
+      const memo = this.memoOf(band)!;
+      const record = stored.get(id);
+      if (record && this.isWeavableSource(record.source)) {
+        entries.push({ id, source: record.source, width: record.width,
+          style: this.sanitizeStyle(record), item: band, fresh: false });
+        continue;
+      }
+      if (memo.source && this.isWeavableSource(memo.source)) {
+        entries.push({ id, source: memo.source, width: memo.width,
+          style: this.sanitizeStyle(memo), item: band, fresh: false });
+        continue;
+      }
+      // Legacy fallback: the flattened Bézier spine snapshot.
+      entries.push({ id, source: this.bezierOfSpine(memo.spine), width: memo.width,
+        style: this.sanitizeStyle(memo), item: band, fresh: false });
+    }
+    if (entries.some((entry) => !(entry.width > 0))) return [];
+    return entries;
+  }
+
+  private bezierOfSpine(spine: { closed: boolean; segments: BezierSegment[] }): NGBezierPath {
+    return { id: 'memo-spine', mode: 'bezier', fillRule: 'nonzero',
+      contours: [structuredClone(spine)] };
+  }
+
+  private isWeavableSource(source: NGPath | null | undefined): source is WeavableSource {
+    return !!source && (source.mode === 'bezier' || source.mode === 'bSpline'
+      || source.mode === 'ngComposite' || source.mode === 'outlinedStroke');
+  }
+
+  // Bake one plan: expand every member band from authoring truth, cut each
+  // under-side at every crossing, place results, and link memos carrying the
+  // full member records for the next run. Pairs run in weave order and
+  // alternation offsets by pair ordinal, so appended members never shift the
+  // existing pairs' gaps. Returns true when a result was committed.
+  private bakeWeave(plan: InterlacePlan, temps: Item[],
+    snap: { before: Item[]; selected: Item[]; retained: Map<string, any> }): boolean {
+    const host = this.host;
+    const entries = plan.entries;
+    const spines = this.entrySpines(entries, temps);
+    if (!spines) return false;
+    const bands: Item[] = [];
+    for (const entry of entries) {
+      const center = entry.source.mode === 'outlinedStroke' ? entry.source.spine : entry.source;
+      const band = this.expandBand(center, { ...entry.style }, entry.width, this.fillOf(entry.item));
+      if (!band) return false;
+      temps.push(band);
+      bands.push(band);
+    }
+    const firstIdx = Math.max(0, entries.findIndex((entry) => entry.id === plan.firstId));
+    // Pairs in weave order; crossings sort along the earlier member so the
+    // two-member case matches the legacy first-role ordering exactly.
+    let pairOrdinal = 0;
+    let cutAny = false;
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        const crossings = this.crossings(spines[i], spines[j]);
+        for (let k = 0; k < crossings.length; k++) {
+          const overFirst = (k + plan.phase + pairOrdinal) % 2 === 0;
+          const over = overFirst ? i : j;
+          const under = overFirst ? j : i;
+          const cutter = this.gapCutter(crossings[k], spines[over], spines[under],
+            entries[over].width, entries[under].width);
+          if (!cutter) continue;
+          try {
+            const target = bands[under];
+            if (!target || typeof target.subtract !== 'function') continue;
+            const cut = target.subtract(cutter, { insert: false });
+            if (cut && hasBooleanArea(cut.area)) {
+              if (target !== entries[under].item) this.removeDetached(target);
+              bands[under] = cut;
+              try {
+                cut.fillColor = this.fillOf(entries[under].item);
+                cut.strokeColor = null;
+              } catch { /* Style is cosmetic. */ }
+              cutAny = true;
+            } else {
+              this.removeDetached(cut);
+            }
+          } catch {
+            // Keep the band whole at this crossing and try the rest.
+          } finally {
+            this.removeDetached(cutter);
+          }
+        }
+        pairOrdinal++;
+      }
+    }
+    if (!cutAny) return false;
+    const layer = host.activeLayer();
+    const originals = entries.map((entry) => entry.item);
+    for (const band of bands) {
+      if (band && !originals.includes(band)) {
+        try { layer.addChild(band); } catch { /* Detached; skip. */ }
+      }
+    }
+    // Only replaced originals leave the scene: a band cut at no crossing
+    // stays in place and keeps its record.
+    for (let i = 0; i < bands.length; i++) {
+      if (bands[i] !== entries[i].item && entries[i].item) {
+        host.removeFromSelection(entries[i].item);
+        try { entries[i].item!.remove(); } catch { /* Already detached. */ }
+      }
+    }
+    const placed = bands.filter((band) => band && band.parent != null);
+    for (const band of placed) host.prependSelection(band);
+    // New bands bake the expansion and lower to Bézier; untouched originals
+    // keep their live records.
+    for (const band of bands) {
+      if (!originals.includes(band)) host.retain(band);
+    }
+    // Link every band to the weave: full member records plus a Bézier spine
+    // snapshot fallback keep the next run re-expandable, and the first-role
+    // source id keeps roles stable across selection-order changes.
+    const sources: InterlaceSourceEntry[] = entries.map((entry) => ({
+      id: entry.id, source: structuredClone(entry.source), width: entry.width,
+      cap: entry.style.cap, join: entry.style.join, miterLimit: entry.style.miterLimit,
+      dashLength: entry.style.dashLength, gapLength: entry.style.gapLength, position: entry.style.position,
+    }));
+    const order = entries.map((entry) => entry.id);
+    const firstEntry = entries[firstIdx] ?? entries[0];
+    for (let i = 0; i < placed.length; i++) {
+      const band = placed[i];
+      const entry = entries[i];
+      let contour;
+      try {
+        contour = structuredClone(host.bezierSourceOf(spines[i]).contours[0]);
+      } catch {
+        continue;
+      }
+      try {
+        if (!band || band.parent == null) continue;
+        const memo: InterlaceMemo = { peer: placed[(i + 1) % placed.length]?.data?.drawableId ?? '',
+          phase: plan.phase, first: firstEntry.id, weave: plan.weave, order: [...order], sources,
+          sourceId: entry.id, source: structuredClone(entry.source),
+          width: entry.width, cap: entry.style.cap, join: entry.style.join,
+          miterLimit: entry.style.miterLimit, dashLength: entry.style.dashLength,
+          gapLength: entry.style.gapLength, position: entry.style.position,
+          spine: contour };
+        band.data ??= {};
+        band.data.interlace = memo;
+      } catch { /* Metadata is best-effort. */ }
+    }
+    host.commit(plan.label, snap, placed);
+    return true;
+  }
+
+  // Temp uninserted centerlines for entries, in order. Null when any member
+  // cannot resolve; callers own the temps.
+  private entrySpines(entries: WeaveEntry[], temps: Item[]): Item[] | null {
+    const spines: Item[] = [];
+    for (const entry of entries) {
+      const spine = this.entrySpine(entry, temps);
+      if (!spine) return null;
+      spines.push(spine);
+    }
+    return spines;
+  }
+
+  private entrySpine(entry: WeaveEntry, temps: Item[]): Item | null {
+    const scope = this.host.paperScope();
+    const center = entry.source.mode === 'outlinedStroke' ? entry.source.spine : entry.source;
+    let geometry: ResolvedVectorGeometry;
+    try {
+      geometry = resolvePath(center, { tolerance: 0.1 });
+    } catch {
+      return null;
+    }
+    if (geometry.kind !== 'path') return null;
+    const spine = this.buildPath(scope, geometry.closed, geometry.segments);
+    if (!spine) return null;
+    temps.push(spine);
+    return spine;
+  }
+
+  private fillOf(item: Item | null): Item {
+    try {
+      return item?.fillColor ?? item?.strokeColor ?? '#000000';
+    } catch {
+      return '#000000';
+    }
   }
 
   // --- Live interlace groups ---
@@ -280,10 +562,14 @@ export class InterlaceManager {
       const memo = this.memoOf(item);
       if (!memo) return null;
       const styled = this.sanitizeStyle(memo);
+      // Kept authoring sources travel into the group; legacy pair memos
+      // fall back to the flattened spine snapshot.
+      const source: WeavableSource = this.memoAuthoring(memo)
+        ?? { id: 'memo-spine', mode: 'bezier' as const, fillRule: 'nonzero' as const,
+          contours: [structuredClone(memo.spine)] };
       return {
-        id: typeof item.data?.drawableId === 'string' ? item.data.drawableId : crypto.randomUUID(),
-        source: { id: 'memo-spine', mode: 'bezier' as const, fillRule: 'nonzero' as const,
-          contours: [memo.spine] },
+        id: memo.sourceId ?? (typeof item.data?.drawableId === 'string' ? item.data.drawableId : crypto.randomUUID()),
+        source,
         stroke: { width: memo.width, cap: styled.cap, join: styled.join, miterLimit: styled.miterLimit,
           dashLength: styled.dashLength, gapLength: styled.gapLength, position: styled.position },
       } as WeaveMember;
@@ -580,17 +866,50 @@ export class InterlaceManager {
     return true;
   }
 
+  // Fresh entry from a resolved ribbon: the full authoring record travels
+  // with the member so later runs re-expand parametric sources.
+  private entryOf(ribbon: Ribbon, fresh: boolean): WeaveEntry {
+    const style = { ...ribbon.style };
+    const source = ribbon.authoring ?? this.bezierOfSpine(
+      this.host.bezierSourceOf(ribbon.spine).contours[0]);
+    return { id: ribbon.sourceId ?? crypto.randomUUID(), source,
+      width: ribbon.width, style, item: ribbon.item, fresh };
+  }
+
   // Resolve one selected item to its centerline spine and cuttable band.
-  // Previous results carry a spine snapshot; outlined records resolve their
-  // spine; plain open/closed paths with a real stroke expand to a temp band.
+  // Previous results prefer the live authoring record (via the stored source
+  // id), then the stored source snapshot, then the legacy Bézier spine
+  // snapshot — so a re-run cuts fresh gaps per the flipped phase instead of
+  // accumulating them, and parametric spines survive across runs. Outlined
+  // records resolve their spine; plain open/closed paths with a real stroke
+  // expand to a temp band.
   private ribbonFor(item: Item, temps: Item[]): Ribbon | null {
     const host = this.host;
     const scope = host.paperScope();
     if (!item || typeof item.subtract !== 'function') return null;
     const memo = this.memoOf(item);
     if (memo) {
-      // A previous result re-expands from its spine snapshot, so a re-run
-      // cuts fresh gaps per the flipped phase instead of accumulating them.
+      const authoring = this.memoAuthoring(memo);
+      if (authoring) {
+        const center = authoring.mode === 'outlinedStroke' ? authoring.spine : authoring;
+        let geometry: ResolvedVectorGeometry;
+        try {
+          geometry = resolvePath(center, { tolerance: 0.1 });
+        } catch {
+          return null;
+        }
+        if (geometry.kind !== 'path') return null;
+        const spine = this.buildPath(scope, geometry.closed, geometry.segments);
+        if (!spine || !(memo.width > 0)) return null;
+        temps.push(spine);
+        const style = this.sanitizeStyle(memo);
+        const band = this.expandBand(center, style, memo.width, item.fillColor);
+        if (!band) return null;
+        temps.push(band);
+        return { item, spine, band, width: memo.width, style,
+          sourceId: memo.sourceId, authoring };
+      }
+      // Legacy fallback: re-expand from the flattened spine snapshot.
       const spine = this.buildPath(scope, memo.spine.closed, memo.spine.segments);
       if (!spine || !(memo.width > 0)) return null;
       temps.push(spine);
@@ -599,9 +918,11 @@ export class InterlaceManager {
       const band = this.expandBand(spineSource, this.sanitizeStyle(memo), memo.width, item.fillColor);
       if (!band) return null;
       temps.push(band);
-      return { item, spine, band, width: memo.width, style: this.sanitizeStyle(memo) };
+      return { item, spine, band, width: memo.width, style: this.sanitizeStyle(memo),
+        sourceId: memo.sourceId, authoring: null };
     }
     const source = host.pathSourceOf(item);
+    const drawableId = typeof item.data?.drawableId === 'string' ? item.data.drawableId : null;
     if (source?.mode === 'outlinedStroke') {
       let geometry: ResolvedVectorGeometry;
       try {
@@ -615,10 +936,13 @@ export class InterlaceManager {
       temps.push(spine);
       const style: StrokeStyle = { cap: source.cap, join: source.join, miterLimit: source.miterLimit,
         dashLength: source.dashLength, gapLength: source.gapLength, position: source.position };
-      return { item, spine, band: item, width: source.width, style };
+      return { item, spine, band: item, width: source.width, style,
+        sourceId: drawableId, authoring: source };
     }
     // Plain path with a painted stroke: the item is its own centerline and
     // the band is a temp expansion, mirroring its canvas stroke settings.
+    // A held authoring record (bSpline/composite/bezier) travels along so
+    // the bake does not flatten parametric intent.
     if (item instanceof scope.Path) {
       const stroke = canvasStrokeOf(item);
       if (!stroke) return null;
@@ -632,9 +956,23 @@ export class InterlaceManager {
       const band = this.expandBand(spineSource, style, stroke.width, item.strokeColor);
       if (!band) return null;
       temps.push(band);
-      return { item, spine: item, band, width: stroke.width, style };
+      const record = this.isWeavableSource(source) ? source : null;
+      return { item, spine: item, band, width: stroke.width, style,
+        sourceId: record ? drawableId : null, authoring: record };
     }
     return null;
+  }
+
+  // A memo band's authoring truth: the live record when its source id still
+  // resolves, else the stored source snapshot. Null when neither is weavable.
+  private memoAuthoring(memo: InterlaceMemo): WeavableSource | null {
+    if (memo.sourceId) {
+      try {
+        const live = this.host.sourceById?.(memo.sourceId) ?? null;
+        if (this.isWeavableSource(live)) return live;
+      } catch { /* Fall through to the snapshot. */ }
+    }
+    return this.isWeavableSource(memo.source) ? memo.source : null;
   }
 
   // Temp filled band for a Bézier spine record, or null when it cannot
@@ -703,9 +1041,12 @@ export class InterlaceManager {
     return points;
   }
 
-  // Rectangular cutter at a crossing, aligned with the over-band so the
-  // under-band's cut ends parallel the peer. Lengthened for shallow crossing
-  // angles so the under-band severs fully and the over-band hides inside.
+  // Gap cutter at a crossing: a ribbon hugging the over-spine, so the
+  // under-band's cut ends parallel the peer — curved when the peer curves
+  // (circle-on-circle gaps follow the over-ring instead of chopping straight
+  // chords with protruding rectangle corners). Lengthened for shallow
+  // crossing angles so the under-band severs fully and the over-band hides
+  // inside.
   private gapCutter(center: Vec2, overSpine: Item, underSpine: Item, overWidth: number, underWidth: number, padding?: number): Item | null {
     const scope = this.host.paperScope();
     let angle = 0; let sine = 1;
@@ -731,6 +1072,12 @@ export class InterlaceManager {
     const rect = gapRectFor(angle, overWidth, underWidth, sine, padding);
     if (!(rect.length > 0) || !(rect.width > 0)
       || !Number.isFinite(rect.length) || !Number.isFinite(rect.width)) return null;
+    // Peer-hugging ribbon first: butt ends land perpendicular to the
+    // over-spine at the window edges, so no corner extends past the gap.
+    const ribbon = this.peerRibbon(overSpine, center, rect.length, rect.width / 2);
+    if (ribbon) return ribbon;
+    // Straight-spine fallback when sampling fails: the legacy rotated
+    // rectangle, which a straight ribbon would equal anyway.
     const prev = scope.settings?.insertItems;
     try {
       if (scope.settings) scope.settings.insertItems = false;
@@ -747,10 +1094,67 @@ export class InterlaceManager {
     }
   }
 
+  // Short offset ribbon around a crossing center, sampled along the
+  // over-spine window. Closed spines wrap; open spines clamp. Null when the
+  // spine cannot be sampled (caller falls back to a rectangle).
+  private peerRibbon(overSpine: Item, center: Vec2, length: number, halfWidth: number): Item | null {
+    try {
+      const scope = this.host.paperScope();
+      const total = overSpine.length;
+      if (!(total > 0) || !(halfWidth > 0)) return null;
+      let off: number;
+      try {
+        off = overSpine.getOffsetOf(new scope.Point(center.x, center.y));
+      } catch {
+        return null;
+      }
+      if (!Number.isFinite(off)) return null;
+      const closed = !!overSpine.closed;
+      let a = off - length / 2;
+      let b = off + length / 2;
+      if (closed) {
+        if (length >= total) {
+          a = 0;
+          b = total;
+        }
+      } else {
+        a = Math.max(0, a);
+        b = Math.min(total, b);
+        if (!(b - a > 1e-6)) return null;
+      }
+      const span = b - a;
+      const n = Math.max(2, Math.min(48, Math.ceil(span / Math.max(0.5, halfWidth / 2))));
+      const pts: Vec2[] = [];
+      for (let k = 0; k <= n; k++) {
+        let t = a + span * k / n;
+        if (closed) t = ((t % total) + total) % total;
+        let p;
+        try {
+          p = overSpine.getPointAt(t);
+        } catch {
+          return null;
+        }
+        if (!p) return null;
+        pts.push({ x: p.x, y: p.y });
+      }
+      const poly = ribbonPolygon(pts, halfWidth);
+      return this.buildPath(scope, true, poly.map((p) => ({ point: { ...p },
+        handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } })));
+    } catch {
+      return null;
+    }
+  }
+
   private memoOf(item: Item): InterlaceMemo | null {
     const memo = item?.data?.interlace;
     if (!memo || typeof memo.peer !== 'string' || (memo.phase !== 0 && memo.phase !== 1)) return null;
     if (!(memo.width > 0) || !memo.spine || !Array.isArray(memo.spine.segments)) return null;
+    // Normalize legacy pair memos (no weave/source fields) to the v2 shape.
+    if (typeof memo.weave !== 'string') memo.weave = '';
+    if (!Array.isArray(memo.order)) memo.order = [];
+    if (!Array.isArray(memo.sources)) memo.sources = [];
+    if (typeof memo.sourceId !== 'string') memo.sourceId = null;
+    if (memo.source !== null && typeof memo.source !== 'object') memo.source = null;
     return memo;
   }
 

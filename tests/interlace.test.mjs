@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import paper from 'paper';
 import { NibGliderEngine } from '../src/engine/engine.ts';
 import { InterlaceManager } from '../src/engine/scene/InterlaceManager.ts';
-import { gapRectFor } from '../src/engine/geometry/interlaceWeave.ts';
+import { gapRectFor, ribbonPolygon, WeaveError } from '../src/engine/geometry/interlaceWeave.ts';
 import { resolveOutlinedStroke } from '../src/engine/geometry/outlinedStroke.ts';
 
 function engine() {
@@ -167,6 +167,179 @@ test('non-crossing and single selections no-op with a note', () => {
     assert.equal(e2.lastCombineNote, 'Select two stroked paths first.');
     assert.equal(layer2.children.length, 1);
   } finally { cleanup2(); }
+});
+
+test('ribbon cutter hugs straight and curved peers with butt ends', () => {
+  // Straight spine: exact butt-ended rectangle, no corner past the window.
+  const straight = ribbonPolygon([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 0 }], 5);
+  assert.equal(straight.length, 6);
+  assert.deepEqual(straight[0], { x: 0, y: 5 });
+  assert.deepEqual(straight[2], { x: 20, y: 5 });
+  assert.deepEqual(straight[3], { x: 20, y: -5 });
+  assert.deepEqual(straight[5], { x: 0, y: -5 });
+  for (const p of straight) assert.ok(p.x >= 0 && p.x <= 20, 'cutter corner extends past the window');
+  // Quarter-circle peer (r=10): every vertex stays on the offset curves.
+  const arc = [];
+  for (let d = 0; d <= 90; d += 15) {
+    const a = d * Math.PI / 180;
+    arc.push({ x: 10 * Math.cos(a), y: 10 * Math.sin(a) });
+  }
+  const curved = ribbonPolygon(arc, 2);
+  assert.equal(curved.length, arc.length * 2);
+  for (const p of curved) {
+    const r = Math.hypot(p.x, p.y);
+    assert.ok(r >= 7.9 && r <= 12.1, `vertex at radius ${r.toFixed(2)} leaves the peer footprint`);
+    // Butt ends stay perpendicular to the end segments: vertices never swing
+    // past the window the way rectangle corners do.
+    const deg = Math.atan2(p.y, p.x) * 180 / Math.PI;
+    assert.ok(deg >= -3 && deg <= 93, `vertex at ${deg.toFixed(1)}° extends past the window ends`);
+  }
+  // Mid-arc vertices bulge off the chord: the gap follows the curve on
+  // both the outer (r≈12) and inner (r≈8) offset sides.
+  const near45 = curved.filter((p) => Math.abs(Math.atan2(p.y, p.x) * 180 / Math.PI - 45) < 8);
+  assert.ok(near45.some((p) => Math.hypot(p.x, p.y) > 11.5), 'outer side leaves the chord');
+  assert.ok(near45.some((p) => Math.hypot(p.x, p.y) < 8.5), 'inner side leaves the chord');
+  assert.throws(() => ribbonPolygon([{ x: 0, y: 0 }], 2), WeaveError);
+  assert.throws(() => ribbonPolygon([{ x: 0, y: 0 }, { x: 1, y: 0 }], 0), WeaveError);
+});
+
+test('circle-on-circle gaps are symmetric and hug the over-ring', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const c1 = new s.Path.Circle(new s.Point(-20, 0), 40);
+    c1.strokeColor = 'black'; c1.strokeWidth = 12;
+    const c2 = new s.Path.Circle(new s.Point(20, 0), 40);
+    c2.strokeColor = 'black'; c2.strokeWidth = 12;
+    e.addItemToSelection(c1);
+    e.addItemToSelection(c2);
+    assert.equal(e.canInterlaceSelection(), true);
+    e.interlaceSelection();
+    assert.equal(layer.children.length, 2);
+    const top = { x: 0, y: Math.sqrt(40 * 40 - 20 * 20) };
+    const under = layer.children.find((child) => !child.contains(new s.Point(top.x, top.y)));
+    assert.ok(under, 'expected an under-band at the crossing');
+    // Walk the under-band's own centerline out from the crossing.
+    const memo = under.data.interlace;
+    let cx = 0; let cy = 0;
+    for (const seg of memo.spine.segments) { cx += seg.point.x; cy += seg.point.y; }
+    cx /= memo.spine.segments.length; cy /= memo.spine.segments.length;
+    const R = 40;
+    const phi0 = Math.atan2(top.y - cy, top.x - cx);
+    const at = (d) => new s.Point(cx + R * Math.cos(phi0 + d / R), cy + R * Math.sin(phi0 + d / R));
+    const extent = (dir) => {
+      let last = 0;
+      for (let d = 0; d <= 18; d += 0.25) {
+        if (!under.contains(at(dir * d))) last = d;
+      }
+      return last;
+    };
+    // Severed at the crossing, present well outside it.
+    assert.equal(under.contains(at(0)), false);
+    assert.equal(under.contains(at(15)), true);
+    assert.equal(under.contains(at(-15)), true);
+    // Butt-ended ribbon window: lateral-bound theory gives ~9.2 a side for
+    // 12pt bands at 60°. The legacy rectangle's corners gouged to 10.0 here.
+    const plus = extent(1); const minus = extent(-1);
+    assert.ok(plus >= 7.5 && plus <= 9.9, `+extent ${plus}`);
+    assert.ok(minus >= 7.5 && minus <= 11.5, `-extent ${minus}`);
+    assert.ok(Math.abs(plus - minus) <= 1.5, `asymmetric extents ${plus} vs ${minus}`);
+  } finally { cleanup(); }
+});
+
+test('baked memos keep authoring sources across runs', () => {
+  const s = new paper.PaperScope();
+  s.setup(new s.Size(800, 600));
+  try {
+    const layer = s.project.activeLayer;
+    // A plain canvas stroke whose held record is parametric (bSpline).
+    const item = new s.Path({ segments: [[-50, 0], [50, 0]], strokeColor: 'black', strokeWidth: 10 });
+    const peer = new s.Path({ segments: [[0, -40], [0, 40]], strokeColor: 'black', strokeWidth: 10 });
+    const bspline = { id: 'live-spine', mode: 'bSpline', closed: false,
+      points: [{ x: -50, y: 0 }, { x: 50, y: 0 }], degree: 3 };
+    const selected = [item, peer];
+    const host = {
+      combineMode: () => 'none',
+      setCombineNote: () => {},
+      selectedItems: () => [...selected],
+      prependSelection: (it) => { const i = selected.indexOf(it); if (i >= 0) selected.splice(i, 1); selected.unshift(it); },
+      removeFromSelection: (it) => { const i = selected.indexOf(it); if (i >= 0) selected.splice(i, 1); },
+      addToSelection: (it) => { if (!selected.includes(it)) selected.push(it); },
+      activeLayer: () => layer,
+      capture: () => ({ before: [...layer.children], selected: [...selected], retained: new Map() }),
+      commit: (label, snap, placed) => {
+        for (const it of snap.before) if (!placed.includes(it)) { try { it.remove(); } catch { /* Gone. */ } }
+        for (const it of placed) if (!it.parent) layer.addChild(it);
+        selected.length = 0; selected.push(...placed);
+      },
+      retain: (it) => { it.data ??= {}; it.data.drawableId ??= `id-${it.id}`; },
+      updateTextContent: () => {},
+      notify: () => {},
+      paperScope: () => s,
+      layerChildren: () => [...layer.children],
+      pathSourceOf: (it) => it === item ? bspline : null,
+      bezierSourceOf: (it) => ({
+        id: 'bez', mode: 'bezier', fillRule: 'nonzero',
+        contours: [{ closed: !!it.closed,
+          segments: it.segments.map((seg) => ({
+            point: { x: seg.point.x, y: seg.point.y },
+            handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } })) }],
+      }),
+    };
+    const manager = new InterlaceManager(host);
+    manager.interlaceSelection();
+    assert.equal(layer.children.length, 2);
+    // The parametric member keeps its bSpline record; the record-less peer
+    // keeps a Bézier authoring snapshot (its only truth).
+    const modes = layer.children.map((band) => band.data.interlace.source?.mode).sort();
+    assert.deepEqual(modes, ['bSpline', 'bezier']);
+    for (const band of layer.children) {
+      assert.equal(band.data.interlace.sources.length, 2);
+    }
+    // Re-run re-expands the stored bSpline record, not a flattened snapshot.
+    manager.interlaceSelection();
+    assert.equal(layer.children.length, 2);
+    const rerunModes = layer.children.map((band) => band.data.interlace.source?.mode).sort();
+    assert.deepEqual(rerunModes, ['bSpline', 'bezier']);
+    const weaves = new Set(layer.children.map((band) => band.data.interlace.weave));
+    assert.equal(weaves.size, 1);
+    assert.ok([...weaves][0]);
+  } finally { s.project.remove(); }
+});
+
+test('a third stroke weaves into a baked pair without flipping it', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { a, b, crossings } = weavePair(s);
+    const [c0] = crossings;
+    e.addItemToSelection(a);
+    e.addItemToSelection(b);
+    e.interlaceSelection();
+    assert.equal(layer.children.length, 2);
+    const overBefore = layer.children.find((child) => child.contains(new s.Point(c0.x, c0.y)));
+    // Newcomer crosses both members (vertical at x=0 through (0,0) and (0,20)).
+    const c = new s.Path({ segments: [[0, -40], [0, 40]], strokeColor: 'black', strokeWidth: 8 });
+    e.addItemToSelection(c);
+    assert.equal(e.canInterlaceSelection(), true);
+    e.interlaceSelection();
+    assert.equal(e.undoLabel(), 'Interlace Add');
+    assert.equal(layer.children.length, 3);
+    for (const band of layer.children) {
+      assert.equal(band.data.interlace.sources.length, 3);
+      assert.equal(band.data.interlace.phase, 0);
+    }
+    // The old pair's first crossing keeps its over side: no phase flip.
+    const overAfter = layer.children.find((child) => child.contains(new s.Point(c0.x, c0.y)));
+    assert.equal(spineHeight(overAfter), spineHeight(overBefore));
+    // The newcomer is cut where the zigzag passes over it at (0,20).
+    const atTwenty = layer.children.filter((child) => child.contains(new s.Point(0, 20)));
+    assert.equal(atTwenty.length, 1);
+    assert.ok(spineHeight(atTwenty[0]) > 20);
+    // Undo restores the baked pair plus the untouched newcomer.
+    e.undo();
+    assert.equal(layer.children.length, 3);
+    assert.ok(layer.children.includes(c));
+    assert.equal(layer.children.filter((child) => child.data?.interlace).length, 2);
+  } finally { cleanup(); }
 });
 
 test('outlined-stroke records interlace on their spines with record widths', () => {

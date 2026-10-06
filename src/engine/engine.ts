@@ -742,6 +742,16 @@ export class NibGliderEngine {
     this.context.interlace = new InterlaceManager({
       ...combinatoricsHost,
       paperScope: () => scope,
+      sourceById: (id) => {
+        if (typeof id !== 'string') return null;
+        const known = this.scene.drawableOf(id);
+        if (known && known.kind === 'path') return known.source;
+        try {
+          const retained = this.scene.getRetainedPathDrawable(id);
+          if (retained) return retained.source;
+        } catch { /* No retained source. */ }
+        return null;
+      },
       pathSourceOf: (item) => {
         const id = item?.data?.drawableId;
         if (typeof id !== 'string') return null;
@@ -2791,10 +2801,12 @@ export class NibGliderEngine {
     return this.combinatorics.depositWithCombine(deposited);
   }
 
-  // --- Interlace (over/under weave of two intersecting stroked paths) ---
+  // --- Interlace (over/under weave of intersecting stroked paths) ---
   // Operand order is selection order: the first-selected path goes over at
-  // the first crossing along its spine. Re-running on the same pair flips
-  // the phase. Results lower to Bézier like other boolean results.
+  // the first crossing along its spine. Re-running a baked weave flips the
+  // phase; selecting baked bands plus new strokes weaves the newcomers in
+  // without flipping. Results lower to Bézier like other boolean results,
+  // while memos keep each member's authoring source for later runs.
   canInterlaceSelection(): boolean {
     return this.interlace.canInterlaceSelection();
   }
