@@ -405,6 +405,11 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M2.8 3.2 H13.2 V10.8 H2.8 Z" />
     </Thumb1614>
   ),
+  'shape-exportFrame': (
+    <Thumb1614>
+      <path d="M2.8 3.2 H13.2 V10.8 H2.8 Z" strokeDasharray="2.2 1.6" />
+    </Thumb1614>
+  ),
   // Snapping artwork from the panel's snap toggle buttons.
   'snap-grid': (
     <Thumb1212>

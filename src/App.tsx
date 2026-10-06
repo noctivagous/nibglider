@@ -62,7 +62,7 @@ const MENU_COMMANDS: Set<string> = new Set([
   'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
   'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
-  'rect-shape-rhombus', 'rect-shape-kite',
+  'rect-shape-rhombus', 'rect-shape-kite', 'rect-shape-exportFrame',
   'circle-shape-circle', 'circle-shape-semicircle', 'circle-shape-sector', 'circle-shape-segment',
   'circle-shape-polygon', 'circle-shape-supershape', 'circle-shape-trapezoid',
   'circle-shape-parallelogram', 'circle-shape-rightTriangle', 'circle-shape-rhombus',
@@ -75,7 +75,7 @@ const MENU_COMMANDS: Set<string> = new Set([
 /** Guard prefix dispatch: the shape setters assign blindly, so only known values pass. */
 const RECT_SHAPE_VALUES = [
   'rectangle', 'circle', 'polygon', 'supershape', 'trapezoid',
-  'parallelogram', 'rightTriangle', 'rhombus', 'kite',
+  'parallelogram', 'rightTriangle', 'rhombus', 'kite', 'exportFrame',
 ];
 const CIRCLE_SHAPE_VALUES = [
   'circle', 'semicircle', 'sector', 'segment', 'polygon', 'supershape',
@@ -717,7 +717,6 @@ export default function App() {
       )}
       {tutorialSnap.status === 'active' && tutorialRunner.currentStep && tutorialSnap.tutorial && (
         <TutorialOverlay
-          key={tutorialRunner.currentStep.id}
           tutorialTitle={tutorialSnap.tutorial.title}
           step={tutorialRunner.currentStep}
           stepIndex={tutorialSnap.stepIndex}

@@ -37,7 +37,7 @@ export default function KeymapWidget({ engine }: { engine: NibGliderEngine }) {
   const guide = rows.filter((r) => r.section !== 'adjust');
   const adjust = rows.filter((r) => r.section === 'adjust');
   return (
-    <div id="keymapWidget" aria-hidden="true">
+    <div id="keymapWidget" data-tutorial-id="available-keys" aria-hidden="true">
       <WidgetHandle widget="keymap" label="Keymap" />
       <table className="keymap-table">
         <tbody>

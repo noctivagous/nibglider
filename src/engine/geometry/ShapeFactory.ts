@@ -127,7 +127,7 @@ export class ShapeFactory {
       const sweep = type === 'semicircle' ? 180 : clampSectorAngle(params.sector);
       return type === 'segment' ? segmentPreviewPath(radius, sweep) : sectorPreviewPath(radius, sweep);
     }
-    if (type === 'rectangle') {
+    if (type === 'rectangle' || type === 'exportFrame') {
       const h = radius * 0.7;
       return `M ${f(-h, -h)}L ${f(h, -h)}L ${f(h, h)}L ${f(-h, h)}Z`;
     }

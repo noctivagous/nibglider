@@ -85,10 +85,12 @@ import {
   exportFrameItems,
   frameArtwork,
   isExportFrameItem,
+  rasterizeSvgToPng,
   readExportFrame,
 } from './scene/exportFrames';
 import {
   createExportFrame,
+  exportPngSize,
   resolveExportBoxes,
   splitFrameBoxes,
   validateExportFrame,
@@ -96,6 +98,11 @@ import {
   type ExportFrameRecord,
 } from './model/NGExportFrame';
 import { SelectionManager } from './scene/SelectionManager';
+import {
+  ExportFrameHandles,
+  resizedBounds,
+  type ExportFrameHandleId,
+} from './scene/exportFrameHandles';
 import { HistoryManager } from './history/HistoryManager';
 import { TransformManager } from './history/TransformManager';
 import { GridRenderer } from './snapping/GridRenderer';
@@ -439,6 +446,18 @@ export class NibGliderEngine {
   private readonly drawing = new DrawingSession();
   /** Pre-marquee selection, restored when Esc cancels the selection rectangle. */
   private selectionRectSnapshot: AnyItem[] | null = null;
+  /** Resize handles for the selected export frame (exactly-one selection). */
+  private readonly frameHandles = new ExportFrameHandles({
+    scope: () => this.scope,
+    mount: (item) => this.mountGuideItem(item),
+    unmount: (item) => this.unmountGuideItem(item),
+  });
+  /** Active handle-resize gesture, or null while idle. */
+  private frameResize: {
+    item: AnyItem;
+    handle: ExportFrameHandleId;
+    before: { x: number; y: number; width: number; height: number };
+  } | null = null;
   private get compositePathTool(): PathTool { return this.context.compositePathTool; }
   private get circleTool(): CircleTool { return this.context.circleTool; }
   private get rectangleTool(): RectangleTool { return this.context.rectangleTool; }
@@ -1121,6 +1140,38 @@ export class NibGliderEngine {
     return true;
   }
 
+  /** Set frame dimensions in document points, anchored at the center.
+   * Undoable through the same bounds entry as handle resizing. */
+  setExportFrameSize(id: string, width: number, height: number): boolean {
+    const item = this.exportFrameItemById(id);
+    if (!item || this.isLiveDrawing) return false;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false;
+    let before: { x: number; y: number; width: number; height: number } | null = null;
+    try {
+      const b = item.bounds;
+      if (b && b.width > 0 && b.height > 0) before = { x: b.x, y: b.y, width: b.width, height: b.height };
+    } catch { /* Detached already. */ }
+    if (!before) return false;
+    const after = {
+      x: before.x + (before.width - width) / 2,
+      y: before.y + (before.height - height) / 2,
+      width,
+      height,
+    };
+    try {
+      item.bounds = new this.scope.Rectangle(
+        new this.scope.Point(after.x, after.y),
+        new this.scope.Size(after.width, after.height),
+      );
+    } catch {
+      return false;
+    }
+    this.history.recordBounds('Resize export frame', item, before, after);
+    this.documentManager.markEdited('scene');
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
   deleteExportFrame(id: string): boolean {
     const item = this.exportFrameItemById(id);
     if (!item || this.isLiveDrawing) return false;
@@ -1131,6 +1182,79 @@ export class NibGliderEngine {
     this.history.recordDelete(before, selBefore);
     this.updateTextContent(); this.notify();
     return true;
+  }
+
+  /** Handle id under the document point for the selected frame, if any.
+   * Used by the pointer controller; null while drawing or unselected. */
+  frameHandleAt(point: { x: number; y: number }): ExportFrameHandleId | null {
+    if (this.isLiveDrawing) return null;
+    try {
+      const frame = this.singleSelectedFrameItem();
+      if (!frame) return null;
+      this.frameHandles.refresh(frame);
+      const zoom = this.scope.view?.zoom;
+      const tolerance = 6 / (Number.isFinite(zoom) && (zoom as number) > 0 ? (zoom as number) : 1);
+      return this.frameHandles.handleAt(point, tolerance);
+    } catch {
+      return null;
+    }
+  }
+
+  isFrameResizing(): boolean {
+    return this.frameResize !== null;
+  }
+
+  /** Begin a handle-resize gesture on the selected frame. */
+  beginFrameResize(handle: ExportFrameHandleId): void {
+    if (this.isLiveDrawing || this.frameResize) return;
+    const frame = this.singleSelectedFrameItem();
+    if (!frame) return;
+    let before: { x: number; y: number; width: number; height: number } | null = null;
+    try {
+      const b = frame.bounds;
+      if (b && b.width > 0 && b.height > 0) before = { x: b.x, y: b.y, width: b.width, height: b.height };
+    } catch { /* Detached already. */ }
+    if (!before) return;
+    this.frameResize = { item: frame, handle, before };
+  }
+
+  /** Live step of a handle-resize gesture: rescale the frame so the
+   * dragged handle follows the document point. */
+  resizeFrameTo(point: { x: number; y: number }): void {
+    const gesture = this.frameResize;
+    if (!gesture || this.isLiveDrawing) return;
+    if (!this.scene.isInScene(gesture.item)) return;
+    const next = resizedBounds(gesture.handle, gesture.before, point);
+    try {
+      gesture.item.bounds = new this.scope.Rectangle(
+        new this.scope.Point(next.x, next.y),
+        new this.scope.Size(next.width, next.height),
+      );
+    } catch {
+      return;
+    }
+    this.updateTextContent(); this.notify();
+  }
+
+  /** Commit a handle-resize gesture with undo. No-op when unchanged. */
+  endFrameResize(): void {
+    const gesture = this.frameResize;
+    this.frameResize = null;
+    if (!gesture || this.isLiveDrawing) return;
+    if (!this.scene.isInScene(gesture.item)) return;
+    let after: { x: number; y: number; width: number; height: number } | null = null;
+    try {
+      const b = gesture.item.bounds;
+      if (b && b.width > 0 && b.height > 0) after = { x: b.x, y: b.y, width: b.width, height: b.height };
+    } catch { /* Detached already. */ }
+    if (!after) return;
+    const changed = after.x !== gesture.before.x || after.y !== gesture.before.y
+      || after.width !== gesture.before.width || after.height !== gesture.before.height;
+    if (changed) {
+      this.history.recordBounds('Resize export frame', gesture.item, gesture.before, after);
+      this.documentManager.markEdited('scene');
+    }
+    this.updateTextContent(); this.notify();
   }
 
   /** Absolute export boxes for a frame (full frame when unconfigured).
@@ -1203,9 +1327,20 @@ export class NibGliderEngine {
     }
   }
 
-  /** Rect-Key entry: begin an export-frame drag, or deposit it on second press. */
-  exportFrameKC(): void {
-    this.finishOrBeginRect(() => this.rectangleTool.beginExportFrame());
+  /** Export one PNG per configured box, rasterized from the frame SVG at
+   * 96dpi times the frame scale. Needs DOM (Image + canvas); null when
+   * rasterization is unavailable. The SVG path stays the vector source. */
+  async exportFramePNG(id: string): Promise<{ box: ExportFrameBox; blob: Blob }[] | null> {
+    const record = this.getExportFrame(id);
+    const outputs = this.exportFrameSVG(id);
+    if (!record || !outputs) return null;
+    const out: { box: ExportFrameBox; blob: Blob }[] = [];
+    for (const entry of outputs) {
+      const blob = await rasterizeSvgToPng(entry.svg, exportPngSize(entry.box, record.scale), record.background);
+      if (!blob) return null;
+      out.push({ box: { ...entry.box }, blob });
+    }
+    return out;
   }
 
   /** Artwork contained in or intersecting the frame. Shown in the frame GUI. */
@@ -1301,8 +1436,23 @@ export class NibGliderEngine {
     // Persist-on-notify: every user-facing setter ends here, so settings
     // reach storage with no per-setter hook. saveSettings writes only when
     // the snapshot changed and no-ops while settings load.
+    this.refreshFrameHandles();
     this.saveSettings();
     this.context.notify();
+  }
+
+  /** The selected export frame item when exactly one frame is selected. */
+  private singleSelectedFrameItem(): AnyItem | null {
+    const selected = this.selectedItems.filter(isExportFrameItem);
+    return selected.length === 1 ? selected[0] : null;
+  }
+
+  /** Rebuild resize handles for the current selection. Identity-checked,
+   * so the per-notify cost is one selection filter while idle. */
+  private refreshFrameHandles(): void {
+    try {
+      this.frameHandles.refresh(this.isLiveDrawing ? null : this.singleSelectedFrameItem());
+    } catch { /* Headless or mid-teardown. */ }
   }
 
   private readonly settingsStore: SettingsStorage;
@@ -3221,6 +3371,8 @@ export class NibGliderEngine {
   }
 
   cancelCurrentDrawingOperation(): void {
+    // A handle-resize gesture is not a drawing session; drop it uncommitted.
+    this.frameResize = null;
     const restoreSelection = this.isDrawingShape && this.shapeType === 'rectangle_select'
       ? this.selectionRectSnapshot
       : null;
@@ -3394,16 +3546,27 @@ export class NibGliderEngine {
     });
   }
 
+  /** When the Rect Keys shape is Export Frame, any rect key begins (or
+   * finishes) an export-frame drag instead of a drawable shape. */
+  private beginRectOrFrame(beginShape: () => 'finish' | 'advance' | 'started' | 'noop'): void {
+    if (this.shapeType === 'rectangle_export_frame'
+      || (!this.isDrawingShape && this.rectangleInnerShapeType === 'exportFrame')) {
+      this.finishOrBeginRect(() => this.rectangleTool.beginExportFrame());
+      return;
+    }
+    this.finishOrBeginRect(beginShape);
+  }
+
   rectCenterlineKC(): void {
-    this.finishOrBeginRect(() => this.rectangleTool.beginCenterline());
+    this.beginRectOrFrame(() => this.rectangleTool.beginCenterline());
   }
 
   rectTwoEdgesKC(): void {
-    this.finishOrBeginRect(() => this.rectangleTool.beginTwoEdges());
+    this.beginRectOrFrame(() => this.rectangleTool.beginTwoEdges());
   }
 
   rectDiagonalKC(): void {
-    this.finishOrBeginRect(() => this.rectangleTool.beginDiagonal());
+    this.beginRectOrFrame(() => this.rectangleTool.beginDiagonal());
   }
 
   /** Z toggle: begin the selection marquee, or finalize it. */
@@ -3676,6 +3839,19 @@ export class NibGliderEngine {
     if (!item.data.isBaselineGuide && !item.data.isAscenderGuide) item.data.isCentroidMarker = true;
     const layer = this.ensureGuideLayer();
     if (item.layer !== layer) layer.addChild(item);
+  }
+
+  /** Guide-layer mount for export-frame resize handles (already flagged
+   * by the handle manager; guide + locked keeps them out of content,
+   * save, and print paths). */
+  private mountGuideItem(item: AnyItem): void {
+    if (!item) return;
+    const layer = this.ensureGuideLayer();
+    if (item.layer !== layer) layer.addChild(item);
+  }
+
+  private unmountGuideItem(item: AnyItem): void {
+    try { item.remove(); } catch { /* Detached already. */ }
   }
 
   private mountSnapIndicator(item: AnyItem): void {

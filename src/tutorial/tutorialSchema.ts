@@ -8,6 +8,10 @@
 
 export type TutorialPlacement = 'above' | 'below' | 'left' | 'right' | 'center';
 
+/** Authored parking corner for the tutorial bubble. A step that names an
+ * anchor parks there deliberately, even over an avoid rect. */
+export type TutorialCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
 export type TutorialExpect =
   | { kind: 'none' }
   | { kind: 'press-key'; key: string }
@@ -19,6 +23,12 @@ export interface TutorialBubble {
   title: string;
   body: string;
   placement?: TutorialPlacement;
+  /** Preferred screen corner when the bubble parks out of the way.
+   * Omitted = the corner with the least overlap wins. */
+  anchor?: TutorialCorner;
+  /** Extra data-tutorial-id targets the parked bubble should avoid
+   * covering. Unknown ids resolve to nothing and are ignored. */
+  avoid?: string[];
 }
 
 export interface TutorialStep {
@@ -71,6 +81,7 @@ export type TutorialValidation =
   | { ok: false; errors: string[] };
 
 const PLACEMENTS: readonly string[] = ['above', 'below', 'left', 'right', 'center'];
+const CORNERS: readonly string[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 const EXPECT_KINDS: readonly string[] = ['none', 'press-key', 'run-command', 'selection-changed', 'scene-changed'];
 const DEMO_KINDS: readonly string[] = [
   'move-cursor',
@@ -291,6 +302,16 @@ export function validateTutorial(value: unknown): TutorialValidation {
     if (raw.bubble.placement !== undefined && !PLACEMENTS.includes(raw.bubble.placement as string)) {
       errors.push(`step "${raw.id}": unknown bubble placement ${JSON.stringify(raw.bubble.placement)}`);
     }
+    if (raw.bubble.anchor !== undefined && !CORNERS.includes(raw.bubble.anchor as string)) {
+      errors.push(`step "${raw.id}": unknown bubble anchor ${JSON.stringify(raw.bubble.anchor)}`);
+    }
+    if (
+      raw.bubble.avoid !== undefined &&
+      (!Array.isArray(raw.bubble.avoid) ||
+        !(raw.bubble.avoid as unknown[]).every(isNonEmptyString))
+    ) {
+      errors.push(`step "${raw.id}": bubble "avoid" must be an array of non-empty target ids when present`);
+    }
     const expect = checkExpect(raw.expect, raw.id, errors);
     if (raw.skippable !== undefined && typeof raw.skippable !== 'boolean') {
       errors.push(`step "${raw.id}": "skippable" must be a boolean when present`);
@@ -325,6 +346,14 @@ export function validateTutorial(value: unknown): TutorialValidation {
         ...(typeof raw.bubble.placement === 'string' &&
         PLACEMENTS.includes(raw.bubble.placement as string)
           ? { placement: raw.bubble.placement as TutorialPlacement }
+          : {}),
+        ...(typeof raw.bubble.anchor === 'string' &&
+        CORNERS.includes(raw.bubble.anchor as string)
+          ? { anchor: raw.bubble.anchor as TutorialCorner }
+          : {}),
+        ...(Array.isArray(raw.bubble.avoid) &&
+        (raw.bubble.avoid as unknown[]).every(isNonEmptyString)
+          ? { avoid: [...(raw.bubble.avoid as string[])] }
           : {}),
       },
       expect,

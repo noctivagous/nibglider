@@ -48,6 +48,64 @@ function paperRect(box: { x: number; y: number; width: number; height: number })
   return { x: box.x, y: box.y, width: box.width, height: box.height };
 }
 
+/** Rasterize an exported SVG string to a PNG blob at the given pixel
+ * size. Needs DOM (Image + canvas); returns null when rasterization is
+ * unavailable so callers can report instead of downloading garbage. */
+export function rasterizeSvgToPng(
+  svg: string,
+  size: { width: number; height: number },
+  background: string | null,
+): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    try {
+      if (typeof document === 'undefined' || typeof Image === 'undefined') {
+        resolve(null);
+        return;
+      }
+      const sized = svg.replace(/<svg([^>]*)>/, (_match, attrs: string) => {
+        const stripped = String(attrs)
+          .replace(/\swidth="[^"]*"/, '')
+          .replace(/\sheight="[^"]*"/, '');
+        return `<svg${stripped} width="${size.width}" height="${size.height}">`;
+      });
+      const url = URL.createObjectURL(new Blob([sized], { type: 'image/svg+xml' }));
+      const image = new Image();
+      image.onload = (): void => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = size.width;
+          canvas.height = size.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            URL.revokeObjectURL(url);
+            resolve(null);
+            return;
+          }
+          if (background) {
+            ctx.fillStyle = background;
+            ctx.fillRect(0, 0, size.width, size.height);
+          } else {
+            ctx.clearRect(0, 0, size.width, size.height);
+          }
+          ctx.drawImage(image, 0, 0, size.width, size.height);
+          URL.revokeObjectURL(url);
+          canvas.toBlob((blob) => resolve(blob), 'image/png');
+        } catch {
+          try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+          resolve(null);
+        }
+      };
+      image.onerror = (): void => {
+        try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+        resolve(null);
+      };
+      image.src = url;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 /** Artwork contained in or intersecting the frame. The frame itself and
  * other frames are never included. Pass the live frame bounds so dragged
  * or resized frames match exactly. */

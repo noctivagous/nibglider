@@ -145,7 +145,8 @@ export type RectangleInnerShape =
   | 'parallelogram'
   | 'rightTriangle'
   | 'rhombus'
-  | 'kite';
+  | 'kite'
+  | 'exportFrame';
 
 export interface InnerShapeParams {
   sides: number;

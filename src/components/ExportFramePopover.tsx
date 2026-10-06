@@ -1,5 +1,8 @@
 import { useState, useSyncExternalStore } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
+import type { LengthUnit } from '../engine/types';
+import { pointsToUnit, unitToPoints } from '../engine/document/MeasurementUnits';
+import type { ExportFrameFormat } from '../engine/model/NGExportFrame';
 import {
   parseInCanvasXML,
   type InCanvasControl,
@@ -18,6 +21,17 @@ function frameSpec(): InCanvasSpec | { error: string } {
 
 function download(name: string, text: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = name;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadBlob(name: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = name;
@@ -81,6 +95,7 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [unit, setUnit] = useState<LengthUnit>('pt');
   const frame = engine.selectedExportFrame();
   if (!frame) return null;
   const spec = frameSpec();
@@ -100,9 +115,19 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
     if (name.length > 0 && name !== frame.name) engine.updateExportFrame(frame.id, { name });
   };
   const doExport = (): void => {
+    const stem = (frame.name.trim() || 'export-frame').replace(/[^\w-]+/g, '-');
+    if (frame.format === 'png') {
+      void (async (): Promise<void> => {
+        const outputs = await engine.exportFramePNG(frame.id);
+        if (!outputs) return;
+        outputs.forEach((entry, i) => {
+          downloadBlob(outputs.length === 1 ? `${stem}.png` : `${stem}-${i + 1}.png`, entry.blob);
+        });
+      })();
+      return;
+    }
     const outputs = engine.exportFrameSVG(frame.id);
     if (!outputs) return;
-    const stem = (frame.name.trim() || 'export-frame').replace(/[^\w-]+/g, '-');
     outputs.forEach((entry, i) => {
       download(outputs.length === 1 ? `${stem}.svg` : `${stem}-${i + 1}.svg`, entry.svg);
     });
@@ -154,8 +179,46 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
             />
           );
         }
+        if (control.key === 'width' || control.key === 'height') {
+          const points = control.key === 'width' ? frame.rect.width : frame.rect.height;
+          const shown = Math.round(pointsToUnit(points, unit) * 100) / 100;
+          return (
+            <NumberControl
+              key={control.key}
+              label={control.label}
+              value={shown}
+              min={control.min}
+              step={control.step}
+              onCommit={(v) => {
+                const next = unitToPoints(v, unit);
+                if (!(next > 0)) return;
+                engine.setExportFrameSize(
+                  frame.id,
+                  control.key === 'width' ? next : frame.rect.width,
+                  control.key === 'width' ? frame.rect.height : next,
+                );
+              }}
+            />
+          );
+        }
         return null;
       case 'select':
+        if (control.key === 'unit') {
+          return (
+            <label className="ef-row" key={control.key}>
+              <span className="ef-label">{control.label}</span>
+              <select
+                className="ef-select"
+                value={unit}
+                onChange={(event) => setUnit(event.target.value as LengthUnit)}
+              >
+                {control.options.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </label>
+          );
+        }
         return (
           <label className="ef-row" key={control.key}>
             <span className="ef-label">{control.label}</span>
@@ -163,7 +226,7 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
               className="ef-select"
               value={frame.format}
               disabled={control.options.length < 2}
-              onChange={(event) => engine.updateExportFrame(frame.id, { format: event.target.value as 'svg' })}
+              onChange={(event) => engine.updateExportFrame(frame.id, { format: event.target.value as ExportFrameFormat })}
             >
               {control.options.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>

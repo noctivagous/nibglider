@@ -57,6 +57,7 @@
       <option command="rect-shape-rightTriangle" label="Right Triangle" icon="shape-rightTriangle" />
       <option command="rect-shape-rhombus" label="Rhombus" icon="shape-rhombus" />
       <option command="rect-shape-kite" label="Kite" icon="shape-kite" />
+      <option command="rect-shape-exportFrame" label="Export Frame" icon="shape-exportFrame" />
     </item>
     <item command="circle-shape" label="Circle Keys" icon="circle-shape">
       <option command="circle-shape-circle" label="Circle" icon="shape-circle" />

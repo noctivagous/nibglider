@@ -96,3 +96,88 @@ test('loader reports invalid JSON instead of throwing', () => {
   assert.equal(loaded.tutorial, null);
   assert.ok(loaded.errors.length > 0);
 });
+
+test('validator accepts bubble anchor and avoid, and passes them through', () => {
+  const checked = validateTutorial({
+    id: 'x',
+    title: 'X',
+    steps: [
+      {
+        id: 's',
+        target: 'canvas',
+        bubble: { title: 'T', body: 'B', anchor: 'bottom-right', avoid: ['key-i', 'status'] },
+      },
+    ],
+  });
+  assert.equal(checked.ok, true);
+  assert.ok(checked.ok);
+  assert.equal(checked.tutorial.steps[0].bubble.anchor, 'bottom-right');
+  assert.deepEqual(checked.tutorial.steps[0].bubble.avoid, ['key-i', 'status']);
+});
+
+test('validator rejects a bad anchor and a malformed avoid list', () => {
+  const badAnchor = validateTutorial({
+    id: 'x',
+    title: 'X',
+    steps: [{ id: 's', bubble: { title: 'T', body: 'B', anchor: 'middle' } }],
+  });
+  assert.equal(badAnchor.ok, false);
+
+  const badAvoid = validateTutorial({
+    id: 'x',
+    title: 'X',
+    steps: [{ id: 's', bubble: { title: 'T', body: 'B', avoid: 'key-i' } }],
+  });
+  assert.equal(badAvoid.ok, false);
+
+  const emptyAvoidEntry = validateTutorial({
+    id: 'x',
+    title: 'X',
+    steps: [{ id: 's', bubble: { title: 'T', body: 'B', avoid: [''] } }],
+  });
+  assert.equal(emptyAvoidEntry.ok, false);
+});
+
+test('intro tutorial follows the demo-then-try structure with the welcome slide intact', () => {
+  const loaded = parseTutorialText(helloJson());
+  assert.equal(loaded.ok, true);
+  assert.ok(loaded.tutorial);
+  const steps = loaded.tutorial.steps;
+  assert.deepEqual(
+    steps.map((s) => s.id),
+    [
+      'welcome',
+      'watch-diagonal',
+      'try-diagonal-press',
+      'try-diagonal-draw',
+      'watch-two-edges',
+      'try-two-edges-press',
+      'try-two-edges-draw',
+      'shape-selector',
+      'status-box',
+      'available-keys',
+    ],
+  );
+  // First slide is unchanged.
+  assert.deepEqual(steps[0].bubble, {
+    title: 'Welcome to NibGlider',
+    body: 'The mouse steers the cursor, but keys do the clicking. This tour points at the controls you will need.',
+    placement: 'center',
+  });
+  // Each demo pairs with its try-it key and carries playback preconditions.
+  const byId = Object.fromEntries(steps.map((s) => [s.id, s]));
+  for (const [demoId, key] of [['watch-diagonal', 'i'], ['watch-two-edges', 'u']]) {
+    const demo = byId[demoId];
+    assert.ok(demo.demo && demo.demo.length > 0, demoId);
+    assert.ok(demo.demo.some((a) => a.kind === 'press-key' && a.key === key), demoId);
+    assert.ok(demo.preconditions, demoId);
+    assert.ok(demo.bubble.anchor, demoId);
+  }
+  assert.equal(byId['try-diagonal-press'].expect?.kind, 'press-key');
+  assert.equal(byId['try-two-edges-press'].expect?.kind, 'press-key');
+  assert.equal(byId['try-diagonal-draw'].expect?.kind, 'scene-changed');
+  assert.equal(byId['try-two-edges-draw'].expect?.kind, 'scene-changed');
+  assert.equal(byId['shape-selector'].target, 'rect-shape-select');
+  assert.equal(byId['status-box'].target, 'status');
+  assert.equal(byId['available-keys'].target, 'available-keys');
+});

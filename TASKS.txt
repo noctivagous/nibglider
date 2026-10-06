@@ -6,10 +6,32 @@
 [ ]  menu item under grid section menu:  Sync Grid Snapping to Grid Visibility.
 turn on by default.  toggling on either turns the other on.
 
+[ ] For Point Snapping, make it so that points are obtained at intersections of paths.
+
+[x] The Tutorial window should be able to animate to different locations on the screen, first to get out of
+the way of where it is drawing a demo or waiting for the user to do a thing.  Make sure it has
+this recognition of the elements on screen.  it can sit on top of any of them but it needs to be
+deliberate.
+    
+    TUTORIAL 1, INTRO.
+    First slide: as is.
+   PART 1.  a) Rect by Diagonal demo, then "try it".  b) Rect by Two Lines demo, then "try it"
+        c) "Here's where to change the shape that the rectangle frame draws.  Hover over
+        this..."
+ 
+   PART 2. You can learn how to use many keys on your own
+   "The status box tells you what is happening and what you can do next"
+   "The available keys box tells you what keys you can use"
+
+[ ] Make Tutorials: "Here's How", "Try it" for 
+
+[ ] The Tutorial system should be as follows, a set of circles connected by lines with labels to the left and
+this will sit on the right edge of the viewport, acknowledging the tutorial window.
 
 [  ]  Convert app GUI (panels, sections) to an XML scheme comparable to XAML, XUL, or nibx, 
 where it is rendering from provided XML, but we don't want it to be too rigid so we can add different
-conventions in the future.  We also will want some layout elements, possibly some form elements.
+conventions in the future.  It should reduce the amount of redundant CSS and JS necessary.
+We also will want some layout elements, possibly some form elements.
 The goal is to add some structure and then some consequent clarity to the GUI system we have
 because we will let the user drag some things around on screen to reposition them or resize them
 and adding new sections.
@@ -80,7 +102,8 @@ and inches to feet for English Units.
           that frame from the GUI that comes out.
  
  
- [ ] Alt+L / Middle Click on object: Scroll Wheel Changes Object Draw Level (with number visible).  
+ [ ] Alt+L / Middle Click on object: Scroll Wheel Changes Object Draw Level, with number visible on objects on the page in their
+ centroids.  
 
 [x] When there is a new document. in the code we want to set the data foundation for measurement and page units, whether the user
 is using SI Units or English Unit.  ISO page sizes vs. US page sizes.  the app should
@@ -92,10 +115,15 @@ make a summary box widget and it summarizes, in icons and a layout, the settings
 fill.  it can make use of its own SVGs.  it will provide a larger preview of what the path is going to do when it draws things,
 both fill and stroke.  when there is a selection, it will change states according to what the path is.  It will have the name
 of the document in the upper left corner.
-  (Done: ConfigSummaryBox in panel-side rail slot + ConfigSummary resolver + tests/config-summary.test.mjs.)
+[ ] ConfigSummaryBox additions
+  (ConfigSummaryBox in panel-side rail slot + ConfigSummary resolver + tests/config-summary.test.mjs.)
 		[ ] zoom level
 		[ ] if Length snapping is on, shows live length of radius or spline segment.
         [ ] if angle snapping is on, shows live angle of radius or spline segment.
+        [ ] The document name will be in a select dropdown rather than a link that 
+        opens up settings but "Settings" and "Rename" will be options in the bottom section of the menu. 
+        Clicking on the document name in
+        the select dropdown will show a list of other documents that are in the gallery.
 
 
 [x] JSON serialization of the scene graph — walk the paper.project tree and JSON.stringify each item's properties (path segments, styles, transforms, etc.), then reconstruct on load. This is the most common approach for a "native" save format in Paper.js-based editors
@@ -147,6 +175,10 @@ by or intersects rectangle.  Esc will cancel.  Same mechanism as Rect By Diagona
 description.  NGPath > Polygon > Quadrilateral > Parallelogram,  Polygon > Quadrilateral > Trapezoid,
 Polygon > Regular Polygon.  when object changes, like has union, subtraction, intersection
 operations, path change, then it moves to regular Path.
+
+NOISE section of Panel Widget
+[ ] Look at Floating Marker code base and make Noise section.
+This will alter the current path by applying Perlin Noise.
 
 SUBDIVISION SECTION of Panel Widget
   - subdivide rectangles and regular polygons
@@ -486,9 +518,20 @@ text around the adding configured gap plus angle offset.
 [ ] Quad fieldset with dropdown and preview frame
 [ ] Loaded Object fieldset + entry in the select dropdown of Circle Keys, Rect Keys, Quad field.
 
+[ ] - In-Canvas Elements :  design widgets in page.  - elements open up gui widgets in page
+example: a print design grid widget.  on the drawing board/canvas it will show its GUI and controls,
+not in an inspector panel.  it will provide different interactive behaviors.  
+for example, a construction grid, polar or rectangular, would be configurable and
+allow the user to draw on it.  for the widgets that configure vector shapes, a "finalize" would
+end it.  it allows for, also, mini apps inside the drawing board like vector grid dot paint
+that are then finalized into their vector objects.  If they are not, they will be exported as vector.
+It will allow for embedded parametric components in the drawing space that, if the user
+chooses, can be vectorized or rasterized.  It will allow embedding 3D objects in a drawing.
+
+
 SNAPPING
 [ ] arrange params in two cols, drop "snapping" in label.
-[ ] line snapping
+[x] line snapping
 [ ] point snapping, including line intersections.
    midpoint snappingg
 
@@ -568,12 +611,4 @@ Usable for work checklist
 
 [ ] - 
 
-[ ] - design widgets in page.  - elements open up gui widgets in page
-example: a print design grid widget.  on the drawing board/canvas it will show its GUI and controls,
-not in an inspector panel.  it will provide different interactive behaviors.  
-for example, a construction grid, polar or rectangular, would be configurable and
-allow the user to draw on it.  for the widgets that configure vector shapes, a "finalize" would
-end it.  it allows for, also, mini apps inside the drawing board like vector grid dot paint
-that are then finalized into their vector objects.  If they are not, they will be exported as vector.
-It will allow for embedded parametric components in the drawing space that, if the user
-chooses, can be vectorized or rasterized.  It will allow embedding 3D objects in a drawing.
+

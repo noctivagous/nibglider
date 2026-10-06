@@ -256,9 +256,6 @@ export class KeyboardController {
       case 'rect-two-edges':
         host.rectTwoEdgesKC();
         return;
-      case 'rect-export-frame':
-        host.rectExportFrameKC();
-        return;
       case 'sharp-point':
         host.polyLineKC();
         return;

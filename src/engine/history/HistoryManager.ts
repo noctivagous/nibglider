@@ -168,6 +168,21 @@ export class HistoryManager {
       () => this.applyAffine(items, (item) => item.rotate(-degrees, center), rotateAboutMapper(center, -degrees)),
       () => this.applyAffine(items, (item) => item.rotate(degrees, center), rotateAboutMapper(center, degrees)));
   }
+  /** Undoable bounds change (export-frame resize). Rects are plain data
+   * so the entry survives item replacement; the live item follows suit. */
+  recordBounds(label: string, item: Item, before: { x: number; y: number; width: number; height: number },
+    after: { x: number; y: number; width: number; height: number }): void {
+    const apply = (rect: { x: number; y: number; width: number; height: number }): void => {
+      if (!this.scene.isInScene(item)) return;
+      try {
+        item.bounds = new this.scene.scope.Rectangle(
+          new this.scene.scope.Point(rect.x, rect.y),
+          new this.scene.scope.Size(rect.width, rect.height),
+        );
+      } catch { /* Item was consumed by another operation. */ }
+    };
+    this.recordAffine(label, [item], () => apply(before), () => apply(after));
+  }
   private applyAffine(
     items: Item[],
     apply: (item: Item) => void,

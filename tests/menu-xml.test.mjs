@@ -22,7 +22,7 @@ const WIRED_COMMANDS = [
   'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
   'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
-  'rect-shape-rhombus', 'rect-shape-kite',
+  'rect-shape-rhombus', 'rect-shape-kite', 'rect-shape-exportFrame',
   'circle-shape-circle', 'circle-shape-semicircle', 'circle-shape-sector', 'circle-shape-segment',
   'circle-shape-polygon', 'circle-shape-supershape', 'circle-shape-trapezoid',
   'circle-shape-parallelogram', 'circle-shape-rightTriangle', 'circle-shape-rhombus',

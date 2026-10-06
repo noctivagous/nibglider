@@ -12,7 +12,7 @@ export interface ExportFrameBox {
   height: number;
 }
 
-export type ExportFrameFormat = 'svg';
+export type ExportFrameFormat = 'svg' | 'png';
 
 export interface ExportFrameRecord {
   /** Stable frame identity, also mirrored on the Paper item data. */
@@ -94,7 +94,7 @@ export function validateExportFrame(value: unknown): asserts value is ExportFram
   if (!Array.isArray(f.boxes)) fail('exportFrame.boxes', 'array');
   if ((f.boxes as unknown[]).length > 64) fail('exportFrame.boxes', 'at most 64 boxes');
   (f.boxes as unknown[]).forEach((entry, i) => unitBox(entry, `exportFrame.boxes[${i}]`));
-  if (f.format !== 'svg') fail('exportFrame.format', 'svg');
+  if (f.format !== 'svg' && f.format !== 'png') fail('exportFrame.format', "'svg' or 'png'");
   finite(f.scale, 'exportFrame.scale');
   if ((f.scale as number) <= 0) fail('exportFrame.scale', 'positive number');
   if (f.background !== null) color(f.background, 'exportFrame.background');
@@ -132,6 +132,19 @@ export function splitFrameBoxes(count: number): ExportFrameBox[] {
     boxes.push({ x: col / cols, y: row / rows, width: 1 / cols, height: 1 / rows });
   }
   return boxes;
+}
+
+/** Raster dimensions in pixels for an export box: document points render
+ * at 96dpi, times the frame scale factor. Pure geometry, unit-tested. */
+export function exportPngSize(
+  box: ExportFrameBox,
+  scale: number,
+): { width: number; height: number } {
+  const factor = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  return {
+    width: Math.max(1, Math.round((box.width * factor * 96) / 72)),
+    height: Math.max(1, Math.round((box.height * factor * 96) / 72)),
+  };
 }
 
 /** Absolute export boxes in document points. An empty box list exports the

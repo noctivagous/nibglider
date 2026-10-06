@@ -60,6 +60,11 @@ export interface PointerHost {
   beginMoveGesture(): void;
   commitMoveGesture(): void;
   clearMoveGesture(): void;
+  frameHandleAt(point: Item): string | null;
+  isFrameResizing(): boolean;
+  beginFrameResize(handle: string): void;
+  resizeFrameTo(point: Item): void;
+  endFrameResize(): void;
   topUserGroupOf(item: Item): Item;
   isNonContentItem(item: Item): boolean;
   updateCanvasCursor(dragging: boolean, point: Item | null): void;
@@ -76,6 +81,13 @@ export class PointerController {
     const host = this.host;
     host.setMousePt(event.point);
     if (host.isDrawingPath() || host.isDrawingShape() || host.isDrawingQuad()) return;
+    // Export-frame resize handles take precedence over selection and pan.
+    const handle = host.frameHandleAt(host.mousePt());
+    if (handle) {
+      host.beginFrameResize(handle);
+      host.updateCanvasCursor(true, event.point);
+      return;
+    }
     const hit = this.hitTestContent(host.mousePt());
     if (!hit || !hit.item) {
       host.clearOutSelection();
@@ -179,6 +191,11 @@ export class PointerController {
 
   onMouseDrag(event: paper.MouseEvent): void {
     const host = this.host;
+    if (host.isFrameResizing()) {
+      host.resizeFrameTo(event.point);
+      host.updateCanvasCursor(true, event.point);
+      return;
+    }
     if (host.isCompositePathDrawing()) {
       this.onMouseMove(event);
       return;
@@ -197,6 +214,11 @@ export class PointerController {
   }
 
   releasePointer(): void {
+    if (this.host.isFrameResizing()) {
+      this.host.endFrameResize();
+      this.host.updateCanvasCursor(false, this.host.mousePt());
+      return;
+    }
     this.endPan();
     this.host.commitMoveGesture();
     this.host.updateCanvasCursor(false, this.host.mousePt());

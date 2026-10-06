@@ -64,8 +64,11 @@ export default function CustomSelect({
   forceCloseKey,
   stickyOnClick = false,
   placeholder,
+  tutorialId,
 }: {
   id?: string;
+  /** Optional data-tutorial-id on the root so tutorials can point at it. */
+  tutorialId?: string;
   ariaLabel: string;
   value: string;
   options: CustomSelectOption[];
@@ -435,7 +438,12 @@ export default function CustomSelect({
   };
 
   return (
-    <span ref={rootRef} className="custom-select" id={id}>
+    <span
+      ref={rootRef}
+      className="custom-select"
+      id={id}
+      {...(tutorialId ? { 'data-tutorial-id': tutorialId } : {})}
+    >
       <button
         ref={triggerRef}
         type="button"

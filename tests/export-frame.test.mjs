@@ -5,6 +5,7 @@ import paper from 'paper';
 import { NibGliderEngine } from '../src/engine/engine.ts';
 import {
   createExportFrame,
+  exportPngSize,
   frameMatchesArtwork,
   resolveExportBoxes,
   splitFrameBoxes,
@@ -12,6 +13,9 @@ import {
   ExportFrameValidationError,
 } from '../src/engine/model/NGExportFrame.ts';
 import { frameArtwork } from '../src/engine/scene/exportFrames.ts';
+import { resizedBounds } from '../src/engine/scene/exportFrameHandles.ts';
+import { pointsToUnit, unitToPoints } from '../src/engine/document/MeasurementUnits.ts';
+import { commandById, KEY_CAPS } from '../src/engine/input/keymap.ts';
 import { parseInCanvasXML } from '../src/ui/inCanvasGui.ts';
 
 function engine() {
@@ -152,19 +156,136 @@ test('frames persist through native save and reload as frames', () => {
   } finally { cleanup(); }
 });
 
-test('rect-key T drag deposits a frame on second press', () => {
+test('T key no longer owns the export frame', () => {
+  assert.equal(commandById('rect-export-frame'), undefined);
+  const t = KEY_CAPS.find((cap) => cap.id === 'KeyT');
+  assert.ok(t);
+  assert.equal(t.commandId, undefined);
+});
+
+test('Rect Keys Export Frame shape routes rect-key drags to frame deposit', () => {
   const { s, e, cleanup } = engine();
   try {
+    e.setRectangleInnerShapeType('exportFrame');
     e.mousePt = new s.Point(50, 60);
-    e.exportFrameKC();
+    e.rectDiagonalKC();
     assert.equal(e.shapeType, 'rectangle_export_frame');
     e.pointer.onMouseMove({ point: new s.Point(150, 140) });
-    e.exportFrameKC();
+    e.rectDiagonalKC();
     assert.equal(e.isDrawingShape, false);
     assert.equal(e.listExportFrames().length, 1);
     assert.deepEqual(e.listExportFrames()[0].rect, { x: 50, y: 60, width: 100, height: 80 });
     assert.equal(e.undoLabel(), 'Deposit export frame');
+    // A second rect key finishes an in-progress frame drag too.
+    e.mousePt = new s.Point(10, 10);
+    e.rectCenterlineKC();
+    assert.equal(e.shapeType, 'rectangle_export_frame');
+    e.pointer.onMouseMove({ point: new s.Point(60, 50) });
+    e.rectTwoEdgesKC();
+    assert.equal(e.isDrawingShape, false);
+    assert.equal(e.listExportFrames().length, 2);
   } finally { cleanup(); }
+});
+
+test('ordinary rect shapes still deposit drawable shapes', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    e.setRectangleInnerShapeType('rectangle');
+    e.mousePt = new s.Point(50, 60);
+    e.rectDiagonalKC();
+    e.pointer.onMouseMove({ point: new s.Point(150, 140) });
+    e.rectDiagonalKC();
+    assert.equal(e.listExportFrames().length, 0);
+    assert.ok(layer.children.length > 0);
+  } finally { cleanup(); }
+});
+
+test('resizedBounds anchors at the opposite corner or edge', () => {
+  const anchor = { x: 10, y: 20, width: 100, height: 80 };
+  assert.deepEqual(resizedBounds('se', anchor, { x: 160, y: 150 }), { x: 10, y: 20, width: 150, height: 130 });
+  assert.deepEqual(resizedBounds('nw', anchor, { x: 0, y: 0 }), { x: 0, y: 0, width: 110, height: 100 });
+  assert.deepEqual(resizedBounds('e', anchor, { x: 200, y: 999 }), { x: 10, y: 20, width: 190, height: 80 });
+  assert.deepEqual(resizedBounds('n', anchor, { x: 999, y: 5 }), { x: 10, y: 5, width: 100, height: 95 });
+  // Dragging past the anchor clamps at the minimum size instead of inverting.
+  const clamped = resizedBounds('sw', anchor, { x: 500, y: 500 });
+  assert.equal(clamped.width, 1);
+  assert.equal(clamped.height, 480);
+});
+
+test('handle-resize gesture resizes the selected frame with undo', () => {
+  const { s, e, cleanup } = engine();
+  // Paper rescales bounds with float noise; compare rounded.
+  const rounded = (rect) => ({
+    x: Math.round(rect.x), y: Math.round(rect.y),
+    width: Math.round(rect.width), height: Math.round(rect.height),
+  });
+  try {
+    e.depositExportFrame({ x: 10, y: 20, width: 100, height: 80 });
+    const id = e.listExportFrames()[0].id;
+    assert.equal(e.frameHandleAt({ x: 110, y: 100 }), 'se');
+    assert.equal(e.frameHandleAt({ x: 400, y: 400 }), null);
+    e.beginFrameResize('se');
+    assert.equal(e.isFrameResizing(), true);
+    e.resizeFrameTo(new s.Point(160, 150));
+    assert.deepEqual(rounded(e.listExportFrames()[0].rect), { x: 10, y: 20, width: 150, height: 130 });
+    e.endFrameResize();
+    assert.equal(e.isFrameResizing(), false);
+    assert.equal(e.undoLabel(), 'Resize export frame');
+    e.undo();
+    assert.deepEqual(rounded(e.listExportFrames()[0].rect), { x: 10, y: 20, width: 100, height: 80 });
+    e.redo();
+    assert.deepEqual(rounded(e.listExportFrames()[0].rect), { x: 10, y: 20, width: 150, height: 130 });
+    assert.equal(Math.round(e.getExportFrame(id)?.rect.width ?? 0), 150);
+  } finally { cleanup(); }
+});
+
+test('no handles without exactly one selected frame', () => {
+  const { e, cleanup } = engine();
+  try {
+    assert.equal(e.frameHandleAt({ x: 0, y: 0 }), null);
+    e.depositExportFrame({ x: 0, y: 0, width: 50, height: 50 });
+    e.depositExportFrame({ x: 200, y: 200, width: 50, height: 50 });
+    assert.equal(e.selectedExportFrame(), null);
+    assert.equal(e.frameHandleAt({ x: 250, y: 250 }), null);
+    e.beginFrameResize('se');
+    assert.equal(e.isFrameResizing(), false);
+  } finally { cleanup(); }
+});
+
+test('setExportFrameSize resizes about the center with undo', () => {
+  const { e, cleanup } = engine();
+  try {
+    e.depositExportFrame({ x: 10, y: 20, width: 100, height: 80 });
+    const id = e.listExportFrames()[0].id;
+    assert.equal(e.setExportFrameSize(id, 200, 160), true);
+    assert.deepEqual(e.listExportFrames()[0].rect, { x: -40, y: -20, width: 200, height: 160 });
+    assert.equal(e.setExportFrameSize(id, 0, 10), false);
+    assert.equal(e.setExportFrameSize(id, NaN, 10), false);
+    assert.equal(e.setExportFrameSize('missing', 10, 10), false);
+    e.undo();
+    assert.deepEqual(e.listExportFrames()[0].rect, { x: 10, y: 20, width: 100, height: 80 });
+  } finally { cleanup(); }
+});
+
+test('frame format accepts svg and png, and png sizes scale at 96dpi', () => {
+  const frame = createExportFrame({ x: 0, y: 0, width: 72, height: 36 });
+  assert.doesNotThrow(() => validateExportFrame({ ...frame, format: 'png' }));
+  assert.throws(() => validateExportFrame({ ...frame, format: 'pdf' }), ExportFrameValidationError);
+  assert.deepEqual(exportPngSize({ x: 0, y: 0, width: 72, height: 36 }, 1), { width: 96, height: 48 });
+  assert.deepEqual(exportPngSize({ x: 0, y: 0, width: 72, height: 36 }, 2), { width: 192, height: 96 });
+  const { e, cleanup } = engine();
+  try {
+    e.depositExportFrame({ x: 0, y: 0, width: 72, height: 36 });
+    const id = e.listExportFrames()[0].id;
+    assert.equal(e.updateExportFrame(id, { format: 'png' }), true);
+    assert.equal(e.getExportFrame(id)?.format, 'png');
+  } finally { cleanup(); }
+});
+
+test('dimension units round-trip through the measurement table', () => {
+  assert.equal(pointsToUnit(72, 'inch'), 1);
+  assert.equal(unitToPoints(1, 'inch'), 72);
+  assert.ok(Math.abs(unitToPoints(pointsToUnit(100, 'mm'), 'mm') - 100) < 1e-9);
 });
 
 test('export-frame XML defines inline controls plus a popover, and rejects bad definitions', () => {
@@ -176,6 +297,15 @@ test('export-frame XML defines inline controls plus a popover, and rejects bad d
   const kinds = parsed.spec.controls.map((c) => c.kind);
   assert.ok(kinds.includes('export'));
   assert.ok(kinds.includes('popover'));
+  const fields = parsed.spec.controls.filter((c) => c.kind === 'field').map((c) => c.key);
+  assert.ok(fields.includes('width'));
+  assert.ok(fields.includes('height'));
+  const selects = Object.fromEntries(
+    parsed.spec.controls.filter((c) => c.kind === 'select').map((c) => [c.key, c.options.map((o) => o.value)]),
+  );
+  assert.ok((selects.unit ?? []).includes('inch'));
+  assert.ok((selects.unit ?? []).includes('mm'));
+  assert.deepEqual(selects.format, ['svg', 'png']);
   const popover = parsed.spec.controls.find((c) => c.kind === 'popover');
   assert.ok(popover && popover.controls.length >= 1);
   assert.ok('error' in parseInCanvasXML('<window id="x"><toggle key="a" /></window>'));

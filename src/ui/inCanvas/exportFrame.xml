@@ -4,8 +4,20 @@
   editing into a popover window so the canvas stays uncluttered. -->
 <inCanvas id="exportFrame" title="Export Frame">
   <field key="name" label="Name" type="text" />
+  <field key="width" label="Width" type="number" min="1" step="1" />
+  <field key="height" label="Height" type="number" min="1" step="1" />
+  <select key="unit" label="Units">
+    <option value="pt" label="pt" />
+    <option value="pica" label="pica" />
+    <option value="inch" label="inch" />
+    <option value="ft" label="ft" />
+    <option value="mm" label="mm" />
+    <option value="cm" label="cm" />
+    <option value="m" label="m" />
+  </select>
   <select key="format" label="Format">
     <option value="svg" label="SVG" />
+    <option value="png" label="PNG" />
   </select>
   <field key="scale" label="Scale" type="number" min="0.25" max="8" step="0.25" />
   <exportButton label="Export frame" />

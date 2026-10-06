@@ -1050,7 +1050,7 @@ function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
 function RectShapeParams({ engine }: { engine: NibGliderEngine }) {
   const type = engine.rectangleInnerShapeType;
   const params = engine.rectangleInnerShapeParams;
-  const showOrient = type !== 'rectangle' && type !== 'circle';
+  const showOrient = type !== 'rectangle' && type !== 'circle' && type !== 'exportFrame';
   let sliders: ReactNode = null;
   if (type === 'trapezoid' || type === 'parallelogram') {
     const deg = Number.isFinite(params.angle) ? params.angle : 60;
@@ -2412,6 +2412,7 @@ const RECT_SHAPE_LABELS: Record<RectangleInnerShape, string> = {
   rightTriangle: 'Right Triangle',
   rhombus: 'Rhombus',
   kite: 'Kite',
+  exportFrame: 'Export Frame',
 };
 
 // Mini silhouette per shape, drawn in the option list and the closed
@@ -2436,6 +2437,7 @@ const SHAPE_THUMB_PATHS: Record<string, ReactNode> = {
   rhombus: <path d="M8 1.8 L12.8 7 L8 12.2 L3.2 7 Z" />,
   kite: <path d="M8 1.5 L11 6.5 L8 12.5 L5 6.5 Z" />,
   rectangle: <path d="M2.8 3.2 H13.2 V10.8 H2.8 Z" />,
+  exportFrame: <path d="M2.8 3.2 H13.2 V10.8 H2.8 Z" strokeDasharray="2.2 1.6" />,
 };
 
 function ShapeThumb({ kind }: { kind: string }) {
@@ -2573,6 +2575,13 @@ const RECT_OPTION_TREE: CustomSelectOption[] = [
     ).map((v) => shapeLeaf(v, RECT_SHAPE_LABELS)),
   },
   shapeLeaf('supershape', RECT_SHAPE_LABELS),
+  {
+    value: 'grp-incanvas',
+    label: 'In-Canvas Elements',
+    children: (['exportFrame'] as const).map((v) =>
+      shapeLeaf(v, RECT_SHAPE_LABELS),
+    ),
+  },
 ];
 
 /** Actions the top File menu forwards to the panel, which owns the
@@ -3692,6 +3701,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           </SectionTitleButton>
         <CustomSelect
           id="rectInnerShapeSelect"
+          tutorialId="rect-shape-select"
           ariaLabel="Rect Keys shape"
           value={engine.rectangleInnerShapeType}
           options={RECT_OPTION_TREE}

@@ -4591,6 +4591,15 @@ kbd,
   border-radius: 8px;
   padding: 12px 14px;
   box-shadow: 0 8px 24px rgba(8, 10, 14, 0.3);
+  /* Parked-corner moves (demo footprint, resize, step change) glide instead
+     of jumping. Legacy right/bottom placements still snap; left/top and
+     transform are the animated properties. */
+  transition: left 0.35s ease, top 0.35s ease, transform 0.35s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-bubble {
+    transition: none;
+  }
 }
 .tutorial-centered {
   left: 50%;

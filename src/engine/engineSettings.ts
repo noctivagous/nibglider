@@ -150,7 +150,7 @@ const CIRCLE_INNER = [
 
 const RECT_INNER = [
   'rectangle', 'circle', 'polygon', 'supershape', 'trapezoid',
-  'parallelogram', 'rightTriangle', 'rhombus', 'kite',
+  'parallelogram', 'rightTriangle', 'rhombus', 'kite', 'exportFrame',
 ] as const;
 
 const ENTRIES: SettingEntry[] = [

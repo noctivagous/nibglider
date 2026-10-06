@@ -1,7 +1,7 @@
 {
   "id": "hello-rectangle",
   "title": "Hello Rectangle",
-  "description": "Point at the File menu, the Rect Keys panel section, and the Rect-by-Diagonal key, then draw your first rectangle.",
+  "description": "Draw rectangles two ways (by diagonal, by two edges), change the frame's shape, then read the status and available-keys boxes to keep learning on your own.",
   "steps": [
     {
       "id": "welcome",
@@ -13,38 +13,21 @@
       "expect": { "kind": "none" }
     },
     {
-      "id": "file-menu",
-      "target": "menu-file",
-      "bubble": {
-        "title": "File menu",
-        "body": "Documents, import, export, and more tutorials live here. Hover to open it.",
-        "placement": "right"
-      },
-      "expect": { "kind": "none" }
-    },
-    {
-      "id": "rect-section",
-      "target": "section-rectFrameControls",
-      "bubble": {
-        "title": "Rect Keys",
-        "body": "Rectangle tools live in this panel section. Collapsed sections hide their targets, and the bubble will center instead.",
-        "placement": "left"
-      },
-      "expect": { "kind": "none" }
-    },
-    {
       "id": "watch-diagonal",
       "target": "canvas",
       "bubble": {
         "title": "Watch it draw first",
         "body": "Press Watch demo: the program steers the cursor itself and presses I twice to draw a rectangle, live on the canvas.",
-        "placement": "center"
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": ["key-i"]
       },
       "expect": { "kind": "none" },
       "preconditions": {
         "normalZoom": true,
         "showKeyboard": true,
         "showPanel": true,
+        "showStatus": true,
         "expandSections": ["rectFrameControls"],
         "cancelDrawing": true
       },
@@ -60,24 +43,104 @@
       ]
     },
     {
-      "id": "press-diagonal-key",
+      "id": "try-diagonal-press",
       "target": "key-i",
       "bubble": {
-        "title": "Rect by Diagonal",
-        "body": "Press the I key now. The runner watches real key presses and advances when you do.",
+        "title": "Your turn: press I",
+        "body": "Steer the mouse where you want the first corner, then press the I key to start Rect by Diagonal — the same key the demo pressed.",
         "placement": "above"
       },
       "expect": { "kind": "press-key", "key": "i" }
     },
     {
-      "id": "canvas",
+      "id": "try-diagonal-draw",
       "target": "canvas",
       "bubble": {
-        "title": "Draw on the canvas",
-        "body": "Steer the mouse and press keys to place points. Any engine change completes this step.",
+        "title": "Place the opposite corner",
+        "body": "Steer to the opposite corner and press I again to deposit your rectangle.",
         "placement": "center"
       },
       "expect": { "kind": "scene-changed" }
+    },
+    {
+      "id": "watch-two-edges",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: rectangle by two edges",
+        "body": "Press Watch demo: the program steers the cursor itself and presses U twice to draw a rectangle from two edges, live on the canvas.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": ["key-u"]
+      },
+      "expect": { "kind": "none" },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": ["rectFrameControls"],
+        "cancelDrawing": true
+      },
+      "demo": [
+        { "kind": "narrate", "title": "First edge", "body": "Steering to the first edge." },
+        { "kind": "move-cursor-xy", "x": 0.35, "y": 0.45, "durationMs": 900 },
+        { "kind": "press-key", "key": "u", "holdMs": 150 },
+        { "kind": "narrate", "title": "Second edge", "body": "The U key starts Rect by Two Edges. Now steering to the opposite edge." },
+        { "kind": "move-cursor-xy", "x": 0.65, "y": 0.55, "durationMs": 1200 },
+        { "kind": "press-key", "key": "u", "holdMs": 150 },
+        { "kind": "wait", "ms": 400 },
+        { "kind": "narrate", "title": "Done", "body": "The second U press deposits the rectangle, exactly as your own key presses would." }
+      ]
+    },
+    {
+      "id": "try-two-edges-press",
+      "target": "key-u",
+      "bubble": {
+        "title": "Your turn: press U",
+        "body": "Steer the mouse where you want to start, then press the U key to start Rect by Two Edges — the same key the demo pressed.",
+        "placement": "above"
+      },
+      "expect": { "kind": "press-key", "key": "u" }
+    },
+    {
+      "id": "try-two-edges-draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Place the second edge",
+        "body": "Steer to the second edge and press U again to deposit your rectangle.",
+        "placement": "center"
+      },
+      "expect": { "kind": "scene-changed" }
+    },
+    {
+      "id": "shape-selector",
+      "target": "rect-shape-select",
+      "bubble": {
+        "title": "Change the frame's shape",
+        "body": "Here's where to change the shape that the rectangle frame draws. Hover over this control to see the shapes — circles, polygons, and more.",
+        "placement": "below"
+      },
+      "expect": { "kind": "none" }
+    },
+    {
+      "id": "status-box",
+      "target": "status",
+      "bubble": {
+        "title": "The status box",
+        "body": "The status box tells you what is happening and what you can do next.",
+        "placement": "right"
+      },
+      "expect": { "kind": "none" }
+    },
+    {
+      "id": "available-keys",
+      "target": "available-keys",
+      "bubble": {
+        "title": "The available keys box",
+        "body": "The available keys box tells you what keys you can use. You can learn how to use many keys on your own from these two boxes.",
+        "placement": "right"
+      },
+      "expect": { "kind": "none" }
     }
   ]
 }
