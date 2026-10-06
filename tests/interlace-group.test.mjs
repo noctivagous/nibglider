@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import paper from 'paper';
+import { readFileSync } from 'node:fs';
 import { NibGliderEngine } from '../src/engine/engine.ts';
+import { parseInCanvasXML } from '../src/ui/inCanvasGui.ts';
 import { deserializeDrawable, serializeDrawable, ModelValidationError } from '../src/engine/model/serialization.ts';
 import { resolveInterlaceGroup, WeaveError } from '../src/engine/geometry/interlaceWeave.ts';
 
@@ -248,6 +250,37 @@ test('baked pairs convert to live groups keeping phase and roles', () => {
     e.undo();
     assert.equal(layer.children.length, 2);
   } finally { cleanup(); }
+});
+
+test('selectedInterlaceGroup feeds the in-canvas controls', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    assert.equal(e.selectedInterlaceGroup(), null);
+    const { a, b } = weavePair(s);
+    e.addItemToSelection(a);
+    e.addItemToSelection(b);
+    assert.equal(e.selectedInterlaceGroup(), null);
+    e.interlaceGroupSelection();
+    assert.deepEqual(e.selectedInterlaceGroup(), {
+      phase: 0, padding: 2, firstId: e.selectedItems[0].data.interlaceGroup.params.firstId, members: 2,
+    });
+    e.setInterlaceParams({ phase: 1, padding: 5 });
+    assert.equal(e.selectedInterlaceGroup().phase, 1);
+    assert.equal(e.selectedInterlaceGroup().padding, 5);
+    e.clearOutSelection();
+    assert.equal(e.selectedInterlaceGroup(), null);
+  } finally { cleanup(); }
+});
+
+test('interlace in-canvas XML declares the control contract', () => {
+  const xml = readFileSync(new URL('../src/ui/inCanvas/interlace.xml', import.meta.url), 'utf8');
+  const parsed = parseInCanvasXML(xml);
+  assert.ok(!('error' in parsed));
+  assert.equal(parsed.spec.id, 'interlace');
+  assert.deepEqual(
+    parsed.spec.controls.map((control) => [control.kind, control.key ?? control.label]),
+    [['toggle', 'alternate'], ['field', 'padding'], ['export', 'Ungroup']],
+  );
 });
 
 test('resolver weaves outlined-stroke members on their spines', () => {

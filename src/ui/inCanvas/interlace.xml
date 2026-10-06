@@ -1,0 +1,9 @@
+<!-- Interlace Group In-Canvas Element GUI. Mounted while exactly one
+  interlace group is selected, withdrawn on deselect. The toggle flips the
+  weave phase, the padding field widens the gaps, and Ungroup releases the
+  live members (same as Layers > Ungroup). -->
+<inCanvas id="interlace" title="Interlace">
+  <toggle key="alternate" label="Alternate weave" />
+  <field key="padding" label="Gap padding" type="number" min="0" step="0.5" />
+  <exportButton label="Ungroup" />
+</inCanvas>

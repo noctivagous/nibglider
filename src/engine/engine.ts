@@ -2819,6 +2819,19 @@ export class NibGliderEngine {
     this.interlace.setInterlaceParams(patch);
   }
 
+  // The selected interlace group's live params for in-canvas controls,
+  // or null unless exactly one interlace group is selected.
+  selectedInterlaceGroup(): { phase: 0 | 1; padding: number; firstId: string; members: number } | null {
+    const selected = this.selectedItems.filter((item) => item?.data?.interlaceGroup);
+    if (selected.length !== 1) return null;
+    const stored = selected[0]?.data?.interlaceGroup;
+    const params = stored?.params;
+    if (!params || (params.phase !== 0 && params.phase !== 1)) return null;
+    if (!(params.padding >= 0) || !Number.isFinite(params.padding)) return null;
+    const members = Array.isArray(stored.members) ? stored.members.length : 0;
+    return { phase: params.phase, padding: params.padding, firstId: params.firstId, members };
+  }
+
 
   // Parallelogram / trapezoid interior angle. 180° is a line; keep a
   // usable wedge on either side of 90°.

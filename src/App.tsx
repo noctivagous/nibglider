@@ -21,6 +21,7 @@ import TutorialOverlay from './components/TutorialOverlay';
 import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
 import ExportFramePopover from './components/ExportFramePopover';
+import InterlacePopover from './components/InterlacePopover';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
 import { autosaveDocument, restorableDocument } from './ui/DocumentGallery';
 import { CONTEXT_MENU_ID, MENU_PANEL_SECTIONS, PanelsManager, sectionLabel } from './ui/PanelsManager';
@@ -665,6 +666,7 @@ export default function App() {
             shiftX={layoutSnap.statusShiftX}
           />
           <ExportFramePopover engine={engine} />
+          <InterlacePopover engine={engine} />
         </div>
         <div className="corner-div">
           <div
