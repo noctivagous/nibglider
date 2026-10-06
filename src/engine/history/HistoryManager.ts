@@ -2,7 +2,7 @@ import type { NGDrawable } from '../model/NGDrawable';
 import { SceneRepository, type RetainedPath } from '../scene/SceneRepository';
 import type { SelectionManager } from '../scene/SelectionManager';
 import { UndoManager, type UndoCommand } from '../undoManager';
-import { remapCircleOrigins, rotateAboutMapper, scaleAboutMapper, shiftCircleOrigins } from '../geometry/shapeCenters';
+import { remapCircleOrigins, rotateAboutMapper, scaleAboutMapper, scaleXYAboutMapper, shearAboutMapper, shiftCircleOrigins } from '../geometry/shapeCenters';
 
 type Item = any;
 export interface MoveEntry { item: Item; before: paper.Point; after: paper.Point }
@@ -167,6 +167,25 @@ export class HistoryManager {
     this.recordAffine('Rotate', items,
       () => this.applyAffine(items, (item) => item.rotate(-degrees, center), rotateAboutMapper(center, -degrees)),
       () => this.applyAffine(items, (item) => item.rotate(degrees, center), rotateAboutMapper(center, degrees)));
+  }
+  recordScaleXY(items: Item[], fx: number, fy: number, center: paper.Point): void {
+    if (!Number.isFinite(fx) || !Number.isFinite(fy)) return;
+    this.recordAffine('Scale', items,
+      () => this.applyAffine(items, (item) => item.scale(1 / fx, 1 / fy, center), scaleXYAboutMapper(center, 1 / fx, 1 / fy)),
+      () => this.applyAffine(items, (item) => item.scale(fx, fy, center), scaleXYAboutMapper(center, fx, fy)));
+  }
+  recordShear(items: Item[], horizontal: boolean, k: number, center: paper.Point): void {
+    if (!Number.isFinite(k)) return;
+    this.recordAffine(horizontal ? 'Shear horizontal' : 'Shear vertical', items,
+      () => this.applyAffine(items, (item) => this.applyShear(item, horizontal, -k, center), shearAboutMapper(center, horizontal, -k)),
+      () => this.applyAffine(items, (item) => this.applyShear(item, horizontal, k, center), shearAboutMapper(center, horizontal, k)));
+  }
+  private applyShear(item: Item, horizontal: boolean, k: number, center: paper.Point): void {
+    const scope = this.scene.scope;
+    const matrix = horizontal
+      ? new scope.Matrix(1, 0, k, 1, -k * center.y, 0)
+      : new scope.Matrix(1, k, 0, 1, 0, -k * center.x);
+    item.transform(matrix);
   }
   /** Undoable bounds change (export-frame resize). Rects are plain data
    * so the entry survives item replacement; the live item follows suit. */

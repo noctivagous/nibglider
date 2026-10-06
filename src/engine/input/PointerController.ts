@@ -65,6 +65,14 @@ export interface PointerHost {
   beginFrameResize(handle: string): void;
   resizeFrameTo(point: Item): void;
   endFrameResize(): void;
+  isTransformMode(): boolean;
+  transformHandleAt(point: Item): string | null;
+  isTransformResizing(): boolean;
+  isTransformGestureActive(): boolean;
+  beginTransformDrag(handle: string): void;
+  updateTransformDrag(point: Item, shiftKey: boolean): void;
+  endTransformDrag(): void;
+  updateTransformLive(): boolean;
   topUserGroupOf(item: Item): Item;
   isNonContentItem(item: Item): boolean;
   updateCanvasCursor(dragging: boolean, point: Item | null): void;
@@ -87,6 +95,15 @@ export class PointerController {
       host.beginFrameResize(handle);
       host.updateCanvasCursor(true, event.point);
       return;
+    }
+    // Transform-controls handles come next while the mode is on.
+    if (!host.isTransformResizing()) {
+      const transformHandle = host.isTransformMode() ? host.transformHandleAt(host.mousePt()) : null;
+      if (transformHandle) {
+        host.beginTransformDrag(transformHandle);
+        host.updateCanvasCursor(true, event.point);
+        return;
+      }
     }
     const hit = this.hitTestContent(host.mousePt());
     if (!hit || !hit.item) {
@@ -173,7 +190,9 @@ export class PointerController {
       }
     }
     host.updateGridCursor();
-    this.handleDragLock();
+    // An armed S/R/H/V live transform steers from the cursor instead of
+    // dragging; drag-lock stays parked until the gesture commits.
+    if (!host.updateTransformLive()) this.handleDragLock();
     if (host.isDrawingPath()) host.updateLivePath(host.mousePt());
     if (host.isDrawingShape()) {
       host.updateShapePreview();
@@ -193,6 +212,12 @@ export class PointerController {
     const host = this.host;
     if (host.isFrameResizing()) {
       host.resizeFrameTo(event.point);
+      host.updateCanvasCursor(true, event.point);
+      return;
+    }
+    if (host.isTransformResizing()) {
+      const shift = (event as unknown as { modifiers?: { shift?: boolean } }).modifiers?.shift ?? false;
+      host.updateTransformDrag(event.point, shift);
       host.updateCanvasCursor(true, event.point);
       return;
     }
@@ -216,6 +241,11 @@ export class PointerController {
   releasePointer(): void {
     if (this.host.isFrameResizing()) {
       this.host.endFrameResize();
+      this.host.updateCanvasCursor(false, this.host.mousePt());
+      return;
+    }
+    if (this.host.isTransformResizing()) {
+      this.host.endTransformDrag();
       this.host.updateCanvasCursor(false, this.host.mousePt());
       return;
     }

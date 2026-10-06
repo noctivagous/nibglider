@@ -66,6 +66,12 @@ export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
     emitAction('scale');
     emitAction('rotate');
   }
+  if (snap.transformMode) {
+    rows.push(row(['transform-scale'], 'Live scale from the cursor', 'adjust'));
+    rows.push(row(['transform-rotate'], 'Live rotation from the cursor', 'adjust'));
+    rows.push(row(['transform-shear-h'], 'Live horizontal shear', 'adjust'));
+    rows.push(row(['transform-shear-v'], 'Live vertical shear', 'adjust'));
+  }
   if (snap.panLock) {
     rows.push(row(['pan-lock'], 'Release Pan-Lock'));
   }

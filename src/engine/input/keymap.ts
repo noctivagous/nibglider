@@ -26,6 +26,8 @@ export interface KeyState {
   /** Live scale/rotate applies to paths, quads, and circle previews. */
   liveAdjustApplies: boolean;
   isCompositePath?: boolean;
+  /** Conventional transform controls (Ctrl/Cmd+T) are showing. */
+  isTransformMode?: boolean;
 }
 
 export interface KeyCommand {
@@ -87,6 +89,15 @@ const codeOrKey = (code: string, key: string) => (event: KeyboardEvent) =>
 
 const meta = (event: KeyboardEvent): boolean =>
   event.metaKey || event.ctrlKey;
+
+/** Transform-controls toggle chord: Command+T on macOS/iOS, Ctrl+T on
+ * PC. Shift and Alt are never part of the chord. */
+export function isPrimaryTransformKey(event: KeyboardEvent): boolean {
+  const mac = keyboardPlatform() === 'mac';
+  const primary = mac ? (event.metaKey && !event.ctrlKey) : (event.ctrlKey && !event.metaKey);
+  if (!primary || event.shiftKey || event.altKey) return false;
+  return event.code === 'KeyT' || (event.key ?? '').toLowerCase() === 't';
+}
 
 const always = (): boolean => true;
 
@@ -275,6 +286,56 @@ export const KEY_COMMANDS: KeyCommand[] = [
     help: 'Pan-lock the canvas',
     match: (e) => !meta(e) && letter('z')(e),
     available: idle,
+    exclusive: true,
+  },
+  {
+    id: 'transform-mode',
+    action: 'transform-mode',
+    keycap: 'T',
+    group: 'neutral',
+    help: 'Toggle transform controls',
+    match: (e) => isPrimaryTransformKey(e),
+    available: (s) => !drawing(s) && (s.selectedCount > 0 || !!s.isTransformMode),
+    exclusive: true,
+  },
+  {
+    id: 'transform-scale',
+    action: 'transform-scale',
+    keycap: 'S',
+    group: 'op',
+    help: 'Live scale from the cursor',
+    match: letter('s'),
+    available: (s) => !!s.isTransformMode && !drawing(s),
+    exclusive: true,
+  },
+  {
+    id: 'transform-rotate',
+    action: 'transform-rotate',
+    keycap: 'R',
+    group: 'op',
+    help: 'Live rotation from the cursor',
+    match: letter('r'),
+    available: (s) => !!s.isTransformMode && !drawing(s),
+    exclusive: true,
+  },
+  {
+    id: 'transform-shear-h',
+    action: 'transform-shear-h',
+    keycap: 'H',
+    group: 'op',
+    help: 'Live horizontal shear from the cursor',
+    match: letter('h'),
+    available: (s) => !!s.isTransformMode && !drawing(s),
+    exclusive: true,
+  },
+  {
+    id: 'transform-shear-v',
+    action: 'transform-shear-v',
+    keycap: 'V',
+    group: 'op',
+    help: 'Live vertical shear from the cursor',
+    match: letter('v'),
+    available: (s) => !!s.isTransformMode && !drawing(s),
     exclusive: true,
   },
   {
@@ -641,7 +702,7 @@ export const KEY_CAPS: KeyCap[] = [
   { id: 'KeyW', dataKey: 'w', commandId: 'stamp', row: 'q', className: 'keyboardkey wKey operationButton enabledButton', legend: 'STAMP' },
   { id: 'KeyE', dataKey: 'e', commandId: 'finish-e', row: 'q', className: 'keyboardkey eKey ', legend: '' },
   { id: 'KeyR', dataKey: 'r', commandId: 'finish-r', row: 'q', className: 'keyboardkey rKey endButton enabledButton', transform: 'translate(-45%, 0%)', legend: 'COMPLETE<br/>SHAPE' },
-  { id: 'KeyT', dataKey: 't', row: 'q', className: 'keyboardkey tKey ', transform: 'translate(-45%, 0%)', legend: '' },
+  { id: 'KeyT', dataKey: 't', row: 'q', className: 'keyboardkey tKey operationButton enabledButton', transform: 'translate(-45%, 0%)', legend: 'TRANSFORM' },
   { id: 'KeyY', dataKey: 'y', commandId: 'rect-centerline', row: 'q', className: 'keyboardkey yKey drawingButton enabledButton rectangleButton', transform: 'translate(-45%, 0%)', legend: 'RECT.<br/>BY CENTERLINE', badge: 'rect' },
   { id: 'KeyU', dataKey: 'u', commandId: 'rect-two-edges', row: 'q', className: 'keyboardkey uKey drawingButton enabledButton rectangleButton', transform: 'translate(-45%, 0%)', legend: 'RECT.<br/>BY 2 EDGES', badge: 'rect' },
   { id: 'KeyI', dataKey: 'i', commandId: 'rect-diagonal', row: 'q', className: 'keyboardkey iKey drawingButton enabledButton rectangleButton', transform: 'translate(-47%, 0%)', legend: 'RECT.<br/>BY DIAG.', badge: 'rect' },
@@ -719,6 +780,7 @@ export function matchAppCommand(
     selectedCount: 0,
     isInDragLock: false,
     liveAdjustApplies: false,
+    isTransformMode: false,
   };
   const code = event.code || codeForLabel(event.key);
   for (const variant of KEY_VARIANTS) {
@@ -746,6 +808,7 @@ export function isCommandAvailable(
     selectedCount: 0,
     isInDragLock: false,
     liveAdjustApplies: false,
+    isTransformMode: false,
   });
 }
 

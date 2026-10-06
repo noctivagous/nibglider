@@ -103,6 +103,12 @@ import {
   resizedBounds,
   type ExportFrameHandleId,
 } from './scene/exportFrameHandles';
+import {
+  TransformHandles,
+  type TransformBounds,
+  type TransformHandleId,
+  type TransformScaleHandleId,
+} from './scene/transformHandles';
 import { HistoryManager } from './history/HistoryManager';
 import { TransformManager } from './history/TransformManager';
 import { GridRenderer } from './snapping/GridRenderer';
@@ -458,6 +464,43 @@ export class NibGliderEngine {
     handle: ExportFrameHandleId;
     before: { x: number; y: number; width: number; height: number };
   } | null = null;
+  /** Conventional transform controls (Ctrl/Cmd+T on a selection). */
+  isTransformMode = false;
+  private readonly transformHandles = new TransformHandles({
+    scope: () => this.scope,
+    mount: (item) => this.mountGuideItem(item),
+    unmount: (item) => this.unmountGuideItem(item),
+  });
+  /** Active transform-handle drag, or null while idle. Totals are measured
+   * from the gesture start; each pointer step applies only the delta. */
+  private transformDrag: {
+    handle: TransformHandleId;
+    items: AnyItem[];
+    center: { x: number; y: number };
+    width: number;
+    height: number;
+    startPt: { x: number; y: number };
+    netFx: number;
+    netFy: number;
+    netDegrees: number;
+  } | null = null;
+  /** Armed S/R/H/V live transform: the mouse steers, a key-click commits. */
+  private transformLive: {
+    kind: 'scale' | 'rotate' | 'shearH' | 'shearV';
+    items: AnyItem[];
+    center: { x: number; y: number };
+    width: number;
+    height: number;
+    startPt: { x: number; y: number };
+    startDist: number;
+    startAngle: number;
+    netFx: number;
+    netFy: number;
+    netDegrees: number;
+    netK: number;
+  } | null = null;
+  /** Drag line from the live-transform center to the cursor. */
+  private transformLine: AnyItem | null = null;
   private get compositePathTool(): PathTool { return this.context.compositePathTool; }
   private get circleTool(): CircleTool { return this.context.circleTool; }
   private get rectangleTool(): RectangleTool { return this.context.rectangleTool; }
@@ -1270,7 +1313,7 @@ export class NibGliderEngine {
 
   /** Begin a handle-resize gesture on the selected frame. */
   beginFrameResize(handle: ExportFrameHandleId): void {
-    if (this.isLiveDrawing || this.frameResize) return;
+    if (this.isLiveDrawing || this.frameResize || this.transformDrag) return;
     const frame = this.singleSelectedFrameItem();
     if (!frame) return;
     let before: { x: number; y: number; width: number; height: number } | null = null;
@@ -1319,6 +1362,343 @@ export class NibGliderEngine {
       this.documentManager.markEdited('scene');
     }
     this.updateTextContent(); this.notify();
+  }
+
+  // --- Transform controls (Ctrl/Cmd+T on a selection) ---
+  // A conventional bounding-box overlay with eight scale handles and one
+  // rotate handle. T toggles the mode; S/R/H/V arm cursor-driven live
+  // scale, rotation, and horizontal/vertical shear with a drag line from
+  // the center to the cursor. Every commit records one undo entry.
+
+  setTransformMode(on: boolean): void {
+    if (on && (this.isLiveDrawing || this.topLevelSelected().length === 0)) return;
+    if (on === this.isTransformMode) return;
+    if (on) {
+      this.isTransformMode = true;
+    } else {
+      this.commitTransformDrag();
+      this.commitTransformLive();
+      this.isTransformMode = false;
+      this.transformHandles.clear();
+      this.clearTransformLine();
+    }
+    this.updateTextContent(); this.notify();
+  }
+
+  toggleTransformMode(): void {
+    this.setTransformMode(!this.isTransformMode);
+  }
+
+  private exitTransformModeIfIdle(): void {
+    if (this.isTransformMode && this.topLevelSelected().length === 0) this.setTransformMode(false);
+  }
+
+  /** Collective bounds of the transformable selection, or null. */
+  private transformSelectionBounds(): TransformBounds | null {
+    try {
+      const items = this.topLevelSelected().filter((item) => this.scene.isInScene(item));
+      if (!items.length) return null;
+      const b = this.selection.collectiveBounds(items);
+      if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y) ||
+        !Number.isFinite(b.width) || !Number.isFinite(b.height)) return null;
+      if (b.width <= 0 || b.height <= 0) return null;
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Rebuild the overlay for the current selection. Identity-checked, so
+   * the per-notify cost is one bounds read while idle. */
+  private refreshTransformHandles(): void {
+    try {
+      this.transformHandles.refresh(
+        this.isTransformMode && !this.isLiveDrawing ? this.transformSelectionBounds() : null);
+    } catch { /* Headless or mid-teardown. */ }
+  }
+
+  /** Handle id under the document point while transform mode is on. */
+  transformHandleAt(point: { x: number; y: number }): TransformHandleId | null {
+    if (!this.isTransformMode || this.isLiveDrawing || this.transformDrag || this.frameResize) return null;
+    try {
+      const bounds = this.transformSelectionBounds();
+      if (!bounds) return null;
+      this.transformHandles.refresh(bounds);
+      const zoom = this.scope.view?.zoom;
+      const tolerance = 6 / (Number.isFinite(zoom) && (zoom as number) > 0 ? (zoom as number) : 1);
+      return this.transformHandles.handleAt(point, tolerance);
+    } catch {
+      return null;
+    }
+  }
+
+  isTransformResizing(): boolean {
+    return this.transformDrag !== null;
+  }
+
+  isTransformGestureActive(): boolean {
+    return this.transformDrag !== null || this.transformLive !== null;
+  }
+
+  /** Begin a handle drag. Commits any armed live gesture first. */
+  beginTransformDrag(handle: TransformHandleId): void {
+    if (!this.isTransformMode || this.isLiveDrawing || this.transformDrag || this.frameResize) return;
+    this.commitTransformLive();
+    const items = this.topLevelSelected().filter((item) => this.scene.isInScene(item));
+    const bounds = this.transformSelectionBounds();
+    const start = xy(this.mousePt);
+    if (!items.length || !bounds || !start) return;
+    this.transformDrag = {
+      handle,
+      items,
+      center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+      width: bounds.width,
+      height: bounds.height,
+      startPt: start,
+      netFx: 1,
+      netFy: 1,
+      netDegrees: 0,
+    };
+  }
+
+  /** Live step of a handle drag. Shift constrains: uniform scale, or
+   * rotation snapped to 15° intervals. */
+  updateTransformDrag(point: { x: number; y: number }, shiftKey: boolean): void {
+    const gesture = this.transformDrag;
+    const target = xy(point);
+    if (!gesture || !target) return;
+    if (gesture.handle === 'rotate') {
+      const startAngle = Math.atan2(
+        gesture.startPt.y - gesture.center.y, gesture.startPt.x - gesture.center.x);
+      let total = (Math.atan2(target.y - gesture.center.y, target.x - gesture.center.x) - startAngle) *
+        180 / Math.PI;
+      if (!Number.isFinite(total)) return;
+      if (shiftKey) total = Math.round(total / 15) * 15;
+      const delta = total - gesture.netDegrees;
+      if (delta !== 0) {
+        this.transforms.rotatePreview(delta);
+        gesture.netDegrees = total;
+        this.refreshTransformHandles();
+      }
+      return;
+    }
+    const axes = this.transformScaleAxes(gesture.handle);
+    let fx = axes.x ? 1 + (2 * (target.x - gesture.startPt.x)) / gesture.width : 1;
+    let fy = axes.y ? 1 + (2 * (target.y - gesture.startPt.y)) / gesture.height : 1;
+    if (!Number.isFinite(fx) || !Number.isFinite(fy)) return;
+    if (shiftKey) {
+      const uniform = Math.abs(fx - 1) >= Math.abs(fy - 1) ? fx : fy;
+      fx = uniform; fy = uniform;
+    }
+    fx = Math.min(20, Math.max(0.05, fx));
+    fy = Math.min(20, Math.max(0.05, fy));
+    const dx = fx / gesture.netFx;
+    const dy = fy / gesture.netFy;
+    if (dx !== 1 || dy !== 1) {
+      this.transforms.scaleXYPreview(dx, dy);
+      gesture.netFx = fx;
+      gesture.netFy = fy;
+      this.refreshTransformHandles();
+    }
+  }
+
+  private transformScaleAxes(handle: TransformHandleId): { x: boolean; y: boolean } {
+    switch (handle as TransformScaleHandleId) {
+      case 'nw': case 'ne': case 'se': case 'sw': return { x: true, y: true };
+      case 'e': case 'w': return { x: true, y: false };
+      case 'n': case 's': return { x: false, y: true };
+      default: return { x: true, y: true };
+    }
+  }
+
+  /** Commit a handle drag with undo. No-op when unchanged. */
+  endTransformDrag(): void {
+    this.commitTransformDrag();
+    this.updateTextContent(); this.notify();
+  }
+
+  private commitTransformDrag(): void {
+    const gesture = this.transformDrag;
+    this.transformDrag = null;
+    if (!gesture) return;
+    const items = gesture.items.filter((item) => this.scene.isInScene(item));
+    if (!items.length) return;
+    if (gesture.handle === 'rotate') {
+      if (Math.abs(gesture.netDegrees) > 1e-9) {
+        this.history.recordRotate(items, gesture.netDegrees, this.scopePoint(gesture.center));
+      }
+      return;
+    }
+    if (Math.abs(gesture.netFx - 1) > 1e-9 || Math.abs(gesture.netFy - 1) > 1e-9) {
+      this.history.recordScaleXY(items, gesture.netFx, gesture.netFy, this.scopePoint(gesture.center));
+    }
+  }
+
+  /** S/R/H/V key-click: commit the armed gesture, or arm a new one. The
+   * same key twice commits; switching keys commits then re-arms. */
+  transformLiveKey(kind: 'scale' | 'rotate' | 'shearH' | 'shearV'): void {
+    if (!this.isTransformMode || this.isLiveDrawing) return;
+    if (this.transformDrag) this.commitTransformDrag();
+    if (this.transformLive) {
+      const armed = this.transformLive.kind;
+      this.commitTransformLive();
+      if (armed === kind) { this.updateTextContent(); this.notify(); return; }
+    }
+    const items = this.topLevelSelected().filter((item) => this.scene.isInScene(item));
+    const bounds = this.transformSelectionBounds();
+    const start = xy(this.mousePt);
+    if (!items.length || !bounds || !start) return;
+    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const dx = start.x - center.x;
+    const dy = start.y - center.y;
+    this.transformLive = {
+      kind,
+      items,
+      center,
+      width: bounds.width,
+      height: bounds.height,
+      startPt: start,
+      startDist: Math.hypot(dx, dy),
+      startAngle: Math.atan2(dy, dx),
+      netFx: 1,
+      netFy: 1,
+      netDegrees: 0,
+      netK: 0,
+    };
+    this.updateTransformLine(center, start);
+    this.updateTextContent(); this.notify();
+  }
+
+  /** Steer the armed live gesture from the cursor. Returns true while a
+   * live gesture is armed. Called on pointer move. */
+  updateTransformLive(): boolean {
+    const gesture = this.transformLive;
+    if (!gesture) return false;
+    const cursor = xy(this.mousePt);
+    if (!cursor) return true;
+    const live = gesture.items.filter((item) => this.scene.isInScene(item));
+    if (!live.length) { this.cancelTransformLive(); return false; }
+    if (gesture.kind === 'scale') {
+      if (gesture.startDist < 1e-9) return true;
+      const dist = Math.hypot(cursor.x - gesture.center.x, cursor.y - gesture.center.y);
+      if (!Number.isFinite(dist)) return true;
+      const total = Math.min(20, Math.max(0.05, dist / gesture.startDist));
+      const delta = total / gesture.netFx;
+      if (delta !== 1) {
+        this.transforms.scaleXYPreview(delta, delta);
+        gesture.netFx = total;
+        gesture.netFy = total;
+        this.refreshTransformHandles();
+      }
+    } else if (gesture.kind === 'rotate') {
+      const angle = Math.atan2(cursor.y - gesture.center.y, cursor.x - gesture.center.x);
+      const total = (angle - gesture.startAngle) * 180 / Math.PI;
+      if (!Number.isFinite(total)) return true;
+      const delta = total - gesture.netDegrees;
+      if (delta !== 0) {
+        this.transforms.rotatePreview(delta);
+        gesture.netDegrees = total;
+        this.refreshTransformHandles();
+      }
+    } else {
+      const horizontal = gesture.kind === 'shearH';
+      const span = horizontal ? gesture.height : gesture.width;
+      if (!(span > 0)) return true;
+      const total = ((horizontal ? cursor.x : cursor.y) - (horizontal ? gesture.startPt.x : gesture.startPt.y)) / span;
+      if (!Number.isFinite(total)) return true;
+      const delta = total - gesture.netK;
+      if (delta !== 0) {
+        this.transforms.shearPreview(horizontal, delta);
+        gesture.netK = total;
+        this.refreshTransformHandles();
+      }
+    }
+    this.updateTransformLine(gesture.center, cursor);
+    return true;
+  }
+
+  /** Commit the armed live gesture with undo. No-op when unchanged. */
+  commitTransformLive(): void {
+    const gesture = this.transformLive;
+    this.transformLive = null;
+    this.clearTransformLine();
+    if (!gesture) return;
+    const items = gesture.items.filter((item) => this.scene.isInScene(item));
+    if (!items.length) return;
+    const center = this.scopePoint(gesture.center);
+    if (gesture.kind === 'scale') {
+      if (Math.abs(gesture.netFx - 1) > 1e-9) this.history.recordScaleXY(items, gesture.netFx, gesture.netFx, center);
+    } else if (gesture.kind === 'rotate') {
+      if (Math.abs(gesture.netDegrees) > 1e-9) this.history.recordRotate(items, gesture.netDegrees, center);
+    } else if (Math.abs(gesture.netK) > 1e-9) {
+      this.history.recordShear(items, gesture.kind === 'shearH', gesture.netK, center);
+    }
+  }
+
+  /** Cancel the armed live gesture, restoring the pre-gesture geometry. */
+  cancelTransformLive(): void {
+    const gesture = this.transformLive;
+    this.transformLive = null;
+    this.clearTransformLine();
+    if (!gesture) return;
+    if (gesture.kind === 'scale') {
+      if (gesture.netFx !== 1) this.transforms.scaleXYPreview(1 / gesture.netFx, 1 / gesture.netFx);
+    } else if (gesture.kind === 'rotate') {
+      if (gesture.netDegrees !== 0) this.transforms.rotatePreview(-gesture.netDegrees);
+    } else if (gesture.netK !== 0) {
+      this.transforms.shearPreview(gesture.kind === 'shearH', -gesture.netK);
+    }
+    this.refreshTransformHandles();
+  }
+
+  /** Esc handling for transform mode: cancel the live gesture first,
+   * then exit the mode. Returns true when Esc is consumed. */
+  transformEscape(): boolean {
+    if (this.transformLive) {
+      this.cancelTransformLive();
+      this.updateTextContent(); this.notify();
+      return true;
+    }
+    if (this.isTransformMode) {
+      this.setTransformMode(false);
+      return true;
+    }
+    return false;
+  }
+
+  private updateTransformLine(from: { x: number; y: number }, to: { x: number; y: number }): void {
+    try {
+      const line = this.transformLine;
+      if (line && Array.isArray(line.segments) && line.segments.length === 2) {
+        line.segments[0].point = new this.scope.Point(from.x, from.y);
+        line.segments[1].point = new this.scope.Point(to.x, to.y);
+        return;
+      }
+    } catch { /* Recreate below. */ }
+    this.clearTransformLine();
+    try {
+      const line = new this.scope.Path.Line(
+        new this.scope.Point(from.x, from.y), new this.scope.Point(to.x, to.y));
+      line.strokeColor = new this.scope.Color('#4dabf7');
+      line.strokeWidth = 1;
+      line.dashArray = [4, 3];
+      line.guide = true;
+      line.locked = true;
+      if (!line.data) line.data = {};
+      line.data.isTransformLine = true;
+      this.mountGuideItem(line);
+      this.transformLine = line;
+    } catch { /* Headless or detached. */ }
+  }
+
+  private clearTransformLine(): void {
+    if (!this.transformLine) return;
+    try { this.transformLine.remove(); } catch { /* Already gone. */ }
+    this.transformLine = null;
+  }
+
+  private scopePoint(point: { x: number; y: number }): AnyItem {
+    return new this.scope.Point(point.x, point.y);
   }
 
   /** Absolute export boxes for a frame (full frame when unconfigured).
@@ -1501,6 +1881,7 @@ export class NibGliderEngine {
     // reach storage with no per-setter hook. saveSettings writes only when
     // the snapshot changed and no-ops while settings load.
     this.refreshFrameHandles();
+    this.refreshTransformHandles();
     this.saveSettings();
     this.context.notify();
   }
@@ -2789,6 +3170,7 @@ export class NibGliderEngine {
     if (this.pointSnapCursor) this.pointSnapCursor.selected = false;
     if (this.gridCursor) this.gridCursor.selected = false;
     this.selection.clear();
+    this.setTransformMode(false);
     this.updateTextContent();
     this.notify();
   }
@@ -2800,6 +3182,7 @@ export class NibGliderEngine {
     this.selection.removeAll();
     this.history.recordDelete(before, selBefore);
     this.setIsInDragLock(false);
+    this.setTransformMode(false);
   }
 
   /** Drag-move entry for the pointer host. With grid snapping on and
@@ -2923,12 +3306,14 @@ export class NibGliderEngine {
   undo(): void {
     if (this.isLiveDrawing) return;
     this.history.undo();
+    this.exitTransformModeIfIdle();
     this.updateTextContent(); this.notify();
   }
 
   redo(): void {
     if (this.isLiveDrawing) return;
     this.history.redo();
+    this.exitTransformModeIfIdle();
     this.updateTextContent(); this.notify();
   }
 
@@ -3067,6 +3452,7 @@ export class NibGliderEngine {
     );
     void writeSystemClipboard({ scene: buffer, text: outward });
     this.setIsInDragLock(false);
+    this.setTransformMode(false);
     return true;
   }
 
@@ -4217,6 +4603,8 @@ export class NibGliderEngine {
       drawingQuad: this.isDrawingQuad,
       quadPointCount: this.quadPointCount,
       liveHints: this.liveStatusHints(),
+      transformMode: this.isTransformMode,
+      transformLive: this.transformLive ? this.transformLive.kind : null,
     };
     this.setStatusSchema(buildStatusSchema(snapshot), buildKeymapRows(snapshot));
   }

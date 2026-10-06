@@ -2,10 +2,15 @@
 [ ] What other technical fonts or style resources would assist in making the app?
 
 
+[ ] Make it so that Grid Paint mode and other modes like Metaballs that are custom or non-path-vector-drawing 
+will be able to load a different keyboard layout tree.
+		[ ] Alt/Opt +  G for Grid Paint mode
+
 [ ]  menu item under grid section menu:  Sync Grid Snapping to Grid Visibility.
 turn on by default.  toggling on either turns the other on.
 
-[ ] For Point Snapping, make it so that points are obtained at intersections of paths.
+[ ] For Point Snapping, make it so that points happen at intersections of paths.
+
 
 [x] The Tutorial window should be able to animate to different locations on the screen, first to get out of
 the way of where it is drawing a demo or waiting for the user to do a thing.  Make sure it has
@@ -374,7 +379,9 @@ factor will possibly add blob around the shapes.
 TRANSFORMS ON OBJECTS
 [ ] Control/Command + T - makes conventional transform controls show on obj. selection,
 with multiple avail. operations: rotate, scale.  shift + drag will constraint scale or interval the 
-rotation.
+rotation.  When it is active, pressing the S key will turn on live scale with a drag line to the cursor,
+pressing the R key will begin live rotation with a drag line to the cursor.  H will be live shear horizontal,
+V will be live shear vertical. S, R, H, V will be mentioned in the status key table when this is on.
 
 [ ] select image, select shape(s) - right click : Place Image into interior.  If a group of shapes, 
 will place in each object at the group level (attaches to group).  We will call these Interior. 

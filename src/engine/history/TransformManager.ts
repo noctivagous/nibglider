@@ -1,7 +1,7 @@
 import { HistoryManager, type MoveEntry } from './HistoryManager';
 import { SelectionManager } from '../scene/SelectionManager';
 import { SceneRepository } from '../scene/SceneRepository';
-import { remapCircleOrigins, rotateAboutMapper, scaleAboutMapper, shiftCircleOrigins } from '../geometry/shapeCenters';
+import { remapCircleOrigins, rotateAboutMapper, scaleAboutMapper, scaleXYAboutMapper, shearAboutMapper, shiftCircleOrigins } from '../geometry/shapeCenters';
 
 type Item = any;
 // Applies live movement and transforms. Only completed gestures and discrete
@@ -60,6 +60,38 @@ export class TransformManager {
       (items, center) => items.forEach((item) => item.scale(factor, center)),
       (center) => scaleAboutMapper(center, factor),
     );
+  }
+  scaleXYPreview(fx: number, fy: number): void {
+    if (!Number.isFinite(fx) || !Number.isFinite(fy)) return;
+    this.applyPreview(
+      (items, center) => items.forEach((item) => item.scale(fx, fy, center)),
+      (center) => scaleXYAboutMapper(center, fx, fy),
+    );
+  }
+  shear(horizontal: boolean, k: number): void {
+    if (!Number.isFinite(k) || k === 0) return;
+    const items = this.selection.topLevelSelected();
+    if (!items.length) return;
+    const center = this.selection.collectiveCenter(items);
+    this.applyShear(items, center, horizontal, k);
+    for (const item of items) remapCircleOrigins(item, shearAboutMapper(center, horizontal, k));
+    this.selection.refreshCentroids();
+    this.history.recordShear(items, horizontal, k, center);
+  }
+  shearPreview(horizontal: boolean, k: number): void {
+    if (!Number.isFinite(k) || k === 0) return;
+    const items = this.selection.topLevelSelected();
+    if (!items.length) return;
+    const center = this.selection.collectiveCenter(items);
+    this.applyShear(items, center, horizontal, k);
+    for (const item of items) remapCircleOrigins(item, shearAboutMapper(center, horizontal, k));
+  }
+  private applyShear(items: Item[], center: paper.Point, horizontal: boolean, k: number): void {
+    const scope = this.scene.scope;
+    const matrix = horizontal
+      ? new scope.Matrix(1, 0, k, 1, -k * center.y, 0)
+      : new scope.Matrix(1, k, 0, 1, 0, -k * center.x);
+    for (const item of items) item.transform(matrix);
   }
   rotatePreview(degrees: number): void {
     if (!Number.isFinite(degrees) || degrees === 0) return;

@@ -31,6 +31,8 @@ export interface StatusSnapshot {
   drawingQuad: boolean;
   quadPointCount: number;
   liveHints: Array<{ label: string; keys: string[]; actionId?: string }>;
+  transformMode?: boolean;
+  transformLive?: 'scale' | 'rotate' | 'shearH' | 'shearV' | null;
 }
 
 export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
@@ -66,6 +68,21 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
   if (snap.panLock) {
     state.push(L('title', [T('Pan-Lock On')]));
     steps.push(L('hint', [T('Move mouse to pan. Press any key to release.')]));
+  }
+  if (snap.transformMode) {
+    state.push(L('title', [T('Transform Controls On')]));
+    if (snap.transformLive === 'scale') {
+      steps.push(L('hint', [T('Move mouse to scale. Press S to commit, Esc to cancel.')]));
+    } else if (snap.transformLive === 'rotate') {
+      steps.push(L('hint', [T('Move mouse to rotate. Press R to commit, Esc to cancel.')]));
+    } else if (snap.transformLive === 'shearH') {
+      steps.push(L('hint', [T('Move mouse to shear horizontally. Press H to commit, Esc to cancel.')]));
+    } else if (snap.transformLive === 'shearV') {
+      steps.push(L('hint', [T('Move mouse to shear vertically. Press V to commit, Esc to cancel.')]));
+    } else {
+      steps.push(L('hint', [T('Drag a handle to scale or rotate. Shift constrains.')]));
+      steps.push(L('hint', [T('Arm live scale, rotation, or shear from the cursor.')]));
+    }
   }
   if (snap.drawingPath) {
     state.push(L('title', [T(snap.composite ? 'Drawing Composite Path' : 'Drawing Path')]));

@@ -87,6 +87,28 @@ export function scaleAboutMapper(
   });
 }
 
+/** Global-point mapper for remapCircleOrigins: non-uniform scale about a center. */
+export function scaleXYAboutMapper(
+  center: { x: number; y: number }, fx: number, fy: number,
+): (point: { x: number; y: number }) => { x: number; y: number } {
+  return (point) => ({
+    x: center.x + (point.x - center.x) * fx,
+    y: center.y + (point.y - center.y) * fy,
+  });
+}
+
+/** Global-point mapper for remapCircleOrigins: shear about a center.
+ * Horizontal shears x by the y offset (x' = x + k·(y−cy)); vertical
+ * shears y by the x offset. Matches the Paper matrix applied in
+ * TransformManager. */
+export function shearAboutMapper(
+  center: { x: number; y: number }, horizontal: boolean, k: number,
+): (point: { x: number; y: number }) => { x: number; y: number } {
+  return (point) => horizontal
+    ? { x: point.x + k * (point.y - center.y), y: point.y }
+    : { x: point.x, y: point.y + k * (point.x - center.x) };
+}
+
 /** Global-point mapper for remapCircleOrigins: Paper-clockwise rotation. */
 export function rotateAboutMapper(
   center: { x: number; y: number }, degrees: number,

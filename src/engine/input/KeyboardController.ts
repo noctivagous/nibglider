@@ -38,6 +38,10 @@ export interface KeyboardHost {
   strokeEnabled(): boolean;
   fillEnabled(): boolean;
   isInDragLock(): boolean;
+  isTransformMode(): boolean;
+  toggleTransformMode(): void;
+  transformLiveKey(kind: 'scale' | 'rotate' | 'shearH' | 'shearV'): void;
+  transformEscape(): boolean;
   shapeWidth(): number;
   setShapeWidth(v: number): void;
   splineTension(): number;
@@ -167,6 +171,7 @@ export class KeyboardController {
       isInDragLock: host.isInDragLock(),
       liveAdjustApplies: host.liveAdjustApplies(),
       isCompositePath: host.compositePathEnabled(),
+      isTransformMode: host.isTransformMode(),
     };
   }
 
@@ -221,6 +226,24 @@ export class KeyboardController {
       case 'pan-lock':
         event.preventDefault();
         host.setPanLocked(true);
+        return;
+      case 'transform-mode':
+        // Primary browser shortcut (Cmd+T mac, Ctrl+T PC): claim it so
+        // the page transform controls toggle instead.
+        event.preventDefault();
+        host.toggleTransformMode();
+        return;
+      case 'transform-scale':
+        host.transformLiveKey('scale');
+        return;
+      case 'transform-rotate':
+        host.transformLiveKey('rotate');
+        return;
+      case 'transform-shear-h':
+        host.transformLiveKey('shearH');
+        return;
+      case 'transform-shear-v':
+        host.transformLiveKey('shearV');
         return;
       case 'delete-selection':
         host.removeAllSelectedItemsAndReset();
@@ -403,6 +426,8 @@ export class KeyboardController {
   }
 
   private clearSelection(): void {
+    // Esc unwinds transform UI first: armed live gesture, then the mode.
+    if (this.host.transformEscape()) return;
     this.host.clearSelection();
     this.host.setIsInDragLock(false);
   }
