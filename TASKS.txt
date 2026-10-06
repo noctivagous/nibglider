@@ -1,4 +1,7 @@
 
+[ ] Right-click menu > Operations >
+   [ ] turn intersecting paths into interlace
+
 [ ] Make sure that everything in the UI doesn't have selectable text so that
 Select All doesn't select text in the UI.  
 

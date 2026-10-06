@@ -58,7 +58,7 @@ const MENU_COMMANDS: Set<string> = new Set([
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
   'bring-to-front', 'send-to-back', 'duplicate-selection',
-  'group', 'ungroup-selection', 'delete-selection',
+  'group', 'ungroup-selection', 'delete-selection', 'transform-mode',
   'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
   'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
@@ -318,6 +318,7 @@ export default function App() {
     else if (commandId === 'group') engine.groupSelection();
     else if (commandId === 'ungroup-selection') engine.ungroupSelected();
     else if (commandId === 'delete-selection') engine.removeAllSelectedItemsAndReset();
+    else if (commandId === 'transform-mode') engine.toggleTransformMode();
     else if (commandId.startsWith('combinatorics-')) {
       const mode = commandId.slice('combinatorics-'.length);
       if (mode === 'none' || mode === 'union' || mode === 'subtract' || mode === 'intersect') {
@@ -591,12 +592,13 @@ export default function App() {
     };
   }, [engine, gui]);
 
-  // Right-click menu definition and enablement: order commands need a
-  // selection, so they render disabled on an empty-canvas right-click.
+  // Right-click menu definition and enablement: order and transform
+  // commands need a selection, so they render disabled on an
+  // empty-canvas right-click.
   const contextMenuDef = panels.menus.find((menu) => menu.id === CONTEXT_MENU_ID);
   const contextEnabled = engine.selectedItems.length > 0
     ? MENU_COMMANDS
-    : new Set([...MENU_COMMANDS].filter((id) => id !== 'bring-to-front' && id !== 'send-to-back'));
+    : new Set([...MENU_COMMANDS].filter((id) => id !== 'bring-to-front' && id !== 'send-to-back' && id !== 'transform-mode'));
 
   return (
     <div id="mainLayout">

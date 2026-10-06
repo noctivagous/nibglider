@@ -109,6 +109,9 @@
       <item command="bring-to-front" label="Bring to front" icon="bring-to-front" />
       <item command="send-to-back" label="Send to back" icon="send-to-back" />
     </group>
+    <group label="Transform">
+      <item command="transform-mode" label="Transform controls" shortcut="Opt+T" />
+    </group>
   </menu>
   <menu id="help" title="Help">
     <item command="tutorial" icon="tutorial" />

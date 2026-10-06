@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseMenuXML } from '../src/ui/menuXML.ts';
-import { primaryShortcut } from '../src/engine/input/keymap.ts';
+import { keyboardPlatform, optShortcut, primaryShortcut } from '../src/engine/input/keymap.ts';
 
 const MENUS_URL = new URL('../src/ui/menus/menus.xml', import.meta.url);
 
@@ -18,7 +18,7 @@ const WIRED_COMMANDS = [
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
   'bring-to-front', 'send-to-back', 'duplicate-selection',
-  'group', 'ungroup-selection', 'delete-selection',
+  'group', 'ungroup-selection', 'delete-selection', 'transform-mode',
   'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
   'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
@@ -78,6 +78,20 @@ test('groups emit ordered headers and Primary shortcuts resolve per platform', (
   assert.equal(layerById.group.shortcut, primaryShortcut('G'));
   assert.equal(layerById['ungroup-selection'].shortcut, primaryShortcut('G', true));
   assert.equal(layerById['delete-selection'].shortcut, 'Backspace');
+});
+
+test('right-click menu offers transform controls with the Opt shortcut', () => {
+  const menus = loadMenus();
+  const context = menus.find((menu) => menu.id === 'context-object');
+  assert.ok(context);
+  const item = context.items.find((entry) => entry.commandId === 'transform-mode');
+  assert.ok(item);
+  assert.equal(item.label, 'Transform controls');
+  // ⌥T on macOS/iOS, Alt+T elsewhere.
+  assert.equal(item.shortcut, keyboardPlatform() === 'mac' ? '⌥T' : 'Alt+T');
+  assert.equal(item.shortcut, optShortcut('T'));
+  assert.equal(optShortcut('T', 'mac'), '⌥T');
+  assert.equal(optShortcut('T', 'other'), 'Alt+T');
 });
 
 test('items fall back to the command id and menus to the menu id', () => {
@@ -209,6 +223,8 @@ test('menu XML rejects malformed definitions', () => {
     '<menus><menu id="m"><group label="G"><toggle/></group></menu></menus>',
     '<menus><menu id="m"><item command="c" shortcut="Primary+"/></menu></menus>',
     '<menus><menu id="m"><item command="c" shortcut="Primary+G+H"/></menu></menus>',
+    '<menus><menu id="m"><item command="c" shortcut="Opt+"/></menu></menus>',
+    '<menus><menu id="m"><item command="c" shortcut="Opt+TH"/></menu></menus>',
     '<menus><menu id="m"><bogus/></menu></menus>',
     'not xml at all',
     '',

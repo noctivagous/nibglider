@@ -120,11 +120,11 @@ test('application menus cover file, edit, document, operations, modes, layers, c
     assert.ok(parent?.children && parent.children.length > 0, `modes menu lists ${id} submenu`);
   }
   assert.deepEqual(byId.debug.items.map((item) => item.commandId), ['reset-settings', 'empty-canvas']);
-  // Canvas right-click menu mirrors the Layers Order group.
+  // Canvas right-click menu mirrors the Layers Order group, plus transform.
   assert.equal(byId['context-object'].title, 'Object');
   assert.deepEqual(
     byId['context-object'].items.map((item) => item.commandId),
-    ['hdr-context-object-1', 'bring-to-front', 'send-to-back'],
+    ['hdr-context-object-1', 'bring-to-front', 'send-to-back', 'hdr-context-object-2', 'transform-mode'],
   );
 });
 

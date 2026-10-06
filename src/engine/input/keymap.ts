@@ -831,6 +831,11 @@ export function primaryShortcut(key: string, shift = false, platform = keyboardP
   return `${platform === 'mac' ? '⌘' : 'Ctrl'}+${shift ? 'Shift+' : ''}${key}`;
 }
 
+/** Alt/Option shortcut label: ⌥ on macOS/iOS, Alt+ elsewhere. */
+export function optShortcut(key: string, platform = keyboardPlatform()): string {
+  return `${platform === 'mac' ? '⌥' : 'Alt+'}${key}`;
+}
+
 // The values here are used by commands AND legends; modifiers never change
 // stroke-width/centerline steps. Shift wins over Alt for scale/rotation,
 // while nudge combines them, preserving the established physical behavior.

@@ -15,15 +15,21 @@
 // document order. Menu titles and item labels fall back to the id/command
 // when omitted; a group without a label is an error.
 // shortcut="Primary+G" and "Primary+Shift+G" resolve through primaryShortcut
-// for the platform; any other value is used literally (e.g. "Backspace").
+// for the platform, shortcut="Opt+T" through optShortcut (⌥T on macOS,
+// Alt+T elsewhere); any other value is used literally (e.g. "Backspace").
 
 import { parseXmlDocument, type XmlNode } from './xmlParser';
-import { primaryShortcut } from '../engine/input/keymap';
+import { optShortcut, primaryShortcut } from '../engine/input/keymap';
 import type { MenuDef, MenuItemDef } from './PanelsManager';
 
 export type MenuParseResult = { menus: MenuDef[] } | { error: string };
 
 function resolveShortcut(raw: string): string | null {
+  if (raw.startsWith('Opt+')) {
+    const key = /^([A-Za-z0-9])$/.exec(raw.slice('Opt+'.length));
+    if (!key) return null;
+    return optShortcut(key[1]);
+  }
   if (!raw.startsWith('Primary+')) return raw;
   const match = /^(Shift\+)?([A-Za-z0-9])$/.exec(raw.slice('Primary+'.length));
   if (!match) return null;
@@ -39,7 +45,7 @@ function parseItem(node: XmlNode, menuId: string): MenuItemDef | string {
   if (node.attrs['shortcut'] !== undefined) {
     const resolved = resolveShortcut(node.attrs['shortcut']);
     if (resolved == null) {
-      return `<${node.tag} command="${command}"> has a malformed shortcut (use Primary+G, Primary+Shift+G, or a literal like Backspace)`;
+      return `<${node.tag} command="${command}"> has a malformed shortcut (use Primary+G, Primary+Shift+G, Opt+T, or a literal like Backspace)`;
     }
     item.shortcut = resolved;
   }
