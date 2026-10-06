@@ -115,6 +115,80 @@ test('a bar through a hexagon corner weaves as one shaped cut', () => {
   } finally { cleanup(); }
 });
 
+test('five intersecting strokes weave in one op', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const h = new s.Path({ segments: [[-60, 0], [60, 0]], strokeColor: 'black', strokeWidth: 10 });
+    const verticals = [-45, -15, 15, 45].map((x) =>
+      new s.Path({ segments: [[x, -40], [x, 40]], strokeColor: 'black', strokeWidth: 10 }));
+    e.addItemToSelection(h);
+    for (const v of verticals) e.addItemToSelection(v);
+    assert.equal(e.canInterlaceSelection(), true);
+    // Live groups stay two-member: five fresh strokes are op-only.
+    assert.equal(e.canInterlaceGroupSelection(), false);
+    e.interlaceSelection();
+    assert.equal(e.lastCombineNote, '');
+    assert.equal(e.undoLabel(), 'Interlace');
+    assert.equal(layer.children.length, 5);
+    // Pairs run in selection order with the pair-ordinal alternation:
+    // H over at x=-45 and x=15, under at x=-15 and x=45.
+    const weave = e.selectedInterlaceWeave();
+    assert.equal(weave.members, 5);
+    assert.deepEqual(weave.crossings.map((c) => c.x), [-45, -15, 15, 45]);
+    assert.deepEqual(weave.crossings.map((c) => c.over), [0, 2, 0, 4]);
+    // Exactly one band covers each crossing — the winner.
+    for (const c of weave.crossings) {
+      const covering = layer.children.filter((child) => child.contains(new s.Point(c.x, c.y)));
+      assert.equal(covering.length, 1, `crossing #${c.number} has no single winner`);
+    }
+    for (const child of layer.children) {
+      assert.equal(child.data.interlace.sources.length, 5);
+    }
+    e.undo();
+    assert.equal(layer.children.length, 5);
+    assert.ok(layer.children.includes(h));
+    for (const v of verticals) assert.ok(layer.children.includes(v));
+  } finally { cleanup(); }
+});
+
+test('a chain linked through one middle stroke weaves together', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    // A and C never cross each other; each crosses B.
+    const a = new s.Path({ segments: [[-20, -40], [-20, 40]], strokeColor: 'black', strokeWidth: 10 });
+    const b = new s.Path({ segments: [[-60, 0], [60, 0]], strokeColor: 'black', strokeWidth: 10 });
+    const c = new s.Path({ segments: [[20, -40], [20, 40]], strokeColor: 'black', strokeWidth: 10 });
+    e.addItemToSelection(a);
+    e.addItemToSelection(b);
+    e.addItemToSelection(c);
+    assert.equal(e.canInterlaceSelection(), true);
+    e.interlaceSelection();
+    assert.equal(layer.children.length, 3);
+    const weave = e.selectedInterlaceWeave();
+    assert.equal(weave.crossings.length, 2);
+    assert.deepEqual(weave.crossings.map((c) => c.over), [0, 1]);
+    e.undo();
+    assert.equal(layer.children.length, 3);
+  } finally { cleanup(); }
+});
+
+test('a disconnected stroke blocks the multi-weave with a note', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const a = new s.Path({ segments: [[-50, 0], [50, 0]], strokeColor: 'black', strokeWidth: 10 });
+    const b = new s.Path({ segments: [[0, -40], [0, 40]], strokeColor: 'black', strokeWidth: 10 });
+    const far = new s.Path({ segments: [[200, -40], [200, 40]], strokeColor: 'black', strokeWidth: 10 });
+    e.addItemToSelection(a);
+    e.addItemToSelection(b);
+    e.addItemToSelection(far);
+    assert.equal(e.canInterlaceSelection(), false);
+    e.interlaceSelection();
+    assert.equal(e.lastCombineNote, 'No crossings — paths do not intersect.');
+    assert.equal(e.canUndo(), false);
+    assert.equal(layer.children.length, 3);
+  } finally { cleanup(); }
+});
+
 test('two intersecting strokes weave with alternating over/under', () => {
   const { s, e, layer, cleanup } = engine();
   try {
@@ -204,7 +278,7 @@ test('non-crossing and single selections no-op with a note', () => {
     e2.addItemToSelection(single);
     assert.equal(e2.canInterlaceSelection(), false);
     e2.interlaceSelection();
-    assert.equal(e2.lastCombineNote, 'Select two stroked paths first.');
+    assert.equal(e2.lastCombineNote, 'Select two or more intersecting stroked paths first.');
     assert.equal(layer2.children.length, 1);
   } finally { cleanup2(); }
 });

@@ -120,7 +120,7 @@ export interface InterlaceGroupParams {
 }
 
 type InterlacePlan =
-  | { kind: 'fresh'; entries: [WeaveEntry, WeaveEntry]; firstId: string; phase: 0 | 1; weave: string; overrides: Record<string, string>; label: string }
+  | { kind: 'fresh'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; overrides: Record<string, string>; label: string }
   | { kind: 'rerun'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; overrides: Record<string, string>; label: string }
   | { kind: 'add'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; overrides: Record<string, string>; label: string };
 
@@ -150,7 +150,7 @@ function paramsEqual(a: InterlaceGroupParams, b: InterlaceGroupParams): boolean 
 }
 
 const NO_CROSSINGS_NOTE = 'No crossings — paths do not intersect.';
-const SELECT_NOTE = 'Select two stroked paths first.';
+const SELECT_NOTE = 'Select two or more intersecting stroked paths first.';
 const ADD_SELECT_NOTE = 'Select a baked interlace result plus new crossing strokes.';
 const MIXED_NOTE = 'Select bands from one baked weave at a time.';
 const EMPTY_NOTE = 'No result — the gaps consumed a band.';
@@ -212,12 +212,11 @@ export class InterlaceManager {
       if (keys.size > 1) return MIXED_NOTE;
       return ADD_SELECT_NOTE;
     }
-    if (items.length === 2 && items[0] && items[1] && items[0] !== items[1]) {
+    if (items.length >= 2 && items.every((item) => item)
+      && new Set(items).size === items.length && !items.some((item) => this.memoOf(item))) {
       const local: Item[] = [];
       try {
-        const a = this.ribbonFor(items[0], local);
-        const b = this.ribbonFor(items[1], local);
-        if (a && b) return NO_CROSSINGS_NOTE;
+        if (items.every((item) => this.ribbonFor(item, local))) return NO_CROSSINGS_NOTE;
       } catch { /* Fall through to the selection hint. */ }
       finally {
         for (const temp of local) this.removeDetached(temp);
@@ -233,25 +232,36 @@ export class InterlaceManager {
     return `legacy:${ids[0]}|${ids[1]}`;
   }
 
-  // Route a selection to one bake: a fresh pair, a re-run of a whole baked
-  // weave (phase flip), or an add of fresh strokes to a baked weave (phase
-  // kept). Unselected bands of the weave auto-join, so selecting any band
-  // plus new strokes reweaves everything. Temps collect temp spines; the
-  // caller owns disposal.
+  // Route a selection to one bake: a fresh connected set, a re-run of a
+  // whole baked weave (phase flip), or an add of fresh strokes to a baked
+  // weave (phase kept). Unselected bands of the weave auto-join, so
+  // selecting any band plus new strokes reweaves everything. Temps collect
+  // temp spines; the caller owns disposal.
   private classify(items: Item[], temps: Item[]): InterlacePlan | null {
     const clean = items.filter((item) => item);
     if (!clean.length) return null;
     const bandItems = clean.filter((item) => this.memoOf(item));
     const freshItems = clean.filter((item) => !this.memoOf(item));
     if (!bandItems.length) {
-      if (freshItems.length !== 2 || freshItems[0] === freshItems[1]) return null;
-      const a = this.ribbonFor(freshItems[0], temps);
-      const b = this.ribbonFor(freshItems[1], temps);
-      if (!a || !b) return null;
-      if (!this.crossings(a.spine, b.spine).length) return null;
-      let entries: [WeaveEntry, WeaveEntry];
+      // Fresh multi-weave: any connected set of two or more weavable
+      // strokes bakes in one op — pairs run in selection order with the
+      // pair-ordinal alternation, so two still behave exactly as before.
+      if (freshItems.length < 2 || new Set(freshItems).size !== freshItems.length) return null;
+      const ribbons: Ribbon[] = [];
+      for (const item of freshItems) {
+        const ribbon = this.ribbonFor(item, temps);
+        if (!ribbon) return null;
+        ribbons.push(ribbon);
+      }
+      // Every member must cross another, or it would bake unchanged and
+      // silently join the memo list.
+      const freshSpines = ribbons.map((ribbon) => ribbon.spine);
+      const touches = (n: number): boolean => freshSpines.some((other, m) =>
+        m !== n && this.crossings(freshSpines[n], other).length > 0);
+      if (!ribbons.every((_, n) => touches(n))) return null;
+      let entries: WeaveEntry[];
       try {
-        entries = [this.entryOf(a, true), this.entryOf(b, true)];
+        entries = ribbons.map((ribbon) => this.entryOf(ribbon, true));
       } catch {
         return null;
       }
@@ -971,7 +981,8 @@ export class InterlaceManager {
   // param tweaks stay undoable through ordinary scene commands.
 
   canGroupSelection(): boolean {
-    return this.canInterlaceSelection();
+    // Live groups stay two-member in v1; the baked op takes any connected set.
+    return this.host.selectedItems().length === 2 && this.canInterlaceSelection();
   }
 
   groupSelection(): void {
