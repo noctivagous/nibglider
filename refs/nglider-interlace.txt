@@ -1,0 +1,84 @@
+Each interlaced band carries an interlace memo in item.data holding:                                                                  
+                                                                                                                                                                            
+  • the spine snapshot (Bézier contour of the centerline at op time),                                                                                                       
+  • width + cap/join/dash style for re-expansion,                                                                                                                           
+  • peer id, phase, and first-role id for over/under assignment.                                                                                                            
+                                                                                                                                                                            
+  Gaps are never stored — they're re-cut fresh every run: re-expand both bands from the snapshots, sort crossings along the first-role spine, alternate over/under (flipped 
+  phase on re-run), subtract a gap disc from each under-side band.                                                                                                          
+                                                                                                                                                                            
+  One honest caveat: what's stored is the resolved Bézier spine, not the original parametric one. A bSpline/composite spine gets flattened to Bézier at snapshot time, and  
+  the retained authoring source lowers to Bézier like all boolean results — so post-interlace you lose the editable spline controls. If you want interlace to keep original 
+  spines fully editable (re-resolving from the live outlinedStroke record each run), that's a refinement we can make; it would need the record lookup to survive across runs
+  instead of today's snapshot.
+
+---
+
+# InterlaceGroup plan (baked op + NGGroup variant, 2026-10-06)
+
+## Goal
+Keep the baked interlace op as the commit primitive and add a live
+NGGroup variant: member paths retain all of their data (parametric spines,
+outlined-stroke params), the group derives the gapped weave bands, and the
+weave stays editable later (phase, padding, roles) like an in-canvas element.
+
+## Success Criteria
+- A group record `{ childIds, interlace: { phase, padding, firstId } }`
+  round-trips JSON and validates; plain groups are unaffected.
+- A pure resolver turns member records into the same weave the baked op
+  produces (alternation, phase, peer-parallel gaps) with no Paper dependency.
+- Grouped members render only as derived bands; ungroup restores members.
+- Baked pairs upgrade to live groups from their existing interlace memos.
+- Baked `interlaceSelection` keeps working unchanged.
+
+## Approach
+Subclass-at-the-model: `NGInterlaceGroup extends NGGroup` with a required
+`interlace` params block; drawable kind stays `group`. Resolver lives in
+`src/engine/geometry/` (pure, record in → band geometry out) and shares the
+baked op's math by extracting crossings-sort + `gapRectFor` into it.
+Rendering follows the existing derived-item pattern: `DrawableRenderer`
+builds band items from resolved geometry and tags the group identity;
+member items are suppressed while grouped (moved into the group item,
+hidden, records retained). Re-resolve triggers: member source change
+(same geometryKey check `SceneRepository` already uses), param change,
+undo/redo. History reuses `recordGroup`/`recordUngroup` plus a param-change
+command. Member editing while grouped is disallowed until P3 (ungroup to
+edit); 3+ members and self-interlace stay out of scope.
+
+## Steps
+- P1 — Record + resolver, no scene integration.
+  `NGGroup.ts` (interlace params type), `serialization.ts` (branch on
+  `interlace` presence), new `src/engine/geometry/interlaceGroup.ts`
+  (`resolveInterlaceGroup`), shared-helper extraction from
+  `InterlaceManager`. Tests: validation round-trips, resolver weave
+  parity with baked behavior (alternation, phase flip, gap footprint).
+- P2 — Engine + renderer integration.
+  `engine.interlaceGroupSelection()` (2 stroked paths → group record,
+  members moved in, bands rendered), suppression + re-resolve triggers,
+  `ungroup` restores members, `convertToLiveGroup` upgrades baked pairs
+  from memo snapshots. Tests: render/suppress/restore, re-resolve on
+  member change, undo coverage.
+- P3 — In-canvas controls.
+  Group selection surfaces phase/padding/role controls (in-canvas-element
+  pattern); per-crossing over/under assignment. Manual canvas check.
+
+## Validation Plan
+- P1: focused resolver/serialization tests green; `npm run test` shows no
+  new red (known pre-existing: 3 `tutorial-progress` failures);
+  `npm run lint` 0 errors; `npx tsc --noEmit` exit 0.
+- P2: integration tests (place → suppress → edit member → re-resolve →
+  ungroup → originals back, one undo step each); same gates.
+- P3: manual playthrough (group, flip phase, change padding, ungroup)
+  plus committed control tests where feasible.
+- Highest-risk validation: P2 re-resolve/suppress round-trip (stale
+  derived items or lost member records fail here first).
+
+## Risks / Open Questions
+- Derived-item identity churn across re-resolves can break selection and
+  retention mapping; mitigate by tagging the stable group/member ids the
+  way `DrawableRenderer` already tags `drawableId`.
+- Two paths (baked + live) to maintain; baked stays the primitive the
+  group resolver calls, so the math cannot drift.
+- Param-change history granularity (coalesce padding drags) deferred to P2.
+- Open: none blocking. Defaults assumed: ungroup-to-edit until P3;
+  exactly-2 members in v1, matching the baked op.  

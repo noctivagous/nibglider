@@ -177,10 +177,17 @@ export function validateDrawable(value: unknown): asserts value is NGDrawable {
       return;
     }
     case 'group': {
-      const group = record(d.source, 'drawable.source', ['childIds']);
+      const group = record(d.source, 'drawable.source', ['childIds', 'interlace']);
       const ids = array(group.childIds, 'group.childIds');
       ids.forEach((id) => { string(id, 'group.childId'); requireValue(id !== d.id, 'group.childId', 'child other than self'); });
       requireValue(new Set(ids).size === ids.length, 'group.childIds', 'unique IDs');
+      if (group.interlace !== undefined) {
+        const ix = record(group.interlace, 'group.interlace', ['phase', 'padding', 'firstId']);
+        choice(ix.phase, 'group.interlace.phase', [0, 1]);
+        number(ix.padding, 'group.interlace.padding', 0);
+        string(ix.firstId, 'group.interlace.firstId');
+        requireValue((ids as unknown[]).includes(ix.firstId), 'group.interlace.firstId', 'member ID');
+      }
       return;
     }
     default: throw new ModelValidationError('drawable.kind: unsupported drawable');

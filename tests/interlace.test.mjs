@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import paper from 'paper';
 import { NibGliderEngine } from '../src/engine/engine.ts';
-import { InterlaceManager, gapRectFor } from '../src/engine/scene/InterlaceManager.ts';
+import { InterlaceManager } from '../src/engine/scene/InterlaceManager.ts';
+import { gapRectFor } from '../src/engine/geometry/interlaceWeave.ts';
 import { resolveOutlinedStroke } from '../src/engine/geometry/outlinedStroke.ts';
 
 function engine() {

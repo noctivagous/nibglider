@@ -11,6 +11,7 @@ import type { NGBezierPath, NGPath } from '../model/NGPath';
 import type { BezierSegment, ResolvedVectorGeometry, Vec2 } from '../model/geometryResolution';
 import { resolveOutlinedStroke } from '../geometry/outlinedStroke';
 import { resolvePath } from '../geometry/pathResolver';
+import { gapRectFor } from '../geometry/interlaceWeave';
 import { hasBooleanArea } from '../geometry/booleanResolver';
 
 type Item = any;
@@ -61,27 +62,6 @@ interface Ribbon {
 const NO_CROSSINGS_NOTE = 'No crossings — paths do not intersect.';
 const SELECT_NOTE = 'Select two stroked paths first.';
 const EMPTY_NOTE = 'No result — the gaps consumed a band.';
-
-/** Gap daylight beyond the over-band edge, in document points. */
-function gapPadding(underWidth: number): number {
-  return Math.max(2, underWidth * 0.15);
-}
-
-export interface InterlaceGapRect { angle: number; length: number; width: number }
-
-/** Peer-aligned gap footprint: long sides run parallel to the over-band, so
- * the under-band's cut ends parallel the peer. Length spans the under-band
- * even at shallow crossing angles; width clears the over-band plus daylight.
- * Pure geometry for testability; the manager builds the rotated cutter. */
-export function gapRectFor(overAngle: number, overWidth: number, underWidth: number, sine: number): InterlaceGapRect {
-  const grip = Math.min(1, Math.max(sine, 0.35));
-  const pad = gapPadding(underWidth);
-  return {
-    angle: overAngle,
-    length: underWidth / grip + 2 * pad,
-    width: overWidth + 2 * pad,
-  };
-}
 
 export class InterlaceManager {
   private readonly host: InterlaceHost;
