@@ -19,6 +19,7 @@ import type { ShapeFactory } from './geometry/ShapeFactory';
 import type { HistoryManager } from './history/HistoryManager';
 import type { TransformManager } from './history/TransformManager';
 import type { CombinatoricsManager } from './scene/CombinatoricsManager';
+import type { InterlaceManager } from './scene/InterlaceManager';
 import type { SceneRepository } from './scene/SceneRepository';
 import type { SelectionManager } from './scene/SelectionManager';
 import type { GridRenderer } from './snapping/GridRenderer';
@@ -39,6 +40,7 @@ export class EngineContext {
   history!: HistoryManager;
   selection!: SelectionManager;
   combinatorics!: CombinatoricsManager;
+  interlace!: InterlaceManager;
   drops!: DropController;
   transforms!: TransformManager;
   gridRenderer!: GridRenderer;

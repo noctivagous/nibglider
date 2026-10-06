@@ -38,6 +38,7 @@ import {
 } from './input/PointerController';
 import { keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
 import { CombinatoricsManager } from './scene/CombinatoricsManager';
+import { InterlaceManager } from './scene/InterlaceManager';
 import { DropController, viewFitScale } from './document/DropController';
 import {
   clearTransient,
@@ -509,6 +510,7 @@ export class NibGliderEngine {
   private get scene(): SceneRepository { return this.context.scene; }
   private get history(): HistoryManager { return this.context.history; }
   private get combinatorics(): CombinatoricsManager { return this.context.combinatorics; }
+  private get interlace(): InterlaceManager { return this.context.interlace; }
   private get drops(): DropController { return this.context.drops; }
   private get transforms(): TransformManager { return this.context.transforms; }
   private get gridRenderer(): GridRenderer { return this.context.gridRenderer; }
@@ -709,7 +711,7 @@ export class NibGliderEngine {
         mount: (item) => this.mountCentroidMarker(item),
         unmount: (item) => { try { item.remove(); } catch { /* Detached already. */ } },
       });
-    this.context.combinatorics = new CombinatoricsManager({
+    const combinatoricsHost = {
       combineMode: () => this.combineMode,
       setCombineNote: (note) => { this.lastCombineNote = note; },
       selectedItems: () => this.selectedItems,
@@ -735,6 +737,23 @@ export class NibGliderEngine {
       },
       updateTextContent: () => this.updateTextContent(),
       notify: () => this.notify(),
+    };
+    this.context.combinatorics = new CombinatoricsManager(combinatoricsHost);
+    this.context.interlace = new InterlaceManager({
+      ...combinatoricsHost,
+      paperScope: () => scope,
+      pathSourceOf: (item) => {
+        const id = item?.data?.drawableId;
+        if (typeof id !== 'string') return null;
+        const known = this.scene.drawableOf(id);
+        if (known && known.kind === 'path') return known.source;
+        try {
+          const retained = this.scene.getRetainedPathDrawable(id);
+          if (retained) return retained.source;
+        } catch { /* No retained source. */ }
+        return null;
+      },
+      bezierSourceOf: (item) => this.scene.bezierSource(item),
     });
     this.context.drops = new DropController({
       scope: () => this.scope,
@@ -2769,6 +2788,18 @@ export class NibGliderEngine {
 
   depositWithCombine(deposited: AnyItem): AnyItem | null {
     return this.combinatorics.depositWithCombine(deposited);
+  }
+
+  // --- Interlace (over/under weave of two intersecting stroked paths) ---
+  // Operand order is selection order: the first-selected path goes over at
+  // the first crossing along its spine. Re-running on the same pair flips
+  // the phase. Results lower to Bézier like other boolean results.
+  canInterlaceSelection(): boolean {
+    return this.interlace.canInterlaceSelection();
+  }
+
+  interlaceSelection(): void {
+    this.interlace.interlaceSelection();
   }
 
 

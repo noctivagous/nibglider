@@ -113,6 +113,9 @@
     <group label="Transform">
       <item command="transform-mode" label="Transform controls" shortcut="Opt+T" />
     </group>
+    <group label="Interlace">
+      <item command="interlace" label="Interlace" />
+    </group>
   </menu>
   <menu id="help" title="Help">
     <item command="tutorial" icon="tutorial" />
