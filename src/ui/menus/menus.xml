@@ -77,6 +77,7 @@
       <option command="combinatorics-union" label="Union" icon="combinatorics-union" />
       <option command="combinatorics-subtract" label="Subtract" icon="combinatorics-subtract" />
       <option command="combinatorics-intersect" label="Intersect" icon="combinatorics-intersect" />
+      <option command="combinatorics-crop" label="Crop" icon="combinatorics-crop" />
     </item>
     <item command="snapping" label="Snapping" icon="snapping">
       <option command="snap-grid" label="Grid" icon="snap-grid" />

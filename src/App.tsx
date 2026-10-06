@@ -59,7 +59,7 @@ const MENU_COMMANDS: Set<string> = new Set([
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
   'bring-to-front', 'send-to-back', 'duplicate-selection',
   'group', 'ungroup-selection', 'delete-selection', 'transform-mode',
-  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect',
+  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-crop',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
   'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
   'rect-shape-rhombus', 'rect-shape-kite', 'rect-shape-exportFrame',
@@ -321,7 +321,7 @@ export default function App() {
     else if (commandId === 'transform-mode') engine.toggleTransformMode();
     else if (commandId.startsWith('combinatorics-')) {
       const mode = commandId.slice('combinatorics-'.length);
-      if (mode === 'none' || mode === 'union' || mode === 'subtract' || mode === 'intersect') {
+      if (mode === 'none' || mode === 'union' || mode === 'subtract' || mode === 'intersect' || mode === 'crop') {
         // Panel parity (ControlPanel arm): arming with a selection combines immediately.
         engine.setCombineMode(mode);
         if (mode !== 'none' && engine.canCombineSelection()) engine.combineSelection(mode);

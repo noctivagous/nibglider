@@ -2179,6 +2179,17 @@ const COMBINE_OPTIONS: Array<{
     tip: 'Intersect: keep the overlap of base + tool',
     icon: <path d="M6 3.4 A3.6 3.6 0 0 1 6 10.6 A3.6 3.6 0 0 1 6 3.4 Z M10 3.4 A3.6 3.6 0 0 0 10 10.6 A3.6 3.6 0 0 0 10 3.4 Z" />,
   },
+  {
+    value: 'crop',
+    label: 'Crop',
+    tip: 'Crop: clip each touched shape to the deposited frame; the frame is consumed',
+    icon: (
+      <>
+        <circle cx="8" cy="7" r="3.6" strokeDasharray="2 1.4" />
+        <path d="M5.5 4.5 H10.5 V9.5 H5.5 Z" />
+      </>
+    ),
+  },
 ];
 
 function HistoryButtons({

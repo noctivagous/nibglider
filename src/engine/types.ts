@@ -68,7 +68,7 @@ export type CircleInnerShape =
   | 'rhombus'
   | 'kite';
 
-export type CombineMode = 'union' | 'subtract' | 'intersect';
+export type CombineMode = 'union' | 'subtract' | 'intersect' | 'crop';
 
 export type TextJustification = 'left' | 'center' | 'right';
 

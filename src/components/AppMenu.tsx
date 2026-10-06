@@ -479,6 +479,12 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M6 3.4 A3.6 3.6 0 0 1 6 10.6 A3.6 3.6 0 0 1 6 3.4 Z M10 3.4 A3.6 3.6 0 0 0 10 10.6 A3.6 3.6 0 0 0 10 3.4 Z" />
     </Thumb1614>
   ),
+  'combinatorics-crop': (
+    <Thumb1614>
+      <circle cx="8" cy="7" r="3.6" strokeDasharray="2 1.4" />
+      <path d="M5.5 4.5 H10.5 V9.5 H5.5 Z" />
+    </Thumb1614>
+  ),
   // Text modes have no panel artwork; ragged lines for Display,
   // justified lines for Body.
   'textmode-display': (

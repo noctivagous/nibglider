@@ -1,7 +1,8 @@
 // Selection combine and deposit-time combine.
 // Owns no mode or note. Reads the host's selection, layer, and combine mode.
-// Mutates Paper items through unite, subtract, and intersect, then asks the
-// host to retain a lowered Bézier result and record one selection command.
+// Mutates Paper items through unite, subtract, intersect, and per-target
+// crop (destructive clip), then asks the host to retain a lowered Bézier
+// result and record one selection command.
 // Public: canCombineSelection, combineSelection, depositWithCombine.
 // Tested from tests/combinatorics.test.mjs and tests/composite-path.test.mjs.
 
@@ -42,6 +43,7 @@ const LABELS: Record<CombineMode, string> = {
   union: 'Union',
   subtract: 'Subtract',
   intersect: 'Intersect',
+  crop: 'Crop',
 };
 
 export class CombinatoricsManager {
@@ -68,6 +70,19 @@ export class CombinatoricsManager {
       return;
     }
     const snap = host.capture();
+    if (mode === 'crop') {
+      const placed = this.combineCrop();
+      if (placed) {
+        for (const item of placed) host.retain(item);
+        host.commit(LABELS[mode], snap, placed);
+        host.setCombineNote(placed.length > 0 ? '' : EMPTY_NOTE);
+      } else {
+        host.setCombineNote(SELECT_NOTE);
+      }
+      host.updateTextContent();
+      host.notify();
+      return;
+    }
     const result = this.combinePair(mode);
     if (result) {
       host.retain(result);
@@ -85,7 +100,7 @@ export class CombinatoricsManager {
     const host = this.host;
     const mode = host.combineMode();
     if (!deposited || mode === 'none') return deposited;
-    const opName = mode === 'union' ? 'unite' : mode;
+    const opName = mode === 'union' ? 'unite' : mode === 'crop' ? 'intersect' : mode;
     const depositGeo = host.shapePartOf(deposited);
     if (!depositGeo || typeof depositGeo[opName] !== 'function') return deposited;
     const targets: Array<{ geo: Item; container: Item }> = [];
@@ -99,6 +114,30 @@ export class CombinatoricsManager {
       targets.push({ geo, container: item });
     }
     if (targets.length === 0) return deposited;
+    if (mode === 'crop') {
+      const layer = host.activeLayer();
+      for (const { geo, container } of targets) {
+        const wasSelected = host.isSelected(container);
+        let inside = false;
+        try { inside = this.shapeInside(depositGeo, geo); } catch { inside = false; }
+        if (inside) continue;
+        let cut: Item | null = null;
+        try {
+          cut = geo.intersect(depositGeo, { insert: false });
+        } catch {
+          cut = null;
+        }
+        host.dropItem(container);
+        if (cut && hasBooleanArea(cut.area)) {
+          const replaced = this.retext(cut);
+          layer.addChild(replaced);
+          if (wasSelected) host.addToSelection(replaced);
+        }
+      }
+      for (const doomed of new Set([deposited, depositGeo])) this.removeDetached(doomed);
+      host.setCombineNote('');
+      return null;
+    }
     try {
       if (mode === 'subtract') {
         const cuts: Array<{ container: Item; cut: Item | null; wasSelected: boolean }> = [];
@@ -172,6 +211,39 @@ export class CombinatoricsManager {
     return result;
   }
 
+  // Crop: the last-selected item is the frame; every other selected
+  // item is clipped to it. Returns the surviving replacements (possibly
+  // empty when everything fell outside the frame), or null when the frame
+  // cannot cut. Untouched items keep their selection; the frame is consumed.
+  private combineCrop(): Item[] | null {
+    const host = this.host;
+    const items = [...host.selectedItems()];
+    if (items.length < 2) return null;
+    const frame = items.pop();
+    if (!frame || typeof frame.intersect !== 'function') return null;
+    const placed: Item[] = [];
+    for (const art of items) {
+      if (!art || typeof art.intersect !== 'function') continue;
+      let cut: Item = null;
+      try {
+        cut = art.intersect(frame, { insert: true });
+      } catch {
+        cut = null;
+      }
+      host.removeFromSelection(art);
+      try { art.remove(); } catch { /* Already detached. */ }
+      if (cut && hasBooleanArea(cut.area)) {
+        host.prependSelection(cut);
+        placed.push(cut);
+      } else {
+        this.removeDetached(cut);
+      }
+    }
+    host.removeFromSelection(frame);
+    try { frame.remove(); } catch { /* Already detached. */ }
+    return placed;
+  }
+
   private retext(geo: Item): Item {
     if (!this.host.textModeEnabled()) return geo;
     try { return this.host.withShapeText(geo); } catch { return geo; }
@@ -212,5 +284,22 @@ export class CombinatoricsManager {
 
   private containsPoint(boundary: Item, pt: Item): boolean {
     try { return !!boundary.contains(pt); } catch { return false; }
+  }
+
+  // Conservative containment for the crop shortcut: true only when the
+  // candidate sits inside the frame's bounds and a sample point of the
+  // candidate is contained. Any doubt returns false and the caller runs
+  // the boolean instead.
+  private shapeInside(frame: Item, geo: Item): boolean {
+    try {
+      if (frame.bounds && geo.bounds && typeof frame.bounds.contains === 'function') {
+        if (!frame.bounds.contains(geo.bounds)) return false;
+      }
+      const pt = this.somePointOn(geo);
+      if (pt && !this.containsPoint(frame, pt)) return false;
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

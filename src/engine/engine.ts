@@ -2741,12 +2741,12 @@ export class NibGliderEngine {
   }
 
   combineSelection(mode: CombineMode): void {
-    if (mode !== 'union' && mode !== 'subtract' && mode !== 'intersect') return;
+    if (mode !== 'union' && mode !== 'subtract' && mode !== 'intersect' && mode !== 'crop') return;
     this.combinatorics.combineSelection(mode);
   }
 
   setCombineMode(m: CombineMode | 'none'): void {
-    if (m !== 'none' && m !== 'union' && m !== 'subtract' && m !== 'intersect')
+    if (m !== 'none' && m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop')
       return;
     this.combineMode = m;
     this.updatePreviewBox();
