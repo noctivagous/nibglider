@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GUIManager, KEYBOARD_WIDTH_DEFAULT } from '../src/ui/GUIManager.ts';
 import { WidgetLayout, statusShiftX } from '../src/ui/WidgetLayout.ts';
-import { APPLICATION_MENUS, MENU_PANEL_SECTIONS, PANEL_SECTIONS, PanelsManager, sectionOrder } from '../src/ui/PanelsManager.ts';
+import { APPLICATION_MENUS, MENU_PANEL_SECTIONS, PANEL_SECTIONS, PanelsManager, hideMenuSection, sectionOrder } from '../src/ui/PanelsManager.ts';
 import { buildKeymapRows, buildStatusSchema } from '../src/ui/StatusPresenter.ts';
 import { resolveKeyboardLayout, resolveKeyVariants } from '../src/engine/input/KeyboardLayoutResolver.ts';
 import { buildChordRows } from '../src/ui/KeymapPresenter.ts';
@@ -120,13 +120,31 @@ test('application menus cover file, edit, document, operations, modes, layers, c
     assert.ok(parent?.children && parent.children.length > 0, `modes menu lists ${id} submenu`);
   }
   assert.deepEqual(byId.debug.items.map((item) => item.commandId), ['reset-settings', 'empty-canvas']);
-  // Canvas right-click menu mirrors the Layers Order group, plus transform and interlace.
+  // Canvas right-click menu mirrors the Layers Order group, plus transform,
+  // interlace, and the conditional Obj. Actions section.
   assert.equal(byId['context-object'].title, 'Object');
   assert.deepEqual(
     byId['context-object'].items.map((item) => item.commandId),
     ['hdr-context-object-1', 'bring-to-front', 'send-to-back', 'hdr-context-object-2', 'transform-mode',
+      'hdr-context-object-3', 'interlace', 'interlace-group',
+      'hdr-context-object-4', 'remove-from-interlace'],
+  );
+});
+
+test('Obj. Actions section hides unless relevant', () => {
+  const context = APPLICATION_MENUS.find((menu) => menu.id === 'context-object');
+  assert.ok(context.items.some((item) => item.commandId === 'remove-from-interlace'));
+  const hidden = hideMenuSection(context, 'Obj. Actions');
+  assert.deepEqual(
+    hidden.items.map((item) => item.commandId),
+    ['hdr-context-object-1', 'bring-to-front', 'send-to-back', 'hdr-context-object-2', 'transform-mode',
       'hdr-context-object-3', 'interlace', 'interlace-group'],
   );
+  // Other sections are untouched, and hiding an unknown label is a no-op.
+  assert.equal(hidden.title, 'Object');
+  assert.deepEqual(hideMenuSection(context, 'Nope').items, context.items);
+  assert.equal(hideMenuSection(context, 'Obj. Actions').items
+    .filter((item) => item.commandId === 'remove-from-interlace').length, 0);
 });
 
 test('menu panel sections map to known panel sections', () => {

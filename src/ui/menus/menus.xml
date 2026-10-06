@@ -117,6 +117,9 @@
       <item command="interlace" label="Interlace: Op" />
       <item command="interlace-group" label="Interlace: Grouped" />
     </group>
+    <group label="Obj. Actions">
+      <item command="remove-from-interlace" label="Remove from interlace" />
+    </group>
   </menu>
   <menu id="help" title="Help">
     <item command="tutorial" icon="tutorial" />

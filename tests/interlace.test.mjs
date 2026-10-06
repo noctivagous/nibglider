@@ -381,6 +381,112 @@ test('baked crossing flip picks one crossing and survives re-runs', () => {
   } finally { cleanup(); }
 });
 
+test('remove from interlace restores clean strokes with undo', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { a, b, crossings } = weavePair(s);
+    const [c0, c1] = crossings;
+    e.addItemToSelection(a);
+    e.addItemToSelection(b);
+    e.interlaceSelection();
+    assert.equal(layer.children.length, 2);
+    // Select a single band: the section predicate holds.
+    e.clearOutSelection();
+    e.addItemToSelection(layer.children[0]);
+    assert.equal(e.canRemoveFromInterlace(), true);
+    e.removeFromInterlace();
+    assert.equal(e.undoLabel(), 'Remove from Interlace');
+    // Both shapes are back gap-free with no weave memos left.
+    assert.equal(layer.children.length, 2);
+    assert.ok(layer.children.every((child) => !child.data?.interlace));
+    for (const c of [c0, c1]) {
+      assert.ok(layer.children.some((child) => child.contains(new s.Point(c.x, c.y))));
+    }
+    assert.deepEqual([...e.selectedItems].length, 2);
+    // Undo brings the weave back with its gaps.
+    e.undo();
+    assert.equal(layer.children.length, 2);
+    assert.ok(layer.children.every((child) => child.data?.interlace));
+    const under = layer.children.find((child) => !child.contains(new s.Point(c0.x, c0.y)));
+    assert.ok(under);
+  } finally { cleanup(); }
+});
+
+test('removing one member of three re-weaves the survivors', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { a, b, crossings } = weavePair(s);
+    const [c0] = crossings;
+    e.addItemToSelection(a);
+    e.addItemToSelection(b);
+    e.interlaceSelection();
+    const c = new s.Path({ segments: [[0, -40], [0, 40]], strokeColor: 'black', strokeWidth: 8 });
+    e.addItemToSelection(c);
+    e.interlaceSelection();
+    assert.equal(e.undoLabel(), 'Interlace Add');
+    assert.equal(layer.children.length, 3);
+    // The newcomer owns (0,0): select just its band and remove it.
+    const bandC = layer.children.find((child) => child.contains(new s.Point(0, 0)));
+    e.clearOutSelection();
+    e.addItemToSelection(bandC);
+    e.removeFromInterlace();
+    assert.equal(layer.children.length, 3);
+    const freed = layer.children.find((child) => !child.data?.interlace);
+    assert.ok(freed);
+    assert.equal(freed.contains(new s.Point(0, 0)), true);
+    assert.equal(freed.contains(new s.Point(0, 20)), true);
+    // Survivors re-weave as the original pair: phase kept, A over at c0.
+    const woven = layer.children.filter((child) => child.data?.interlace);
+    assert.equal(woven.length, 2);
+    for (const band of woven) assert.equal(band.data.interlace.sources.length, 2);
+    const over = layer.children.find((child) => child.contains(new s.Point(c0.x, c0.y)));
+    assert.equal(spineHeight(over), 0);
+    // Undo restores the three-way weave.
+    e.undo();
+    assert.equal(layer.children.length, 3);
+    assert.ok(layer.children.every((child) => child.data?.interlace));
+  } finally { cleanup(); }
+});
+
+test('remove gates: fresh strokes and mixed weaves no-op', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const single = new s.Path({ segments: [[-50, 0], [50, 0]], strokeColor: 'black', strokeWidth: 10 });
+    e.addItemToSelection(single);
+    assert.equal(e.canRemoveFromInterlace(), false);
+    e.removeFromInterlace();
+    assert.equal(e.lastCombineNote, 'Select a baked interlace result first.');
+    assert.equal(e.canUndo(), false);
+    assert.equal(layer.children.length, 1);
+  } finally { cleanup(); }
+  const { s: s2, e: e2, layer: layer2, cleanup: cleanup2 } = engine();
+  try {
+    const mkPair = (dy) => {
+      const p = new s2.Path({ segments: [[-50, dy - 60], [50, dy - 60]], strokeColor: 'black', strokeWidth: 10 });
+      const q = new s2.Path({ segments: [[-50, dy - 80], [0, dy - 40], [50, dy - 80]], strokeColor: 'black', strokeWidth: 10 });
+      return [p, q];
+    };
+    const [p1, q1] = mkPair(0);
+    e2.addItemToSelection(p1);
+    e2.addItemToSelection(q1);
+    e2.interlaceSelection();
+    e2.clearOutSelection();
+    const [p2, q2] = mkPair(200);
+    e2.addItemToSelection(p2);
+    e2.addItemToSelection(q2);
+    e2.interlaceSelection();
+    assert.equal(layer2.children.length, 4);
+    // Bands from two different weaves: refuse instead of mixing them.
+    e2.clearOutSelection();
+    e2.addItemToSelection(layer2.children[0]);
+    e2.addItemToSelection(layer2.children[2]);
+    assert.equal(e2.canRemoveFromInterlace(), true);
+    e2.removeFromInterlace();
+    assert.equal(e2.lastCombineNote, 'Select bands from one baked weave at a time.');
+    assert.equal(layer2.children.length, 4);
+  } finally { cleanup2(); }
+});
+
 test('outlined-stroke records interlace on their spines with record widths', () => {
   const s = new paper.PaperScope();
   s.setup(new s.Size(800, 600));

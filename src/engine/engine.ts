@@ -2831,6 +2831,16 @@ export class NibGliderEngine {
     this.interlace.setInterlaceParams(patch);
   }
 
+  /** True when the selection holds at least one baked interlace band. */
+  canRemoveFromInterlace(): boolean {
+    return this.interlace.canRemoveFromInterlace();
+  }
+
+  /** Remove the selected baked bands' members from their weaves. */
+  removeFromInterlace(): void {
+    this.interlace.removeFromInterlace();
+  }
+
   /** Flip one crossing's over side in the selected weave (group or baked). */
   flipInterlaceCrossing(key: string): void {
     const selected = this.selectedItems;

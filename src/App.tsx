@@ -24,7 +24,7 @@ import ExportFramePopover from './components/ExportFramePopover';
 import InterlacePopover from './components/InterlacePopover';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
 import { autosaveDocument, restorableDocument } from './ui/DocumentGallery';
-import { CONTEXT_MENU_ID, MENU_PANEL_SECTIONS, PanelsManager, sectionLabel } from './ui/PanelsManager';
+import { CONTEXT_MENU_ID, MENU_PANEL_SECTIONS, PanelsManager, hideMenuSection, sectionLabel } from './ui/PanelsManager';
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
 import { TutorialRunner } from './tutorial/TutorialRunner';
@@ -61,7 +61,7 @@ const MENU_COMMANDS: Set<string> = new Set([
   'bring-to-front', 'send-to-back', 'duplicate-selection',
   'group', 'ungroup-selection', 'delete-selection', 'transform-mode',
   'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-crop',
-  'interlace', 'interlace-group',
+  'interlace', 'interlace-group', 'remove-from-interlace',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
   'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
   'rect-shape-rhombus', 'rect-shape-kite', 'rect-shape-exportFrame',
@@ -323,6 +323,7 @@ export default function App() {
     else if (commandId === 'transform-mode') engine.toggleTransformMode();
     else if (commandId === 'interlace') engine.interlaceSelection();
     else if (commandId === 'interlace-group') engine.interlaceGroupSelection();
+    else if (commandId === 'remove-from-interlace') engine.removeFromInterlace();
     else if (commandId.startsWith('combinatorics-')) {
       const mode = commandId.slice('combinatorics-'.length);
       if (mode === 'none' || mode === 'union' || mode === 'subtract' || mode === 'intersect' || mode === 'crop') {
@@ -600,6 +601,11 @@ export default function App() {
   // commands need a selection, so they render disabled on an
   // empty-canvas right-click.
   const contextMenuDef = panels.menus.find((menu) => menu.id === CONTEXT_MENU_ID);
+  // Obj. Actions only shows up when relevant: the section is dropped from
+  // the popup def unless the selection holds a baked interlace band.
+  const visibleContextMenuDef = contextMenuDef && !engine.canRemoveFromInterlace()
+    ? hideMenuSection(contextMenuDef, 'Obj. Actions')
+    : contextMenuDef;
   const contextEnabled = engine.selectedItems.length > 0
     ? MENU_COMMANDS
     : new Set([...MENU_COMMANDS].filter((id) => id !== 'bring-to-front' && id !== 'send-to-back' && id !== 'transform-mode' && id !== 'interlace' && id !== 'interlace-group'));
@@ -710,9 +716,9 @@ export default function App() {
           </div>
         </div>
       </div>
-      {contextMenuAt && contextMenuDef && (
+      {contextMenuAt && visibleContextMenuDef && (
         <ContextMenu
-          menu={contextMenuDef}
+          menu={visibleContextMenuDef}
           position={contextMenuAt}
           enabledCommands={contextEnabled}
           onCommand={(id) => {

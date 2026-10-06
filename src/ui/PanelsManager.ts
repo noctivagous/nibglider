@@ -23,6 +23,23 @@ export interface MenuItemDef {
 }
 export interface MenuDef { id: string; title: string; items: MenuItemDef[] }
 
+/** Drop one labeled section (its header row plus following rows up to the
+ * next header) from a menu def, for conditionally shown areas like Obj.
+ * Actions. All other sections keep their order. */
+export function hideMenuSection(menu: MenuDef, label: string): MenuDef {
+  const items: MenuItemDef[] = [];
+  let skipping = false;
+  for (const item of menu.items) {
+    if (item.header) {
+      skipping = item.label === label;
+      if (!skipping) items.push(item);
+      continue;
+    }
+    if (!skipping) items.push(item);
+  }
+  return { ...menu, items };
+}
+
 const parsedMenus = parseMenuXML(menusXML);
 if ('error' in parsedMenus) {
   // The menu suite pins the full structure, so a broken definition fails

@@ -622,18 +622,20 @@ export class InterlaceManager {
   // under-side at every crossing, place results, and link memos carrying the
   // full member records for the next run. Pairs run in weave order and
   // alternation offsets by pair ordinal, so appended members never shift the
-  // existing pairs' gaps. Returns true when a result was committed.
+  // existing pairs' gaps. Commits once when snap is given (callers composing
+  // a bigger op pass null and commit themselves). Returns the placed bands,
+  // or null when nothing was baked.
   private bakeWeave(plan: InterlacePlan, temps: Item[],
-    snap: { before: Item[]; selected: Item[]; retained: Map<string, any> }): boolean {
+    snap: { before: Item[]; selected: Item[]; retained: Map<string, any> } | null): Item[] | null {
     const host = this.host;
     const entries = plan.entries;
     const spines = this.entrySpines(entries, temps);
-    if (!spines) return false;
+    if (!spines) return null;
     const bands: Item[] = [];
     for (const entry of entries) {
       const center = entry.source.mode === 'outlinedStroke' ? entry.source.spine : entry.source;
       const band = this.expandBand(center, { ...entry.style }, entry.width, this.fillOf(entry.item));
-      if (!band) return false;
+      if (!band) return null;
       temps.push(band);
       bands.push(band);
     }
@@ -667,7 +669,7 @@ export class InterlaceManager {
         this.removeDetached(cutter);
       }
     }
-    if (!cutAny) return false;
+    if (!cutAny) return null;
     const layer = host.activeLayer();
     const originals = entries.map((entry) => entry.item);
     for (const band of bands) {
@@ -723,8 +725,135 @@ export class InterlaceManager {
         band.data.interlace = memo;
       } catch { /* Metadata is best-effort. */ }
     }
-    host.commit(plan.label, snap, placed);
-    return true;
+    if (!placed.length) return null;
+    if (snap) host.commit(plan.label, snap, placed);
+    return placed;
+  }
+
+  // Stable entry id for one band: the authoring source id, else the band's
+  // own drawable id (legacy pair memos).
+  private entryIdOf(band: Item): string {
+    const memo = this.memoOf(band);
+    return memo?.sourceId ?? band?.data?.drawableId ?? '';
+  }
+
+  // Drop override keys naming a removed member; surviving pairs keep theirs.
+  private pruneOverrides(overrides: Record<string, string>, removedIds: Set<string>): Record<string, string> {
+    const kept: Record<string, string> = {};
+    for (const [key, over] of Object.entries(overrides)) {
+      const pair = /^(.*)>(.*)#\d+$/.exec(key);
+      if (!pair || removedIds.has(pair[1]) || removedIds.has(pair[2])) continue;
+      kept[key] = over;
+    }
+    return kept;
+  }
+
+  /** True when the selection holds at least one baked interlace band. */
+  canRemoveFromInterlace(): boolean {
+    return [...this.host.selectedItems()].some((item) => item && this.memoOf(item));
+  }
+
+  // Gap-free standalone stroke re-expanded from one member's authoring
+  // truth: the shape as it was before any weave cut it. Placed on the layer
+  // and retained as plain Bézier; null when it cannot expand.
+  private restoreStroke(entry: WeaveEntry, temps: Item[]): Item | null {
+    const host = this.host;
+    const center = entry.source.mode === 'outlinedStroke' ? entry.source.spine : entry.source;
+    const band = this.expandBand(center, { ...entry.style }, entry.width, this.fillOf(entry.item));
+    if (!band) return null;
+    temps.push(band);
+    try {
+      host.activeLayer().addChild(band);
+    } catch {
+      return null;
+    }
+    host.retain(band);
+    return band.parent != null ? band : null;
+  }
+
+  /** Remove the selected baked bands' members from their weaves. Removed
+   * shapes come back as clean gap-free strokes; survivors re-weave when two
+   * or more remain (a lone survivor is restored clean too). One commit
+   * covers the whole op. */
+  removeFromInterlace(): void {
+    const host = this.host;
+    const selected = [...host.selectedItems()].filter((item) => item && this.memoOf(item));
+    if (!selected.length) {
+      host.setCombineNote('Select a baked interlace result first.');
+      host.updateTextContent();
+      host.notify();
+      return;
+    }
+    const keys = new Set(selected.map((item) =>
+      this.weaveKey(this.memoOf(item)!, item?.data?.drawableId)));
+    if (keys.size !== 1) {
+      host.setCombineNote(MIXED_NOTE);
+      host.updateTextContent();
+      host.notify();
+      return;
+    }
+    const snap = host.capture();
+    const temps: Item[] = [];
+    try {
+      const bands = this.weaveBands([...keys][0], selected);
+      const entries = this.weaveEntries(bands);
+      if (!entries.length) {
+        host.setCombineNote('Select a baked interlace result first.');
+        host.updateTextContent();
+        host.notify();
+        return;
+      }
+      const doomed = new Set(selected.map((band) => this.entryIdOf(band)));
+      const kept = entries.filter((entry) => !doomed.has(entry.id));
+      const freed = entries.filter((entry) => doomed.has(entry.id));
+      if (!freed.length) {
+        host.setCombineNote('Select a baked interlace result first.');
+        host.updateTextContent();
+        host.notify();
+        return;
+      }
+      const overrides = this.pruneOverrides(this.weaveOverrides(bands), doomed);
+      const restored: Item[] = [];
+      for (const entry of [...freed, ...(kept.length === 1 ? kept : [])]) {
+        const stroke = this.restoreStroke(entry, temps);
+        if (stroke) {
+          restored.push(stroke);
+        }
+      }
+      let placed: Item[] = [];
+      if (kept.length >= 2) {
+        const first = kept.find((entry) => entry.id === this.weaveFirst(bands)) ?? kept[0];
+        const result = this.bakeWeave({ kind: 'rerun', entries: kept, firstId: first.id,
+          phase: this.weavePhase(bands), weave: this.weaveId(bands), overrides, label: '' }, temps, null);
+        if (!result) {
+          host.setCombineNote(EMPTY_NOTE);
+          host.updateTextContent();
+          host.notify();
+          return;
+        }
+        placed = result;
+      }
+      if (!restored.length && !placed.length) {
+        host.setCombineNote(EMPTY_NOTE);
+        host.updateTextContent();
+        host.notify();
+        return;
+      }
+      // Restored strokes leave the weave: drop their originals, select them.
+      for (const entry of [...freed, ...(kept.length === 1 ? kept : [])]) {
+        if (entry.item && !restored.includes(entry.item) && !placed.includes(entry.item)) {
+          host.removeFromSelection(entry.item);
+          try { entry.item.remove(); } catch { /* Already detached. */ }
+        }
+      }
+      for (const stroke of [...restored, ...placed]) host.prependSelection(stroke);
+      host.commit('Remove from Interlace', snap, [...restored, ...placed]);
+      host.setCombineNote('');
+    } finally {
+      for (const temp of temps) this.removeDetached(temp);
+    }
+    host.updateTextContent();
+    host.notify();
   }
 
   // Temp uninserted centerlines for entries, in order. Null when any member
@@ -1012,8 +1141,9 @@ export class InterlaceManager {
         this.removeDetached(cutter);
       }
     }
-    for (const band of bands) {
-      band.data = { interlaceDisplay: true };
+    for (let i = 0; i < bands.length; i++) {
+      // Member lineage rides along for future per-member actions.
+      bands[i].data = { interlaceDisplay: true, memberId: ordered[i].id };
     }
     return bands;
   }
@@ -1070,7 +1200,8 @@ export class InterlaceManager {
       catch { try { layer.addChild(group); } catch { return false; } }
       for (const band of bands) {
         try {
-          band.data = { interlaceDisplay: true };
+          band.data ??= {};
+          band.data.interlaceDisplay = true;
           group.addChild(band);
         } catch { /* Detached; skip. */ }
       }
