@@ -42,6 +42,15 @@ test('one unbounded page gains metadata and emits dirty changes only after edits
   unsubscribe(); document.markEdited(); assert.equal(events.length, 4);
 });
 
+test('viewport zoom and center are readable before the canvas is attached', () => {
+  const s = new paper.PaperScope();
+  const viewport = new ViewportManager(s);
+  assert.equal(s.view, null);
+  assert.equal(viewport.zoom, 1);
+  assert.equal(viewport.center.x, 0);
+  assert.equal(viewport.center.y, 0);
+});
+
 test('layer and viewport managers preserve active layer, cursor zoom, pan, and zoom limits', () => {
   const s = scope();
   try {

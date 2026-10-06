@@ -36,8 +36,13 @@ export class ViewportManager {
   ) {
     this.scope = scope; this.changed = changed; this.contentBounds = contentBounds;
   }
-  get zoom(): number { return this.scope.view.zoom || 1; }
-  get center(): paper.Point { return this.scope.view.center.clone(); }
+  // view is null until scope.setup(canvas) in attach(). The summary box
+  // reads zoom on the first React paint, which is before that effect.
+  get zoom(): number { return this.scope.view?.zoom || 1; }
+  get center(): paper.Point {
+    const center = this.scope.view?.center;
+    return center ? center.clone() : new this.scope.Point(0, 0);
+  }
   get isPanning(): boolean { return this.panning; }
 
   stepZoom(direction: 1 | -1): boolean {

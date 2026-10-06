@@ -1,7 +1,6 @@
 
 [ ] What other technical fonts or style resources would assist in making the app?
 
-[ ] The first thing the tutorial will do when it opens is show the first slide.
 
 [ ]  menu item under grid section menu:  Sync Grid Snapping to Grid Visibility.
 turn on by default.  toggling on either turns the other on.
@@ -115,12 +114,12 @@ make a summary box widget and it summarizes, in icons and a layout, the settings
 fill.  it can make use of its own SVGs.  it will provide a larger preview of what the path is going to do when it draws things,
 both fill and stroke.  when there is a selection, it will change states according to what the path is.  It will have the name
 of the document in the upper left corner.
-[ ] ConfigSummaryBox additions
+[x] ConfigSummaryBox additions
   (ConfigSummaryBox in panel-side rail slot + ConfigSummary resolver + tests/config-summary.test.mjs.)
-		[ ] zoom level
-		[ ] if Length snapping is on, shows live length of radius or spline segment.
-        [ ] if angle snapping is on, shows live angle of radius or spline segment.
-        [ ] The document name will be in a select dropdown rather than a link that 
+		[x] zoom level
+		[x] if Length snapping is on, shows live length of radius or spline segment.
+        [x] if angle snapping is on, shows live angle of radius or spline segment.
+        [x] The document name will be in a select dropdown rather than a link that 
         opens up settings but "Settings" and "Rename" will be options in the bottom section of the menu. 
         Clicking on the document name in
         the select dropdown will show a list of other documents that are in the gallery.
@@ -130,7 +129,8 @@ of the document in the upper left corner.
 
 [x] cmd/ctrl - and = zoom out and zoom in, cmd/ctrl 0 sets to 100%.
 
-[ ] Selection styling setting - current, selection rectangle outline.
+[ ] Selection styling setting - current is a shadow or glow, but another option is an outline for a selection rectangle.
+Put this setting in App Settings.
 [x]  When selected, shapes should reveal their centroids or circle origins. 
 [x] for Point snapping, shapes should respond with point hits on the centroids.  a regular polygon or
 circle should have point snaps on circle origins.
@@ -203,6 +203,20 @@ then 10pt.  Pressing F over a numeric field will start a line that draws
 to the cursor from the field that changes the value.  This line will extend
 from a square subcontrol to the right of the right stepper, so that it can be
 manually clicked.
+
+[ ] LIVE REPEAT section in panel with toggle switch.
+It will affect live drawing and preview.  
+To begin with, we will have a grid repeat.  If you draw something,
+it will repeat in real time that object.  Try to find ways to optimize
+this with PaperJS.
+ [ ]two
+sections to begin with in its flyout popover: 
+Paths and Shape Keys: Rect Keys and Circle Keys.  The two categories of
+shape keys will each have different
+repeats (which kind of grid will repeat the object for rect keys,
+what kind of repeat for Circle Keys).  When turned on it
+affects these keys respectively.  so, if the user is drawing
+a shape, if set to repeat only horizontally, it will 
 
 
 IN-DRAWING WIDGETS AND ACTOR OBJECTS
