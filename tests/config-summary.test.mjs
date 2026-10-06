@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveSummaryState } from '../src/ui/ConfigSummary.ts';
+import { formatZoomPercent, resolveLiveMeasure, resolveSummaryState } from '../src/ui/ConfigSummary.ts';
 
 function paint(over = {}) {
   return {
@@ -54,4 +54,58 @@ test('stroke-off and fill-off paint passes through for the empty preview', () =>
   const state = resolveSummaryState(selected, 1, globals);
   assert.equal(state.paint.strokeOn, false);
   assert.equal(state.paint.fillOn, false);
+});
+
+test('no live vector hides both readouts even when snapping is on', () => {
+  const live = resolveLiveMeasure({ lengthOn: true, angleOn: true, vector: null, unit: 'pt' });
+  assert.equal(live.lengthText, null);
+  assert.equal(live.angleText, null);
+});
+
+test('live vector shows length and angle in the display unit when both snaps are on', () => {
+  const live = resolveLiveMeasure({
+    lengthOn: true,
+    angleOn: true,
+    vector: { lengthPt: 90, angleDeg: 45.4 },
+    unit: 'pt',
+  });
+  assert.equal(live.lengthText, '90 pt');
+  assert.equal(live.angleText, '45°');
+});
+
+test('live vector hides the readout whose snapping mode is off', () => {
+  const lengthOnly = resolveLiveMeasure({
+    lengthOn: true,
+    angleOn: false,
+    vector: { lengthPt: 36, angleDeg: -30.6 },
+    unit: 'pt',
+  });
+  assert.equal(lengthOnly.lengthText, '36 pt');
+  assert.equal(lengthOnly.angleText, null);
+  const angleOnly = resolveLiveMeasure({
+    lengthOn: false,
+    angleOn: true,
+    vector: { lengthPt: 36, angleDeg: -30.6 },
+    unit: 'pt',
+  });
+  assert.equal(angleOnly.lengthText, null);
+  assert.equal(angleOnly.angleText, '-31°');
+});
+
+test('non-finite live values hide both readouts', () => {
+  const live = resolveLiveMeasure({
+    lengthOn: true,
+    angleOn: true,
+    vector: { lengthPt: NaN, angleDeg: 10 },
+    unit: 'pt',
+  });
+  assert.equal(live.lengthText, null);
+  assert.equal(live.angleText, null);
+});
+
+test('zoom formats as a rounded percent', () => {
+  assert.equal(formatZoomPercent(1), '100%');
+  assert.equal(formatZoomPercent(1.25), '125%');
+  assert.equal(formatZoomPercent(0.1), '10%');
+  assert.equal(formatZoomPercent(NaN), '—');
 });

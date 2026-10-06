@@ -651,7 +651,7 @@ export default function App() {
               ref={controlPanelRef}
               engine={engine}
               panels={panels}
-              onOpenDocumentInfo={() => gui.openWindow('document-info')}
+              onOpenDocumentSettings={() => gui.openWindow('document-settings')}
             />
           </div>
           <StatusOverlay

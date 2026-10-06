@@ -90,8 +90,12 @@ export function createPointerHost(engine: Surface): PointerHost {
       const segments = engine.path?.segments;
       return segments?.length ? segments[segments.length === 1 ? 0 : segments.length - 2].point : null;
     },
-    updateLivePath: (point) => engine.compositePathTool.track(point),
-    updateLiveQuad: () => engine.quadTool.track(),
+    updateLivePath: (point) => {
+      const progressed = engine.compositePathTool.track(point);
+      if (progressed) engine.noteLiveProgress();
+      return progressed;
+    },
+    updateLiveQuad: () => { engine.quadTool.track(); engine.noteLiveProgress(); },
     isCompositePathDrawing: () => engine.compositePathTool.active,
     quadPath: () => engine.quadPath,
     selectedItems: () => engine.selectedItems,

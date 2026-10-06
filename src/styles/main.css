@@ -543,27 +543,43 @@ article {
   color: var(--dp-text-3);
 }
 
-/* Document name opens the Document Info window: text-like button with a
-   hover affordance. */
-#configSummaryBox .cfg-doc-btn {
+/* Document name is a dropdown trigger: text-like, overriding the boxed
+   panel CustomSelect style so the header keeps its quiet label look. */
+#configSummaryBox .cfg-head .custom-select {
   min-width: 0;
   flex: 1 1 auto;
-  display: block;
+  display: flex;
+}
+
+#configSummaryBox .cfg-head .custom-select-trigger {
+  min-width: 0;
+  width: auto;
+  flex: 1 1 auto;
   background: none;
   border: none;
+  box-shadow: none;
+  filter: none;
   padding: 0;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+  font-family: var(--font-tech-label);
+  font-size: 0.6875rem;
+  letter-spacing: 0.03em;
   border-radius: 3px;
 }
 
-#configSummaryBox .cfg-doc-btn:hover .cfg-doc {
+#configSummaryBox .cfg-head .custom-select-trigger .cs-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.6875rem;
+}
+
+#configSummaryBox .cfg-head .custom-select-trigger:hover .cs-trigger-label {
   color: #bcd6fd;
   text-decoration: underline;
 }
 
-#configSummaryBox .cfg-doc-btn:focus-visible {
+#configSummaryBox .cfg-head .custom-select-trigger:focus-visible {
   outline: 2px solid #4f8ff7;
   outline-offset: 1px;
 }
@@ -4576,7 +4592,7 @@ kbd,
 }
 .tutorial-spotlight {
   position: fixed;
-  border: 2px solid var(--dp-text-1);
+  border: 2px solid var(--dp-accent);
   border-radius: 6px;
   box-shadow: 0 0 0 9999px rgba(8, 10, 14, 0.45);
 }
@@ -4585,12 +4601,14 @@ kbd,
   width: 320px;
   max-width: calc(100vw - 20px);
   pointer-events: auto;
-  background: #fff;
-  color: #1c2230;
-  border: 1px solid #26303f;
+  /* Dark-pro card: solid surface, inset top highlight, blue accent only. */
+  background: var(--dp-bg-1);
+  color: var(--dp-text-1);
+  border: 1px solid var(--dp-border);
   border-radius: 8px;
   padding: 12px 14px;
-  box-shadow: 0 8px 24px rgba(8, 10, 14, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 24px rgba(0, 0, 0, 0.5);
+  font-family: var(--font-tech-label);
   /* Parked-corner moves (demo footprint, resize, step change) glide instead
      of jumping. Legacy right/bottom placements still snap; left/top and
      transform are the animated properties. */
@@ -4607,33 +4625,41 @@ kbd,
   transform: translate(-50%, -50%);
 }
 .tutorial-kicker {
+  font-family: var(--font-tech-mono);
   font-size: 0.6875rem;
-  color: #5a6577;
+  color: var(--dp-text-3);
   margin-bottom: 4px;
 }
 .tutorial-title {
   font-size: 1rem;
+  font-weight: 600;
+  color: var(--dp-text-1);
   margin: 0 0 6px;
 }
 .tutorial-body {
   font-size: 0.8125rem;
   line-height: 1.45;
   margin: 0 0 8px;
+  color: var(--dp-text-2);
 }
 .tutorial-hint {
   font-size: 0.75rem;
   line-height: 1.4;
   margin: 0 0 8px;
-  color: #3c4657;
+  color: var(--dp-text-2);
 }
 .tutorial-demo-narration {
   font-size: 0.8125rem;
   line-height: 1.45;
   margin: 0 0 8px;
   padding: 6px 8px;
-  background: #eef2f7;
+  background: var(--dp-bg-2);
+  border: 1px solid var(--dp-border-soft);
   border-radius: 6px;
-  color: #1c2230;
+  color: var(--dp-text-1);
+}
+.tutorial-demo-narration strong {
+  color: var(--dp-accent);
 }
 .tutorial-actions {
   display: flex;
@@ -4641,21 +4667,34 @@ kbd,
   justify-content: flex-end;
 }
 .tutorial-btn {
+  font: inherit;
   font-size: 0.75rem;
   padding: 4px 10px;
-  border: 1px solid #26303f;
+  border: 1px solid var(--dp-border);
   border-radius: 6px;
-  background: #fff;
-  color: #1c2230;
+  background: var(--dp-bg-3);
+  color: var(--dp-text-1);
   cursor: pointer;
+}
+.tutorial-btn:hover:not(:disabled) {
+  border-color: var(--dp-accent);
+}
+.tutorial-btn:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 1px;
 }
 .tutorial-btn:disabled {
   opacity: 0.45;
   cursor: default;
 }
 .tutorial-primary {
-  background: #26303f;
+  background: var(--dp-accent-strong);
+  border-color: var(--dp-accent-strong);
   color: #fff;
+}
+.tutorial-primary:hover:not(:disabled) {
+  background: var(--dp-accent);
+  border-color: var(--dp-accent);
 }
 
 /* Live-demonstration pointer layer. Click-through: the tutorial bubble
@@ -4689,8 +4728,9 @@ kbd,
 .demo-arrow-label {
   position: fixed;
   max-width: 250px;
-  background: #26303f;
-  color: #fff;
+  background: var(--dp-bg-2);
+  border: 1px solid var(--dp-border);
+  color: var(--dp-text-1);
   font-size: 0.75rem;
   line-height: 1.35;
   padding: 3px 8px;

@@ -532,6 +532,70 @@ export class NibGliderEngine {
     return this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad;
   }
 
+  /** Current view zoom (1 = 100%). View-only state, published on the
+   * lightweight view channel, never the document. */
+  get zoomLevel(): number { return this.viewport.zoom; }
+
+  // --- Config summary live readout ---
+  // In-flight drawings move on mousemove without a document notify (only
+  // the canvas repaints), so the summary box subscribes to this dedicated
+  // progress ping instead of re-rendering the whole panel per cursor move.
+  private liveVersion = 0;
+  private readonly liveListeners = new Set<() => void>();
+
+  subscribeLive = (fn: () => void): (() => void) => {
+    this.liveListeners.add(fn);
+    return () => { this.liveListeners.delete(fn); };
+  };
+
+  getLiveVersion = (): number => this.liveVersion;
+
+  /** Progress ping for in-flight drawings. Only summary-box subscribers
+   * re-render; the panel and app are untouched. */
+  noteLiveProgress(): void {
+    this.liveVersion++;
+    for (const fn of [...this.liveListeners]) {
+      try { fn(); } catch { /* A failing listener must not break drawing. */ }
+    }
+  }
+
+  /** Live radius (circle tools) or rubber-band spline segment (path tools)
+   * in page points, for the config summary readout. Null when nothing with
+   * a length/angle meaning is in flight. Quad sessions are excluded. */
+  liveMeasureVector(): { lengthPt: number; angleDeg: number } | null {
+    if (this.isDrawingShape && this.shapeStartPoint && this.mousePt) {
+      const type = this.shapeType;
+      if (type != null && type.startsWith('circle_')) {
+        const preview = this.previewShape;
+        const radius = preview != null && typeof preview.radius === 'number' && preview.radius > 0
+          ? preview.radius
+          : this.shapeStartPoint.getDistance(this.mousePt);
+        if (Number.isFinite(radius)) return { lengthPt: radius, angleDeg: this.shapeGuideAngle };
+      }
+      return null;
+    }
+    if (this.isDrawingPath && this.mousePt) {
+      const compositeBase = this.compositePathTool.snapBase;
+      let base = compositeBase
+        ? new this.scope.Point(compositeBase.x, compositeBase.y)
+        : null;
+      if (!base) {
+        const segments = this.path?.segments;
+        base = segments?.length
+          ? segments[segments.length === 1 ? 0 : segments.length - 2].point
+          : null;
+      }
+      if (base) {
+        const delta = this.mousePt.subtract(base);
+        const lengthPt = Math.hypot(delta.x, delta.y);
+        if (Number.isFinite(lengthPt) && Number.isFinite(delta.angle)) {
+          return { lengthPt, angleDeg: delta.angle };
+        }
+      }
+    }
+    return null;
+  }
+
   // --- Selection (selectionFunctions.js) ---
   private get selection(): SelectionManager { return this.context.selection; }
   get selectedItems(): AnyItem[] { return this.selection.selectedItems; }
@@ -4046,6 +4110,7 @@ export class NibGliderEngine {
     if (type != null && type.startsWith('rectangle_')) this.rectangleTool.update();
     else if (type != null && type.startsWith('circle_')) this.circleTool.update();
     if (type === 'rectangle_select') this.updateSelectionRectLive();
+    this.noteLiveProgress();
   }
 
   /** Physical keyboard entry. Decisions live in KeyboardController. */

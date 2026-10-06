@@ -5,9 +5,16 @@
 // matching the Stroke/Fill sections); otherwise it reflects the globals.
 // Header carries the document name in the upper left. DOM/SVG only — it
 // never creates Paper.js scene items, so it cannot be selected or printed.
-import { useId } from 'react';
-import { resolveSummaryState, type SummaryGlobals } from '../ui/ConfigSummary';
+import { useId, useSyncExternalStore } from 'react';
+import {
+  formatZoomPercent,
+  resolveLiveMeasure,
+  resolveSummaryState,
+  type SummaryGlobals,
+} from '../ui/ConfigSummary';
 import type { SelectionPaint } from '../engine/appearance/StyleManager';
+import type { NibGliderEngine } from '../engine/engine';
+import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 
 // Small legend glyph (Adobe CS-style: small, currentColor).
 function Glyph({ label, children }: { label: string; children: React.ReactNode }) {
@@ -74,24 +81,80 @@ function DashGlyph({ dash, gap }: { dash: number; gap: number }) {
   );
 }
 
+function ZoomGlyph() {
+  return (
+    <Glyph label="Zoom">
+      <circle cx="7" cy="7" r="4.5" />
+      <path d="M10.5 10.5 L14 14" />
+    </Glyph>
+  );
+}
+
+function LengthGlyph() {
+  return (
+    <Glyph label="Length">
+      <path d="M2 10 L14 10" />
+      <path d="M4 10 L4 7.5 M8 10 L8 7.5 M12 10 L12 7.5" />
+    </Glyph>
+  );
+}
+
+function AngleGlyph() {
+  return (
+    <Glyph label="Angle">
+      <path d="M2 12 L2 12" />
+      <path d="M3 12 A9 9 0 0 1 12 5" />
+      <path d="M3 12 L12 12" />
+    </Glyph>
+  );
+}
+
+// Document menu entries that act instead of switching documents.
+const DOC_SETTINGS_VALUE = '__cfg-settings';
+const DOC_RENAME_VALUE = '__cfg-rename';
+
 export interface ConfigSummaryBoxProps {
+  engine: NibGliderEngine;
   docName: string;
   docDirty: boolean;
+  currentDocId: string | null;
+  documents: Array<{ id: string; name: string }>;
   selectedCount: number;
   selection: SelectionPaint | null;
   globals: SummaryGlobals;
-  onOpenDocumentInfo?: () => void;
+  onSelectDocument?: (id: string) => void;
+  onOpenSettings?: () => void;
+  onRequestRename?: () => void;
 }
 
 export default function ConfigSummaryBox({
+  engine,
   docName,
   docDirty,
+  currentDocId,
+  documents,
   selectedCount,
   selection,
   globals,
-  onOpenDocumentInfo,
+  onSelectDocument,
+  onOpenSettings,
+  onRequestRename,
 }: ConfigSummaryBoxProps) {
   const { mode, paint, mixed } = resolveSummaryState(selection, selectedCount, globals);
+  // Zoom and live drawing progress bypass the document channel (view-only
+  // state and mousemove-only canvas repaints), so the box subscribes to
+  // those narrow channels itself: only the box re-renders per cursor move.
+  const viewVersion = useSyncExternalStore(engine.subscribeView, engine.getViewVersion);
+  const liveVersion = useSyncExternalStore(engine.subscribeLive, engine.getLiveVersion);
+  void viewVersion;
+  void liveVersion;
+  const live = resolveLiveMeasure({
+    lengthOn: engine.isLengthSnappingEnabled,
+    angleOn: engine.isAngleSnappingEnabled,
+    vector: engine.liveMeasureVector(),
+    unit: engine.lengthUnit,
+  });
+  const zoomText = formatZoomPercent(engine.zoomLevel);
   const uid = useId().replace(/:/g, '');
   const fillId = `cfg-fill-${uid}`;
   const spec = paint.fillSpec;
@@ -101,6 +164,26 @@ export default function ConfigSummaryBox({
   const dashOn = paint.dashLength > 0 || paint.gapLength > 0;
   const stateLabel =
     mode === 'selection' ? (mixed ? `${selectedCount} selected` : 'Selection') : 'Global';
+  const docOptions: CustomSelectOption[] = [
+    ...documents.map((doc) => ({
+      value: doc.id,
+      label: doc.id === currentDocId && docDirty ? `${doc.name} •` : doc.name,
+    })),
+    { value: '__cfg-doc-section', label: 'Document', header: true },
+    { value: DOC_SETTINGS_VALUE, label: 'Settings' },
+    { value: DOC_RENAME_VALUE, label: 'Rename' },
+  ];
+  const handleDocChange = (value: string) => {
+    if (value === DOC_SETTINGS_VALUE) {
+      onOpenSettings?.();
+      return;
+    }
+    if (value === DOC_RENAME_VALUE) {
+      onRequestRename?.();
+      return;
+    }
+    onSelectDocument?.(value);
+  };
 
   return (
     <div
@@ -114,29 +197,14 @@ export default function ConfigSummaryBox({
       }
     >
       <div className="cfg-head">
-        {onOpenDocumentInfo ? (
-          <button
-            type="button"
-            className="cfg-doc-btn"
-            onClick={onOpenDocumentInfo}
-            title={`${docDirty ? `${docName} (unsaved changes)` : docName} — open Document Info`}
-            aria-label={`${docName} — open Document Info`}
-          >
-            <span className="cfg-doc" aria-live="polite">
-              {docName}
-              {docDirty ? ' •' : null}
-            </span>
-          </button>
-        ) : (
-          <span
-            className="cfg-doc"
-            title={docDirty ? `${docName} (unsaved changes)` : docName}
-            aria-live="polite"
-          >
-            {docName}
-            {docDirty ? ' •' : null}
-          </span>
-        )}
+        <CustomSelect
+          id="configSummaryDocSelect"
+          ariaLabel={`Document: ${docName}${docDirty ? ' (unsaved changes)' : ''}`}
+          value={currentDocId ?? '__cfg-untitled'}
+          placeholder={docDirty ? `${docName} •` : docName}
+          options={docOptions}
+          onChange={handleDocChange}
+        />
         <span className={`cfg-state ${mode}`} title={mode === 'selection' ? 'Showing the selected path' : 'Showing the global settings the next path will use'}>
           {stateLabel}
         </span>
@@ -187,6 +255,31 @@ export default function ConfigSummaryBox({
         ) : null}
       </svg>
       <dl className="cfg-rows">
+        <div className="cfg-row">
+          <dt>
+            <ZoomGlyph />
+            <span>Zoom</span>
+          </dt>
+          <dd title={`View zoom ${zoomText}`}>{zoomText}</dd>
+        </div>
+        {live.lengthText ? (
+          <div className="cfg-row sub">
+            <dt>
+              <LengthGlyph />
+              <span>Length</span>
+            </dt>
+            <dd title="Live radius or spline-segment length (Length snapping is on)">{live.lengthText}</dd>
+          </div>
+        ) : null}
+        {live.angleText ? (
+          <div className="cfg-row sub">
+            <dt>
+              <AngleGlyph />
+              <span>Angle</span>
+            </dt>
+            <dd title="Live radius or spline-segment angle (Angle snapping is on)">{live.angleText}</dd>
+          </div>
+        ) : null}
         <div className={`cfg-row ${paint.strokeOn ? '' : 'is-off'}`}>
           <dt>
             <StrokeGlyph />

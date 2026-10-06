@@ -2597,13 +2597,13 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
    * App passes its own instance so live demonstrations can expand the
    * sections their scripts point at. */
   panels?: PanelsManager;
-  /** Opens the Document Info window. App wires this to the window registry;
-   * the summary box document name calls it on click. */
-  onOpenDocumentInfo?: () => void;
+  /** Opens the Document Settings window. App wires this to the window
+   * registry; the summary box document menu calls it from Settings. */
+  onOpenDocumentSettings?: () => void;
 }>(function ControlPanel({
   engine,
   panels: panelsProp,
-  onOpenDocumentInfo,
+  onOpenDocumentSettings,
 }, ref) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
@@ -2936,6 +2936,15 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     },
     [engine, refreshGallery],
   );
+  // Summary box document menu: switch to the picked gallery document
+  // through the same guarded open path as the gallery dialog.
+  const handleSummarySelect = useCallback(
+    (id: string) => {
+      const doc = galleryListDocuments(browserStore()).find((entry) => entry.id === id);
+      if (doc) handleGalleryOpen(doc);
+    },
+    [handleGalleryOpen],
+  );
   const handleGallerySave = useCallback(
     (name: string) => {
       saveSceneToGallery(name);
@@ -3221,11 +3230,16 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     <div className="panel-shell">
       <div className="panel-side">
         <ConfigSummaryBox
+          engine={engine}
           docName={docName}
           docDirty={docDirty}
+          currentDocId={galleryCurrentId(browserStore())}
+          documents={galleryListDocuments(browserStore())}
           selectedCount={engine.selectedItems.length}
           selection={sel}
-          onOpenDocumentInfo={onOpenDocumentInfo}
+          onSelectDocument={handleSummarySelect}
+          onOpenSettings={onOpenDocumentSettings}
+          onRequestRename={() => dispatchFileCommand('rename-document')}
           globals={{
             strokeOn: engine.strokeEnabled,
             strokeColor: engine.globalStrokeColor,
