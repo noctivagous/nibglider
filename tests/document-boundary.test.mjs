@@ -266,3 +266,29 @@ test('engine pointer pan delegates to viewport and does not dirty document', () 
     assert.equal(engine.isDocumentDirty(), false);
   } finally { s.project.remove(); }
 });
+
+test('right mousedown never acts like a left click', () => {
+  const s = scope(); const engine = new NibGliderEngine(s, () => {});
+  try {
+    const rect = new s.Path.Rectangle({ from: [0, 0], to: [100, 100] });
+    rect.fillColor = 'black';
+    const right = (x, y) => ({ point: new s.Point(x, y), event: { button: 2 } });
+    // Left click selects; right-click on the selection keeps it and moves nothing.
+    engine.pointer.onMouseDown({ point: new s.Point(50, 50) });
+    assert.equal(engine.selectedItems.length, 1);
+    const boundsBefore = rect.bounds.clone();
+    engine.pointer.onMouseDown(right(50, 50));
+    engine.pointer.onMouseDrag({ ...right(70, 50), delta: new s.Point(20, 0) });
+    engine.pointer.releasePointer();
+    assert.equal(engine.selectedItems.length, 1);
+    assert.deepEqual([rect.bounds.x, rect.bounds.y], [boundsBefore.x, boundsBefore.y]);
+    // Right-click on empty space neither deselects nor pans.
+    const centerBefore = s.view.center.clone();
+    engine.pointer.onMouseDown(right(300, 250));
+    engine.pointer.onMouseDrag({ ...right(320, 250), delta: new s.Point(20, 0) });
+    engine.pointer.releasePointer();
+    assert.equal(engine.selectedItems.length, 1);
+    assert.deepEqual([s.view.center.x, s.view.center.y], [centerBefore.x, centerBefore.y]);
+    rect.remove();
+  } finally { s.project.remove(); }
+});

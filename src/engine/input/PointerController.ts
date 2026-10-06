@@ -86,6 +86,10 @@ export class PointerController {
   }
 
   onMouseDown(event: paper.MouseEvent): void {
+    // Right-click opens the context menu; it must never act like a left
+    // click (select, deselect, pan, or start a move). The native button rides
+    // on the wrapped DOM event; calls without one take the normal path.
+    if (this.isRightButton(event)) return;
     const host = this.host;
     host.setMousePt(event.point);
     if (host.isDrawingPath() || host.isDrawingShape() || host.isDrawingQuad()) return;
@@ -209,6 +213,8 @@ export class PointerController {
   }
 
   onMouseDrag(event: paper.MouseEvent): void {
+    // A right-drag starts no gesture (see onMouseDown), so it moves nothing.
+    if (this.isRightButton(event)) return;
     const host = this.host;
     if (host.isFrameResizing()) {
       host.resizeFrameTo(event.point);
@@ -258,6 +264,10 @@ export class PointerController {
     const host = this.host;
     if (host.isDrawingPath() || host.isDrawingShape() || host.isDrawingQuad()) return;
     this.applyHitSelection(this.hitTestContent(host.mousePt()));
+  }
+
+  private isRightButton(event: paper.MouseEvent): boolean {
+    return (event as unknown as { event?: { button?: number } }).event?.button === 2;
   }
 
   private endPan(): void {
