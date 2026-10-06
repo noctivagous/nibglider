@@ -1,5 +1,8 @@
 
-[ ] strokedPath
+[ ] strokedPath - stroke of the path rendered in place of the base spline.  the shape obj
+keeps the original spline path until there is a combinatorics operation with a path where
+the two cannot keep a stroked Path.  so, strokedPath might be a mode of the path obj.
+
 	[ ] Right-click menu > Operations >
    		[ ] turn intersecting paths into interlace (stroked path).
 
