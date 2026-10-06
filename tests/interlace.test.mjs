@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import paper from 'paper';
 import { NibGliderEngine } from '../src/engine/engine.ts';
-import { InterlaceManager } from '../src/engine/scene/InterlaceManager.ts';
+import { InterlaceManager, gapRectFor } from '../src/engine/scene/InterlaceManager.ts';
 import { resolveOutlinedStroke } from '../src/engine/geometry/outlinedStroke.ts';
 
 function engine() {
@@ -26,6 +26,53 @@ function spineHeight(item) {
   const ys = item.data.interlace.spine.segments.map((s) => s.point.y);
   return Math.max(...ys) - Math.min(...ys);
 }
+
+test('gap footprint parallels the peer and spans shallow crossings', () => {
+  // Right-angle crossing: width clears the over-band plus daylight.
+  const square = gapRectFor(0, 10, 10, 1);
+  assert.equal(square.angle, 0);
+  assert.equal(square.width, 14);
+  assert.equal(square.length, 14);
+  // The footprint keeps the peer's angle, never the under-band's.
+  assert.equal(gapRectFor(Math.PI / 4, 10, 10, Math.SQRT1_2).angle, Math.PI / 4);
+  // Shallower crossings lengthen along the peer but never narrow the width.
+  const shallow = gapRectFor(0.3, 10, 10, 0.4);
+  assert.ok(shallow.length > square.length);
+  assert.equal(shallow.width, square.width);
+  // Near-tangent crossings clamp instead of blowing up.
+  const grazing = gapRectFor(0, 10, 10, 0.01);
+  assert.ok(Number.isFinite(grazing.length));
+  assert.ok(grazing.length < 10 / 0.35 + 4 + 1);
+});
+
+test('cut ends parallel the peer band', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { a, b } = weavePair(s);
+    e.addItemToSelection(a);
+    e.addItemToSelection(b);
+    e.interlaceSelection();
+    // The under-band at the first crossing: every boundary segment near the
+    // gap must run parallel or perpendicular to the horizontal peer.
+    const c0 = { x: -25, y: 0 };
+    const under = layer.children.find((child) => !child.contains(new s.Point(c0.x, c0.y)));
+    const paths = under.className === 'CompoundPath' ? [...under.children] : [under];
+    let checked = 0;
+    for (const p of paths) {
+      for (let i = 0; i < p.segments.length; i++) {
+        const p0 = p.segments[i].point;
+        const p1 = p.segments[(i + 1) % p.segments.length].point;
+        const mx = (p0.x + p1.x) / 2; const my = (p0.y + p1.y) / 2;
+        if (Math.hypot(mx - c0.x, my - c0.y) >= 13) continue;
+        if (Math.hypot(p1.x - p0.x, p1.y - p0.y) < 0.5) continue;
+        const mod = ((Math.atan2(p1.y - p0.y, p1.x - p0.x) * 180 / Math.PI) % 90 + 90) % 90;
+        assert.ok(mod < 5 || mod > 85, `cut edge at ${mod.toFixed(1)}° is not peer-parallel`);
+        checked++;
+      }
+    }
+    assert.ok(checked >= 4, 'expected gap edges near the crossing');
+  } finally { cleanup(); }
+});
 
 test('two intersecting strokes weave with alternating over/under', () => {
   const { s, e, layer, cleanup } = engine();

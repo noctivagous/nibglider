@@ -67,6 +67,22 @@ function gapPadding(underWidth: number): number {
   return Math.max(2, underWidth * 0.15);
 }
 
+export interface InterlaceGapRect { angle: number; length: number; width: number }
+
+/** Peer-aligned gap footprint: long sides run parallel to the over-band, so
+ * the under-band's cut ends parallel the peer. Length spans the under-band
+ * even at shallow crossing angles; width clears the over-band plus daylight.
+ * Pure geometry for testability; the manager builds the rotated cutter. */
+export function gapRectFor(overAngle: number, overWidth: number, underWidth: number, sine: number): InterlaceGapRect {
+  const grip = Math.min(1, Math.max(sine, 0.35));
+  const pad = gapPadding(underWidth);
+  return {
+    angle: overAngle,
+    length: underWidth / grip + 2 * pad,
+    width: overWidth + 2 * pad,
+  };
+}
+
 export class InterlaceManager {
   private readonly host: InterlaceHost;
   constructor(host: InterlaceHost) { this.host = host; }
@@ -146,12 +162,13 @@ export class InterlaceManager {
         const overA = (i + phase) % 2 === 0;
         const underWidth = overA ? orderB.width : orderA.width;
         const overWidth = overA ? orderA.width : orderB.width;
-        const disc = this.gapDisc(crossings[i], overWidth, underWidth, orderA.spine, orderB.spine);
-        if (!disc) continue;
+        const cutter = this.gapCutter(crossings[i], overA ? orderA.spine : orderB.spine,
+          overA ? orderB.spine : orderA.spine, overWidth, underWidth);
+        if (!cutter) continue;
         try {
           const target = overA ? bandB : bandA;
           if (!target || typeof target.subtract !== 'function') continue;
-          const cut = target.subtract(disc, { insert: false });
+          const cut = target.subtract(cutter, { insert: false });
           if (cut && hasBooleanArea(cut.area)) {
             if (target !== (overA ? items[1] : items[0])) this.removeDetached(target);
             if (overA) bandB = cut; else bandA = cut;
@@ -162,7 +179,7 @@ export class InterlaceManager {
         } catch {
           // Keep the band whole at this crossing and try the rest.
         } finally {
-          this.removeDetached(disc);
+          this.removeDetached(cutter);
         }
       }
       if (!cutAny) {
@@ -358,32 +375,43 @@ export class InterlaceManager {
     return points;
   }
 
-  // Gap disc at a crossing, widened for shallow crossing angles so the whole
-  // over-band hides inside the gap.
-  private gapDisc(center: Vec2, overWidth: number, underWidth: number, spineA: Item, spineB: Item): Item | null {
+  // Rectangular cutter at a crossing, aligned with the over-band so the
+  // under-band's cut ends parallel the peer. Lengthened for shallow crossing
+  // angles so the under-band severs fully and the over-band hides inside.
+  private gapCutter(center: Vec2, overSpine: Item, underSpine: Item, overWidth: number, underWidth: number): Item | null {
     const scope = this.host.paperScope();
-    let sine = 1;
+    let angle = 0; let sine = 1;
     try {
       const epsilon = Math.max(0.5, (overWidth + underWidth) / 4);
-      const offA = spineA.getOffsetOf(new scope.Point(center.x, center.y));
-      const offB = spineB.getOffsetOf(new scope.Point(center.x, center.y));
-      if (Number.isFinite(offA) && Number.isFinite(offB)) {
-        const a0 = spineA.getPointAt(Math.max(0, offA - epsilon));
-        const a1 = spineA.getPointAt(offA + epsilon);
-        const b0 = spineB.getPointAt(Math.max(0, offB - epsilon));
-        const b1 = spineB.getPointAt(offB + epsilon);
-        const ta = { x: a1.x - a0.x, y: a1.y - a0.y };
-        const tb = { x: b1.x - b0.x, y: b1.y - b0.y };
-        const la = Math.hypot(ta.x, ta.y); const lb = Math.hypot(tb.x, tb.y);
-        if (la > 1e-9 && lb > 1e-9) sine = Math.abs(ta.x * tb.y - ta.y * tb.x) / (la * lb);
+      const at = new scope.Point(center.x, center.y);
+      const offOver = overSpine.getOffsetOf(at);
+      const offUnder = underSpine.getOffsetOf(at);
+      if (Number.isFinite(offOver) && Number.isFinite(offUnder)) {
+        const o0 = overSpine.getPointAt(Math.max(0, offOver - epsilon));
+        const o1 = overSpine.getPointAt(offOver + epsilon);
+        const u0 = underSpine.getPointAt(Math.max(0, offUnder - epsilon));
+        const u1 = underSpine.getPointAt(offUnder + epsilon);
+        const to = { x: o1.x - o0.x, y: o1.y - o0.y };
+        const tu = { x: u1.x - u0.x, y: u1.y - u0.y };
+        const lo = Math.hypot(to.x, to.y); const lu = Math.hypot(tu.x, tu.y);
+        if (lo > 1e-9 && lu > 1e-9) {
+          angle = Math.atan2(to.y, to.x);
+          sine = Math.abs(to.x * tu.y - to.y * tu.x) / (lo * lu);
+        }
       }
-    } catch { /* Circular gap. */ }
-    const radius = (overWidth / 2 + gapPadding(underWidth)) / Math.max(sine, 0.35);
-    if (!(radius > 0) || !Number.isFinite(radius)) return null;
+    } catch { /* Axis-aligned fallback gap. */ }
+    const rect = gapRectFor(angle, overWidth, underWidth, sine);
+    if (!(rect.length > 0) || !(rect.width > 0)
+      || !Number.isFinite(rect.length) || !Number.isFinite(rect.width)) return null;
     const prev = scope.settings?.insertItems;
     try {
       if (scope.settings) scope.settings.insertItems = false;
-      return new scope.Path.Circle(new scope.Point(center.x, center.y), radius);
+      const cutter = new scope.Path.Rectangle(
+        new scope.Point(center.x - rect.length / 2, center.y - rect.width / 2),
+        new scope.Size(rect.length, rect.width),
+      );
+      cutter.rotate(rect.angle * 180 / Math.PI, new scope.Point(center.x, center.y));
+      return cutter;
     } catch {
       return null;
     } finally {
