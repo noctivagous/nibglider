@@ -345,7 +345,7 @@ test('interlace in-canvas XML declares the control contract', () => {
   assert.equal(parsed.spec.id, 'interlace');
   assert.deepEqual(
     parsed.spec.controls.map((control) => [control.kind, control.key ?? control.label]),
-    [['toggle', 'alternate'], ['field', 'padding'], ['crossings', 'crossings'], ['export', 'Ungroup']],
+    [['toggle', 'alternate'], ['field', 'padding'], ['export', 'Ungroup']],
   );
 });
 
