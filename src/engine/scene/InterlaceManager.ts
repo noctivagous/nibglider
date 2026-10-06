@@ -11,7 +11,7 @@ import type { NGBezierPath, NGCompositePath, NGBSplinePath, NGOutlinedStrokePath
 import type { BezierSegment, ResolvedVectorGeometry, Vec2 } from '../model/geometryResolution';
 import { resolveOutlinedStroke } from '../geometry/outlinedStroke';
 import { resolvePath } from '../geometry/pathResolver';
-import { canvasStrokeOf, crossingKey, gapPadding, gapRectFor, ribbonPolygon } from '../geometry/interlaceWeave';
+import { canvasStrokeOf, clusterSlots, crossingKey, gapPadding, gapRectFor, ribbonPolygon } from '../geometry/interlaceWeave';
 import type { WeaveMember } from '../geometry/interlaceWeave';
 import { hasBooleanArea } from '../geometry/booleanResolver';
 
@@ -301,14 +301,18 @@ export class InterlaceManager {
       overrides: this.weaveOverrides(weaveBands), label: 'Interlace Add' };
   }
 
-  // One planned cut per crossing, in display order: pairs run in weave
-  // order, crossings sort along the earlier member, and alternation offsets
-  // by pair ordinal so appended members never shift existing pairs' gaps.
-  // An override naming one pair member takes that crossing over.
+  // One planned cut per crossing cluster, in display order: pairs run in
+  // weave order, crossings sort along the earlier member, and alternation
+  // offsets by pair ordinal so appended members never shift existing pairs'
+  // gaps. An override naming one pair member takes that crossing over.
+  // Crossings whose gap windows overlap (a corner region crossed twice)
+  // merge into one cut under the first member's roles, with the window
+  // spanning every member site — lone crossings plan alone, unchanged.
   private planCrossings(
-    entries: WeaveEntry[], spines: Item[], phase: 0 | 1, overrides: Record<string, string>,
-  ): Array<{ key: string; pair: [number, number]; over: number; under: number; center: Vec2 }> {
-    const planned: Array<{ key: string; pair: [number, number]; over: number; under: number; center: Vec2 }> = [];
+    entries: Array<{ id: string; width: number }>, spines: Item[], phase: 0 | 1,
+    overrides: Record<string, string>, padding?: number,
+  ): Array<{ key: string; over: number; unders: number[]; involved: number[]; center: Vec2; halfLen: number }> {
+    const solo: Array<{ key: string; pair: [number, number]; over: number; under: number; center: Vec2; halfLen: number }> = [];
     let pairOrdinal = 0;
     for (let i = 0; i < entries.length; i++) {
       for (let j = i + 1; j < entries.length; j++) {
@@ -319,13 +323,71 @@ export class InterlaceManager {
           const overFirst = explicit === entries[i].id ? true
             : explicit === entries[j].id ? false
             : (k + phase + pairOrdinal) % 2 === 0;
-          planned.push({ key, pair: [i, j], over: overFirst ? i : j, under: overFirst ? j : i,
-            center: crossings[k] });
+          const over = overFirst ? i : j; const under = overFirst ? j : i;
+          const sine = this.crossingSine(spines[i], spines[j], crossings[k],
+            entries[i].width, entries[j].width);
+          const halfLen = gapRectFor(0, entries[over].width, entries[under].width,
+            sine, padding).length / 2;
+          solo.push({ key, pair: [i, j], over, under, center: crossings[k], halfLen });
         }
         pairOrdinal++;
       }
     }
-    return planned;
+    return clusterSlots(solo).map((group) => {
+      const head = solo[group[0]];
+      let halfLen = 0;
+      const unders: number[] = [];
+      const involved: number[] = [];
+      for (const m of group) {
+        halfLen = Math.max(halfLen, solo[m].halfLen + Math.hypot(solo[m].center.x - head.center.x,
+          solo[m].center.y - head.center.y));
+        if (!unders.includes(solo[m].under)) unders.push(solo[m].under);
+        for (const band of solo[m].pair) {
+          if (!involved.includes(band)) involved.push(band);
+        }
+      }
+      // Absorbed members lose their own over side: one connected daylight
+      // region admits a single winner, so the head's over stands and every
+      // other involved band is cut.
+      const targets = unders.filter((u) => u !== head.over);
+      return { key: head.key, over: head.over, unders: targets,
+        involved, center: head.center, halfLen };
+    });
+  }
+
+  // Centerline direction vectors of two spines around a crossing, sampled
+  // across an epsilon window. Symmetric in the spines; null when either
+  // spine cannot be sampled (callers fall back to axis-aligned defaults).
+  private crossingTangents(spineA: Item, spineB: Item, center: Vec2,
+    widthA: number, widthB: number): { a: Vec2; b: Vec2 } | null {
+    try {
+      const scope = this.host.paperScope();
+      const epsilon = Math.max(0.5, (widthA + widthB) / 4);
+      const at = new scope.Point(center.x, center.y);
+      const offA = spineA.getOffsetOf(at);
+      const offB = spineB.getOffsetOf(at);
+      if (!Number.isFinite(offA) || !Number.isFinite(offB)) return null;
+      const a0 = spineA.getPointAt(Math.max(0, offA - epsilon));
+      const a1 = spineA.getPointAt(offA + epsilon);
+      const b0 = spineB.getPointAt(Math.max(0, offB - epsilon));
+      const b1 = spineB.getPointAt(offB + epsilon);
+      const a = { x: a1.x - a0.x, y: a1.y - a0.y };
+      const b = { x: b1.x - b0.x, y: b1.y - b0.y };
+      if (Math.hypot(a.x, a.y) < 1e-9 || Math.hypot(b.x, b.y) < 1e-9) return null;
+      return { a, b };
+    } catch {
+      return null;
+    }
+  }
+
+  // Absolute sine between two spines at a crossing; 1 when unsampleable.
+  private crossingSine(spineA: Item, spineB: Item, center: Vec2,
+    widthA: number, widthB: number): number {
+    const tan = this.crossingTangents(spineA, spineB, center, widthA, widthB);
+    if (!tan) return 1;
+    const la = Math.hypot(tan.a.x, tan.a.y); const lb = Math.hypot(tan.b.x, tan.b.y);
+    if (!(la > 1e-9) || !(lb > 1e-9)) return 1;
+    return Math.abs(tan.a.x * tan.b.y - tan.a.y * tan.b.x) / (la * lb);
   }
 
   // Enumerate one weave's crossings for picking UI: members in order plus
@@ -334,10 +396,11 @@ export class InterlaceManager {
   // the group path order them), so keys match the bake exactly.
   private describeEntries(
     entries: WeaveEntry[], phase: 0 | 1, overrides: Record<string, string>, temps: Item[],
+    padding?: number,
   ): InterlaceWeaveDescription | null {
     const spines = this.entrySpines(entries, temps);
     if (!spines) return null;
-    const planned = this.planCrossings(entries, spines, phase, overrides);
+    const planned = this.planCrossings(entries, spines, phase, overrides, padding);
     return {
       members: entries.map((entry) => entry.id),
       phase,
@@ -345,7 +408,7 @@ export class InterlaceManager {
         key: cross.key,
         number: n + 1,
         overId: entries[cross.over].id,
-        underId: entries[cross.under].id,
+        underId: entries[cross.unders[0]].id,
         x: Math.round(cross.center.x * 10) / 10,
         y: Math.round(cross.center.y * 10) / 10,
       })),
@@ -424,7 +487,8 @@ export class InterlaceManager {
         return;
       }
       const next = { ...overrides };
-      next[key] = ordered[target.pair[0] === target.over ? target.pair[1] : target.pair[0]].id;
+      const other = target.involved.find((band) => band !== target.over) ?? target.unders[0];
+      next[key] = ordered[other].id;
       if (!this.bakeWeave({ kind: 'rerun', entries: ordered, firstId: first.id,
         phase, weave, overrides: next, label: 'Interlace Crossing' }, temps, snap)) {
         host.setCombineNote(EMPTY_NOTE);
@@ -457,7 +521,7 @@ export class InterlaceManager {
     }));
     const temps: Item[] = [];
     try {
-      return this.describeEntries(entries, params.phase, params.overrides, temps);
+      return this.describeEntries(entries, params.phase, params.overrides, temps, params.padding);
     } finally {
       for (const temp of temps) this.removeDetached(temp);
     }
@@ -645,26 +709,35 @@ export class InterlaceManager {
     const planned = this.planCrossings(entries, spines, plan.phase, plan.overrides);
     let cutAny = false;
     for (const cross of planned) {
-      const cutter = this.gapCutter(cross.center, spines[cross.over], spines[cross.under],
-        entries[cross.over].width, entries[cross.under].width);
+      const overEntry = entries[cross.over];
+      const underEntries = cross.unders.map((u) => entries[u]);
+      const cutter = this.gapCutter(cross.center, spines[cross.over], spines[cross.unders[0]],
+        overEntry.width, Math.max(...underEntries.map((entry) => entry.width)),
+        undefined, 2 * cross.halfLen, overEntry.style);
       if (!cutter) continue;
       try {
-        const target = bands[cross.under];
-        if (!target || typeof target.subtract !== 'function') continue;
-        const cut = target.subtract(cutter, { insert: false });
-        if (cut && hasBooleanArea(cut.area)) {
-          if (target !== entries[cross.under].item) this.removeDetached(target);
-          bands[cross.under] = cut;
+        for (const u of cross.unders) {
+          const target = bands[u];
+          if (!target || typeof target.subtract !== 'function') continue;
+          let cut: Item | null = null;
           try {
-            cut.fillColor = this.fillOf(entries[cross.under].item);
-            cut.strokeColor = null;
-          } catch { /* Style is cosmetic. */ }
-          cutAny = true;
-        } else {
-          this.removeDetached(cut);
+            cut = target.subtract(cutter, { insert: false });
+          } catch {
+            // Keep the band whole at this crossing and try the rest.
+            continue;
+          }
+          if (cut && hasBooleanArea(cut.area)) {
+            if (target !== entries[u].item) this.removeDetached(target);
+            bands[u] = cut;
+            try {
+              cut.fillColor = this.fillOf(entries[u].item);
+              cut.strokeColor = null;
+            } catch { /* Style is cosmetic. */ }
+            cutAny = true;
+          } else {
+            this.removeDetached(cut);
+          }
         }
-      } catch {
-        // Keep the band whole at this crossing and try the rest.
       } finally {
         this.removeDetached(cutter);
       }
@@ -1109,34 +1182,41 @@ export class InterlaceManager {
       bands.push(band);
     }
     const overrides = params.overrides ?? {};
-    for (let i = 0; i < crossings.length; i++) {
-      const key = crossingKey(ordered[0].id, ordered[1].id, i);
-      const explicit = overrides[key];
-      const overFirst = explicit === ordered[0].id ? true
-        : explicit === ordered[1].id ? false
-        : (i + params.phase) % 2 === 0;
-      const over = overFirst ? ordered[0] : ordered[1];
-      const under = overFirst ? ordered[1] : ordered[0];
-      const spineOver = over === members[0] ? spines[0] : spines[1];
-      const spineUnder = over === members[0] ? spines[1] : spines[0];
-      const cutter = this.gapCutter(crossings[i], spineOver, spineUnder,
-        over.stroke.width, under.stroke.width, params.padding);
+    // Plan in first-role-led order so pair keys match the bake exactly.
+    const planned = this.planCrossings(
+      ordered.map((member) => ({ id: member.id, width: member.stroke.width })),
+      ordered.map((member) => spines[members.indexOf(member)]),
+      params.phase, overrides, params.padding);
+    for (const cross of planned) {
+      const over = ordered[cross.over];
+      const cutter = this.gapCutter(cross.center,
+        spines[members.indexOf(over)], spines[members.indexOf(ordered[cross.unders[0]])],
+        over.stroke.width,
+        Math.max(...cross.unders.map((u) => ordered[u].stroke.width)),
+        params.padding, 2 * cross.halfLen, over.stroke);
       if (!cutter) continue;
       try {
-        const target = overFirst ? bands[1] : bands[0];
-        const cut = target.subtract(cutter, { insert: false });
-        if (cut && hasBooleanArea(cut.area)) {
-          this.removeDetached(target);
-          bands[overFirst ? 1 : 0] = cut;
+        for (const u of cross.unders) {
+          const target = bands[u];
+          if (!target || typeof target.subtract !== 'function') continue;
+          let cut: Item | null = null;
           try {
-            cut.fillColor = fillOf(itemOf(overFirst ? ordered[1] : ordered[0]));
-            cut.strokeColor = null;
-          } catch { /* Style is cosmetic. */ }
-        } else {
-          this.removeDetached(cut);
+            cut = target.subtract(cutter, { insert: false });
+          } catch {
+            // Keep the band whole at this crossing and try the rest.
+            continue;
+          }
+          if (cut && hasBooleanArea(cut.area)) {
+            this.removeDetached(target);
+            bands[u] = cut;
+            try {
+              cut.fillColor = fillOf(itemOf(ordered[u]));
+              cut.strokeColor = null;
+            } catch { /* Style is cosmetic. */ }
+          } else {
+            this.removeDetached(cut);
+          }
         }
-      } catch {
-        // Keep the band whole at this crossing and try the rest.
       } finally {
         this.removeDetached(cutter);
       }
@@ -1441,34 +1521,29 @@ export class InterlaceManager {
   // chords with protruding rectangle corners). Lengthened for shallow
   // crossing angles so the under-band severs fully and the over-band hides
   // inside.
-  private gapCutter(center: Vec2, overSpine: Item, underSpine: Item, overWidth: number, underWidth: number, padding?: number): Item | null {
-    const scope = this.host.paperScope();
+  private gapCutter(center: Vec2, overSpine: Item, underSpine: Item, overWidth: number, underWidth: number, padding?: number, lengthOverride?: number, style?: { join: string; miterLimit: number }): Item | null {
     let angle = 0; let sine = 1;
-    try {
-      const epsilon = Math.max(0.5, (overWidth + underWidth) / 4);
-      const at = new scope.Point(center.x, center.y);
-      const offOver = overSpine.getOffsetOf(at);
-      const offUnder = underSpine.getOffsetOf(at);
-      if (Number.isFinite(offOver) && Number.isFinite(offUnder)) {
-        const o0 = overSpine.getPointAt(Math.max(0, offOver - epsilon));
-        const o1 = overSpine.getPointAt(offOver + epsilon);
-        const u0 = underSpine.getPointAt(Math.max(0, offUnder - epsilon));
-        const u1 = underSpine.getPointAt(offUnder + epsilon);
-        const to = { x: o1.x - o0.x, y: o1.y - o0.y };
-        const tu = { x: u1.x - u0.x, y: u1.y - u0.y };
-        const lo = Math.hypot(to.x, to.y); const lu = Math.hypot(tu.x, tu.y);
-        if (lo > 1e-9 && lu > 1e-9) {
-          angle = Math.atan2(to.y, to.x);
-          sine = Math.abs(to.x * tu.y - to.y * tu.x) / (lo * lu);
-        }
+    const tan = this.crossingTangents(overSpine, underSpine, center, overWidth, underWidth);
+    if (tan) {
+      angle = Math.atan2(tan.a.y, tan.a.x);
+      const lo = Math.hypot(tan.a.x, tan.a.y); const lu = Math.hypot(tan.b.x, tan.b.y);
+      if (lo > 1e-9 && lu > 1e-9) {
+        sine = Math.abs(tan.a.x * tan.b.y - tan.a.y * tan.b.x) / (lo * lu);
       }
-    } catch { /* Axis-aligned fallback gap. */ }
+    }
     const rect = gapRectFor(angle, overWidth, underWidth, sine, padding);
+    // Clustered cuts span every member site: never shrink the planned
+    // window back to the lone-crossing footprint.
+    if (lengthOverride !== undefined && Number.isFinite(lengthOverride) && lengthOverride > 0) {
+      rect.length = Math.max(rect.length, lengthOverride);
+    }
     if (!(rect.length > 0) || !(rect.width > 0)
       || !Number.isFinite(rect.length) || !Number.isFinite(rect.width)) return null;
     // Peer-hugging ribbon first: butt ends land perpendicular to the
     // over-spine at the window edges, so no corner extends past the gap.
-    const ribbon = this.peerRibbon(overSpine, center, rect.length, rect.width / 2);
+    // The ribbon inherits the over-band's join, so a window straddling a
+    // sharp corner miters along the interior angle like the band itself.
+    const ribbon = this.peerRibbon(overSpine, center, rect.length, rect.width / 2, style);
     if (ribbon) return ribbon;
     // Straight-spine fallback when sampling fails: the legacy rotated
     // rectangle, which a straight ribbon would equal anyway.
@@ -1491,7 +1566,8 @@ export class InterlaceManager {
   // Short offset ribbon around a crossing center, sampled along the
   // over-spine window. Closed spines wrap; open spines clamp. Null when the
   // spine cannot be sampled (caller falls back to a rectangle).
-  private peerRibbon(overSpine: Item, center: Vec2, length: number, halfWidth: number): Item | null {
+  private peerRibbon(overSpine: Item, center: Vec2, length: number, halfWidth: number,
+    style?: { join: string; miterLimit: number }): Item | null {
     try {
       const scope = this.host.paperScope();
       const total = overSpine.length;
@@ -1531,7 +1607,13 @@ export class InterlaceManager {
         if (!p) return null;
         pts.push({ x: p.x, y: p.y });
       }
-      const poly = ribbonPolygon(pts, halfWidth);
+      // A round over-band join samples smooth, so the miter ribbon tracks
+      // it; only an explicit bevel cuts the corner short like the band.
+      const poly = ribbonPolygon(pts, halfWidth, {
+        join: style?.join === 'bevel' ? 'bevel' : 'miter',
+        miterLimit: style && Number.isFinite(style.miterLimit) && style.miterLimit >= 1
+          ? style.miterLimit : 10,
+      });
       return this.buildPath(scope, true, poly.map((p) => ({ point: { ...p },
         handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } })));
     } catch {

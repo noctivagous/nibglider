@@ -75,6 +75,46 @@ test('cut ends parallel the peer band', () => {
   } finally { cleanup(); }
 });
 
+test('a bar through a hexagon corner weaves as one shaped cut', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    // A vertical bar through neighboring hex edges: two spine crossings
+    // 13.9 apart share one daylight region around the corner vertex.
+    const hexPts = [];
+    for (let k = 0; k < 6; k++) {
+      const a = k * Math.PI / 3;
+      hexPts.push([40 * Math.cos(a), 40 * Math.sin(a)]);
+    }
+    const hex = new s.Path({ segments: hexPts, closed: true, strokeColor: 'black', strokeWidth: 12 });
+    const bar = new s.Path({ segments: [[36, -60], [36, 60]], strokeColor: 'black', strokeWidth: 12 });
+    e.addItemToSelection(hex);
+    e.addItemToSelection(bar);
+    e.interlaceSelection();
+    assert.equal(layer.children.length, 2);
+    const weave = e.selectedInterlaceWeave();
+    assert.equal(weave.crossings.length, 1);
+    assert.equal(weave.crossings[0].over, 0);
+    const hexBand = layer.children.find((child) => child.bounds.width > 30);
+    const barBand = layer.children.find((child) => child !== hexBand);
+    // The over-site survives: the neighbor cut must not punch a hole there.
+    assert.equal(hexBand.contains(new s.Point(36, 6.93)), true);
+    // The whole ring spine survives, so the corner wedge stays connected
+    // instead of stranding a stray point past the cut.
+    for (let k = 0; k < 6; k++) {
+      const a0 = k * Math.PI / 3, a1 = (k + 1) * Math.PI / 3;
+      for (const t of [0, 0.5]) {
+        const x = 40 * (Math.cos(a0) * (1 - t) + Math.cos(a1) * t);
+        const y = 40 * (Math.sin(a0) * (1 - t) + Math.sin(a1) * t);
+        assert.equal(hexBand.contains(new s.Point(x, y)), true, `ring spine at (${x.toFixed(1)},${y.toFixed(1)})`);
+      }
+    }
+    // The under-bar is severed at the corner but intact outside the slot.
+    assert.equal(barBand.contains(new s.Point(36, 6.93)), false);
+    assert.equal(barBand.contains(new s.Point(36, 40)), true);
+    assert.equal(barBand.contains(new s.Point(36, -40)), true);
+  } finally { cleanup(); }
+});
+
 test('two intersecting strokes weave with alternating over/under', () => {
   const { s, e, layer, cleanup } = engine();
   try {
@@ -201,6 +241,49 @@ test('ribbon cutter hugs straight and curved peers with butt ends', () => {
   assert.ok(near45.some((p) => Math.hypot(p.x, p.y) < 8.5), 'inner side leaves the chord');
   assert.throws(() => ribbonPolygon([{ x: 0, y: 0 }], 2), WeaveError);
   assert.throws(() => ribbonPolygon([{ x: 0, y: 0 }, { x: 1, y: 0 }], 0), WeaveError);
+});
+
+test('ribbon cutter miters sharp corners along the interior angle', () => {
+  // Hexagon-style 60° turn with a 12pt band: the offset edges meet at true
+  // miter intersections 6/sin(60°) from the vertex, like the band itself.
+  const corner = [{ x: -10, y: 0 }, { x: 0, y: 0 }, { x: 5, y: 8.660 }];
+  const poly = ribbonPolygon(corner, 6);
+  assert.equal(poly.length, 6);
+  for (const [mx, my] of [[-3.464, 6], [3.464, -6]]) {
+    const near = poly.filter((p) => Math.hypot(p.x - mx, p.y - my) < 0.1);
+    assert.equal(near.length, 1, `expected a miter vertex near (${mx},${my})`);
+  }
+  // No vertex strays past the miter: cutters never spike outside the band.
+  const distToSpine = (p) => {
+    let best = Infinity;
+    for (let i = 0; i + 1 < corner.length; i++) {
+      const ax = corner[i].x, ay = corner[i].y;
+      const dx = corner[i + 1].x - ax, dy = corner[i + 1].y - ay;
+      const t = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.y - ay) * dy) / (dx * dx + dy * dy)));
+      best = Math.min(best, Math.hypot(p.x - (ax + dx * t), p.y - (ay + dy * t)));
+    }
+    return best;
+  };
+  for (const p of poly) assert.ok(distToSpine(p) <= 7.0, `vertex strays ${distToSpine(p).toFixed(2)} from the spine`);
+  // Bevel cuts the corner short instead of mitering it.
+  const bev = ribbonPolygon(corner, 6, { join: 'bevel' });
+  assert.ok(bev.every((p) => Math.hypot(p.x - 3.464, p.y + 6) > 0.5), 'bevel keeps the outer miter');
+  // A turn past the miter limit falls back to a bevel, never a spike.
+  const hairpin = [{ x: 0, y: 0 }, { x: 10, y: 0 },
+    { x: 10 + 5 * Math.cos(140 * Math.PI / 180), y: 5 * Math.sin(140 * Math.PI / 180) }];
+  const limited = ribbonPolygon(hairpin, 2, { miterLimit: 1 });
+  assert.equal(limited.length, 7);
+  const far = (p) => {
+    let best = Infinity;
+    for (let i = 0; i + 1 < hairpin.length; i++) {
+      const ax = hairpin[i].x, ay = hairpin[i].y;
+      const dx = hairpin[i + 1].x - ax, dy = hairpin[i + 1].y - ay;
+      const t = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.y - ay) * dy) / (dx * dx + dy * dy)));
+      best = Math.min(best, Math.hypot(p.x - (ax + dx * t), p.y - (ay + dy * t)));
+    }
+    return best;
+  };
+  for (const p of limited) assert.ok(far(p) <= 4.5, 'limited miter spikes past the band');
 });
 
 test('circle-on-circle gaps are symmetric and hug the over-ring', () => {

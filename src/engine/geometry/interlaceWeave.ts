@@ -42,30 +42,126 @@ export function gapRectFor(overAngle: number, overWidth: number, underWidth: num
   };
 }
 
+/** Corner-join style of a ribbon cutter. Mirrors the over-band's own
+ * expansion join so the cut follows the band's outline at sharp corners
+ * instead of leaving notches or stray spikes there. */
+export interface RibbonJoinOptions {
+  join?: 'miter' | 'bevel';
+  miterLimit?: number;
+}
+
+function ribbonLineIntersection(p: Vec2, d: Vec2, q: Vec2, e: Vec2): Vec2 | null {
+  const denom = d.x * e.y - d.y * e.x;
+  if (Math.abs(denom) < 1e-12) return null;
+  const t = ((q.x - p.x) * e.y - (q.y - p.y) * e.x) / denom;
+  return { x: p.x + d.x * t, y: p.y + d.y * t };
+}
+
 /** Closed offset polygon hugging one centerline: side edges run parallel
  * to the samples (curved when the peer curves), ends are butt caps
  * perpendicular to the end tangents. Unlike a rotated rectangle, no corner
  * extends past the window ends, so gap cutters never gouge the under-band
- * outside the intended footprint. */
-export function ribbonPolygon(centerline: Vec2[], halfWidth: number): Vec2[] {
+ * outside the intended footprint. Interior vertices use true miter
+ * intersections (capped by the miter limit, bevel fallback), so a window
+ * straddling a sharp corner — a hexagon vertex on the peer spine — follows
+ * the interior angle instead of kinking across it. */
+export function ribbonPolygon(centerline: Vec2[], halfWidth: number, opts?: RibbonJoinOptions): Vec2[] {
   if (!Array.isArray(centerline) || centerline.length < 2) throw new WeaveError('Ribbon needs at least two samples');
   if (!(halfWidth > 0) || !Number.isFinite(halfWidth)) throw new WeaveError('Ribbon needs a positive half width');
+  const join = opts?.join === 'bevel' ? 'bevel' : 'miter';
+  const miterLimit = opts?.miterLimit !== undefined
+    && Number.isFinite(opts.miterLimit) && opts.miterLimit >= 1 ? opts.miterLimit : 10;
   const pts: Vec2[] = [];
   for (const p of centerline) {
     if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) throw new WeaveError('Ribbon samples must be finite');
     distinct(pts, { ...p });
   }
   if (pts.length < 2) throw new WeaveError('Ribbon samples are degenerate');
-  const normals: Vec2[] = pts.map((p, i) => {
-    const a = pts[Math.max(0, i - 1)]; const b = pts[Math.min(pts.length - 1, i + 1)];
-    const dx = b.x - a.x; const dy = b.y - a.y;
+  const h = halfWidth;
+  const dirs: Vec2[] = [];
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const dx = pts[i + 1].x - pts[i].x; const dy = pts[i + 1].y - pts[i].y;
     const l = Math.hypot(dx, dy);
-    if (!(l > 1e-9)) return { x: 0, y: 1 };
-    return { x: -dy / l, y: dx / l };
-  });
-  const left = pts.map((p, i) => ({ x: p.x + normals[i].x * halfWidth, y: p.y + normals[i].y * halfWidth }));
-  const right = pts.map((p, i) => ({ x: p.x - normals[i].x * halfWidth, y: p.y - normals[i].y * halfWidth }));
+    dirs.push(l > 1e-9 ? { x: dx / l, y: dy / l }
+      : dirs.length ? { ...dirs[dirs.length - 1] } : { x: 1, y: 0 });
+  }
+  const off = (p: Vec2, n: Vec2, s: number): Vec2 => ({ x: p.x + n.x * s * h, y: p.y + n.y * s * h });
+  const left: Vec2[] = []; const right: Vec2[] = [];
+  const push = (list: Vec2[], p: Vec2): void => {
+    const last = list[list.length - 1];
+    if (!last || Math.hypot(last.x - p.x, last.y - p.y) > DEDUPE_EPS) list.push({ ...p });
+  };
+  const n0 = { x: -dirs[0].y, y: dirs[0].x };
+  push(left, off(pts[0], n0, 1)); push(right, off(pts[0], n0, -1));
+  for (let i = 1; i + 1 < pts.length; i++) {
+    const nPrev = { x: -dirs[i - 1].y, y: dirs[i - 1].x };
+    const nNext = { x: -dirs[i].y, y: dirs[i].x };
+    const cross = dirs[i - 1].x * dirs[i].y - dirs[i - 1].y * dirs[i].x;
+    const leftIsInner = cross > 0;
+    // Inner side: plain offset-line intersection, matching the band's own
+    // expansion. Guarded by the miter limit so hairpins cannot throw a
+    // spike across the centerline.
+    const inSign = leftIsInner ? 1 : -1;
+    const qInPrev = off(pts[i], nPrev, inSign);
+    const qInNext = off(pts[i], nNext, inSign);
+    const innerHit = Math.abs(cross) < 1e-12 ? qInPrev
+      : ribbonLineIntersection(qInPrev, dirs[i - 1], qInNext, dirs[i]) ?? qInPrev;
+    const inner = Math.hypot(innerHit.x - pts[i].x, innerHit.y - pts[i].y) <= miterLimit * 2 * h
+      ? innerHit : qInPrev;
+    // Outer side: styled join — miter capped by the limit, bevel fallback.
+    const outSign = -inSign;
+    const qOutPrev = off(pts[i], nPrev, outSign);
+    const qOutNext = off(pts[i], nNext, outSign);
+    let outer: Vec2[];
+    if (Math.abs(cross) < 1e-12) {
+      outer = [qOutPrev];
+    } else if (join === 'bevel') {
+      outer = [qOutPrev, qOutNext];
+    } else {
+      const miter = ribbonLineIntersection(qOutPrev, dirs[i - 1], qOutNext, dirs[i]);
+      const ratio = miter ? Math.hypot(miter.x - pts[i].x, miter.y - pts[i].y) / (2 * h) : Infinity;
+      outer = miter && ratio <= miterLimit ? [miter] : [qOutPrev, qOutNext];
+    }
+    const innerList = leftIsInner ? left : right;
+    const outerList = leftIsInner ? right : left;
+    push(innerList, inner);
+    for (const p of outer) push(outerList, p);
+  }
+  const n1 = { x: -dirs[dirs.length - 1].y, y: dirs[dirs.length - 1].x };
+  const last = pts[pts.length - 1];
+  push(left, off(last, n1, 1)); push(right, off(last, n1, -1));
   return [...left, ...right.reverse()];
+}
+
+/** One crossing's cutter footprint for overlap clustering: center plus the
+ * half-length of its gap window along the over-spine. */
+export interface CrossingSlot {
+  center: Vec2;
+  halfLen: number;
+}
+
+/** Group crossing slots whose gap windows overlap into single cuts. Slots
+ * arrive in spine order; a slot joins the open cluster when its window
+ * overlaps any member's, otherwise it starts a new one. Returns index
+ * groups in order. Overlapping windows cannot weave independently — one
+ * connected daylight region admits a single over side — so each group cuts
+ * once. Well-separated crossings always group alone and keep their keys. */
+export function clusterSlots(slots: CrossingSlot[]): number[][] {
+  const clusters: number[][] = [];
+  for (let s = 0; s < slots.length; s++) {
+    const slot = slots[s];
+    if (!slot || !slot.center || !Number.isFinite(slot.center.x) || !Number.isFinite(slot.center.y)
+      || !(slot.halfLen > 0) || !Number.isFinite(slot.halfLen)) {
+      throw new WeaveError('Clustering needs finite centers and positive half lengths');
+    }
+    const open = clusters[clusters.length - 1];
+    const joins = open?.some((m) =>
+      Math.hypot(slot.center.x - slots[m].center.x, slot.center.y - slots[m].center.y)
+        < slot.halfLen + slots[m].halfLen) ?? false;
+    if (open && joins) open.push(s);
+    else clusters.push([s]);
+  }
+  return clusters;
 }
 
 export type WeaveSpine = NGBezierPath | NGCompositePath | NGBSplinePath | NGOutlinedStrokePath;
@@ -137,13 +233,13 @@ function flattenResolved(geometry: ResolvedPath, tolerance: number): Vec2[] {
   return points;
 }
 
-function centerline(member: WeaveMember, tolerance: number): Vec2[] {
+function centerline(member: WeaveMember, tolerance: number): { points: Vec2[]; closed: boolean } {
   const spine = member.source.mode === 'outlinedStroke' ? member.source.spine : member.source;
   const geometry = resolvePath(spine, { tolerance });
   if (geometry.kind !== 'path') throw new WeaveError(`Member ${member.id} spine must resolve to one path`);
   const points = flattenResolved(geometry, tolerance);
   if (points.length < 2) throw new WeaveError(`Member ${member.id} spine is degenerate`);
-  return points;
+  return { points, closed: geometry.closed };
 }
 
 function segCross(p: Vec2, p2: Vec2, q: Vec2, q2: Vec2): { t: number; u: number } | null {
@@ -157,24 +253,30 @@ function segCross(p: Vec2, p2: Vec2, q: Vec2, q2: Vec2): { t: number; u: number 
   return { t: Math.max(0, Math.min(1, t)), u: Math.max(0, Math.min(1, u)) };
 }
 
-/** Crossings ordered along polyline A by arc length. */
-function weaveCrossings(polyA: Vec2[], polyB: Vec2[]): Crossing[] {
+/** Crossings ordered along polyline A by arc length. Closed polylines
+ * include their closing segment, so a crossing on the last edge of a
+ * polygon spine (a hexagon edge back to the start vertex) is found. */
+function weaveCrossings(polyA: Vec2[], closedA: boolean, polyB: Vec2[], closedB: boolean): Crossing[] {
+  const segCountA = polyA.length - 1 + (closedA && polyA.length > 2 ? 1 : 0);
+  const segCountB = polyB.length - 1 + (closedB && polyB.length > 2 ? 1 : 0);
   const lengthsA: number[] = [0];
-  for (let i = 1; i < polyA.length; i++) {
-    lengthsA.push(lengthsA[i - 1] + Math.hypot(polyA[i].x - polyA[i - 1].x, polyA[i].y - polyA[i - 1].y));
+  for (let i = 0; i < segCountA; i++) {
+    const p = polyA[i]; const q = polyA[(i + 1) % polyA.length];
+    lengthsA.push(lengthsA[i] + Math.hypot(q.x - p.x, q.y - p.y));
   }
   const found: Crossing[] = [];
-  for (let i = 0; i + 1 < polyA.length; i++) {
-    for (let j = 0; j + 1 < polyB.length; j++) {
-      const hit = segCross(polyA[i], polyA[i + 1], polyB[j], polyB[j + 1]);
+  for (let i = 0; i < segCountA; i++) {
+    const a0 = polyA[i]; const a1 = polyA[(i + 1) % polyA.length];
+    for (let j = 0; j < segCountB; j++) {
+      const b0 = polyB[j]; const b1 = polyB[(j + 1) % polyB.length];
+      const hit = segCross(a0, a1, b0, b1);
       if (!hit) continue;
       const spanA = lengthsA[i + 1] - lengthsA[i] || 1;
       found.push({
-        point: { x: polyA[i].x + (polyA[i + 1].x - polyA[i].x) * hit.t,
-          y: polyA[i].y + (polyA[i + 1].y - polyA[i].y) * hit.t },
+        point: { x: a0.x + (a1.x - a0.x) * hit.t, y: a0.y + (a1.y - a0.y) * hit.t },
         offset: lengthsA[i] + spanA * hit.t,
-        tanA: { x: polyA[i + 1].x - polyA[i].x, y: polyA[i + 1].y - polyA[i].y },
-        tanB: { x: polyB[j + 1].x - polyB[j].x, y: polyB[j + 1].y - polyB[j].y },
+        tanA: { x: a1.x - a0.x, y: a1.y - a0.y },
+        tanB: { x: b1.x - b0.x, y: b1.y - b0.y },
       });
     }
   }
@@ -215,7 +317,11 @@ function checkMember(member: WeaveMember): void {
 /** Resolve two member records to band loops plus ordered gap footprints.
  * Exactly two members in v1; crossings sort along the first-role spine and
  * alternate over/under from phase, unless an override names the over member
- * for that crossing key. Throws WeaveError when unresolvable. */
+ * for that crossing key. Crossings whose gap windows overlap (a corner
+ * region crossed twice, like a bar through neighboring hexagon edges) merge
+ * into one cut under the first member's roles, with the window spanning
+ * every member site — one connected daylight region admits a single over
+ * side. Throws WeaveError when unresolvable. */
 export function resolveInterlaceGroup(
   members: [WeaveMember, WeaveMember],
   params: { phase: 0 | 1; padding: number; firstId: string; overrides?: Record<string, string> },
@@ -228,12 +334,13 @@ export function resolveInterlaceGroup(
   if (!(params.padding >= 0) || !Number.isFinite(params.padding)) throw new WeaveError('Interlace padding must be finite');
   const first = members.find((member) => member.id === params.firstId) ?? members[0];
   const second = first === members[0] ? members[1] : members[0];
-  const polyFirst = centerline(first, tolerance);
-  const polySecond = centerline(second, tolerance);
-  const crossings = weaveCrossings(polyFirst, polySecond);
+  const lineFirst = centerline(first, tolerance);
+  const lineSecond = centerline(second, tolerance);
+  const crossings = weaveCrossings(lineFirst.points, lineFirst.closed,
+    lineSecond.points, lineSecond.closed);
   if (!crossings.length) throw new WeaveError('Members do not cross');
   const overrides = params.overrides ?? {};
-  const gaps: WeaveGap[] = crossings.map((crossing, i) => {
+  const solo = crossings.map((crossing, i) => {
     const key = crossingKey(first.id, second.id, i);
     const explicit = overrides[key];
     const overFirst = explicit === first.id ? true
@@ -246,8 +353,23 @@ export function resolveInterlaceGroup(
     const lo = Math.hypot(overTan.x, overTan.y); const lu = Math.hypot(underTan.x, underTan.y);
     const sine = lo > 1e-9 && lu > 1e-9
       ? Math.abs(overTan.x * underTan.y - overTan.y * underTan.x) / (lo * lu) : 1;
-    const rect = gapRectFor(Math.atan2(overTan.y, overTan.x), over.stroke.width, under.stroke.width, sine, params.padding);
-    return { targetId: under.id, center: crossing.point, ...rect };
+    const halfLen = gapRectFor(0, over.stroke.width, under.stroke.width, sine, params.padding).length / 2;
+    return { key, over, under, overTan, sine, halfLen, center: crossing.point };
+  });
+  // Overlapping windows share one daylight region and one over side, so
+  // each cluster cuts once: the first member's roles stand, and the window
+  // spans every member site. Lone crossings cluster alone, unchanged.
+  const gaps: WeaveGap[] = clusterSlots(solo).map((group) => {
+    const head = solo[group[0]];
+    let span = 0;
+    for (const m of group) {
+      span = Math.max(span, solo[m].halfLen + Math.hypot(solo[m].center.x - head.center.x,
+        solo[m].center.y - head.center.y));
+    }
+    const rect = gapRectFor(Math.atan2(head.overTan.y, head.overTan.x),
+      head.over.stroke.width, head.under.stroke.width, head.sine, params.padding);
+    rect.length = Math.max(rect.length, 2 * span);
+    return { targetId: head.under.id, center: head.center, ...rect };
   });
   return {
     order: [first.id, second.id],

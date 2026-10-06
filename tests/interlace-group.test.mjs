@@ -100,6 +100,27 @@ test('resolver weaves with alternation from the first-role spine', () => {
   for (const band of weave.bands) assert.ok(band.loops.length >= 1);
 });
 
+test('resolver merges a corner crossed twice into one shaped gap', () => {
+  // A vertical bar through neighboring hexagon edges: two spine crossings
+  // 13.9 apart share one daylight region around the corner vertex.
+  const hexPts = [];
+  for (let k = 0; k < 6; k++) {
+    const a = k * Math.PI / 3;
+    hexPts.push([40 * Math.cos(a), 40 * Math.sin(a)]);
+  }
+  const hex = { id: 'hex', source: bezierSpine('spine-hex', hexPts, true), stroke: stroke({ width: 12 }) };
+  const bar = { id: 'bar',
+    source: bezierSpine('spine-bar', [[36, -60], [36, 60]]), stroke: stroke({ width: 12 }) };
+  const weave = resolveInterlaceGroup([hex, bar], { phase: 0, padding: 2, firstId: 'hex' });
+  assert.deepEqual(weave.order, ['hex', 'bar']);
+  assert.equal(weave.gaps.length, 1);
+  assert.equal(weave.gaps[0].targetId, 'bar');
+  assert.ok(Math.abs(weave.gaps[0].center.x - 36) < 0.05);
+  assert.ok(Math.abs(weave.gaps[0].center.y - 6.93) < 0.1);
+  // The window spans both member sites instead of one lone footprint.
+  assert.ok(weave.gaps[0].length > 50, `clustered gap length ${weave.gaps[0].length}`);
+});
+
 test('resolver phase flip swaps every target side', () => {
   const flipped = resolveInterlaceGroup(members(), { phase: 1, padding: 2, firstId: 'a' });
   assert.deepEqual(flipped.gaps.map((gap) => gap.targetId), ['a', 'b']);
@@ -181,6 +202,35 @@ test('grouping hides members and shows the derived weave', () => {
     assert.ok(layer.children.includes(a));
     assert.ok(layer.children.includes(b));
     assert.ok(layer.children.every((child) => child.visible !== false));
+  } finally { cleanup(); }
+});
+
+test('grouped corner crossings merge into one shaped cut', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const hexPts = [];
+    for (let k = 0; k < 6; k++) {
+      const a = k * Math.PI / 3;
+      hexPts.push([40 * Math.cos(a), 40 * Math.sin(a)]);
+    }
+    const hex = new s.Path({ segments: hexPts, closed: true, strokeColor: 'black', strokeWidth: 12 });
+    const bar = new s.Path({ segments: [[36, -60], [36, 60]], strokeColor: 'black', strokeWidth: 12 });
+    e.addItemToSelection(hex);
+    e.addItemToSelection(bar);
+    e.interlaceGroupSelection();
+    assert.equal(layer.children.length, 1);
+    const group = layer.children[0];
+    const weave = e.selectedInterlaceWeave();
+    assert.equal(weave.kind, 'group');
+    assert.equal(weave.crossings.length, 1);
+    assert.equal(weave.crossings[0].over, 0);
+    const bands = displaysOf(group);
+    assert.equal(bands.length, 2);
+    const hexDisplay = bands.find((child) => child.bounds.width > 30);
+    const barDisplay = bands.find((child) => child !== hexDisplay);
+    assert.equal(hexDisplay.contains(new s.Point(36, 6.93)), true);
+    assert.equal(barDisplay.contains(new s.Point(36, 6.93)), false);
+    assert.equal(barDisplay.contains(new s.Point(36, 40)), true);
   } finally { cleanup(); }
 });
 
