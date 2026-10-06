@@ -1,6 +1,7 @@
 
-[ ] Right-click menu > Operations >
-   [ ] turn intersecting paths into interlace
+[ ] strokedPath
+	[ ] Right-click menu > Operations >
+   		[ ] turn intersecting paths into interlace (stroked path).
 
 [ ] Make sure that everything in the UI doesn't have selectable text so that
 Select All doesn't select text in the UI.  
@@ -15,7 +16,7 @@ will be able to load a different keyboard layout tree.
 [ ]  menu item under grid section menu:  Sync Grid Snapping to Grid Visibility.
 turn on by default.  toggling on either turns the other on.
 
-[ ] For Point Snapping, make it so that points happen at intersections of paths.
+[x] For Point Snapping, make it so that points happen at intersections of paths.
 
 
 [x] The Tutorial window should be able to animate to different locations on the screen, first to get out of

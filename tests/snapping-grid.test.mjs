@@ -63,6 +63,44 @@ test('snapping manager ignores previews and guides, snaps path before points, an
   } finally { s.project.remove(); }
 });
 
+test('point snapping hits path intersections that are not vertices or midpoints', () => {
+  const s = scope();
+  try {
+    const state = { gridEnabled: false, gridSnapping: false, gridType: 'square', gridSpacing: 20,
+      path: false, point: true, angle: false, length: false, aspect: false,
+      angleDegrees: 45, lengthStep: 10, aspectA: 3, aspectB: 4 };
+    const manager = new SnappingManager(s, () => state, () => new Set(), (item) => !!item.guide,
+      { mount: () => {}, pathCursor: () => {}, pointCursor: () => {} });
+    // Crossing at (66.67, 0): neither a vertex nor a midpoint of either line.
+    new s.Path({ segments: [[0, 0], [100, 0]] });
+    new s.Path({ segments: [[25, -50], [75, 10]] });
+    const crossing = manager.snapPoint(new s.Point(67, 2));
+    assert.ok(crossing);
+    assert.ok(Math.abs(crossing.x - 200 / 3) < 1e-4, `x ${crossing.x} ~= ${200 / 3}`);
+    assert.ok(Math.abs(crossing.y - 0) < 1e-4, `y ${crossing.y} ~= 0`);
+    // Far from the crossing, no snap: the intersection is out of tolerance.
+    s.project.activeLayer.removeChildren();
+    new s.Path({ segments: [[0, 0], [100, 0]] });
+    new s.Path({ segments: [[25, -50], [75, 10]] });
+    assert.equal(manager.snapPoint(new s.Point(200, 200)), null);
+  } finally { s.project.remove(); }
+});
+
+test('point snapping hits a path self-intersection', () => {
+  const s = scope();
+  try {
+    const state = { gridEnabled: false, gridSnapping: false, gridType: 'square', gridSpacing: 20,
+      path: false, point: true, angle: false, length: false, aspect: false,
+      angleDegrees: 45, lengthStep: 10, aspectA: 3, aspectB: 4 };
+    const manager = new SnappingManager(s, () => state, () => new Set(), (item) => !!item.guide,
+      { mount: () => {}, pathCursor: () => {}, pointCursor: () => {} });
+    new s.Path({ segments: [[0, 0], [100, 100], [100, 0], [0, 100]], closed: true });
+    const snapped = manager.snapPoint(new s.Point(52, 48));
+    assert.ok(snapped);
+    near(snapped, 50, 50);
+  } finally { s.project.remove(); }
+});
+
 test('engine delegates grid and pointer snapping to manager state', () => {
   const s = scope(); const engine = new NibGliderEngine(s, () => {});
   try {

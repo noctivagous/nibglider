@@ -76,10 +76,12 @@ export class SnappingManager {
       if (!candidate) return; const next = candidate.getDistance(original);
       if (next < distance) { distance = next; best = candidate; kind = candidateKind; }
     };
+    const leaves: Item[] = [];
     const collect = (item: Item): void => {
       if (!item || !item.visible || ignored.has(item)) return;
       if (item.children?.length) { item.children.forEach(collect); return; }
       if (!item.segments?.length) return;
+      leaves.push(item);
       item.segments.forEach((segment: Item) => consider(item.localToGlobal(segment.point), 'point'));
       item.curves?.forEach((curve: Item) => consider(item.localToGlobal(curve.getPointAt(curve.length / 2)), 'midpoint'));
       // Stored circle origins (sectors, segments, regular polygons) win over
@@ -95,7 +97,33 @@ export class SnappingManager {
       !!item && item.visible && !this.isGuide(item) && !ignored.has(item) &&
       !!(item.segments || item.curves || item.children?.length) });
     items.forEach(collect);
-    if (!best || distance > 12) { this.hidePoint(); return null; }
+    // Path crossings snap as points: pairwise intersections (including each
+    // path's self-intersections) compete with vertices, midpoints, and
+    // centroids for the nearest candidate within tolerance.
+    const TOLERANCE = 12;
+    const nearCursor = (leaf: Item): boolean => {
+      try {
+        if (typeof leaf.getNearestPoint !== 'function' || typeof leaf.globalToLocal !== 'function') return true;
+        const nearest = leaf.getNearestPoint(leaf.globalToLocal(original));
+        if (!nearest) return true;
+        return leaf.localToGlobal(nearest).getDistance(original) <= TOLERANCE;
+      } catch { return true; }
+    };
+    const nearby = leaves.filter(nearCursor).slice(0, 50);
+    const considerLocations = (locations: Item[] | null | undefined): void => {
+      if (!locations || typeof (locations as Item[]).length !== 'number') return;
+      for (const location of locations as Item[]) {
+        if (location?.point) consider(location.point, 'point');
+      }
+    };
+    for (let i = 0; i < nearby.length; i++) {
+      for (let j = i; j < nearby.length; j++) {
+        try {
+          considerLocations(nearby[i].getIntersections?.(nearby[j]));
+        } catch { /* Detached or degenerate geometry mid-search. */ }
+      }
+    }
+    if (!best || distance > TOLERANCE) { this.hidePoint(); return null; }
     const winner = best as paper.Point;
     const snapped = new this.scope.Point(winner.x, winner.y);
     if (!this.pointCursor) this.pointCursor = this.indicator(snapped, colors[kind]);
