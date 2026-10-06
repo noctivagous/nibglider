@@ -754,6 +754,7 @@ export class NibGliderEngine {
         return null;
       },
       bezierSourceOf: (item) => this.scene.bezierSource(item),
+      recordCustom: (label, undo, redo) => this.context.history.push({ label, undo, redo }),
     });
     this.context.drops = new DropController({
       scope: () => this.scope,
@@ -2802,6 +2803,22 @@ export class NibGliderEngine {
     this.interlace.interlaceSelection();
   }
 
+  canInterlaceGroupSelection(): boolean {
+    return this.interlace.canGroupSelection();
+  }
+
+  interlaceGroupSelection(): void {
+    this.interlace.groupSelection();
+  }
+
+  convertSelectionToGroup(): void {
+    this.interlace.convertSelectionToGroup();
+  }
+
+  setInterlaceParams(patch: { phase?: 0 | 1; padding?: number }): void {
+    this.interlace.setInterlaceParams(patch);
+  }
+
 
   // Parallelogram / trapezoid interior angle. 180° is a line; keep a
   // usable wedge on either side of 90°.
@@ -3807,7 +3824,13 @@ export class NibGliderEngine {
   }
 
   ungroupSelected(): void {
-    if (this.isLiveDrawing || !this.selection.ungroup()) return;
+    if (this.isLiveDrawing) return;
+    // Interlace groups shed their derived displays first so the generic
+    // ungroup only ever releases the live members.
+    for (const item of this.selectedItems) {
+      if (item?.data?.interlaceGroup) this.interlace.stripDisplays(item);
+    }
+    if (!this.selection.ungroup()) return;
     this.updateTextContent(); this.notify();
   }
 

@@ -20,7 +20,7 @@ const WIRED_COMMANDS = [
   'bring-to-front', 'send-to-back', 'duplicate-selection',
   'group', 'ungroup-selection', 'delete-selection', 'transform-mode',
   'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-crop',
-  'interlace',
+  'interlace', 'interlace-group',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
   'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
   'rect-shape-rhombus', 'rect-shape-kite', 'rect-shape-exportFrame',

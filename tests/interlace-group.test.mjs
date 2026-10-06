@@ -1,7 +1,41 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import paper from 'paper';
+import { NibGliderEngine } from '../src/engine/engine.ts';
 import { deserializeDrawable, serializeDrawable, ModelValidationError } from '../src/engine/model/serialization.ts';
 import { resolveInterlaceGroup, WeaveError } from '../src/engine/geometry/interlaceWeave.ts';
+
+function engine() {
+  const s = new paper.PaperScope();
+  s.setup(new s.Size(800, 600));
+  const e = new NibGliderEngine(s, () => {});
+  return { s, e, layer: s.project.activeLayer, cleanup: () => { e.cancelCurrentDrawingOperation(); s.project.remove(); } };
+}
+
+function weavePair(s) {
+  const a = new s.Path({ segments: [[-50, 0], [50, 0]], strokeColor: 'black', strokeWidth: 10 });
+  const b = new s.Path({
+    segments: [[-50, -20], [0, 20], [50, -20]], strokeColor: 'black', strokeWidth: 10,
+  });
+  return { a, b, crossings: [{ x: -25, y: 0 }, { x: 25, y: 0 }] };
+}
+
+function displaysOf(group) {
+  return [...group.children].filter((child) => child?.data?.interlaceDisplay);
+}
+
+function membersOf(group) {
+  return [...group.children].filter((child) => !child?.data?.interlaceDisplay);
+}
+
+function overAt(group, s, x, y) {
+  return displaysOf(group).find((child) => child.contains(new s.Point(x, y)));
+}
+
+// A-lineage displays are the flat horizontal band; B-lineage is the tall zigzag.
+function isHorizontal(display) {
+  return display.bounds.height < 20;
+}
 
 const segment = (x, y) => ({ point: { x, y }, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } });
 const bezierSpine = (id, pts, closed = false) => ({
@@ -82,6 +116,138 @@ test('resolver honors custom padding and rejects bad input', () => {
     { id: 'b', source: bezierSpine('spine-b', [[-50, 30], [50, 30]]), stroke: stroke() },
   ];
   assert.throws(() => resolveInterlaceGroup(apart, { phase: 0, padding: 2, firstId: 'a' }), WeaveError);
+});
+
+test('grouping hides members and shows the derived weave', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { a, b, crossings } = weavePair(s);
+    const [c0, c1] = crossings;
+    e.addItemToSelection(a);
+    e.addItemToSelection(b);
+    assert.equal(e.canInterlaceGroupSelection(), true);
+    e.interlaceGroupSelection();
+    assert.equal(layer.children.length, 1);
+    assert.equal(e.undoLabel(), 'Interlace Group');
+    const group = layer.children[0];
+    assert.equal(group.className, 'Group');
+    assert.deepEqual(e.selectedItems, [group]);
+    // Members stay live inside the group, hidden; two display bands weave.
+    assert.equal(membersOf(group).length, 2);
+    assert.ok(membersOf(group).every((child) => child.visible === false));
+    assert.equal(displaysOf(group).length, 2);
+    assert.ok(overAt(group, s, c0.x, c0.y));
+    assert.ok(overAt(group, s, c1.x, c1.y));
+    assert.notEqual(overAt(group, s, c0.x, c0.y), overAt(group, s, c1.x, c1.y));
+    // Stored snapshots keep full member data for later re-resolves.
+    const stored = group.data.interlaceGroup;
+    assert.equal(stored.members.length, 2);
+    assert.equal(stored.params.firstId, stored.members[0].id);
+    // Undo restores the two original strokes, visible and ungrouped.
+    e.undo();
+    assert.equal(layer.children.length, 2);
+    assert.ok(layer.children.includes(a));
+    assert.ok(layer.children.includes(b));
+    assert.ok(layer.children.every((child) => child.visible !== false));
+  } finally { cleanup(); }
+});
+
+test('ungroup restores live members and drops derived bands', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { a, b } = weavePair(s);
+    e.addItemToSelection(a);
+    e.addItemToSelection(b);
+    e.interlaceGroupSelection();
+    e.ungroupSelected();
+    assert.equal(layer.children.length, 2);
+    assert.ok(layer.children.includes(a));
+    assert.ok(layer.children.includes(b));
+    assert.ok(layer.children.every((child) => child.visible !== false));
+    assert.deepEqual(e.selectedItems, [a, b]);
+    assert.ok(!layer.children.some((child) => child.className === 'Group'));
+  } finally { cleanup(); }
+});
+
+test('param retune flips the weave in place with undo', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { crossings } = weavePair(s);
+    const [c0, c1] = crossings;
+    const [strokeA, strokeB] = layer.children;
+    e.addItemToSelection(strokeA);
+    e.addItemToSelection(strokeB);
+    e.interlaceGroupSelection();
+    const group = () => layer.children[0];
+    assert.notEqual(overAt(group(), s, c0.x, c0.y), overAt(group(), s, c1.x, c1.y));
+    assert.equal(isHorizontal(overAt(group(), s, c0.x, c0.y)), true);
+    // Retune keeps the same group item and swaps the over sides.
+    const sameGroup = group();
+    e.setInterlaceParams({ phase: 1 });
+    assert.equal(layer.children.length, 1);
+    assert.equal(layer.children[0], sameGroup);
+    assert.equal(isHorizontal(overAt(group(), s, c0.x, c0.y)), false);
+    assert.equal(isHorizontal(overAt(group(), s, c1.x, c1.y)), true);
+    assert.equal(e.undoLabel(), 'Interlace Params');
+    // Undo and redo flip the weave back and forth.
+    e.undo();
+    assert.equal(isHorizontal(overAt(group(), s, c0.x, c0.y)), true);
+    assert.equal(isHorizontal(overAt(group(), s, c1.x, c1.y)), false);
+    e.redo();
+    assert.equal(isHorizontal(overAt(group(), s, c0.x, c0.y)), false);
+    assert.equal(isHorizontal(overAt(group(), s, c1.x, c1.y)), true);
+  } finally { cleanup(); }
+});
+
+test('wider padding widens the gaps without regrouping', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { crossings } = weavePair(s);
+    const [c0] = crossings;
+    const [strokeA, strokeB] = layer.children;
+    e.addItemToSelection(strokeA);
+    e.addItemToSelection(strokeB);
+    e.interlaceGroupSelection();
+    const group = () => layer.children[0];
+    // Along the under-band past the default gap but inside the widened one.
+    const probe = new s.Point(c0.x + 12 * 0.78, c0.y + 12 * 0.625);
+    const underBefore = displaysOf(group()).find((child) => !child.contains(new s.Point(c0.x, c0.y)));
+    assert.equal(underBefore.contains(probe), true);
+    const sameGroup = group();
+    e.setInterlaceParams({ padding: 8 });
+    assert.equal(layer.children[0], sameGroup);
+    const underAfter = displaysOf(group()).find((child) => !child.contains(new s.Point(c0.x, c0.y)));
+    assert.equal(underAfter.contains(probe), false);
+    assert.equal(underAfter.contains(new s.Point(c0.x, c0.y)), false);
+  } finally { cleanup(); }
+});
+
+test('baked pairs convert to live groups keeping phase and roles', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { crossings } = weavePair(s);
+    const [c0, c1] = crossings;
+    const [strokeA, strokeB] = layer.children;
+    e.addItemToSelection(strokeA);
+    e.addItemToSelection(strokeB);
+    e.interlaceSelection();
+    const bakedOver = layer.children.find((child) => child.contains(new s.Point(c0.x, c0.y)));
+    e.convertSelectionToGroup();
+    assert.equal(layer.children.length, 1);
+    const group = layer.children[0];
+    assert.equal(group.className, 'Group');
+    assert.equal(membersOf(group).length, 2);
+    assert.equal(displaysOf(group).length, 2);
+    // The weave matches the baked op it was converted from.
+    const bakedSpineHeight = (item) => {
+      const ys = item.data.interlace.spine.segments.map((seg) => seg.point.y);
+      return Math.max(...ys) - Math.min(...ys);
+    };
+    assert.equal(bakedSpineHeight(bakedOver), 0);
+    assert.equal(overAt(group, s, c0.x, c0.y) !== overAt(group, s, c1.x, c1.y), true);
+    e.undo();
+    assert.equal(layer.children.length, 2);
+  } finally { cleanup(); }
 });
 
 test('resolver weaves outlined-stroke members on their spines', () => {

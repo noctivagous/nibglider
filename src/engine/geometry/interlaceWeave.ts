@@ -47,6 +47,23 @@ export interface WeaveStroke {
   position: 'center' | 'inside' | 'outside';
 }
 
+/** Canvas stroke settings of a Paper path as weave input, or null when the
+ * item paints no stroke. Reads only; never touches the scene. */
+export function canvasStrokeOf(item: any): WeaveStroke | null {
+  const width = Number(item?.strokeWidth);
+  if (!(width > 0) || item?.strokeColor == null) return null;
+  const dash = item.dashArray ?? item.strokeDashArray ?? [];
+  return {
+    width,
+    cap: item.strokeCap === 'round' || item.strokeCap === 'square' ? item.strokeCap : 'butt',
+    join: item.strokeJoin === 'bevel' || item.strokeJoin === 'round' ? item.strokeJoin : 'miter',
+    miterLimit: Number.isFinite(item.miterLimit) && item.miterLimit >= 1 ? item.miterLimit : 10,
+    dashLength: Math.max(0, Number(dash[0]) || 0),
+    gapLength: Math.max(0, Number(dash[1]) || 0),
+    position: 'center',
+  };
+}
+
 /** One weave member. Width/style are explicit: callers mirror the record
  * values, including outlined-stroke records (whose own spine resolves). */
 export interface WeaveMember {

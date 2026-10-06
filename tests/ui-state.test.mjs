@@ -125,7 +125,7 @@ test('application menus cover file, edit, document, operations, modes, layers, c
   assert.deepEqual(
     byId['context-object'].items.map((item) => item.commandId),
     ['hdr-context-object-1', 'bring-to-front', 'send-to-back', 'hdr-context-object-2', 'transform-mode',
-      'hdr-context-object-3', 'interlace'],
+      'hdr-context-object-3', 'interlace', 'interlace-group'],
   );
 });
 
