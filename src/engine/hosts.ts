@@ -92,7 +92,10 @@ export function createPointerHost(engine: Surface): PointerHost {
     },
     updateLivePath: (point) => {
       const progressed = engine.compositePathTool.track(point);
-      if (progressed) engine.noteLiveProgress();
+      if (progressed) {
+        engine.noteLiveProgress();
+        engine.refreshRepeatPreview();
+      }
       return progressed;
     },
     updateLiveQuad: () => { engine.quadTool.track(); engine.noteLiveProgress(); },

@@ -67,11 +67,12 @@ export const PANEL_SECTIONS: Array<{ id: string; label: string }> = [
   { id: 'historyControls', label: 'History' },
   { id: 'gridControls', label: 'Grid' },
   { id: 'snappingControls', label: 'Snapping' },
+  { id: 'repeatControls', label: 'Repeat' },
 ];
 
 const DEFAULT_SECTION_GROUPS: Record<string, string[]> = {
   paint: ['strokeControls', 'fillControls', 'textControls'],
-  keys: ['circleFrameControls', 'rectFrameControls', 'combinatoricsControls', 'historyControls'],
+  keys: ['circleFrameControls', 'rectFrameControls', 'combinatoricsControls', 'historyControls', 'repeatControls'],
   snap: ['gridControls', 'snappingControls'],
 };
 

@@ -40,6 +40,7 @@ import {
   targetScalePercent,
   unitLabel,
 } from '../engine/document/MeasurementUnits';
+import type { RepeatAnchor, RepeatDirection } from '../engine/geometry/RepeatGeometry';
 import KeymapWidget from './KeymapWidget';
 import ConfigSummaryBox from './ConfigSummaryBox';
 import WidgetHandle from './WidgetHandle';
@@ -2626,6 +2627,17 @@ const GRID_TYPE_OPTIONS: CustomSelectOption[] = [
   { value: 'diamond', label: 'Diamond', image: <GridThumb kind="diamond" /> },
 ];
 
+const REPEAT_ANCHOR_OPTIONS: CustomSelectOption[] = [
+  { value: 'cell-center', label: 'Cell centers' },
+  { value: 'intersection', label: 'Intersections' },
+];
+
+const REPEAT_DIRECTION_OPTIONS: CustomSelectOption[] = [
+  { value: 'both', label: 'All' },
+  { value: 'horizontal', label: 'Horizontal' },
+  { value: 'vertical', label: 'Vertical' },
+];
+
 const ASPECT_RATIO_OPTIONS: CustomSelectOption[] =
   ASPECT_RATIO_PRESETS.map((key) => {
     const [a, b] = key.split(':').map(Number);
@@ -2691,13 +2703,14 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
 }, ref) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
-    'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | null
+    'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat' | null
   >(null);
   const textPreviewRef = useRef<HTMLButtonElement>(null);
   const fillPreviewRef = useRef<HTMLButtonElement>(null);
   const circlePreviewRef = useRef<HTMLButtonElement>(null);
   const rectPreviewRef = useRef<HTMLButtonElement>(null);
   const combinePreviewRef = useRef<HTMLButtonElement>(null);
+  const repeatPreviewRef = useRef<HTMLButtonElement>(null);
   const strokePreviewRef = useRef<HTMLButtonElement>(null);
   // Stable so the flyout's focus effect only runs when it opens — an
   // inline identity would refocus the flyout shell on every keystroke.
@@ -2804,7 +2817,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     [cancelHoverClose, openFlyoutAndDismissSelects],
   );
   const toggleFlyout = useCallback(
-    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics') => {
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat') => {
       if (paramsFlyout === name) setParamsFlyout(null);
       else {
         setParamsFlyout(name);
@@ -4060,6 +4073,149 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             onCommit={(n) => engine.setGridSpacing(n)}
           />
         </header>
+      </PanelSection>
+      )}
+      {isRemoved('repeatControls') ? null : (
+      <PanelSection
+        id="repeatControls"
+        label="Repeat"
+        icon={
+          <TitleIcon>
+            <rect x="2" y="2" width="4.5" height="4.5" />
+            <rect x="9.5" y="2" width="4.5" height="4.5" />
+            <rect x="2" y="9" width="4.5" height="4.5" />
+            <rect x="9.5" y="9" width="4.5" height="4.5" />
+          </TitleIcon>
+        }
+        collapsed={!!collapsedMap['repeatControls']}
+        {...sectionProps('repeatControls')}
+      >
+        <header className="pane-titlebar titlebar-single">
+          <SectionTitleButton sectionId="repeatControls" title="Repeat" menuOpen={iconMenu?.id === 'repeatControls'} onOpen={toggleIconMenu}><span className="pane-title">
+            <TitleIcon>
+              <rect x="2" y="2" width="4.5" height="4.5" />
+              <rect x="9.5" y="2" width="4.5" height="4.5" />
+              <rect x="2" y="9" width="4.5" height="4.5" />
+              <rect x="9.5" y="9" width="4.5" height="4.5" />
+            </TitleIcon>
+            <span className="pane-title-text">Repeat</span></span>
+          </SectionTitleButton>
+          <span className="key-switch-group">
+            <label className="toggle-switch square-knob">
+              <input
+                type="checkbox"
+                id="repeatEnabledCheckbox"
+                checked={engine.isRepeatEnabled}
+                onChange={(e) => engine.setRepeatEnabled(e.target.checked)}
+              />
+              <span className="slider" />
+            </label>
+          </span>
+          <button
+            type="button"
+            ref={repeatPreviewRef}
+            className={'shape-preview-trigger' + (paramsFlyout === 'repeat' ? ' open' : '')}
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'repeat'}
+            aria-label="Repeat scope"
+            title="Repeat scope"
+            onMouseEnter={() => hoverOpenFlyout('repeat')}
+            onMouseLeave={scheduleHoverClose}
+            onClick={() => toggleFlyout('repeat')}
+          >
+            <svg width="120" height="64" viewBox="0 0 120 64" aria-hidden="true">
+              <rect x="14" y="8" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
+              <rect x="66" y="8" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
+              <rect x="14" y="34" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
+              <rect x="66" y="34" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
+            </svg>
+          </button>
+          <NumericStepper
+            id="repeatRowsStepper"
+            size="compact"
+            value={engine.repeatRows}
+            min={1}
+            max={12}
+            step={1}
+            ariaLabel="Repeat rows"
+            title="Repeat rows (live keys 1 and 2)"
+            onCommit={(n) => engine.setRepeatRows(n)}
+          />
+          <NumericStepper
+            id="repeatColsStepper"
+            size="compact"
+            value={engine.repeatCols}
+            min={1}
+            max={12}
+            step={1}
+            ariaLabel="Repeat columns"
+            title="Repeat columns (live keys 3 and 4)"
+            onCommit={(n) => engine.setRepeatCols(n)}
+          />
+          <CustomSelect
+            id="repeatAnchorSelect"
+            ariaLabel="Repeat anchor"
+            value={engine.repeatAnchor}
+            options={REPEAT_ANCHOR_OPTIONS}
+            onChange={(v) => engine.setRepeatAnchor(v as RepeatAnchor)}
+            openOnHover
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
+          />
+          <CustomSelect
+            id="repeatDirectionSelect"
+            ariaLabel="Repeat direction"
+            value={engine.repeatDirection}
+            options={REPEAT_DIRECTION_OPTIONS}
+            onChange={(v) => engine.setRepeatDirection(v as RepeatDirection)}
+            openOnHover
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
+          />
+        </header>
+        <ShapeParamsFlyout
+          open={paramsFlyout === 'repeat'}
+          triggerRef={repeatPreviewRef}
+          tone="combinatorics"
+          title="Repeat scope"
+          preview={
+            <span className="pane-title-text">Repeat scope</span>
+          }
+          onClose={closeFlyout}
+          onMenuMouseEnter={cancelHoverClose}
+          onMenuMouseLeave={scheduleHoverClose}
+        >
+          <div className="flyout-seg">
+            <div className="flyout-title">Paths</div>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={engine.repeatPaths}
+                onChange={(e) => engine.setRepeatPaths(e.target.checked)}
+              />
+              Repeat spline and path drawing
+            </label>
+          </div>
+          <div className="flyout-seg">
+            <div className="flyout-title">Shape Keys</div>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={engine.repeatRectKeys}
+                onChange={(e) => engine.setRepeatRectKeys(e.target.checked)}
+              />
+              Rect Keys
+            </label>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={engine.repeatCircleKeys}
+                onChange={(e) => engine.setRepeatCircleKeys(e.target.checked)}
+              />
+              Circle Keys
+            </label>
+          </div>
+        </ShapeParamsFlyout>
       </PanelSection>
       )}
       {isRemoved('snappingControls') ? null : (

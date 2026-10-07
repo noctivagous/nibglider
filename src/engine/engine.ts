@@ -116,6 +116,9 @@ import { HistoryManager } from './history/HistoryManager';
 import { TransformManager } from './history/TransformManager';
 import { GridRenderer } from './snapping/GridRenderer';
 import { SnappingManager } from './snapping/SnappingManager';
+import { RepeatManager } from './repeat/RepeatManager';
+import type { RepeatAnchor, RepeatDirection } from './geometry/RepeatGeometry';
+import { clampRepeatCount, isRepeatAnchor, isRepeatDirection } from './geometry/RepeatGeometry';
 import { LayerManager } from './document/LayerManager';
 import { CoordinateManager } from './document/CoordinateManager';
 import {
@@ -357,6 +360,17 @@ export class NibGliderEngine {
   private pendingSceneView: SceneView | null = null;
   /** True while a saved view is being applied, so that does not count as an edit. */
   private restoringView = false;
+
+  // --- Grid repeat ---
+  isRepeatEnabled = false;
+  repeatRows = 2;
+  repeatCols = 2;
+  repeatAnchor: RepeatAnchor = 'cell-center';
+  repeatDirection: RepeatDirection = 'both';
+  repeatRectKeys = true;
+  repeatCircleKeys = true;
+  repeatPaths = true;
+  private repeatManager!: RepeatManager;
 
   // --- Snapping flags ---
   isGridSnappingEnabled = false;
@@ -796,6 +810,25 @@ export class NibGliderEngine {
       notify: () => this.notify(),
     });
     this.context.transforms = new TransformManager(this.scene, this.selection, this.history);
+    this.repeatManager = new RepeatManager({
+      scope: () => this.scope,
+      session: () => this.drawing,
+      settings: () => ({
+        enabled: this.isRepeatEnabled,
+        rows: this.repeatRows,
+        cols: this.repeatCols,
+        anchor: this.repeatAnchor,
+        direction: this.repeatDirection,
+        rectKeys: this.repeatRectKeys,
+        circleKeys: this.repeatCircleKeys,
+        paths: this.repeatPaths,
+      }),
+      addToActive: (item) => this.layers.addToActive(item),
+      place: (item) => this.placeDeposited(item, { front: true }),
+      setRows: (rows) => this.setRepeatRows(rows),
+      setCols: (cols) => this.setRepeatCols(cols),
+    });
+    this.registerRepeatLiveKeys();
     this.context.gridRenderer = new GridRenderer(scope);
     this.context.snapping = new SnappingManager(scope, () => ({
       gridEnabled: this.isGridEnabled, gridSnapping: this.isGridSnappingEnabled,
@@ -814,6 +847,7 @@ export class NibGliderEngine {
       item.fillColor = null;
       if (!item.parent) this.layers.addToActive(item);
       this.refreshSplineTextPreview();
+      this.repeatManager.refreshPreview();
     });
     const host = this.drawingHost();
     this.compositePathTool.bind(host);
@@ -2259,6 +2293,99 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  // --- Grid repeat settings ---
+  // Row/column counts clamp to 1..12; enabling with 1x1 still deposits the
+  // single drawn object (no copies), so the toggle alone never surprises.
+  setRepeatEnabled(v: boolean): void {
+    this.isRepeatEnabled = v;
+    if (!v) this.repeatManager.clearPreview();
+    else this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatRows(v: number): void {
+    const next = clampRepeatCount(v, this.repeatRows);
+    if (next === this.repeatRows) return;
+    this.repeatRows = next;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatCols(v: number): void {
+    const next = clampRepeatCount(v, this.repeatCols);
+    if (next === this.repeatCols) return;
+    this.repeatCols = next;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatAnchor(v: RepeatAnchor): void {
+    if (!isRepeatAnchor(v) || v === this.repeatAnchor) return;
+    this.repeatAnchor = v;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatDirection(v: RepeatDirection): void {
+    if (!isRepeatDirection(v) || v === this.repeatDirection) return;
+    this.repeatDirection = v;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatRectKeys(v: boolean): void {
+    this.repeatRectKeys = v;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatCircleKeys(v: boolean): void {
+    this.repeatCircleKeys = v;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatPaths(v: boolean): void {
+    this.repeatPaths = v;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** Rebuild repeat preview clones for the live draw; safe to call anytime. */
+  refreshRepeatPreview(): void {
+    this.repeatManager.refreshPreview();
+  }
+
+  private registerRepeatLiveKeys(): void {
+    const repeat = (id: string, code: string, keycap: string, label: string, apply: () => void): void => {
+      this.registerLiveKeyBinding({
+        id,
+        actionId: 'repeat',
+        keys: [keycap],
+        label,
+        match: (event) => event.code === code,
+        applies: () => this.repeatManager.applies(),
+        apply: () => {
+          apply();
+          this.updateTextContent();
+          this.notify();
+        },
+      });
+    };
+    repeat('repeat-rows-down', 'Digit1', '1', 'repeat rows', () => this.repeatManager.adjustRows(-1));
+    repeat('repeat-rows-up', 'Digit2', '2', 'repeat rows', () => this.repeatManager.adjustRows(1));
+    repeat('repeat-cols-down', 'Digit3', '3', 'repeat columns', () => this.repeatManager.adjustCols(-1));
+    repeat('repeat-cols-up', 'Digit4', '4', 'repeat columns', () => this.repeatManager.adjustCols(1));
+  }
+
   /** Grid spacing in points. New documents default it from their unit
    * (quarter-inch for inch/foot); this manual override persists after. */
   setGridSpacing(v: number): void {
@@ -3390,6 +3517,7 @@ export class NibGliderEngine {
       this.pathSnapCursor,
       this.pointSnapCursor,
       this.gridCursor,
+      ...this.repeatManager.previewClones(),
     ]);
   }
 
@@ -4116,6 +4244,7 @@ export class NibGliderEngine {
     this.circleTool.cancel();
     this.rectangleTool.cancel();
     this.quadTool.cancel();
+    this.repeatManager.clearPreview();
     // Clears anything a tool did not claim, and resets live scale/rotation.
     this.drawing.cancel();
     if (restoreSelection) {
@@ -4404,8 +4533,11 @@ export class NibGliderEngine {
     }
     const snap = this.captureDeposit();
     const deposited: Array<AnyItem | null> = [];
-    if (this.isDrawingPath && this.path) deposited.push(...this.compositePathTool.finishLegacy());
-    else if (this.isDrawingShape) deposited.push(...this.endShapeAsStroke());
+    if (this.isDrawingPath && this.path) {
+      const offsets = this.repeatManager.beginDeposit();
+      const base = this.compositePathTool.finishLegacy().filter((item) => !!item);
+      deposited.push(...base, ...this.repeatManager.finishDeposit(base, offsets));
+    } else if (this.isDrawingShape) deposited.push(...this.endShapeAsStroke());
     else if (this.isDrawingQuad && this.quadPath) deposited.push(this.quadTool.finish());
     this.recordSceneCommand('Deposit shape', snap.before, snap.selected, deposited);
     this.updateTextContent();
@@ -4528,9 +4660,13 @@ export class NibGliderEngine {
   }
 
   endShapeAsStroke(): AnyItem[] {
-    if (this.circleTool.active) return this.circleTool.finish();
-    if (this.rectangleTool.active) return this.rectangleTool.finish();
-    return [];
+    // Snapshot repeat offsets before finish clears the live session.
+    const offsets = this.repeatManager.beginDeposit();
+    let base: AnyItem[] = [];
+    if (this.circleTool.active) base = this.circleTool.finish();
+    else if (this.rectangleTool.active) base = this.rectangleTool.finish();
+    const placed = base.filter((item) => !!item);
+    return [...placed, ...this.repeatManager.finishDeposit(placed, offsets)];
   }
 
   createRegularPolygon(center: AnyItem, radius: number, sides: number, rotationAngle = 0, radiusMode = 'circumradius'): AnyItem {
@@ -4783,6 +4919,7 @@ export class NibGliderEngine {
     if (type != null && type.startsWith('rectangle_')) this.rectangleTool.update();
     else if (type != null && type.startsWith('circle_')) this.circleTool.update();
     if (type === 'rectangle_select') this.updateSelectionRectLive();
+    this.repeatManager.refreshPreview();
     this.noteLiveProgress();
   }
 

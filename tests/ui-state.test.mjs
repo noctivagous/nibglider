@@ -69,6 +69,7 @@ test('legacy grouped panel layout becomes one ordered sequence', () => {
   assert.deepEqual(sectionOrder(new PanelsManager(mem).order), [
     'fillControls', 'strokeControls', 'textControls', 'historyControls',
     'circleFrameControls', 'rectFrameControls', 'combinatoricsControls',
+    'repeatControls',
     'snappingControls', 'gridControls',
   ]);
 });
