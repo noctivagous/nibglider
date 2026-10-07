@@ -304,8 +304,8 @@ export default function App() {
   }, [tutorialRunner]);
 
   const controlPanelRef = useRef<ControlPanelHandle>(null);
-  // File > Export format state. SVG is the vector default (rendered
-  // "SVG*"); PNG is the raster default. Unavailable formats (WEBP, PDF,
+  // File > Export format state. SVG is the vector default; PNG is the
+  // raster default. Unavailable formats (WEBP, PDF,
   // DXF) render disabled and never reach the dispatch below.
   const [rasterFormat, setRasterFormat] = useState<RasterFormat>('png');
   const [vectorFormat, setVectorFormat] = useState<VectorFormat>('svg');
@@ -511,7 +511,7 @@ export default function App() {
       : 'Canvas size';
 
   // File > Export: segmented format controls per submenu. Unavailable
-  // formats stay visible but disabled; "SVG*" marks the vector default.
+  // formats stay visible but disabled.
   const exportSegments: Record<string, MenuSegmentField> = {
     'export-raster': {
       value: rasterFormat,
@@ -526,7 +526,7 @@ export default function App() {
       value: vectorFormat,
       label: 'Vector format',
       options: [
-        { value: 'svg', label: 'SVG*' },
+        { value: 'svg', label: 'SVG' },
         { value: 'pdf', label: 'PDF', disabled: true, title: 'Not available yet' },
         { value: 'dxf', label: 'DXF', disabled: true, title: 'Not available yet' },
       ],

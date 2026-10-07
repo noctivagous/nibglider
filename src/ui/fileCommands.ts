@@ -40,7 +40,7 @@ export const RASTER_FORMATS = ['png', 'jpg', 'webp'] as const;
 export type RasterFormat = (typeof RASTER_FORMATS)[number];
 
 /** Vector formats offered by the Export Vector segmented control. SVG is
- * the default (rendered "SVG*"); PDF and DXF stay visible but disabled. */
+ * the default; PDF and DXF stay visible but disabled. */
 export const VECTOR_FORMATS = ['svg', 'pdf', 'dxf'] as const;
 
 export type VectorFormat = (typeof VECTOR_FORMATS)[number];
