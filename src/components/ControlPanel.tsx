@@ -4111,27 +4111,25 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
               <span className="slider" />
             </label>
           </span>
-          <span className="seg-ctrl" role="group" aria-label="Repeat scope">
-            <button
-              type="button"
-              ref={repeatPreviewRef}
-              className={paramsFlyout === 'repeat' ? 'active' : undefined}
-              aria-haspopup="dialog"
-              aria-expanded={paramsFlyout === 'repeat'}
-              aria-label="Repeat scope"
-              title="Repeat scope"
-              onMouseEnter={() => hoverOpenFlyout('repeat')}
-              onMouseLeave={scheduleHoverClose}
-              onClick={() => toggleFlyout('repeat')}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-                <rect x="1.5" y="1.5" width="5.5" height="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                <rect x="9" y="1.5" width="5.5" height="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                <rect x="1.5" y="9" width="5.5" height="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                <rect x="9" y="9" width="5.5" height="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-              </svg>
-            </button>
-          </span>
+          <button
+            type="button"
+            ref={repeatPreviewRef}
+            className={'shape-preview-trigger' + (paramsFlyout === 'repeat' ? ' open' : '')}
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'repeat'}
+            aria-label="Repeat scope"
+            title="Repeat scope"
+            onMouseEnter={() => hoverOpenFlyout('repeat')}
+            onMouseLeave={scheduleHoverClose}
+            onClick={() => toggleFlyout('repeat')}
+          >
+            <svg width="120" height="64" viewBox="0 0 64 32" aria-hidden="true">
+              <rect x="7" y="4" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <rect x="37" y="4" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <rect x="7" y="17" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <rect x="37" y="17" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </button>
         </header>
         <ShapeParamsFlyout
           open={paramsFlyout === 'repeat'}
