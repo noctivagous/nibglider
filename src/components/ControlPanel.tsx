@@ -58,7 +58,6 @@ import type {
   RectangleInnerShape,
   StrokeCap,
   StrokeJoin,
-  StrokePosition,
   TextJustification,
   TextSpec,
 } from '../engine/engine';
@@ -1268,37 +1267,7 @@ const JOIN_OPTIONS: Array<{ value: StrokeJoin; label: string; icon: string }> = 
   { value: 'round', label: 'Round', icon: 'M3 12 L8 7 A3 3 0 0 1 11 12' },
   { value: 'bevel', label: 'Bevel', icon: 'M3 12 L6 6 L12 6 L13 12' },
 ];
-const STROKE_POSITION_OPTIONS: Array<{ value: StrokePosition; label: string }> = [
-  { value: 'center', label: 'Center' },
-  { value: 'inside', label: 'Inside' },
-  { value: 'outside', label: 'Outside' },
-];
 const STROKE_WIDTH_PRESETS = [1, 3, 5, 10, 20];
-
-function StrokePositionIcon({ position }: { position: StrokePosition }) {
-  // The stroke band (filled rect) stays fixed in position and width.
-  // The path (dashed line) moves: left edge for outside, center for center, right edge for inside.
-  const bandX = 6; // fixed position
-  const bandWidth = 4; // fixed width
-  const pathX = position === 'outside'
-    ? bandX // left edge of band
-    : position === 'center'
-      ? bandX + bandWidth / 2 // center of band
-      : bandX + bandWidth; // right edge of band
-
-  const strokeBand = (
-    <g>
-      <rect x={bandX} y="2" width={bandWidth} height="8" fill="currentColor" opacity="0.9" rx="0.5" />
-      <line x1={pathX} y1="2" x2={pathX} y2="10" stroke="currentColor" strokeWidth="0.5" strokeDasharray="1.5 1" opacity="0.5" />
-    </g>
-  );
-
-  return (
-    <svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true">
-      {strokeBand}
-    </svg>
-  );
-}
 
 const DASH_PRESETS: Array<{ id: string; label: string; dash: number; gap: number }> = [
   { id: 'solid', label: 'Solid', dash: 0, gap: 0 },
@@ -1374,7 +1343,6 @@ function StrokeParams({
   gap,
   strokeCap,
   strokeJoin,
-  strokePosition,
   miterLimit,
 }: {
   engine: NibGliderEngine;
@@ -1383,7 +1351,6 @@ function StrokeParams({
   gap: number;
   strokeCap: StrokeCap;
   strokeJoin: StrokeJoin;
-  strokePosition: StrokePosition;
   miterLimit: number;
 }) {
   const presetId =
@@ -1416,22 +1383,6 @@ function StrokeParams({
             onCommit={(n) => engine.setStrokeWidth(n)}
           />
         </span>
-      </span>
-      <span className="param-item">
-        <label>Align</label>
-        <div className="seg-ctrl" role="group" aria-label="Stroke alignment">
-          {STROKE_POSITION_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              title={`${opt.label} stroke`}
-              className={strokePosition === opt.value ? 'active' : undefined}
-              onClick={() => engine.setStrokePosition(opt.value)}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
       </span>
       <div className="flyout-seg">
       <span className="param-item">
@@ -3165,7 +3116,6 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   const strokeWidth = sel ? sel.strokeWidth : engine.globalStrokeWidth;
   const strokeCap = sel ? sel.strokeCap : engine.globalStrokeCap;
   const strokeJoin = sel ? sel.strokeJoin : engine.globalStrokeJoin;
-  const strokePosition = sel ? sel.strokePosition : engine.globalStrokePosition;
   const miterLimit = sel ? sel.miterLimit : engine.globalMiterLimit;
   const dashLength = sel ? sel.dashLength : engine.globalDashLength;
   const gapLength = sel ? sel.gapLength : engine.globalGapLength;
@@ -3477,25 +3427,6 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
               ))}
             </div>
           </span>
-          <div
-            className="stroke-position-control"
-            role="group"
-            aria-label="Stroke alignment"
-          >
-            {STROKE_POSITION_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                title={`${opt.label} stroke`}
-                aria-label={`${opt.label} stroke`}
-                aria-pressed={strokePosition === opt.value}
-                className={strokePosition === opt.value ? 'active' : undefined}
-                onClick={() => engine.setStrokePosition(opt.value)}
-              >
-                <StrokePositionIcon position={opt.value} />
-              </button>
-            ))}
-          </div>
           <button
             type="button"
             ref={strokePreviewRef}
@@ -3552,7 +3483,6 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
               gap={gapLength}
               strokeCap={strokeCap}
               strokeJoin={strokeJoin}
-              strokePosition={strokePosition}
               miterLimit={miterLimit}
             />
           </ShapeParamsFlyout>

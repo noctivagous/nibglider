@@ -1,6 +1,17 @@
+[  ] Page Setup vs. Document Size.
+We will separate printer page setup
+from Document Size, but if the user
+has checked the option "Preview Printer Page Setup"
+in the File Menu, then it will show margins
+and crop marks.
+
+
+-----
 
 We need to make a base class for layout for our XML.
 It will layout form data.  It will allow two columns of
+
+-----
 
 for both Export Raster and Export Vector
 1. rename "Document Canvas" to "Document Canvas Frame" 

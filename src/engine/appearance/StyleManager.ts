@@ -5,7 +5,7 @@
 // Tested from tests/style-manager.test.mjs.
 import { clampStrokeWidth } from '../input/KeySettingsRegistry';
 import type { FillSpec, FillType, StrokeCap, StrokeJoin, StrokePosition } from '../types';
-import { setStrokePosition, strokePositionOf } from './strokePosition';
+import { displayedStrokePosition, setStrokePosition } from './strokePosition';
 
 type Item = any;
 
@@ -392,7 +392,7 @@ export class StyleManager {
       strokeWidth: Number.isFinite(w) && w > 0 ? w : state.globalStrokeWidth,
       strokeCap: cap,
       strokeJoin: join,
-      strokePosition: strokePositionOf(item),
+      strokePosition: displayedStrokePosition(item),
       miterLimit: Number.isFinite(m) && m >= 1 ? m : state.globalMiterLimit,
       dashLength,
       gapLength,

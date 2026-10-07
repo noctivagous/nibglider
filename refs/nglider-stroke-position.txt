@@ -1,0 +1,21 @@
+# Stroke position
+ 
+- Stroke alignment is center, inside, or outside. Paper has no native stroke alignment, so `src/engine/appearance/strokePosition.ts` clips the centered canvas stroke during `_draw` on Path, CompoundPath, and Shape.
+- The tag lives in `item.data['nibglider.strokePosition']`. `setStrokePosition` writes the item and its descendants and calls `_changed(1)`, because a data write alone does not repaint.
+- Drawing reads the item's own tag, then the nearest tagged ancestor. A shape+text group with no tag of its own shows the geometry child's tag in the panel.
+- Open paths stay centered. Inside and outside apply only to closed contours.
+
+
+---
+
+Stroke position works again for closed paths and for circle and rectangle shapes. Center, inside, and outside now show up on the canvas as soon as you choose them.
+
+Three things were keeping it from showing:
+
+• Choosing a position only stored a tag on the item. Paper repaints when a style changes, and that tag is not a style, so the canvas kept the old centered stroke.
+• On a group, including a shape with text, the tag was stored on the group while the path that actually draws kept its own center tag and painted that.
+• Circle and rectangle primitives are Paper shapes, and the clip was only installed for paths.
+
+Inside and outside still apply only to closed contours. An open pen path stays centered, because there is no interior to align to.
+
+I checked this in the running app: a selected rectangle and a circle both switch among center, inside, and outside, and the pixels match the alignment.

@@ -159,7 +159,8 @@ const ENTRIES: SettingEntry[] = [
   hex('stroke.color', (e) => e.globalStrokeColor, (e, v) => e.setStrokeColor(v)),
   en('stroke.cap', ['butt', 'round', 'square'], (e) => e.globalStrokeCap, (e, v) => e.setStrokeCap(v as never)),
   en('stroke.join', ['miter', 'round', 'bevel'], (e) => e.globalStrokeJoin, (e, v) => e.setStrokeJoin(v as never)),
-  en('stroke.position', ['center', 'inside', 'outside'], (e) => e.globalStrokePosition, (e, v) => e.setStrokePosition(v as never)),
+  // Stroke alignment is hidden. Leave it out of the snapshot so a stored
+  // inside/outside cannot override the center default.
   num('stroke.miter', (e) => e.globalMiterLimit, (e, v) => e.setMiterLimit(v)),
   {
     key: 'stroke.dash',

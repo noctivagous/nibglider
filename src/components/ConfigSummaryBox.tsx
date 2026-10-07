@@ -302,7 +302,7 @@ export default function ConfigSummaryBox({
             <JoinGlyph join={paint.strokeJoin} />
             <span>Join</span>
           </dt>
-          <dd>{paint.strokeJoin}{paint.strokeJoin === 'miter' ? ` ${paint.miterLimit}` : ''} · {paint.strokePosition}</dd>
+          <dd>{paint.strokeJoin}{paint.strokeJoin === 'miter' ? ` ${paint.miterLimit}` : ''}</dd>
         </div>
         <div className={`cfg-row sub ${paint.strokeOn ? '' : 'is-off'}`}>
           <dt>

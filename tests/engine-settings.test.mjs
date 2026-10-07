@@ -141,6 +141,7 @@ test('corrupt, invalid, and unknown stored values fall back to defaults', () => 
         'stroke.width': 'wide',
         'stroke.color': 'red',
         'stroke.cap': 'oval',
+        'stroke.position': 'outside',
         'snap.angleStep': Number.NaN,
         'circle.params': { sides: 99, m: 'x', angle: null },
         'quad.mapping': 'fisheye',
@@ -154,6 +155,7 @@ test('corrupt, invalid, and unknown stored values fall back to defaults', () => 
       assert.equal(e.globalStrokeWidth, 4);
       assert.equal(e.globalStrokeColor, '#107cff');
       assert.equal(e.globalStrokeCap, 'butt');
+      assert.equal(e.globalStrokePosition, 'center');
       assert.equal(e.angleSnapDegrees, 15);
       assert.equal(e.circleInnerShapeParams.m, 3);
       assert.equal(e.quadMapping, 'bilinear');

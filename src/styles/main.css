@@ -3136,48 +3136,6 @@ body {
   outline-offset: 1px;
 }
 
-/* A compact duplicate of the flyout alignment control. It stays beside the
-   preview for fast access while the flyout remains the complete stroke UI. */
-#controlPanel .stroke-position-control {
-  display: inline-flex;
-  flex: none;
-  flex-direction: column;
-  align-self: stretch;
-  width: 29px;
-  overflow: hidden;
-  border: 1px solid var(--dp-border);
-  border-radius: 5px;
-  background: linear-gradient(to bottom, #10151b, #141b23);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-#controlPanel .stroke-position-control button {
-  flex: 1 1 0;
-  min-height: 0;
-  appearance: none;
-  border: none;
-  border-bottom: 1px solid #0b0e12;
-  padding: 0;
-  background: linear-gradient(to bottom, #2b3542, #1f2732);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
-  color: var(--dp-text-2);
-  cursor: pointer;
-  font-family: var(--font-tech-label);
-  font-size: 7px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-#controlPanel .stroke-position-control button:last-child { border-bottom: none; }
-#controlPanel .stroke-position-control button:hover { color: var(--dp-text-1); }
-#controlPanel .stroke-position-control button.active {
-  background: linear-gradient(to bottom, #5a6675, #454f5c);
-  color: #fff;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
-}
-
-#controlPanel .stroke-position-control svg { display: block; margin: auto; }
-
 /* Stroke width preset row: sits directly under the titlebar stepper in a
    tight column so the legend bar keeps its single-strip height. The micro
    buttons match the stepper width and reuse the seg-ctrl bevel idiom. */
