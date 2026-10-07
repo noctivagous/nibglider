@@ -576,6 +576,7 @@ export default function AppMenu({
   menus,
   enabledCommands,
   checkedCommands = NO_CHECKS,
+  labelOverrides,
   onCommand,
   numberFields,
   onNumberCommit,
@@ -587,6 +588,8 @@ export default function AppMenu({
   enabledCommands: Set<string>;
   /** Commands currently active; their rows carry a check glyph. */
   checkedCommands?: Set<string>;
+  /** Live labels overriding the static XML (e.g. canvas dimensions). */
+  labelOverrides?: Record<string, string>;
   onCommand: (commandId: string) => void;
   /** Numeric inputs hosted in option rows, keyed by command id. */
   numberFields?: Record<string, MenuNumberField>;
@@ -606,6 +609,10 @@ export default function AppMenu({
     setFocusIdx(-1);
     setOpenSub(null);
   };
+
+  // Live labels (canvas dimensions) win over the static menu definition.
+  const labelFor = (item: MenuItemDef): string =>
+    labelOverrides?.[item.commandId] ?? item.label ?? commandLabel(item.commandId);
 
   useEffect(() => {
     if (!openMenu) return;
@@ -810,7 +817,7 @@ export default function AppMenu({
                           ? <CheckGlyph />
                           : ((item.icon && MENU_ICONS[item.icon]) ?? null)}
                       </span>
-                      <span className="app-menu-label">{item.label ?? commandLabel(item.commandId)}</span>
+                      <span className="app-menu-label">{labelFor(item)}</span>
                       {item.shortcut && (
                         <span className="app-menu-shortcut">
                           <kbd>{item.shortcut}</kbd>
@@ -819,7 +826,7 @@ export default function AppMenu({
                       {isParent && <span className="app-menu-caret" aria-hidden="true" />}
                     </button>
                     {expanded && (
-                      <div className="app-menu-submenu" role="menu" aria-label={item.label ?? commandLabel(item.commandId)}>
+                      <div className="app-menu-submenu" role="menu" aria-label={labelFor(item)}>
                         {childIndexes.map(({ row: childRow, index: childIdx }) => {
                           const childEnabled = effectiveEnabled.has(childRow.item.commandId);
                           const field = numberFields?.[childRow.item.commandId];
@@ -851,7 +858,7 @@ export default function AppMenu({
                                       : ((childRow.item.icon && MENU_ICONS[childRow.item.icon]) ?? null)}
                                   </span>
                                   <span className="app-menu-label">
-                                    {childRow.item.label ?? commandLabel(childRow.item.commandId)}
+                                    {labelFor(childRow.item)}
                                   </span>
                                 </button>
                                 <span onKeyDown={(e) => e.stopPropagation()}>
@@ -887,7 +894,7 @@ export default function AppMenu({
                                   : ((childRow.item.icon && MENU_ICONS[childRow.item.icon]) ?? null)}
                               </span>
                               <span className="app-menu-label">
-                                {childRow.item.label ?? commandLabel(childRow.item.commandId)}
+                                {labelFor(childRow.item)}
                               </span>
                               {childRow.item.shortcut && (
                                 <span className="app-menu-shortcut">

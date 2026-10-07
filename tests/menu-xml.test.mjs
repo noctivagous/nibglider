@@ -13,7 +13,7 @@ const WIRED_COMMANDS = [
   'open-gallery', 'new-document', 'save-gallery', 'rename-document',
   'export', 'import',
   'scale-dialog', 'rotate-dialog',
-  'settings', 'document-settings', 'tutorial', 'reset-settings', 'empty-canvas',
+  'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
   'undo', 'redo',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
@@ -196,6 +196,15 @@ test('edit holds undo/redo, clipboard, and selection entries', () => {
   for (const id of ['undo', 'redo', 'cut', 'copy', 'paste', 'select-all']) {
     assert.equal(typeof byId[id].icon, 'string', `${id} carries an icon`);
   }
+});
+
+test('document menu leads with the live canvas-size row above Document Settings', () => {
+  const menus = loadMenus();
+  const doc = menus.find((menu) => menu.id === 'document');
+  assert.deepEqual(doc.items.map((item) => item.commandId).slice(0, 2), [
+    'canvas-size', 'document-settings',
+  ]);
+  assert.equal(doc.items[0].icon, 'page-size');
 });
 
 test('length-unit carries the three unit options as a submenu', () => {

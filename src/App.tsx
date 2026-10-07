@@ -14,6 +14,7 @@ import ContextMenu from './components/ContextMenu';
 import SettingsWindow from './components/SettingsWindow';
 import DocumentInfoWindow from './components/DocumentInfoWindow';
 import DocumentSettingsWindow from './components/DocumentSettingsWindow';
+import DocumentSizeWindow from './components/DocumentSizeWindow';
 import OnscreenKeyboard from './components/OnscreenKeyboard';
 import CanvasScrollbars from './components/CanvasScrollbars';
 import PageRuler from './components/PageRuler';
@@ -23,6 +24,7 @@ import StatusOverlay from './components/StatusOverlay';
 import ExportFramePopover from './components/ExportFramePopover';
 import InterlacePopover from './components/InterlacePopover';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
+import { formatInUnit } from './engine/document/MeasurementUnits';
 import { autosaveDocument, restorableDocument } from './ui/DocumentGallery';
 import { CONTEXT_MENU_ID, MENU_PANEL_SECTIONS, PanelsManager, hideMenuSection, sectionLabel } from './ui/PanelsManager';
 import { WidgetLayout } from './ui/WidgetLayout';
@@ -53,7 +55,7 @@ const HIDE_SECTION_TITLES = true;
 /** Menu commands with a wired handler; everything else renders disabled. */
 const MENU_COMMANDS: Set<string> = new Set([
   ...FILE_COMMANDS,
-  'settings', 'document-settings', 'tutorial', 'reset-settings', 'empty-canvas',
+  'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
   'undo', 'redo',
   'cut', 'copy', 'paste', 'select-all',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
@@ -295,6 +297,7 @@ export default function App() {
     }
     if (commandId === 'settings') gui.openWindow('settings');
     else if (commandId === 'document-settings') gui.openWindow('document-settings');
+    else if (commandId === 'canvas-size') gui.openWindow('document-size');
     else if (commandId === 'tutorial') startTutorial();
     else if (commandId === 'undo') engine.undo();
     else if (commandId === 'redo') engine.redo();
@@ -421,6 +424,14 @@ export default function App() {
     ...(engine.isLengthSnappingEnabled ? ['snap-length'] : []),
     ...(engine.isAspectSnappingEnabled ? ['snap-aspect'] : []),
   ]);
+
+  // Live canvas-size label for the top Document menu row, e.g. "1920 × 1080 pt".
+  // Engine notifies on page changes, so this recomputes on every render.
+  const pageForMenu = engine.getPageSettings();
+  const canvasSizeLabel =
+    pageForMenu.widthPt != null && pageForMenu.heightPt != null
+      ? `${formatInUnit(pageForMenu.widthPt, pageForMenu.unit)} × ${formatInUnit(pageForMenu.heightPt, pageForMenu.unit)}`
+      : 'Canvas size';
 
   // New users (config flag on, no completion recorded) land in the tutorial.
   // startTutorial is idempotent, so StrictMode's double-effect is harmless.
@@ -616,6 +627,7 @@ export default function App() {
         menus={panels.menus.filter((menu) => menu.id !== CONTEXT_MENU_ID)}
         enabledCommands={MENU_COMMANDS}
         checkedCommands={checkedCommands}
+        labelOverrides={{ 'canvas-size': canvasSizeLabel }}
         onCommand={handleMenuCommand}
         numberFields={menuNumberFields}
         onNumberCommit={handleMenuNumberCommit}
@@ -630,6 +642,9 @@ export default function App() {
       )}
       {ui.openWindowId === 'document-settings' && (
         <DocumentSettingsWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
+      )}
+      {ui.openWindowId === 'document-size' && (
+        <DocumentSizeWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
       )}
       <div
         id="canvasContainer"

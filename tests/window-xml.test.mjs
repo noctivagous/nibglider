@@ -58,6 +58,45 @@ test('window XML falls back to ids and rejects malformed definitions', () => {
   }
 });
 
+test('tab views group sections and bare controls, with flattened sections', () => {
+  const result = parseWindowXML(
+    '<window id="w" title="W">' +
+    '<tab id="size" title="Size"><custom id="document-size"/></tab>' +
+    '<tab id="page"><section id="page" title="Page"><toggle key="pageFill"/></section></tab>' +
+    '</window>',
+  );
+  assert.ok('spec' in result);
+  assert.deepEqual(result.spec.tabs.map((tab) => tab.id), ['size', 'page']);
+  assert.equal(result.spec.tabs[1].title, 'page');
+  assert.deepEqual(result.spec.tabs[0].sectionIds, ['size-content']);
+  assert.deepEqual(result.spec.tabs[1].sectionIds, ['page']);
+  // Sections stay flattened so untabbed readers keep working.
+  assert.deepEqual(result.spec.sections.map((s) => s.id), ['size-content', 'page']);
+  const anonymous = result.spec.sections[0];
+  assert.equal(anonymous.title, '');
+  assert.deepEqual(anonymous.controls, [{ kind: 'custom', id: 'document-size' }]);
+
+  // Windows without tabs parse exactly as before, with no tab strip.
+  const plain = parseWindowXML('<window id="w"><section id="s"><toggle key="k"/></section></window>');
+  assert.ok('spec' in plain);
+  assert.deepEqual(plain.spec.tabs, []);
+
+  for (const bad of [
+    '<window id="w"><tab><section id="s"/></tab></window>',
+    '<window id="w"><tab id="t"></tab></window>',
+    '<window id="w"><tab id="t"><section id="s"/><section id="s"/></tab></window>',
+    '<window id="w"><tab id="t"><section id="a"/></tab><tab id="t"><section id="b"/></tab></window>',
+    '<window id="w"><tab id="t"><custom/></tab></window>',
+    '<window id="w"><tab id="t"><custom id="c"><toggle key="k"/></custom></tab></window>',
+    '<window id="w"><tab id="t"><slider key="k"/></tab></window>',
+    '<window id="w"><section id="s-content"/><tab id="s"><toggle key="k"/></tab></window>',
+  ]) {
+    const parsed = parseWindowXML(bad);
+    assert.ok('error' in parsed, `expected an error for ${bad}`);
+    assert.ok(parsed.error.length > 0);
+  }
+});
+
 test('window XML handles comments, prologs, entities, and quote styles', () => {
   const result = parseWindowXML(
     '<?xml version="1.0"?><!-- a comment -->' +

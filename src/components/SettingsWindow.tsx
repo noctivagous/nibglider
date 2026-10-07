@@ -118,7 +118,9 @@ export default function SettingsWindow({
               {section.controls.map((control) => (
                 control.kind === 'switch'
                   ? <SwitchControl key={control.key} control={control} engine={engine} />
-                  : <ToggleControl key={control.key} control={control} engine={engine} />
+                  : control.kind === 'toggle'
+                    ? <ToggleControl key={control.key} control={control} engine={engine} />
+                    : <span key={control.id} className="settings-unknown">Unknown control: {control.id}</span>
               ))}
             </div>
           ))

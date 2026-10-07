@@ -153,6 +153,12 @@ test('document settings window defines ruler placement and guides', async () => 
   assert.ok(rulers);
   const keys = rulers.controls.map((c) => c.key).sort();
   assert.deepEqual(keys, ['rulerGuides', 'rulerPlacement']);
+  // Size tab leads with the shared size editor; page sections follow.
+  assert.deepEqual(parsed.spec.tabs.map((t) => t.id), ['size', 'page']);
+  assert.deepEqual(parsed.spec.tabs[0].sectionIds, ['size-content']);
+  assert.deepEqual(parsed.spec.tabs[1].sectionIds, ['rulers']);
+  const sizeContent = parsed.spec.sections.find((s) => s.id === 'size-content');
+  assert.deepEqual(sizeContent.controls, [{ kind: 'custom', id: 'document-size' }]);
 });
 
 test('engine drawingPage is null until dimensions are set', () => {

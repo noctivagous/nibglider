@@ -5269,6 +5269,58 @@ kbd,
   padding: 12px;
 }
 
+/* Tab strip for XML windows with <tab> pages (Document Settings): same
+   dark pro-GUI treatment as the New Document tab strip. */
+.settings-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  padding: 4px;
+  margin: 10px 12px 0;
+}
+
+.settings-tab {
+  flex: 1;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--dp-text-3);
+  font: inherit;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+
+.settings-tab:hover {
+  color: var(--dp-text-1);
+}
+
+.settings-tab.active {
+  background: var(--dp-accent-soft);
+  border-color: var(--dp-accent);
+  color: #fff;
+}
+
+/* Size editor layout inside the settings/document-size windows; inner rows
+   reuse the New Document classes. Wider dialogs fit the preset lists. */
+.docsize-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.docsize-window,
+.docsettings-window {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.docsettings-window .settings-section {
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+}
+
 /* Custom canvas scrollbars: always-visible right + bottom bars over the
    canvas, below the overlay stack. Same dark-pro treatment as the panel
    scrollbars; overlay only, never shifting canvas layout. */

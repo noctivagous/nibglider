@@ -6,11 +6,14 @@
 // an error box instead of a crash. Tested from tests/window-xml.test.mjs.
 //
 // Supported elements (attributes in parentheses):
-//   <window (id, title)> <section (id, title)> ...
+//   <window (id, title)> <section (id, title)> ... | <tab (id, title)> ...
 //     <switch (key, label)> <option (value, label)> ... </switch>
 //     <toggle (key, label) />
-// Titles and option labels fall back to the id/key/value when omitted.
-// Inter-element whitespace is ignored; any other text content is an error.
+//     <custom (id) /> — host-rendered control (e.g. the size editor)
+//   A <tab> groups sections (and bare controls, wrapped in an anonymous
+//   section) into a tab-strip page. Titles and option labels fall back to
+//   the id/key/value when omitted. Inter-element whitespace is ignored;
+//   any other text content is an error.
 
 import { parseXmlDocument, type XmlNode } from './xmlParser';
 
@@ -32,7 +35,12 @@ export interface WindowToggleControl {
   label: string;
 }
 
-export type WindowControl = WindowSwitchControl | WindowToggleControl;
+export interface WindowCustomControl {
+  kind: 'custom';
+  id: string;
+}
+
+export type WindowControl = WindowSwitchControl | WindowToggleControl | WindowCustomControl;
 
 export interface WindowSection {
   id: string;
@@ -40,10 +48,20 @@ export interface WindowSection {
   controls: WindowControl[];
 }
 
+export interface WindowTab {
+  id: string;
+  title: string;
+  /** Ids into the spec's flattened sections, in tab order. */
+  sectionIds: string[];
+}
+
 export interface WindowSpec {
   id: string;
   title: string;
+  /** Every section, including tabbed ones, in document order. */
   sections: WindowSection[];
+  /** Tab strip pages; empty for windows without <tab> children. */
+  tabs: WindowTab[];
 }
 
 export type WindowParseResult = { spec: WindowSpec } | { error: string };
@@ -69,6 +87,32 @@ function parseToggle(node: XmlNode): WindowToggleControl | string {
   return { kind: 'toggle', key, label: node.attrs['label'] ?? key };
 }
 
+function parseCustom(node: XmlNode): WindowCustomControl | string {
+  const customId = node.attrs['id'];
+  if (!customId) return '<custom> is missing its id attribute';
+  if (node.children.length > 0) return `<custom id="${customId}"> takes no children`;
+  return { kind: 'custom', id: customId };
+}
+
+function parseControl(node: XmlNode): WindowControl | string {
+  if (node.tag === 'switch') return parseSwitch(node);
+  if (node.tag === 'toggle') return parseToggle(node);
+  if (node.tag === 'custom') return parseCustom(node);
+  return `<section> only accepts <switch>, <toggle>, and <custom> children, found <${node.tag}>`;
+}
+
+function parseSection(node: XmlNode): WindowSection | string {
+  const sectionId = node.attrs['id'];
+  if (!sectionId) return '<section> is missing its id attribute';
+  const controls: WindowControl[] = [];
+  for (const control of node.children) {
+    const parsed = parseControl(control);
+    if (typeof parsed === 'string') return parsed;
+    controls.push(parsed);
+  }
+  return { id: sectionId, title: node.attrs['title'] ?? sectionId, controls };
+}
+
 export function parseWindowXML(xmlText: string): WindowParseResult {
   const root = parseXmlDocument(xmlText);
   if (typeof root === 'string') return { error: root };
@@ -76,25 +120,60 @@ export function parseWindowXML(xmlText: string): WindowParseResult {
   const id = root.attrs['id'];
   if (!id) return { error: '<window> is missing its id attribute' };
   const sections: WindowSection[] = [];
+  const tabs: WindowTab[] = [];
+  const seenSectionIds = new Set<string>();
+  const takeSection = (section: WindowSection): string | null => {
+    if (seenSectionIds.has(section.id)) return `<section> id "${section.id}" is used more than once`;
+    seenSectionIds.add(section.id);
+    sections.push(section);
+    return null;
+  };
   for (const child of root.children) {
-    if (child.tag !== 'section') return { error: `<window> only accepts <section> children, found <${child.tag}>` };
-    const sectionId = child.attrs['id'];
-    if (!sectionId) return { error: '<section> is missing its id attribute' };
-    const controls: WindowControl[] = [];
-    for (const control of child.children) {
-      if (control.tag === 'switch') {
-        const parsed = parseSwitch(control);
+    if (child.tag === 'section') {
+      const parsed = parseSection(child);
+      if (typeof parsed === 'string') return { error: parsed };
+      const duplicate = takeSection(parsed);
+      if (duplicate) return { error: duplicate };
+      continue;
+    }
+    if (child.tag !== 'tab') {
+      return { error: `<window> only accepts <section> and <tab> children, found <${child.tag}>` };
+    }
+    const tabId = child.attrs['id'];
+    if (!tabId) return { error: '<tab> is missing its id attribute' };
+    if (tabs.some((tab) => tab.id === tabId)) return { error: `<tab> id "${tabId}" is used more than once` };
+    if (child.children.length === 0) return { error: `<tab id="${tabId}"> needs at least one <section> or control child` };
+    const sectionIds: string[] = [];
+    let pending: WindowControl[] = [];
+    const flushPending = (): string | null => {
+      if (pending.length === 0) return null;
+      const anonymous = { id: `${tabId}-content`, title: '', controls: pending };
+      pending = [];
+      const duplicate = takeSection(anonymous);
+      if (duplicate) return duplicate;
+      sectionIds.push(anonymous.id);
+      return null;
+    };
+    for (const entry of child.children) {
+      if (entry.tag === 'section') {
+        const flushed = flushPending();
+        if (flushed) return { error: flushed };
+        const parsed = parseSection(entry);
         if (typeof parsed === 'string') return { error: parsed };
-        controls.push(parsed);
-      } else if (control.tag === 'toggle') {
-        const parsed = parseToggle(control);
-        if (typeof parsed === 'string') return { error: parsed };
-        controls.push(parsed);
+        const duplicate = takeSection(parsed);
+        if (duplicate) return { error: duplicate };
+        sectionIds.push(parsed.id);
       } else {
-        return { error: `<section> only accepts <switch> and <toggle> children, found <${control.tag}>` };
+        const parsed = parseControl(entry);
+        if (typeof parsed === 'string') return parsed.startsWith('<section>')
+          ? { error: parsed.replace('<section>', `<tab id="${tabId}">`) }
+          : { error: parsed };
+        pending.push(parsed);
       }
     }
-    sections.push({ id: sectionId, title: child.attrs['title'] ?? sectionId, controls });
+    const flushed = flushPending();
+    if (flushed) return { error: flushed };
+    tabs.push({ id: tabId, title: child.attrs['title'] ?? tabId, sectionIds });
   }
-  return { spec: { id, title: root.attrs['title'] ?? id, sections } };
+  return { spec: { id, title: root.attrs['title'] ?? id, sections, tabs } };
 }

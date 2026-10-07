@@ -24,6 +24,7 @@
     </group>
   </menu>
   <menu id="document" title="Document and Settings">
+    <item command="canvas-size" icon="page-size" />
     <item command="document-settings" label="Document Settings" icon="settings" />
     <item command="page-size" icon="page-size" />
     <item command="length-unit" label="Length unit" icon="length-unit">
