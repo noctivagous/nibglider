@@ -25,6 +25,24 @@ export interface MenuNumberField {
   label: string;
 }
 
+/** One choice in a segmented control hosted at the top of a submenu
+ * (e.g. Export Raster formats). Disabled options stay visible so users
+ * learn the option exists before it is available. */
+export interface MenuSegmentOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+  title?: string;
+}
+
+/** Segmented format control hosted at the top of a submenu, keyed by the
+ * parent command id. Selecting a segment never dispatches or closes. */
+export interface MenuSegmentField {
+  value: string;
+  options: MenuSegmentOption[];
+  label: string;
+}
+
 /** Live panel-section state for a menu's bottom Panel toggle group. */
 export interface MenuPanelSection {
   id: string;
@@ -582,6 +600,8 @@ export default function AppMenu({
   onCommand,
   numberFields,
   onNumberCommit,
+  segmentFields,
+  onSegmentSelect,
   panelSections,
   onPanelSection,
 }: {
@@ -596,6 +616,10 @@ export default function AppMenu({
   /** Numeric inputs hosted in option rows, keyed by command id. */
   numberFields?: Record<string, MenuNumberField>;
   onNumberCommit?: (commandId: string, value: number) => void;
+  /** Segmented controls hosted at the top of a submenu, keyed by the
+   * parent command id. */
+  segmentFields?: Record<string, MenuSegmentField>;
+  onSegmentSelect?: (commandId: string, value: string) => void;
   /** Panel sections per menu id; menus in this map grow a bottom Panel group. */
   panelSections?: Record<string, MenuPanelSection[]>;
   onPanelSection?: (action: PanelSectionAction, sectionId: string) => void;
@@ -871,6 +895,38 @@ export default function AppMenu({
                     </button>
                     {expanded && (
                       <div className="app-menu-submenu" role="menu" aria-label={labelFor(item)}>
+                        {segmentFields?.[item.commandId] && onSegmentSelect && (
+                          <div
+                            className="app-menu-segments"
+                            role="group"
+                            aria-label={segmentFields[item.commandId].label}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          >
+                            {segmentFields[item.commandId].options.map((option) => (
+                              <button
+                                key={option.value}
+                                type="button"
+                                className={
+                                  'app-menu-segment'
+                                  + (segmentFields[item.commandId].value === option.value ? ' selected' : '')
+                                  + (option.disabled ? ' unavailable' : '')
+                                }
+                                aria-pressed={segmentFields[item.commandId].value === option.value}
+                                aria-disabled={option.disabled || undefined}
+                                title={option.title}
+                                tabIndex={-1}
+                                onMouseEnter={() => setFocusIdx(rowIdx)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (option.disabled) return;
+                                  onSegmentSelect(item.commandId, option.value);
+                                }}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {childIndexes.map(({ row: childRow, index: childIdx }) => {
                           const childEnabled = effectiveEnabled.has(childRow.item.commandId);
                           const field = numberFields?.[childRow.item.commandId];

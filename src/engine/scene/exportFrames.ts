@@ -48,13 +48,22 @@ function paperRect(box: { x: number; y: number; width: number; height: number })
   return { x: box.x, y: box.y, width: box.width, height: box.height };
 }
 
-/** Rasterize an exported SVG string to a PNG blob at the given pixel
+export interface RasterizeOptions {
+  /** Canvas 2D mime type, e.g. 'image/png' or 'image/jpeg'. */
+  mime: string;
+  /** Encoder quality 0..1; only meaningful for lossy mime types. */
+  quality?: number;
+  /** Opaque background fill, or null for transparent (PNG only). */
+  background: string | null;
+}
+
+/** Rasterize an exported SVG string to an image blob at the given pixel
  * size. Needs DOM (Image + canvas); returns null when rasterization is
  * unavailable so callers can report instead of downloading garbage. */
-export function rasterizeSvgToPng(
+export function rasterizeSvg(
   svg: string,
   size: { width: number; height: number },
-  background: string | null,
+  options: RasterizeOptions,
 ): Promise<Blob | null> {
   return new Promise((resolve) => {
     try {
@@ -81,15 +90,23 @@ export function rasterizeSvgToPng(
             resolve(null);
             return;
           }
-          if (background) {
-            ctx.fillStyle = background;
+          if (options.background) {
+            ctx.fillStyle = options.background;
+            ctx.fillRect(0, 0, size.width, size.height);
+          } else if (options.mime === 'image/jpeg') {
+            // JPEG has no alpha channel: an unfilled canvas encodes as
+            // black, so default to an opaque white base instead.
+            ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, size.width, size.height);
           } else {
             ctx.clearRect(0, 0, size.width, size.height);
           }
           ctx.drawImage(image, 0, 0, size.width, size.height);
           URL.revokeObjectURL(url);
-          canvas.toBlob((blob) => resolve(blob), 'image/png');
+          const quality = Number.isFinite(options.quality)
+            ? Math.min(1, Math.max(0, options.quality as number))
+            : undefined;
+          canvas.toBlob((blob) => resolve(blob), options.mime, quality);
         } catch {
           try { URL.revokeObjectURL(url); } catch { /* ignore */ }
           resolve(null);
@@ -104,6 +121,15 @@ export function rasterizeSvgToPng(
       resolve(null);
     }
   });
+}
+
+/** PNG entry point kept for the export-frame path. */
+export function rasterizeSvgToPng(
+  svg: string,
+  size: { width: number; height: number },
+  background: string | null,
+): Promise<Blob | null> {
+  return rasterizeSvg(svg, size, { mime: 'image/png', background });
 }
 
 /** Artwork contained in or intersecting the frame. The frame itself and

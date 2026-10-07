@@ -13,11 +13,46 @@ export const FILE_COMMANDS = [
   'new-document',
   'save-gallery',
   'rename-document',
-  'export',
   'import',
 ] as const;
 
 export type FileCommand = (typeof FILE_COMMANDS)[number];
+
+/** File > Export scope leaves, one per Export submenu (menus.xml ids).
+ * Handled in App because the active raster/vector format and the JPG
+ * quality dialog live there; the submenu parents (export-raster,
+ * export-vector) only expand and never dispatch. */
+export const EXPORT_COMMANDS = [
+  'export-raster-canvas',
+  'export-raster-viewport',
+  'export-raster-selection',
+  'export-vector-canvas',
+  'export-vector-viewport',
+  'export-vector-selection',
+] as const;
+
+export type ExportCommand = (typeof EXPORT_COMMANDS)[number];
+
+/** Raster formats offered by the Export Raster segmented control. Only
+ * PNG and JPG export today; WEBP stays visible but disabled. */
+export const RASTER_FORMATS = ['png', 'jpg', 'webp'] as const;
+
+export type RasterFormat = (typeof RASTER_FORMATS)[number];
+
+/** Vector formats offered by the Export Vector segmented control. SVG is
+ * the default (rendered "SVG*"); PDF and DXF stay visible but disabled. */
+export const VECTOR_FORMATS = ['svg', 'pdf', 'dxf'] as const;
+
+export type VectorFormat = (typeof VECTOR_FORMATS)[number];
+
+export type ExportScopeId = 'canvas' | 'viewport' | 'selection';
+
+/** Split an export leaf command into its scope. Null for anything else. */
+export function exportScopeOf(command: string): ExportScopeId | null {
+  const match = /^export-(?:raster|vector)-(canvas|viewport|selection)$/.exec(command);
+  if (!match) return null;
+  return match[1] as ExportScopeId;
+}
 
 /** Where a save should go: straight to the open gallery document, or into
  * the gallery save dialog when the work is still untitled. */

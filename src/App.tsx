@@ -8,8 +8,21 @@ import {
 } from './engine/engine';
 import { isCommandAvailable, matchAppCommand } from './engine/input/keymap';
 import ControlPanel, { type ControlPanelHandle } from './components/ControlPanel';
-import { FILE_COMMANDS, type FileCommand } from './ui/fileCommands';
-import AppMenu, { type MenuPanelSection, type PanelSectionAction } from './components/AppMenu';
+import {
+  EXPORT_COMMANDS,
+  FILE_COMMANDS,
+  exportScopeOf,
+  type ExportScopeId,
+  type FileCommand,
+  type RasterFormat,
+  type VectorFormat,
+} from './ui/fileCommands';
+import AppMenu, {
+  type MenuPanelSection,
+  type MenuSegmentField,
+  type PanelSectionAction,
+} from './components/AppMenu';
+import JpgExportDialog from './components/JpgExportDialog';
 import ContextMenu from './components/ContextMenu';
 import SettingsWindow from './components/SettingsWindow';
 import DocumentInfoWindow from './components/DocumentInfoWindow';
@@ -25,7 +38,7 @@ import ExportFramePopover from './components/ExportFramePopover';
 import InterlacePopover from './components/InterlacePopover';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
 import { formatInUnit } from './engine/document/MeasurementUnits';
-import { autosaveDocument, restorableDocument } from './ui/DocumentGallery';
+import { autosaveDocument, currentName, restorableDocument } from './ui/DocumentGallery';
 import { CONTEXT_MENU_ID, MENU_PANEL_SECTIONS, PanelsManager, hideMenuSection, sectionLabel } from './ui/PanelsManager';
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
@@ -55,6 +68,7 @@ const HIDE_SECTION_TITLES = true;
 /** Menu commands with a wired handler; everything else renders disabled. */
 const MENU_COMMANDS: Set<string> = new Set([
   ...FILE_COMMANDS,
+  ...EXPORT_COMMANDS,
   'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
   'undo', 'redo',
   'cut', 'copy', 'paste', 'select-all',
@@ -290,9 +304,72 @@ export default function App() {
   }, [tutorialRunner]);
 
   const controlPanelRef = useRef<ControlPanelHandle>(null);
+  // File > Export format state. SVG is the vector default (rendered
+  // "SVG*"); PNG is the raster default. Unavailable formats (WEBP, PDF,
+  // DXF) render disabled and never reach the dispatch below.
+  const [rasterFormat, setRasterFormat] = useState<RasterFormat>('png');
+  const [vectorFormat, setVectorFormat] = useState<VectorFormat>('svg');
+  // JPG exports pause in an intermediate dialog for quality controls;
+  // the scope that opened it waits here until confirm or cancel.
+  const [jpgScope, setJpgScope] = useState<ExportScopeId | null>(null);
+
+  const downloadText = useCallback((name: string, text: string, type: string) => {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, []);
+
+  const downloadBlob = useCallback((name: string, blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, []);
+
+  const exportFileStem = useCallback((): string => {
+    const raw = currentName(browserStore()) ?? 'untitled';
+    const stem = raw.trim().replace(/[^\w-]+/g, '-');
+    return stem.length > 0 ? stem : 'untitled';
+  }, []);
+
+  const runVectorExport = useCallback((scope: ExportScopeId) => {
+    if (vectorFormat !== 'svg') return;
+    const output = engine.exportScopeSVG(scope);
+    if (!output) return;
+    downloadText(`${exportFileStem()}-${scope}.svg`, output.svg, 'image/svg+xml');
+  }, [downloadText, engine, exportFileStem, vectorFormat]);
+
+  const runRasterExport = useCallback((scope: ExportScopeId) => {
+    if (rasterFormat === 'jpg') {
+      setJpgScope(scope);
+      return;
+    }
+    if (rasterFormat !== 'png') return;
+    void (async (): Promise<void> => {
+      const output = await engine.exportScopePNG(scope);
+      if (!output) return;
+      downloadBlob(`${exportFileStem()}-${scope}.png`, output.blob);
+    })();
+  }, [downloadBlob, engine, exportFileStem, rasterFormat]);
+
   const handleMenuCommand = useCallback((commandId: string) => {
     if ((FILE_COMMANDS as readonly string[]).includes(commandId)) {
       controlPanelRef.current?.dispatchFileCommand(commandId as FileCommand);
+      return;
+    }
+    const exportScope = exportScopeOf(commandId);
+    if (exportScope) {
+      if (commandId.startsWith('export-raster-')) runRasterExport(exportScope);
+      else runVectorExport(exportScope);
       return;
     }
     if (commandId === 'settings') gui.openWindow('settings');
@@ -354,7 +431,7 @@ export default function App() {
     else if (commandId === 'text-mode-body') engine.setTextMode('body');
     else if (commandId === 'scale-dialog') controlPanelRef.current?.openOperationDialog('scale');
     else if (commandId === 'rotate-dialog') controlPanelRef.current?.openOperationDialog('rotate');
-  }, [engine, gui, startTutorial]);
+  }, [engine, gui, runRasterExport, runVectorExport, startTutorial]);
 
   // Re-render on engine changes so menu checkmarks (length unit) stay fresh.
   // Visibility toggles arrive through the gui snapshot above.
@@ -432,6 +509,58 @@ export default function App() {
     pageForMenu.widthPt != null && pageForMenu.heightPt != null
       ? `${formatInUnit(pageForMenu.widthPt, pageForMenu.unit)} × ${formatInUnit(pageForMenu.heightPt, pageForMenu.unit)}`
       : 'Canvas size';
+
+  // File > Export: segmented format controls per submenu. Unavailable
+  // formats stay visible but disabled; "SVG*" marks the vector default.
+  const exportSegments: Record<string, MenuSegmentField> = {
+    'export-raster': {
+      value: rasterFormat,
+      label: 'Raster format',
+      options: [
+        { value: 'png', label: 'PNG' },
+        { value: 'jpg', label: 'JPG' },
+        { value: 'webp', label: 'WEBP', disabled: true, title: 'Not available yet' },
+      ],
+    },
+    'export-vector': {
+      value: vectorFormat,
+      label: 'Vector format',
+      options: [
+        { value: 'svg', label: 'SVG*' },
+        { value: 'pdf', label: 'PDF', disabled: true, title: 'Not available yet' },
+        { value: 'dxf', label: 'DXF', disabled: true, title: 'Not available yet' },
+      ],
+    },
+  };
+  const handleExportSegment = useCallback((commandId: string, value: string) => {
+    if (commandId === 'export-raster' && (value === 'png' || value === 'jpg')) {
+      setRasterFormat(value);
+    } else if (commandId === 'export-vector' && value === 'svg') {
+      setVectorFormat(value);
+    }
+  }, []);
+
+  // Export canvas rows carry the live document dimensions and unit; the
+  // Selected Objects rows only appear while something is selected.
+  const hasExportSelection = engine.hasSelection();
+  const exportCanvasLabel =
+    pageForMenu.widthPt != null && pageForMenu.heightPt != null
+      ? `Document Canvas — ${formatInUnit(pageForMenu.widthPt, pageForMenu.unit)} × ${formatInUnit(pageForMenu.heightPt, pageForMenu.unit)}`
+      : 'Document Canvas';
+  const exportMenus = panels.menus
+    .filter((menu) => menu.id !== CONTEXT_MENU_ID)
+    .map((menu) => {
+      if (menu.id !== 'file' || hasExportSelection) return menu;
+      return {
+        ...menu,
+        items: menu.items.map((item) => {
+          if ((item.commandId !== 'export-raster' && item.commandId !== 'export-vector') || !item.children) {
+            return item;
+          }
+          return { ...item, children: item.children.filter((child) => !child.commandId.endsWith('-selection')) };
+        }),
+      };
+    });
 
   // New users (config flag on, no completion recorded) land in the tutorial.
   // startTutorial is idempotent, so StrictMode's double-effect is harmless.
@@ -626,16 +755,30 @@ export default function App() {
   return (
     <div id="mainLayout">
       <AppMenu
-        menus={panels.menus.filter((menu) => menu.id !== CONTEXT_MENU_ID)}
+        menus={exportMenus}
         enabledCommands={MENU_COMMANDS}
         checkedCommands={checkedCommands}
-        labelOverrides={{ 'canvas-size': canvasSizeLabel }}
+        labelOverrides={{
+          'canvas-size': canvasSizeLabel,
+          'export-raster-canvas': exportCanvasLabel,
+          'export-vector-canvas': exportCanvasLabel,
+        }}
         onCommand={handleMenuCommand}
         numberFields={menuNumberFields}
         onNumberCommit={handleMenuNumberCommit}
+        segmentFields={exportSegments}
+        onSegmentSelect={handleExportSegment}
         panelSections={menuPanelSections}
         onPanelSection={handlePanelSection}
       />
+      {jpgScope && (
+        <JpgExportDialog
+          engine={engine}
+          scope={jpgScope}
+          fileStem={exportFileStem()}
+          onClose={() => setJpgScope(null)}
+        />
+      )}
       {ui.openWindowId === 'settings' && (
         <SettingsWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
       )}

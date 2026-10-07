@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseMenuXML } from '../src/ui/menuXML.ts';
 import {
+  EXPORT_COMMANDS,
   FILE_COMMANDS,
+  exportScopeOf,
   renameTarget,
   saveTarget,
 } from '../src/ui/fileCommands.ts';
@@ -24,16 +26,29 @@ test('file commands cover every top File menu entry', () => {
   const file = result.menus.find((menu) => menu.id === 'file');
   assert.ok(file);
   const ids = file.items.map((item) => item.commandId);
-  // Settings and Tutorial already have App handlers; everything else in the
-  // File menu must route through the shared file-command layer so no entry
-  // renders disabled.
-  const covered = new Set([...FILE_COMMANDS, 'settings', 'tutorial']);
+  // Settings and Tutorial already have App handlers; the Export submenu
+  // parents only expand; everything else in the File menu must route
+  // through the shared file-command layer so no entry renders disabled.
+  const covered = new Set([...FILE_COMMANDS, 'export-raster', 'export-vector', 'settings', 'tutorial']);
   for (const id of ids) {
     assert.ok(covered.has(id), `File menu entry ${id} has no command handler`);
   }
   for (const command of FILE_COMMANDS) {
     assert.ok(ids.includes(command), `file command ${command} has no File menu entry`);
   }
+});
+
+test('export leaves cover both Export submenus and resolve scopes', () => {
+  const result = parseMenuXML(readFileSync(MENUS_URL, 'utf8'));
+  assert.ok(!('error' in result));
+  const file = result.menus.find((menu) => menu.id === 'file');
+  assert.ok(file);
+  const leaves = file.items.flatMap((item) => item.children ?? []);
+  for (const command of EXPORT_COMMANDS) {
+    assert.ok(leaves.some((leaf) => leaf.commandId === command), `export command ${command} has no Export menu entry`);
+    assert.ok(exportScopeOf(command), `export command ${command} resolves no scope`);
+  }
+  assert.equal(leaves.length, EXPORT_COMMANDS.length);
 });
 
 test('save targets the open document, or the gallery when untitled', () => {

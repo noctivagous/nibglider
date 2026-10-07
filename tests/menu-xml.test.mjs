@@ -11,7 +11,9 @@ const MENUS_URL = new URL('../src/ui/menus/menus.xml', import.meta.url);
 // typo, a missing handler, or a dead handler fails here instead of silently.
 const WIRED_COMMANDS = [
   'open-gallery', 'new-document', 'save-gallery', 'rename-document',
-  'export', 'import',
+  'export-raster-canvas', 'export-raster-viewport', 'export-raster-selection',
+  'export-vector-canvas', 'export-vector-viewport', 'export-vector-selection',
+  'import',
   'scale-dialog', 'rotate-dialog',
   'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
   'undo', 'redo',
@@ -33,6 +35,7 @@ const WIRED_COMMANDS = [
 ];
 const PLACEHOLDER_COMMANDS = [
   'page-size', 'length-unit', 'reset-zoom', 'select',
+  'export-raster', 'export-vector',
   'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
   'repeat-grid', 'repeat-circle',
   'cut', 'copy', 'paste', 'select-all',

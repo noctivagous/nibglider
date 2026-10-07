@@ -3097,21 +3097,9 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     },
     [engine],
   );
-  const exportSceneAsSVG = useCallback(() => {
-    const svg = engine.exportSceneSVG();
-    if (!svg) return;
-    const name = galleryCurrentName(browserStore()) ?? 'untitled';
-    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${name}.svg`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }, [engine]);
   // Top File menu entry point: the menu bar owns the File menu, the panel
-  // owns the dialogs, so App forwards commands here.
+  // owns the dialogs, so App forwards commands here. Export scope leaves
+  // are handled in App (format state + JPG dialog live there), not here.
   const dispatchFileCommand = useCallback((command: FileCommand) => {
     dismissSelects();
     switch (command) {
@@ -3130,14 +3118,11 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       case 'rename-document':
         openGallery(renameTarget(browserStore()));
         break;
-      case 'export':
-        exportSceneAsSVG();
-        break;
       case 'import':
         importInputRef.current?.click();
         break;
     }
-  }, [dismissSelects, exportSceneAsSVG, openGallery, saveSceneToGallery]);
+  }, [dismissSelects, openGallery, saveSceneToGallery]);
   // Top Operations menu entry point for the scale/rotate modal dialog.
   const openOperationDialog = useCallback((kind: 'scale' | 'rotate') => {
     if (!engine.canTransformSelection()) return;

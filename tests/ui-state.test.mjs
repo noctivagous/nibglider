@@ -101,9 +101,16 @@ test('application menus cover file, edit, document, operations, modes, layers, c
   assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
   assert.equal(byId.file.title, 'File');
   assert.deepEqual(byId.file.items.map((item) => item.commandId), [
-    'open-gallery', 'new-document', 'save-gallery', 'rename-document', 'export', 'import',
+    'open-gallery', 'new-document', 'save-gallery', 'rename-document',
+    'export-raster', 'export-vector', 'import',
     'settings',
   ]);
+  for (const parent of ['export-raster', 'export-vector']) {
+    const submenu = byId.file.items.find((item) => item.commandId === parent);
+    assert.deepEqual((submenu.children ?? []).map((child) => child.commandId), [
+      `${parent}-canvas`, `${parent}-viewport`, `${parent}-selection`,
+    ]);
+  }
   assert.deepEqual(byId.help.items.map((item) => item.commandId), ['tutorial']);
   assert.ok(byId.document.items.some((item) => item.commandId === 'length-unit'));
   // Object control lives in Layers, not Operations.
@@ -188,7 +195,8 @@ test('operations menu groups dialog entries and carries rail shortcuts and icons
     'new-document': 'new',
     'save-gallery': 'save',
     'rename-document': 'rename',
-    export: 'export',
+    'export-raster': 'export',
+    'export-vector': 'export',
     import: 'import',
     settings: 'settings',
   });

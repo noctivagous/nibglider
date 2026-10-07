@@ -88,6 +88,7 @@ import {
   exportFrameItems,
   frameArtwork,
   isExportFrameItem,
+  rasterizeSvg,
   rasterizeSvgToPng,
   readExportFrame,
 } from './scene/exportFrames';
@@ -219,6 +220,10 @@ export {
 type AnyItem = any;
 
 export type WheelGesture = 'pinch' | 'pan' | 'zoom';
+
+/** File > Export scope: the document canvas, the current viewport frame,
+ * or the selected objects. */
+export type ExportScope = 'canvas' | 'viewport' | 'selection';
 
 /** View snapshot for the canvas scrollbars and rulers: center and size
  * in project coordinates, plus the page sheet and the artwork bounds
@@ -1138,10 +1143,10 @@ export class NibGliderEngine {
     }
   }
 
-  /** Serialize the active artwork to SVG. Guide layers, snap/grid
-   * cursors, live previews, and the selection glow are hidden for the
-   * export (project.exportSVG omits none of them) and restored after. */
-  exportSceneSVG(): string {
+  /** Items hidden for every export so guide layers, snap/grid cursors,
+   * live previews, export frames, and the selection glow never leak into
+   * exported artwork (project.exportSVG omits none of them). */
+  private hideExportOverlays(): AnyItem[] {
     const hidden: AnyItem[] = [];
     const hide = (item: AnyItem): void => {
       try {
@@ -1153,42 +1158,150 @@ export class NibGliderEngine {
     };
     try {
       const project = this.scope.project;
-      if (!project) return '';
-      for (const layer of (project.layers ?? []) as AnyItem[]) {
+      for (const layer of ((project?.layers ?? []) as AnyItem[])) {
         try {
           if (layer && layer.guide) hide(layer);
         } catch { /* ignore */ }
       }
-      hide(this.gridLayer);
-      hide(this.guideLayer);
-      hide(this.gridCursor);
-      hide(this.pathSnapCursor);
-      hide(this.pointSnapCursor);
-      hide(this.previewInner);
-      hide(this.previewSplineText);
-      hide(this.previewShape);
-      hide(this.previewLine);
-      hide(this.previewPath);
-      hide(this.previewRect);
-      for (const frame of this.exportFrameItems()) hide(frame);
+    } catch { /* Headless. */ }
+    hide(this.gridLayer);
+    hide(this.guideLayer);
+    hide(this.gridCursor);
+    hide(this.pathSnapCursor);
+    hide(this.pointSnapCursor);
+    hide(this.previewInner);
+    hide(this.previewSplineText);
+    hide(this.previewShape);
+    hide(this.previewLine);
+    hide(this.previewPath);
+    hide(this.previewRect);
+    for (const frame of this.exportFrameItems()) hide(frame);
+    try {
       this.selection.suspendGlow();
+    } catch { /* Headless. */ }
+    return hidden;
+  }
+
+  private restoreExportOverlays(hidden: AnyItem[]): void {
+    try {
+      this.selection.restoreGlow();
+    } catch { /* Headless. */ }
+    for (const item of hidden) {
+      try {
+        item.visible = true;
+      } catch { /* ignore */ }
+    }
+    try {
+      this.scope.view?.update();
+    } catch { /* Headless. */ }
+  }
+
+  /** Serialize the active artwork to SVG. Overlay hiding is shared with
+   * the scoped exporters below. */
+  exportSceneSVG(): string {
+    const hidden = this.hideExportOverlays();
+    try {
+      const project = this.scope.project;
+      if (!project) return '';
       const exported = project.exportSVG({ asString: true });
       return typeof exported === 'string' ? exported : '';
     } catch {
       return '';
     } finally {
-      try {
-        this.selection.restoreGlow();
-      } catch { /* Headless. */ }
-      for (const item of hidden) {
-        try {
-          item.visible = true;
-        } catch { /* ignore */ }
-      }
-      try {
-        this.scope.view?.update();
-      } catch { /* Headless. */ }
+      this.restoreExportOverlays(hidden);
     }
+  }
+
+  /** Serialize the artwork cropped to one document-points box via the SVG
+   * viewBox. Live artwork is never clipped or modified. Null when the box
+   * is degenerate or serialization is unavailable. */
+  private exportBoxSVG(box: ExportFrameBox): string | null {
+    if (!Number.isFinite(box.x) || !Number.isFinite(box.y)
+      || !(box.width > 0) || !(box.height > 0)) return null;
+    const hidden = this.hideExportOverlays();
+    try {
+      const project = this.scope.project;
+      if (!project) return null;
+      const bounds = new this.scope.Rectangle(
+        new this.scope.Point(box.x, box.y),
+        new this.scope.Size(box.width, box.height),
+      );
+      const exported = project.exportSVG({ asString: true, bounds });
+      return typeof exported === 'string' && exported.length > 0 ? exported : null;
+    } catch {
+      return null;
+    } finally {
+      this.restoreExportOverlays(hidden);
+    }
+  }
+
+  /** Document-points crop box for a File > Export scope. Canvas prefers
+   * the page rect and falls back to the artwork bounds for unbounded
+   * documents; viewport reads the live view; selection reads the
+   * top-level selection union. Null when the scope has no area. */
+  scopeExportBox(scope: ExportScope): ExportFrameBox | null {
+    try {
+      if (scope === 'canvas') {
+        const page = this.pageRect();
+        if (page && page.width > 0 && page.height > 0) {
+          return { x: page.x, y: page.y, width: page.width, height: page.height };
+        }
+        const art = this.artworkRect();
+        if (art && art.width > 0 && art.height > 0) return { ...art };
+        return null;
+      }
+      if (scope === 'viewport') {
+        const bounds = this.scope.view?.bounds;
+        if (!bounds || !(bounds.width > 0) || !(bounds.height > 0)) return null;
+        return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+      }
+      const items = this.topLevelSelected();
+      if (items.length === 0) return null;
+      const united = this.selection.collectiveBounds(items);
+      if (!united || !(united.width > 0) || !(united.height > 0)) return null;
+      return { x: united.x, y: united.y, width: united.width, height: united.height };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Vector (SVG) export for a File > Export scope. */
+  exportScopeSVG(scope: ExportScope): { box: ExportFrameBox; svg: string } | null {
+    const box = this.scopeExportBox(scope);
+    if (!box) return null;
+    const svg = this.exportBoxSVG(box);
+    return svg ? { box, svg } : null;
+  }
+
+  /** PNG export for a File > Export scope at 96dpi. Needs DOM. */
+  exportScopePNG(scope: ExportScope): Promise<{ box: ExportFrameBox; blob: Blob } | null> {
+    const box = this.scopeExportBox(scope);
+    if (!box) return Promise.resolve(null);
+    const svg = this.exportBoxSVG(box);
+    if (!svg) return Promise.resolve(null);
+    return rasterizeSvg(svg, exportPngSize(box, 1), { mime: 'image/png', background: null })
+      .then((blob) => (blob ? { box, blob } : null));
+  }
+
+  /** JPEG export for a File > Export scope. Quality is 1..100;
+   * background defaults to opaque white because JPEG has no alpha. */
+  exportScopeJPG(
+    scope: ExportScope,
+    opts: { quality: number; scale: number; background: string | null },
+  ): Promise<{ box: ExportFrameBox; blob: Blob } | null> {
+    const box = this.scopeExportBox(scope);
+    if (!box) return Promise.resolve(null);
+    const svg = this.exportBoxSVG(box);
+    if (!svg) return Promise.resolve(null);
+    const scale = Number.isFinite(opts.scale) && opts.scale > 0 ? opts.scale : 1;
+    const quality = Number.isFinite(opts.quality)
+      ? Math.min(100, Math.max(1, opts.quality)) / 100
+      : 0.92;
+    return rasterizeSvg(svg, exportPngSize(box, scale), {
+      mime: 'image/jpeg',
+      quality,
+      background: opts.background ?? '#ffffff',
+    }).then((blob) => (blob ? { box, blob } : null));
   }
 
   // --- Export frames (Rect Keys > In-Canvas Elements > EXPORT FRAME) ---
@@ -1821,54 +1934,13 @@ export class NibGliderEngine {
   exportFrameSVG(id: string): { box: ExportFrameBox; svg: string }[] | null {
     const boxes = this.exportFrameBoxes(id);
     if (!boxes) return null;
-    const project = this.scope.project;
-    if (!project) return null;
-    const hidden: AnyItem[] = [];
-    const hide = (target: AnyItem): void => {
-      try {
-        if (target && target.visible !== false && !hidden.includes(target)) {
-          target.visible = false;
-          hidden.push(target);
-        }
-      } catch { /* Detached already. */ }
-    };
-    try {
-      for (const layer of (project.layers ?? []) as AnyItem[]) {
-        try { if (layer && layer.guide) hide(layer); } catch { /* ignore */ }
-      }
-      hide(this.gridLayer);
-      hide(this.guideLayer);
-      hide(this.gridCursor);
-      hide(this.pathSnapCursor);
-      hide(this.pointSnapCursor);
-      hide(this.previewInner);
-      hide(this.previewSplineText);
-      hide(this.previewShape);
-      hide(this.previewLine);
-      hide(this.previewPath);
-      hide(this.previewRect);
-      for (const frame of this.exportFrameItems()) hide(frame);
-      this.selection.suspendGlow();
-      const out: { box: ExportFrameBox; svg: string }[] = [];
-      for (const box of boxes) {
-        const bounds = new this.scope.Rectangle(
-          new this.scope.Point(box.x, box.y),
-          new this.scope.Size(box.width, box.height),
-        );
-        const exported = project.exportSVG({ asString: true, bounds });
-        if (typeof exported !== 'string' || exported.length === 0) return null;
-        out.push({ box: { ...box }, svg: exported });
-      }
-      return out;
-    } catch {
-      return null;
-    } finally {
-      try { this.selection.restoreGlow(); } catch { /* Headless. */ }
-      for (const target of hidden) {
-        try { target.visible = true; } catch { /* ignore */ }
-      }
-      try { this.scope.view?.update(); } catch { /* Headless. */ }
+    const out: { box: ExportFrameBox; svg: string }[] = [];
+    for (const box of boxes) {
+      const svg = this.exportBoxSVG(box);
+      if (!svg) return null;
+      out.push({ box: { ...box }, svg });
     }
+    return out;
   }
 
   /** Export one PNG per configured box, rasterized from the frame SVG at

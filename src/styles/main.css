@@ -5122,6 +5122,37 @@ kbd,
   border-bottom: 4px solid transparent;
   border-left: 5px solid var(--dp-text-3);
 }
+/* Segmented format control pinned to the top of an Export submenu:
+   one row of toggle buttons, unavailable formats dimmed but visible. */
+.app-menu-segments {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: 4px;
+  background: var(--dp-bg-3);
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+}
+.app-menu-segment {
+  flex: 1 1 0;
+  padding: 3px 0;
+  font-size: 0.75rem;
+  text-align: center;
+  color: var(--dp-text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.app-menu-segment.selected {
+  color: var(--dp-text-1);
+  background: var(--dp-accent-soft);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.app-menu-segment.unavailable {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .app-menu-item.focused .app-menu-caret {
   border-left-color: currentColor;
 }
@@ -5316,6 +5347,43 @@ kbd,
 .settings-error {
   color: var(--dp-text-2);
   font-size: 0.75rem;
+}
+/* JPG export dialog rows: quality slider pairing, output readout,
+   footnote, and the Cancel/Export action row. */
+.settings-value {
+  font-size: 0.8125rem;
+  color: var(--dp-text-1);
+}
+.settings-note {
+  font-size: 0.75rem;
+  color: var(--dp-text-2);
+  padding: 2px 0 8px;
+}
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+.jpg-quality {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.jpg-quality input[type="range"] {
+  width: 10rem;
+  accent-color: var(--dp-accent);
+}
+.jpg-quality-number {
+  width: 4rem;
+}
+.jpg-swatch {
+  width: 3rem;
+  height: 1.75rem;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--dp-border);
+  border-radius: 4px;
 }
 .settings-error {
   padding: 12px;
