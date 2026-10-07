@@ -4111,67 +4111,27 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
               <span className="slider" />
             </label>
           </span>
-          <button
-            type="button"
-            ref={repeatPreviewRef}
-            className={'shape-preview-trigger' + (paramsFlyout === 'repeat' ? ' open' : '')}
-            aria-haspopup="dialog"
-            aria-expanded={paramsFlyout === 'repeat'}
-            aria-label="Repeat scope"
-            title="Repeat scope"
-            onMouseEnter={() => hoverOpenFlyout('repeat')}
-            onMouseLeave={scheduleHoverClose}
-            onClick={() => toggleFlyout('repeat')}
-          >
-            <svg width="120" height="64" viewBox="0 0 120 64" aria-hidden="true">
-              <rect x="14" y="8" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
-              <rect x="66" y="8" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
-              <rect x="14" y="34" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
-              <rect x="66" y="34" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
-            </svg>
-          </button>
-          <NumericStepper
-            id="repeatRowsStepper"
-            size="compact"
-            value={engine.repeatRows}
-            min={1}
-            max={12}
-            step={1}
-            ariaLabel="Repeat rows"
-            title="Repeat rows (live keys 1 and 2)"
-            onCommit={(n) => engine.setRepeatRows(n)}
-          />
-          <NumericStepper
-            id="repeatColsStepper"
-            size="compact"
-            value={engine.repeatCols}
-            min={1}
-            max={12}
-            step={1}
-            ariaLabel="Repeat columns"
-            title="Repeat columns (live keys 3 and 4)"
-            onCommit={(n) => engine.setRepeatCols(n)}
-          />
-          <CustomSelect
-            id="repeatAnchorSelect"
-            ariaLabel="Repeat anchor"
-            value={engine.repeatAnchor}
-            options={REPEAT_ANCHOR_OPTIONS}
-            onChange={(v) => engine.setRepeatAnchor(v as RepeatAnchor)}
-            openOnHover
-            onHoverOpen={handleSelectHoverOpen}
-            forceCloseKey={selectCloseKey}
-          />
-          <CustomSelect
-            id="repeatDirectionSelect"
-            ariaLabel="Repeat direction"
-            value={engine.repeatDirection}
-            options={REPEAT_DIRECTION_OPTIONS}
-            onChange={(v) => engine.setRepeatDirection(v as RepeatDirection)}
-            openOnHover
-            onHoverOpen={handleSelectHoverOpen}
-            forceCloseKey={selectCloseKey}
-          />
+          <span className="seg-ctrl" role="group" aria-label="Repeat scope">
+            <button
+              type="button"
+              ref={repeatPreviewRef}
+              className={paramsFlyout === 'repeat' ? 'active' : undefined}
+              aria-haspopup="dialog"
+              aria-expanded={paramsFlyout === 'repeat'}
+              aria-label="Repeat scope"
+              title="Repeat scope"
+              onMouseEnter={() => hoverOpenFlyout('repeat')}
+              onMouseLeave={scheduleHoverClose}
+              onClick={() => toggleFlyout('repeat')}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <rect x="1.5" y="1.5" width="5.5" height="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <rect x="9" y="1.5" width="5.5" height="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <rect x="1.5" y="9" width="5.5" height="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <rect x="9" y="9" width="5.5" height="5.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+            </button>
+          </span>
         </header>
         <ShapeParamsFlyout
           open={paramsFlyout === 'repeat'}
@@ -4179,12 +4139,74 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           tone="combinatorics"
           title="Repeat scope"
           preview={
-            <span className="pane-title-text">Repeat scope</span>
+            <svg width="120" height="64" viewBox="0 0 120 64" aria-hidden="true">
+              <rect x="14" y="8" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
+              <rect x="66" y="8" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
+              <rect x="14" y="34" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
+              <rect x="66" y="34" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
+            </svg>
           }
           onClose={closeFlyout}
           onMenuMouseEnter={cancelHoverClose}
           onMenuMouseLeave={scheduleHoverClose}
         >
+          <div className="flyout-seg">
+            <div className="flyout-title">Grid</div>
+            <span className="param-item">
+              <label htmlFor="repeatRowsStepper">Rows</label>
+              <NumericStepper
+                id="repeatRowsStepper"
+                size="compact"
+                value={engine.repeatRows}
+                min={1}
+                max={12}
+                step={1}
+                ariaLabel="Repeat rows"
+                title="Repeat rows (live keys 1 and 2)"
+                onCommit={(n) => engine.setRepeatRows(n)}
+              />
+            </span>
+            <span className="param-item">
+              <label htmlFor="repeatColsStepper">Columns</label>
+              <NumericStepper
+                id="repeatColsStepper"
+                size="compact"
+                value={engine.repeatCols}
+                min={1}
+                max={12}
+                step={1}
+                ariaLabel="Repeat columns"
+                title="Repeat columns (live keys 3 and 4)"
+                onCommit={(n) => engine.setRepeatCols(n)}
+              />
+            </span>
+            <span className="param-item">
+              <label htmlFor="repeatAnchorSelect">Anchor</label>
+              <CustomSelect
+                id="repeatAnchorSelect"
+                ariaLabel="Repeat anchor"
+                value={engine.repeatAnchor}
+                options={REPEAT_ANCHOR_OPTIONS}
+                onChange={(v) => engine.setRepeatAnchor(v as RepeatAnchor)}
+                openOnHover
+                onHoverOpen={handleSelectHoverOpen}
+                forceCloseKey={selectCloseKey}
+              />
+            </span>
+            <span className="param-item">
+              <label htmlFor="repeatDirectionSelect">Direction</label>
+              <CustomSelect
+                id="repeatDirectionSelect"
+                ariaLabel="Repeat direction"
+                value={engine.repeatDirection}
+                options={REPEAT_DIRECTION_OPTIONS}
+                onChange={(v) => engine.setRepeatDirection(v as RepeatDirection)}
+                openOnHover
+                onHoverOpen={handleSelectHoverOpen}
+                forceCloseKey={selectCloseKey}
+              />
+            </span>
+          </div>
           <div className="flyout-seg">
             <div className="flyout-title">Paths</div>
             <label className="check-row">
