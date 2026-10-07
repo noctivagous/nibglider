@@ -11,6 +11,7 @@ import ControlPanel, { type ControlPanelHandle } from './components/ControlPanel
 import {
   EXPORT_COMMANDS,
   FILE_COMMANDS,
+  exportFileName,
   exportScopeOf,
   type ExportScopeId,
   type FileCommand,
@@ -345,7 +346,7 @@ export default function App() {
     if (vectorFormat !== 'svg') return;
     const output = engine.exportScopeSVG(scope);
     if (!output) return;
-    downloadText(`${exportFileStem()}-${scope}.svg`, output.svg, 'image/svg+xml');
+    downloadText(exportFileName(exportFileStem(), scope, 'svg'), output.svg, 'image/svg+xml');
   }, [downloadText, engine, exportFileStem, vectorFormat]);
 
   const runRasterExport = useCallback((scope: ExportScopeId) => {
@@ -357,7 +358,7 @@ export default function App() {
     void (async (): Promise<void> => {
       const output = await engine.exportScopePNG(scope);
       if (!output) return;
-      downloadBlob(`${exportFileStem()}-${scope}.png`, output.blob);
+      downloadBlob(exportFileName(exportFileStem(), scope, 'png'), output.blob);
     })();
   }, [downloadBlob, engine, exportFileStem, rasterFormat]);
 
@@ -540,13 +541,24 @@ export default function App() {
     }
   }, []);
 
-  // Export canvas rows carry the live document dimensions and unit; the
-  // Selected Objects rows only appear while something is selected.
+  // Export scope rows carry a second detail line with live dimensions
+  // and unit; the Selected Objects rows only appear while something is
+  // selected.
   const hasExportSelection = engine.hasSelection();
-  const exportCanvasLabel =
+  const exportCanvasDetail =
     pageForMenu.widthPt != null && pageForMenu.heightPt != null
-      ? `Document Canvas — ${formatInUnit(pageForMenu.widthPt, pageForMenu.unit)} × ${formatInUnit(pageForMenu.heightPt, pageForMenu.unit)}`
-      : 'Document Canvas';
+      ? `${formatInUnit(pageForMenu.widthPt, pageForMenu.unit)} × ${formatInUnit(pageForMenu.heightPt, pageForMenu.unit)}`
+      : undefined;
+  const exportView = engine.getViewState();
+  const exportViewportDetail = exportView
+    ? `${formatInUnit(exportView.viewWidth, engine.lengthUnit)} × ${formatInUnit(exportView.viewHeight, engine.lengthUnit)}`
+    : undefined;
+  const exportDetailOverrides: Record<string, string | undefined> = {
+    'export-raster-canvas': exportCanvasDetail,
+    'export-vector-canvas': exportCanvasDetail,
+    'export-raster-viewport': exportViewportDetail,
+    'export-vector-viewport': exportViewportDetail,
+  };
   const exportMenus = panels.menus
     .filter((menu) => menu.id !== CONTEXT_MENU_ID)
     .map((menu) => {
@@ -758,11 +770,8 @@ export default function App() {
         menus={exportMenus}
         enabledCommands={MENU_COMMANDS}
         checkedCommands={checkedCommands}
-        labelOverrides={{
-          'canvas-size': canvasSizeLabel,
-          'export-raster-canvas': exportCanvasLabel,
-          'export-vector-canvas': exportCanvasLabel,
-        }}
+        labelOverrides={{ 'canvas-size': canvasSizeLabel }}
+        detailOverrides={exportDetailOverrides}
         onCommand={handleMenuCommand}
         numberFields={menuNumberFields}
         onNumberCommit={handleMenuNumberCommit}

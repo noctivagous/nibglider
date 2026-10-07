@@ -6,12 +6,12 @@
     <item command="save-gallery" icon="save" />
     <item command="rename-document" icon="rename" />
     <item command="export-raster" label="Export Raster" icon="export">
-      <option command="export-raster-canvas" label="Document Canvas" icon="page-size" />
+      <option command="export-raster-canvas" label="Document Canvas Frame" icon="page-size" />
       <option command="export-raster-viewport" label="Current Viewport Frame" icon="reset-zoom" />
       <option command="export-raster-selection" label="Selected Objects" icon="select-all" />
     </item>
     <item command="export-vector" label="Export Vector" icon="export">
-      <option command="export-vector-canvas" label="Document Canvas" icon="page-size" />
+      <option command="export-vector-canvas" label="Document Canvas Frame" icon="page-size" />
       <option command="export-vector-viewport" label="Current Viewport Frame" icon="reset-zoom" />
       <option command="export-vector-selection" label="Selected Objects" icon="select-all" />
     </item>

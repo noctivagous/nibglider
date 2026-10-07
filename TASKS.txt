@@ -2,6 +2,14 @@
 We need to make a base class for layout for our XML.
 It will layout form data.  It will allow two columns of
 
+for both Export Raster and Export Vector
+1. rename "Document Canvas" to "Document Canvas Frame" 
+and put on the next line of the menu item the dimensions and units,
+e.g. 1920 x 1080 pts.  do the second line for Current Viewport Frame 
+as well.
+2. append the current date,time with hour and minute to the end of the filename, 
+separated by underscores.
+
 ----
 
 In the File Menu redo the Export function:
@@ -709,6 +717,13 @@ outputs.  The Media Gallery is a database that stores user
 information and can be a place for scrapbook.
  [  ] Instant Export Canvas to Download (SVG)
  [ ] Export > Export to Media Gallery
+ 
+ 
+ PARAMETRIC STACK CONVENTION OBJ.
+ [  ] For sign and logos, a parametric stack
+ contains a stack of (parametric) items that pertain to the
+ conventions of that parametric situation.
+ 
  
  
 ----

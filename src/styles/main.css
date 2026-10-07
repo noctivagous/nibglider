@@ -5085,6 +5085,13 @@ kbd,
 .app-menu-label {
   flex: 1 1 auto;
 }
+/* Second detail line under an export scope label (live dimensions). */
+.app-menu-detail {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--dp-text-2);
+  white-space: nowrap;
+}
 .app-menu-shortcut {
   flex: none;
   margin-left: auto;

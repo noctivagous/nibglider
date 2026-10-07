@@ -5,10 +5,10 @@
 import { useState } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
 import { exportPngSize } from '../engine/model/NGExportFrame';
-import type { ExportScopeId } from '../ui/fileCommands';
+import { exportFileName, type ExportScopeId } from '../ui/fileCommands';
 
 const SCOPE_TITLES: Record<ExportScopeId, string> = {
-  canvas: 'Document Canvas',
+  canvas: 'Document Canvas Frame',
   viewport: 'Current Viewport Frame',
   selection: 'Selected Objects',
 };
@@ -48,7 +48,7 @@ export default function JpgExportDialog({
         const url = URL.createObjectURL(output.blob);
         const anchor = document.createElement('a');
         anchor.href = url;
-        anchor.download = `${fileStem}-${scope}.jpg`;
+        anchor.download = exportFileName(fileStem, scope, 'jpg');
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();

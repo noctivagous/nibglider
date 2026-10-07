@@ -597,6 +597,7 @@ export default function AppMenu({
   enabledCommands,
   checkedCommands = NO_CHECKS,
   labelOverrides,
+  detailOverrides,
   onCommand,
   numberFields,
   onNumberCommit,
@@ -612,6 +613,8 @@ export default function AppMenu({
   checkedCommands?: Set<string>;
   /** Live labels overriding the static XML (e.g. canvas dimensions). */
   labelOverrides?: Record<string, string>;
+  /** Second-line detail under a row's label (e.g. export scope dims). */
+  detailOverrides?: Record<string, string | undefined>;
   onCommand: (commandId: string) => void;
   /** Numeric inputs hosted in option rows, keyed by command id. */
   numberFields?: Record<string, MenuNumberField>;
@@ -639,6 +642,20 @@ export default function AppMenu({
   // Live labels (canvas dimensions) win over the static menu definition.
   const labelFor = (item: MenuItemDef): string =>
     labelOverrides?.[item.commandId] ?? item.label ?? commandLabel(item.commandId);
+
+  // Optional second line under a row's label (export scope dimensions).
+  const detailFor = (item: MenuItemDef): string | undefined =>
+    detailOverrides?.[item.commandId];
+  const labelWithDetail = (item: MenuItemDef): ReactNode => {
+    const detail = detailFor(item);
+    if (!detail) return labelFor(item);
+    return (
+      <>
+        {labelFor(item)}
+        <span className="app-menu-detail">{detail}</span>
+      </>
+    );
+  };
 
   useEffect(() => {
     if (!openMenu) return;
@@ -885,7 +902,7 @@ export default function AppMenu({
                           ? <CheckGlyph />
                           : ((item.icon && MENU_ICONS[item.icon]) ?? null)}
                       </span>
-                      <span className="app-menu-label">{labelFor(item)}</span>
+                      <span className="app-menu-label">{labelWithDetail(item)}</span>
                       {item.shortcut && (
                         <span className="app-menu-shortcut">
                           <kbd>{item.shortcut}</kbd>
@@ -957,7 +974,7 @@ export default function AppMenu({
                                       : ((childRow.item.icon && MENU_ICONS[childRow.item.icon]) ?? null)}
                                   </span>
                                   <span className="app-menu-label">
-                                    {labelFor(childRow.item)}
+                                    {labelWithDetail(childRow.item)}
                                   </span>
                                 </button>
                                 <span onKeyDown={(e) => e.stopPropagation()}>
@@ -992,7 +1009,7 @@ export default function AppMenu({
                                   : ((childRow.item.icon && MENU_ICONS[childRow.item.icon]) ?? null)}
                               </span>
                               <span className="app-menu-label">
-                                {labelFor(childRow.item)}
+                                {labelWithDetail(childRow.item)}
                               </span>
                               {childRow.item.shortcut && (
                                 <span className="app-menu-shortcut">

@@ -54,6 +54,21 @@ export function exportScopeOf(command: string): ExportScopeId | null {
   return match[1] as ExportScopeId;
 }
 
+/** Download filename for a File > Export scope: the document stem plus
+ * the scope, with the local date and hour/minute appended last, each
+ * part underscore-separated, e.g. `untitled-canvas_2026-10-07_14-30.svg`. */
+export function exportFileName(
+  stem: string,
+  scope: ExportScopeId,
+  ext: string,
+  now: Date = new Date(),
+): string {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const time = `${pad(now.getHours())}-${pad(now.getMinutes())}`;
+  return `${stem}-${scope}_${date}_${time}.${ext}`;
+}
+
 /** Where a save should go: straight to the open gallery document, or into
  * the gallery save dialog when the work is still untitled. */
 export type SaveTarget = { kind: 'direct'; name: string } | { kind: 'gallery' };

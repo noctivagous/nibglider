@@ -6,6 +6,7 @@ import {
   EXPORT_COMMANDS,
   RASTER_FORMATS,
   VECTOR_FORMATS,
+  exportFileName,
   exportScopeOf,
 } from '../src/ui/fileCommands.ts';
 
@@ -46,6 +47,13 @@ test('exportScopeOf splits raster/vector leaves into scopes', () => {
 test('format lists keep unavailable options visible', () => {
   assert.deepEqual([...RASTER_FORMATS], ['png', 'jpg', 'webp']);
   assert.deepEqual([...VECTOR_FORMATS], ['svg', 'pdf', 'dxf']);
+});
+
+test('export filenames append local date and hour/minute underscore-separated', () => {
+  const noon = new Date(2026, 9, 7, 9, 5);
+  assert.equal(exportFileName('untitled', 'canvas', 'svg', noon), 'untitled-canvas_2026-10-07_09-05.svg');
+  assert.equal(exportFileName('work', 'viewport', 'png', noon), 'work-viewport_2026-10-07_09-05.png');
+  assert.equal(exportFileName('work', 'selection', 'jpg', noon), 'work-selection_2026-10-07_09-05.jpg');
 });
 
 test('selection scope follows the live selection, null when empty', () => {
