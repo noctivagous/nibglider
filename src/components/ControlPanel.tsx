@@ -1132,7 +1132,7 @@ function ShapeParamsFlyout({
 }: {
   open: boolean;
   triggerRef: RefObject<HTMLElement | null>;
-  tone: 'circle' | 'rect' | 'stroke' | 'fill' | 'text';
+  tone: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics';
   title: string;
   preview: ReactNode;
   onClose: () => void;
@@ -2190,7 +2190,81 @@ const COMBINE_OPTIONS: Array<{
       </>
     ),
   },
+  {
+    value: 'interlace',
+    label: 'Interlace',
+    tip: 'Interlace: weave the deposited shape with the strokes it lands on',
+    icon: (
+      <>
+        <path d="M2 7 H14" />
+        <path d="M8 2.2 V5.2" />
+        <path d="M8 8.8 V11.8" />
+      </>
+    ),
+  },
 ];
+
+function CombinePreview({
+  mode,
+  gap,
+}: {
+  mode: CombineMode | 'none';
+  gap: number;
+}) {
+  const notch = Math.max(1.6, Math.min(7, 1.6 + gap * 0.18));
+  const stroke = {
+    fill: 'none' as const,
+    stroke: 'currentColor',
+    strokeWidth: 1.6,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+  let body: ReactNode;
+  if (mode === 'interlace') {
+    body = (
+      <>
+        <path d="M10 16 H54" strokeWidth="3.2" />
+        <path d={`M32 6 V${16 - notch}`} strokeWidth="3.2" />
+        <path d={`M32 ${16 + notch} V26`} strokeWidth="3.2" />
+      </>
+    );
+  } else if (mode === 'union') {
+    body = (
+      <>
+        <circle cx="26" cy="16" r="8" />
+        <circle cx="38" cy="16" r="8" />
+      </>
+    );
+  } else if (mode === 'subtract') {
+    body = (
+      <>
+        <circle cx="26" cy="16" r="8" />
+        <circle cx="38" cy="16" r="8" strokeDasharray="2.2 1.6" opacity="0.55" />
+      </>
+    );
+  } else if (mode === 'intersect') {
+    body = <path d="M26 8 A8 8 0 0 1 26 24 A8 8 0 0 1 26 8 Z M38 8 A8 8 0 0 0 38 24 A8 8 0 0 0 38 8 Z" />;
+  } else if (mode === 'crop') {
+    body = (
+      <>
+        <circle cx="32" cy="16" r="8" strokeDasharray="2.2 1.6" />
+        <path d="M26 10 H38 V22 H26 Z" />
+      </>
+    );
+  } else {
+    body = (
+      <>
+        <circle cx="32" cy="16" r="8" />
+        <path d="M26 22 L38 10" />
+      </>
+    );
+  }
+  return (
+    <svg className="combine-preview" viewBox="0 0 64 32" aria-hidden="true" {...stroke}>
+      {body}
+    </svg>
+  );
+}
 
 function HistoryButtons({
   engine,
@@ -2618,12 +2692,13 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
 }, ref) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
-    'circle' | 'rect' | 'stroke' | 'fill' | 'text' | null
+    'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | null
   >(null);
   const textPreviewRef = useRef<HTMLButtonElement>(null);
   const fillPreviewRef = useRef<HTMLButtonElement>(null);
   const circlePreviewRef = useRef<HTMLButtonElement>(null);
   const rectPreviewRef = useRef<HTMLButtonElement>(null);
+  const combinePreviewRef = useRef<HTMLButtonElement>(null);
   const strokePreviewRef = useRef<HTMLButtonElement>(null);
   // Stable so the flyout's focus effect only runs when it opens — an
   // inline identity would refocus the flyout shell on every keystroke.
@@ -2714,7 +2789,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     setIconMenu(null);
   }, []);
   const openFlyoutAndDismissSelects = useCallback(
-    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text') => {
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics') => {
       setParamsFlyout(name);
       dismissSelects();
       setIconMenu(null);
@@ -2722,7 +2797,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     [dismissSelects],
   );
   const hoverOpenFlyout = useCallback(
-    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text') => {
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics') => {
       if (window.matchMedia?.('(hover: none)').matches) return;
       cancelHoverClose();
       openFlyoutAndDismissSelects(name);
@@ -2730,7 +2805,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     [cancelHoverClose, openFlyoutAndDismissSelects],
   );
   const toggleFlyout = useCallback(
-    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text') => {
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics') => {
       if (paramsFlyout === name) setParamsFlyout(null);
       else {
         setParamsFlyout(name);
@@ -3813,6 +3888,51 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             <span className="pane-title-text">Combinatorics</span></span>
           </SectionTitleButton>
           <CombinatoricsButtons engine={engine} />
+          <button
+            type="button"
+            ref={combinePreviewRef}
+            id="combinePreviewContainer"
+            className={
+              'shape-preview-trigger' +
+              (paramsFlyout === 'combinatorics' ? ' open' : '')
+            }
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'combinatorics'}
+            aria-label="Combinatorics parameters"
+            title="Combinatorics parameters"
+            onMouseEnter={() => hoverOpenFlyout('combinatorics')}
+            onMouseLeave={scheduleHoverClose}
+            onClick={() => toggleFlyout('combinatorics')}
+          >
+            <CombinePreview mode={engine.combineMode} gap={engine.interlaceGap} />
+          </button>
+          <ShapeParamsFlyout
+            open={paramsFlyout === 'combinatorics'}
+            triggerRef={combinePreviewRef}
+            tone="combinatorics"
+            title={engine.combineMode === 'interlace' ? 'Interlace' : 'Combinatorics'}
+            preview={<CombinePreview mode={engine.combineMode} gap={engine.interlaceGap} />}
+            onClose={closeFlyout}
+            onMenuMouseEnter={cancelHoverClose}
+            onMenuMouseLeave={scheduleHoverClose}
+          >
+            {engine.combineMode === 'interlace' ? (
+              <div className="panelParameters">
+                <ParamSlider
+                  id="interlaceGapSlider"
+                  label="Gap"
+                  value={engine.interlaceGap}
+                  min={0}
+                  max={40}
+                  step={0.5}
+                  decimals={1}
+                  onChange={(n) => engine.setInterlaceGap(n)}
+                />
+              </div>
+            ) : (
+              <p className="param-empty">No extra parameters</p>
+            )}
+          </ShapeParamsFlyout>
         </header>
       </PanelSection>
       )}

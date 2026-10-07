@@ -1569,7 +1569,8 @@ body {
    strip on one line so a short label (e.g. Circle) cannot wrap the
    preview and stretch sibling cards in the row via align-items:stretch. */
 #controlPanel #circleFrameControls .pane-titlebar.titlebar-single,
-#controlPanel #rectFrameControls .pane-titlebar.titlebar-single {
+#controlPanel #rectFrameControls .pane-titlebar.titlebar-single,
+#controlPanel #combinatoricsControls .pane-titlebar.titlebar-single {
   flex-wrap: nowrap;
   min-width: 0;
 }
@@ -1592,7 +1593,8 @@ body {
 }
 
 #controlPanel .titlebar-single #shapePreviewContainer,
-#controlPanel .titlebar-single #rectShapePreviewContainer {
+#controlPanel .titlebar-single #rectShapePreviewContainer,
+#controlPanel .titlebar-single #combinePreviewContainer {
   width: 84px;
   height: 30px;
   flex: 0 0 84px;
@@ -1661,10 +1663,35 @@ body {
   min-width: min(100%, 14rem);
 }
 
+/* Six combine buttons plus the preview well. The card keeps that strip
+   on one line and wraps to the next panel row instead of shrinking
+   under the buttons. */
+#controlPanel #combinatoricsControls {
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
+  min-width: 22rem;
+}
+
+/* A phone-width panel cannot hold the one-line strip. Take the row and
+   wrap the preview under the buttons instead of scrolling sideways. */
+@container cpanel (max-width: 26rem) {
+  #controlPanel #combinatoricsControls {
+    flex: 1 0 100%;
+    width: 100%;
+    min-width: 0;
+  }
+
+  #controlPanel #combinatoricsControls .pane-titlebar.titlebar-single {
+    flex-wrap: wrap;
+  }
+}
+
 /* Collapsed Circle/Rect keys shrink to the icon: beats the one-line
    titlebar minimum above (2 IDs) with an extra class. */
 #controlPanel #circleFrameControls.section-collapsed,
-#controlPanel #rectFrameControls.section-collapsed {
+#controlPanel #rectFrameControls.section-collapsed,
+#controlPanel #combinatoricsControls.section-collapsed {
   flex: 0 0 auto;
   width: auto;
   min-width: 0;
@@ -3297,6 +3324,24 @@ body {
 
 .shape-params-flyout.tone-text .flyout-title {
   color: #f0a3b0;
+}
+
+.shape-params-flyout.tone-combinatorics {
+  border-color: rgba(251, 146, 60, 0.55);
+  background: linear-gradient(to bottom, rgba(251, 146, 60, 0.20), rgba(194, 94, 20, 0.16)),
+    linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+.shape-params-flyout.tone-combinatorics .flyout-title {
+  color: #eab88a;
+}
+
+#combinePreviewContainer .combine-preview,
+.shape-params-flyout .combine-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: var(--dp-text-1);
 }
 
 .shape-params-flyout .flyout-text-input {

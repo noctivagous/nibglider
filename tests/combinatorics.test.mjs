@@ -99,6 +99,100 @@ test('deposit crop clips touched shapes to a drawn circle and consumes the circl
   } finally { cleanup(); }
 });
 
+function crossPair(s) {
+  const horizontal = new s.Path({
+    segments: [[-80, 0], [80, 0]], strokeColor: 'black', strokeWidth: 10,
+  });
+  const vertical = new s.Path({
+    segments: [[0, -80], [0, 80]], strokeColor: 'black', strokeWidth: 10,
+  });
+  return { horizontal, vertical };
+}
+
+test('deposit interlace weaves a drawn circle into the stroke it lands on', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const target = new s.Path({
+      segments: [[20, 100], [180, 100]], strokeColor: 'black', strokeWidth: 10,
+    });
+    const outside = new s.Path({
+      segments: [[300, 300], [340, 300]], strokeColor: 'black', strokeWidth: 10,
+    });
+    e.setCombineMode('interlace');
+    e.circleInnerShapeType = 'circle';
+    e.mousePt = new s.Point(100, 100);
+    e.circleKC('radius');
+    e.pointer.onMouseMove({ point: new s.Point(150, 100) });
+    e.endPathOrShape();
+    assert.equal(e.lastCombineNote, '');
+    assert.equal(e.undoLabel(), 'Deposit shape');
+    assert.equal(target.parent, null);
+    assert.ok(layer.children.includes(outside));
+    const woven = layer.children.filter((child) => child !== outside);
+    assert.equal(woven.length, 2);
+    assert.ok(woven.every((child) => child.data?.interlace));
+    e.undo();
+    assert.equal(layer.children.length, 2);
+    assert.ok(layer.children.includes(target));
+    assert.ok(layer.children.includes(outside));
+  } finally { cleanup(); }
+});
+
+test('interlace gap widens the deposited weave and a miss deposits plainly', () => {
+  const tight = engine();
+  try {
+    const { horizontal, vertical } = crossPair(tight.s);
+    tight.e.setCombineMode('interlace');
+    tight.e.setInterlaceGap(0);
+    assert.equal(tight.e.depositWithCombine(vertical), null);
+    assert.equal(horizontal.parent, null);
+    const under = tight.layer.children.find((child) => child.bounds.width > child.bounds.height);
+    assert.equal(under.contains(new tight.s.Point(0, 0)), false);
+    assert.equal(under.contains(new tight.s.Point(12, 0)), true);
+  } finally { tight.cleanup(); }
+
+  const wide = engine();
+  try {
+    const { horizontal, vertical } = crossPair(wide.s);
+    wide.e.setCombineMode('interlace');
+    wide.e.setInterlaceGap(14);
+    assert.equal(wide.e.depositWithCombine(vertical), null);
+    assert.equal(horizontal.parent, null);
+    const under = wide.layer.children.find((child) => child.bounds.width > child.bounds.height);
+    assert.equal(under.contains(new wide.s.Point(12, 0)), false);
+    assert.equal(under.contains(new wide.s.Point(30, 0)), true);
+    const bystander = new wide.s.Path({
+      segments: [[200, 200], [240, 200]], strokeColor: 'black', strokeWidth: 10,
+    });
+    const solo = new wide.s.Path({
+      segments: [[200, 40], [240, 40]], strokeColor: 'black', strokeWidth: 10,
+    });
+    assert.equal(wide.e.depositWithCombine(solo), solo);
+    assert.ok(wide.layer.children.includes(bystander));
+    assert.equal(solo.data?.interlace, undefined);
+  } finally { wide.cleanup(); }
+});
+
+test('the interlace combine button weaves the current selection', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const { horizontal, vertical } = crossPair(s);
+    e.setCombineMode('interlace');
+    e.setInterlaceGap(0);
+    e.addItemToSelection(horizontal);
+    e.addItemToSelection(vertical);
+    e.combineSelection('interlace');
+    assert.equal(e.combineMode, 'interlace');
+    assert.equal(e.lastCombineNote, '');
+    assert.equal(e.undoLabel(), 'Interlace');
+    assert.equal(layer.children.length, 2);
+    assert.ok(layer.children.every((child) => child.data?.interlace));
+    const under = layer.children.find((child) => child.bounds.height > child.bounds.width);
+    assert.equal(under.contains(new s.Point(0, 0)), false);
+    assert.equal(under.contains(new s.Point(0, 12)), true);
+  } finally { cleanup(); }
+});
+
 test('a selection combine with no overlap adds no history entry', () => {
   const { s, e, layer, cleanup } = engine();
   try {

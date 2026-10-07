@@ -44,6 +44,7 @@ const LABELS: Record<CombineMode, string> = {
   subtract: 'Subtract',
   intersect: 'Intersect',
   crop: 'Crop',
+  interlace: 'Interlace',
 };
 
 export class CombinatoricsManager {
@@ -70,6 +71,9 @@ export class CombinatoricsManager {
       return;
     }
     const snap = host.capture();
+    // Deposit-time and selection interlace live on InterlaceManager; the
+    // engine routes that mode before calling here.
+    if (mode === 'interlace') return;
     if (mode === 'crop') {
       const placed = this.combineCrop();
       if (placed) {
@@ -99,7 +103,7 @@ export class CombinatoricsManager {
   depositWithCombine(deposited: Item): Item | null {
     const host = this.host;
     const mode = host.combineMode();
-    if (!deposited || mode === 'none') return deposited;
+    if (!deposited || mode === 'none' || mode === 'interlace') return deposited;
     const opName = mode === 'union' ? 'unite' : mode === 'crop' ? 'intersect' : mode;
     const depositGeo = host.shapePartOf(deposited);
     if (!depositGeo || typeof depositGeo[opName] !== 'function') return deposited;

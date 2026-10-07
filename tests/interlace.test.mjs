@@ -222,9 +222,17 @@ test('two intersecting strokes weave with alternating over/under', () => {
     // The gap clears the over-band: daylight around the crossing in the under band.
     assert.equal(under0.contains(new s.Point(c0.x + 8, c0.y)), false);
     assert.equal(over0.contains(new s.Point(c0.x, c0.y + 4)), true);
-    // Results lower to Bézier authoring sources.
+    // Results lower to Bézier authoring sources. Straight bands stay
+    // straight: fitting must not hang handles on polygon edges.
     for (const child of layer.children) {
       assert.equal(e.getRetainedPathDrawable(child.data.drawableId).source.mode, 'bezier');
+      const paths = child.className === 'CompoundPath' ? [...child.children] : [child];
+      for (const path of paths) {
+        for (const seg of path.segments) {
+          assert.ok(Math.hypot(seg.handleIn.x, seg.handleIn.y) < 1e-6, 'straight edge gained a handle');
+          assert.ok(Math.hypot(seg.handleOut.x, seg.handleOut.y) < 1e-6, 'straight edge gained a handle');
+        }
+      }
     }
   } finally { cleanup(); }
 });
@@ -431,6 +439,16 @@ test('circle-on-circle gaps are symmetric and hug the over-ring', () => {
     assert.ok(plus >= 7.5 && plus <= 9.9, `+extent ${plus}`);
     assert.ok(minus >= 7.5 && minus <= 11.5, `-extent ${minus}`);
     assert.ok(Math.abs(plus - minus) <= 1.5, `asymmetric extents ${plus} vs ${minus}`);
+    // Flattened rings are fitted back to cubics. A gapped annulus is a
+    // handful of curves, not the sampling polyline.
+    for (const child of layer.children) {
+      const paths = child.className === 'CompoundPath' ? [...child.children] : [child];
+      for (const path of paths) {
+        assert.ok(path.segments.length <= 24, `annulus kept ${path.segments.length} anchors`);
+        assert.ok(path.segments.some((seg) => Math.hypot(seg.handleOut.x, seg.handleOut.y) > 1
+          || Math.hypot(seg.handleIn.x, seg.handleIn.y) > 1), 'annulus lost its curves');
+      }
+    }
   } finally { cleanup(); }
 });
 

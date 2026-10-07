@@ -445,6 +445,10 @@ export class NibGliderEngine {
   // present, each deposited shape folds into it using this mode ('none'
   // deposits plainly, exactly as before).
   combineMode: CombineMode | 'none' = 'none';
+  // Daylight past the over-band when Combinatorics mode is Interlace.
+  // Baked weaves from the mode use this gap; the menu Interlace command
+  // keeps the width-derived default.
+  interlaceGap = 2;
   // Kerned advance measurement (parsed font bytes → canvas → estimate).
   textMetrics = new FontMetrics();
 
@@ -2771,15 +2775,28 @@ export class NibGliderEngine {
   }
 
   combineSelection(mode: CombineMode): void {
+    if (mode === 'interlace') {
+      this.interlace.interlaceSelection(this.interlaceGap);
+      return;
+    }
     if (mode !== 'union' && mode !== 'subtract' && mode !== 'intersect' && mode !== 'crop') return;
     this.combinatorics.combineSelection(mode);
   }
 
   setCombineMode(m: CombineMode | 'none'): void {
-    if (m !== 'none' && m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop')
-      return;
+    if (m !== 'none' && m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop'
+      && m !== 'interlace') return;
     this.combineMode = m;
     this.updatePreviewBox();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setInterlaceGap(v: number): void {
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return;
+    const next = Math.min(80, Math.round(v * 10) / 10);
+    if (next === this.interlaceGap) return;
+    this.interlaceGap = next;
     this.updateTextContent();
     this.notify();
   }
@@ -2798,6 +2815,9 @@ export class NibGliderEngine {
   }
 
   depositWithCombine(deposited: AnyItem): AnyItem | null {
+    if (this.combineMode === 'interlace') {
+      return this.interlace.depositWithInterlace(deposited, this.interlaceGap);
+    }
     return this.combinatorics.depositWithCombine(deposited);
   }
 

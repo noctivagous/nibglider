@@ -1,3 +1,7 @@
+
+[  ]  two-column grid layout of cards for customselect dropdowns for Rect Keys
+and Circle Keys.  a previous grid of cards layout was used in Select Dropdwon
+
 [  ] Make Fill Shape - let's say you have 5 empty (stroke, no fill) shapes
 intersecting.  this key, assigned to 8, should allow the user to make
 fill-only shapes for the shapes produced by the intersection.
@@ -73,6 +77,12 @@ We also will want some layout elements, possibly some form elements.
 The goal is to add some structure and then some consequent clarity to the GUI system we have
 because we will let the user drag some things around on screen to reposition them or resize them
 and adding new sections.
+
+IN-CANVAS
+the aspect is that they can embed controls, that unlike vector shapes they may have interactivity or parameters 
+Export Frame has no contribution to the drawing whereas data table or an interlace has simply controls that can be revealed 
+Export Frame is a non-rendering live element (pure metadata, never artwork), while Data Table and Interlace are content live      
+elements whose controls reveal on selection. "Live element" still covers both; the split is just rendering vs non-rendering. 
 
 [- ] real clipboard implementation, select-all engine support. (Edit menu).
    Pasting should support pasting SVG into vectors on the page, pasting other image data types.

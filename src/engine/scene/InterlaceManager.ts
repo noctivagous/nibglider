@@ -4,7 +4,7 @@
 // Gaps alone produce the weave — no restacking is needed, since the
 // background shows through each gap regardless of paint order. Results bake
 // the expansion and lower to Bézier, like other boolean results.
-// Public: canInterlaceSelection, interlaceSelection.
+// Public: canInterlaceSelection, interlaceSelection, depositWithInterlace.
 
 import type { CombinatoricsHost } from './CombinatoricsManager';
 import type { NGBezierPath, NGCompositePath, NGBSplinePath, NGOutlinedStrokePath, NGPath } from '../model/NGPath';
@@ -12,6 +12,7 @@ import type { BezierSegment, ResolvedVectorGeometry, Vec2 } from '../model/geome
 import { resolveOutlinedStroke } from '../geometry/outlinedStroke';
 import { resolvePath } from '../geometry/pathResolver';
 import { canvasStrokeOf, clusterSlots, crossingKey, gapPadding, gapRectFor } from '../geometry/interlaceWeave';
+import { reducePolyline } from '../geometry/polylineFit';
 import type { WeaveMember } from '../geometry/interlaceWeave';
 import { hasBooleanArea } from '../geometry/booleanResolver';
 
@@ -119,10 +120,11 @@ export interface InterlaceGroupParams {
   overrides: Record<string, string>;
 }
 
-type InterlacePlan =
+type InterlacePlan = (
   | { kind: 'fresh'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; overrides: Record<string, string>; label: string }
   | { kind: 'rerun'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; overrides: Record<string, string>; label: string }
-  | { kind: 'add'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; overrides: Record<string, string>; label: string };
+  | { kind: 'add'; entries: WeaveEntry[]; firstId: string; phase: 0 | 1; weave: string; overrides: Record<string, string>; label: string }
+) & { padding?: number };
 
 /** One enumerated crossing: stable key, display number, winner, center. */
 export interface InterlaceCrossingInfo {
@@ -171,7 +173,7 @@ export class InterlaceManager {
     }
   }
 
-  interlaceSelection(): void {
+  interlaceSelection(padding?: number): void {
     const host = this.host;
     // Copy refs first: selectedItems() is the live selection array, and
     // placement edits below would shift it mid-loop.
@@ -186,6 +188,7 @@ export class InterlaceManager {
         host.notify();
         return;
       }
+      if (this.acceptPadding(padding)) plan.padding = padding;
       if (!this.bakeWeave(plan, temps, snap)) {
         host.setCombineNote(EMPTY_NOTE);
         host.updateTextContent();
@@ -198,6 +201,66 @@ export class InterlaceManager {
     }
     host.updateTextContent();
     host.notify();
+  }
+
+  // Deposit-time weave. The new shape is the first-role member when it
+  // crosses fresh strokes, and an added member when it crosses a baked
+  // weave. Returns null when the deposit was consumed into the bake (the
+  // caller's deposit command records that), or the input when nothing
+  // weavable was touched. Does not record its own undo.
+  depositWithInterlace(deposited: Item, padding?: number): Item | null {
+    const host = this.host;
+    if (!deposited) return deposited;
+    const temps: Item[] = [];
+    try {
+      const depositRibbon = this.ribbonFor(deposited, temps);
+      if (!depositRibbon) return deposited;
+      const fresh: Item[] = [];
+      const bands: Item[] = [];
+      for (const item of host.layerChildren()) {
+        if (!item || item === deposited) continue;
+        if (item === host.drawingPath() || item === host.quadPath()) continue;
+        if (host.isNonContentItem(item)) continue;
+        const ribbon = this.ribbonFor(item, temps);
+        if (!ribbon) continue;
+        if (!this.crossings(depositRibbon.spine, ribbon.spine).length) continue;
+        if (this.memoOf(item)) bands.push(item);
+        else fresh.push(item);
+      }
+      if (!fresh.length && !bands.length) return deposited;
+      let plan: InterlacePlan | null = null;
+      if (bands.length) {
+        const leadMemo = this.memoOf(bands[0]);
+        const key = leadMemo ? this.weaveKey(leadMemo, bands[0]?.data?.drawableId) : '';
+        const lead = bands.find((item) => {
+          const memo = this.memoOf(item);
+          return !!memo && this.weaveKey(memo, item?.data?.drawableId) === key;
+        }) ?? bands[0];
+        plan = this.classify([lead, deposited, ...fresh], temps);
+      }
+      if (!plan && fresh.length) plan = this.classify([deposited, ...fresh], temps);
+      if (!plan) {
+        host.setCombineNote(NO_CROSSINGS_NOTE);
+        return deposited;
+      }
+      if (this.acceptPadding(padding)) plan.padding = padding;
+      const baked = this.bakeWeave(plan, temps, null);
+      if (!baked) {
+        host.setCombineNote(EMPTY_NOTE);
+        return deposited;
+      }
+      host.setCombineNote('');
+      return null;
+    } catch {
+      host.setCombineNote(EMPTY_NOTE);
+      return deposited;
+    } finally {
+      for (const temp of temps) this.removeDetached(temp);
+    }
+  }
+
+  private acceptPadding(padding: number | undefined): padding is number {
+    return typeof padding === 'number' && padding >= 0 && Number.isFinite(padding);
   }
 
   // Hint matching the selection shape when classify() rejects it: a mixed
@@ -717,14 +780,15 @@ export class InterlaceManager {
     const firstIdx = Math.max(0, entries.findIndex((entry) => entry.id === plan.firstId));
     // Pairs in weave order; crossings sort along the earlier member so the
     // two-member case matches the legacy first-role ordering exactly.
-    const planned = this.planCrossings(entries, spines, plan.phase, plan.overrides);
+    const pad = this.acceptPadding(plan.padding) ? plan.padding : undefined;
+    const planned = this.planCrossings(entries, spines, plan.phase, plan.overrides, pad);
     let cutAny = false;
     for (const cross of planned) {
       const overEntry = entries[cross.over];
       const overSource = overEntry.source.mode === 'outlinedStroke' ? overEntry.source.spine : overEntry.source;
       for (const u of cross.unders) {
         const cut = this.cutOverlap(bands[u], spines[u], overSource, overEntry.style,
-          overEntry.width, gapPadding(entries[u].width), cross.centers);
+          overEntry.width, pad !== undefined ? pad : gapPadding(entries[u].width), cross.centers);
         if (!cut) continue;
         if (bands[u] !== entries[u].item) this.removeDetached(bands[u]);
         bands[u] = cut;
@@ -736,6 +800,9 @@ export class InterlaceManager {
       }
     }
     if (!cutAny) return null;
+    // Flattened curves (circles) come back as cubics. Straight bands are
+    // already minimal and stay on their original anchors.
+    for (const band of bands) this.simplifyBand(band);
     const layer = host.activeLayer();
     const originals = entries.map((entry) => entry.item);
     for (const band of bands) {
@@ -1197,6 +1264,7 @@ export class InterlaceManager {
       }
     }
     for (let i = 0; i < bands.length; i++) {
+      this.simplifyBand(bands[i]);
       // Member lineage rides along for future per-member actions.
       bands[i].data = { interlaceDisplay: true, memberId: ordered[i].id };
     }
@@ -1631,6 +1699,35 @@ export class InterlaceManager {
       return contour.contains(away) ? away : toward;
     } catch {
       return null;
+    }
+  }
+
+  // Replace a flattened polyline with fitted cubics when that removes
+  // anchors. Paths that already have handles, and fits that do not shrink
+  // the point list, are left alone.
+  private simplifyBand(band: Item): void {
+    const paths: Item[] = band?.className === 'CompoundPath' ? [...(band.children ?? [])] : [band];
+    const scope = this.host.paperScope();
+    for (const path of paths) {
+      try {
+        const segments = path?.segments;
+        if (!segments || segments.length < 4) continue;
+        const linear = segments.every((seg: Item) =>
+          Math.hypot(seg.handleIn?.x ?? 0, seg.handleIn?.y ?? 0) < 1e-9
+          && Math.hypot(seg.handleOut?.x ?? 0, seg.handleOut?.y ?? 0) < 1e-9);
+        if (!linear) continue;
+        const reduced = reducePolyline(segments.map((seg: Item) => ({ x: seg.point.x, y: seg.point.y })),
+          !!path.closed, 0.1);
+        if (reduced.length >= segments.length) continue;
+        path.removeSegments();
+        for (const seg of reduced) {
+          path.add(new scope.Segment(
+            new scope.Point(seg.point.x, seg.point.y),
+            new scope.Point(seg.handleIn.x, seg.handleIn.y),
+            new scope.Point(seg.handleOut.x, seg.handleOut.y),
+          ));
+        }
+      } catch { /* Keep the flattened contour. */ }
     }
   }
 

@@ -485,6 +485,13 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M5.5 4.5 H10.5 V9.5 H5.5 Z" />
     </Thumb1614>
   ),
+  'combinatorics-interlace': (
+    <Thumb1614>
+      <path d="M2 7 H14" />
+      <path d="M8 2.2 V5.2" />
+      <path d="M8 8.8 V11.8" />
+    </Thumb1614>
+  ),
   // Text modes have no panel artwork; ragged lines for Display,
   // justified lines for Body.
   'textmode-display': (

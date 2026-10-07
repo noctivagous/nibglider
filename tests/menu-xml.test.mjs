@@ -19,7 +19,7 @@ const WIRED_COMMANDS = [
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
   'bring-to-front', 'send-to-back', 'duplicate-selection',
   'group', 'ungroup-selection', 'delete-selection', 'transform-mode',
-  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-crop',
+  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-crop', 'combinatorics-interlace',
   'interlace', 'interlace-group', 'remove-from-interlace',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
   'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',

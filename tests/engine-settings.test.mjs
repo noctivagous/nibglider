@@ -55,6 +55,7 @@ function mutate(engine) {
   engine.setDisplayFlow('interior');
   engine.setCircumferenceGap(5);
   engine.setCombineMode('union');
+  engine.setInterlaceGap(6.5);
   engine.setQuadMapping('projective');
   engine.setPerspectiveCircle(true);
   engine.setTextPasteLocation('view-center');
@@ -91,6 +92,7 @@ function checkMutated(e) {
   assert.equal(e.displayFlow, 'interior');
   assert.equal(e.circumferenceGap, 5);
   assert.equal(e.combineMode, 'union');
+  assert.equal(e.interlaceGap, 6.5);
   assert.equal(e.quadMapping, 'projective');
   assert.equal(e.perspectiveCircle, true);
   assert.equal(e.textPasteLocation, 'view-center');
