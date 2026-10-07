@@ -1,4 +1,29 @@
 
+We need to make a base class for layout for our XML.
+It will layout form data.  It will allow two columns of
+
+----
+
+In the File Menu redo the Export function:
+
+[ ] Export > Raster >
+   [PNG | JPG | WEBP]   (Webp option present, not avail yet)
+   [ ] Document Canvas  [dimensions size and units]
+   [ ] Current Viewport Frame  (current functionality)
+   [ ] Selected Objects  (only show if there are selected objects)
+
+[ ] Export > Vector >
+   segm ctrl embedded in menu item: [ SVG* | PDF | DXF ]  (PDF, DXF option present, not avail yet)
+   [ ] Document Canvas  [dimensions size and units]
+   [ ] Current Viewport Frame  (current functionality)
+   [ ] Selected Objects  (only show if there are selected objects)
+
+[ ] Import > 
+    [ ] SVG
+    [ ] PDF (not avail. yet)
+
+
+---
 
 [  ] add: Move Object Up, Move Object Down to Layers and Objects menu.
   [  ] two-column layout for layer functions "bring to front", etc.
@@ -293,11 +318,25 @@ to the cursor from the field that changes the value.  This line will extend
 from a square subcontrol to the right of the right stepper, so that it can be
 manually clicked.
 
-[ ] LIVE REPEAT section in panel with toggle switch.
+[ ] REPEAT section in panel with toggle switch.
 It will affect live drawing and preview.  
 To begin with, we will have a grid repeat.  If you draw something,
-it will repeat in real time that object.  Try to find ways to optimize
-this with PaperJS.
+it will repeat in real time that object.  You can repeat it in the center
+of cells, on the grid intersections.  Try to find ways to optimize
+this with PaperJS.  So if you are using a Rect key, it will repeat
+during the live drawing of the rect key.  Same for the spline tool.
+What it does is modify the live drawing tool.  Going along with it should
+be a geometry module that produces repeats for circles, like GridGeometry.
+It might be called RepeatManager.
+
+[x] We want to make a geometry element for grids.  This will be used in different parts of the
+app for a wide range of purposes.  It will have all of the setters and getters necessary or utilized.
+For repeating an element in a grid, it will be able to make use of any positioning point necessary
+from this grid geometry element.  for example, although the plan is not to make these right now,
+just the grid:
+  [ ]  -- for the clipboard, if the data is CSV, it pastes the data as a Data Table. 
+  [ ]  -- for In-Canvas Elements > Page Layout > Modular Grids, Column Grids
+    
  [ ]two
 sections to begin with in its flyout popover: 
 Paths and Shape Keys: Rect Keys and Circle Keys.  The two categories of

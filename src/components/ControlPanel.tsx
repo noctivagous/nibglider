@@ -2227,6 +2227,17 @@ function activeCombineLabel(
   return COMBINE_OPTIONS.find((opt) => opt.value === active)?.label ?? 'Combinatorics';
 }
 
+function RepeatPreview() {
+  return (
+    <svg className="combine-preview" viewBox="0 0 64 32" aria-hidden="true">
+      <rect x="7" y="4" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="37" y="4" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="7" y="17" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="37" y="17" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 function CombinePreview({
   mode,
   gap,
@@ -4114,6 +4125,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           <button
             type="button"
             ref={repeatPreviewRef}
+            id="repeatPreviewContainer"
             className={'shape-preview-trigger' + (paramsFlyout === 'repeat' ? ' open' : '')}
             aria-haspopup="dialog"
             aria-expanded={paramsFlyout === 'repeat'}
@@ -4123,12 +4135,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             onMouseLeave={scheduleHoverClose}
             onClick={() => toggleFlyout('repeat')}
           >
-            <svg width="120" height="64" viewBox="0 0 64 32" aria-hidden="true">
-              <rect x="7" y="4" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
-              <rect x="37" y="4" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
-              <rect x="7" y="17" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
-              <rect x="37" y="17" width="20" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" />
-            </svg>
+            <RepeatPreview />
           </button>
         </header>
         <ShapeParamsFlyout
@@ -4136,14 +4143,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           triggerRef={repeatPreviewRef}
           tone="combinatorics"
           title="Repeat scope"
-          preview={
-            <svg width="120" height="64" viewBox="0 0 120 64" aria-hidden="true">
-              <rect x="14" y="8" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
-              <rect x="66" y="8" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
-              <rect x="14" y="34" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
-              <rect x="66" y="34" width="40" height="22" fill="none" stroke="currentColor" strokeWidth="2" />
-            </svg>
-          }
+          preview={<RepeatPreview />}
           onClose={closeFlyout}
           onMenuMouseEnter={cancelHoverClose}
           onMenuMouseLeave={scheduleHoverClose}

@@ -1609,7 +1609,8 @@ body {
 
 #controlPanel .titlebar-single #shapePreviewContainer,
 #controlPanel .titlebar-single #rectShapePreviewContainer,
-#controlPanel .titlebar-single #combinePreviewContainer {
+#controlPanel .titlebar-single #combinePreviewContainer,
+#controlPanel .titlebar-single #repeatPreviewContainer {
   width: 84px;
   height: 30px;
   flex: 0 0 84px;
@@ -3352,6 +3353,7 @@ body {
 }
 
 #combinePreviewContainer .combine-preview,
+#repeatPreviewContainer .combine-preview,
 .shape-params-flyout .combine-preview {
   display: block;
   width: 100%;
