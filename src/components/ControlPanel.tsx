@@ -2196,15 +2196,35 @@ const COMBINE_OPTIONS: Array<{
     value: 'interlace',
     label: 'Interlace',
     tip: 'Interlace: weave the deposited shape with the strokes it lands on',
+    // Overpass weave: the horizontal band breaks at the crossing so the
+    // continuous vertical strand reads as passing over it. Paint order
+    // matters — the vertical is last so it renders on top.
     icon: (
       <>
-        <path d="M2 7 H14" />
-        <path d="M8 2.2 V5.2" />
-        <path d="M8 8.8 V11.8" />
+        <path d="M2 7 H6.1" />
+        <path d="M9.9 7 H14" />
+        <path d="M8 2.2 V11.8" />
       </>
     ),
   },
 ];
+
+// The armed submode, whether combinatorics is on (combineMode) or off
+// (remembered in combineTool). Used for the flyout title and preview label.
+function activeCombineMode(
+  mode: CombineMode | 'none',
+  tool: CombineMode,
+): CombineMode {
+  return mode === 'none' ? tool : mode;
+}
+
+function activeCombineLabel(
+  mode: CombineMode | 'none',
+  tool: CombineMode,
+): string {
+  const active = activeCombineMode(mode, tool);
+  return COMBINE_OPTIONS.find((opt) => opt.value === active)?.label ?? 'Combinatorics';
+}
 
 function CombinePreview({
   mode,
@@ -2223,11 +2243,14 @@ function CombinePreview({
   };
   let body: ReactNode;
   if (mode === 'interlace') {
+    // Overpass weave matching the section button: the horizontal band
+    // breaks at the crossing (gap follows the Gap slider via notch) and
+    // the continuous vertical strand passes over it. Paint order matters.
     body = (
       <>
-        <path d="M10 16 H54" strokeWidth="3.2" />
-        <path d={`M32 6 V${16 - notch}`} strokeWidth="3.2" />
-        <path d={`M32 ${16 + notch} V26`} strokeWidth="3.2" />
+        <path d={`M10 16 H${32 - notch - 2}`} strokeWidth="3.2" />
+        <path d={`M${32 + notch + 2} 16 H54`} strokeWidth="3.2" />
+        <path d="M32 6 V26" strokeWidth="3.2" />
       </>
     );
   } else if (mode === 'union') {
@@ -3900,13 +3923,23 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             open={paramsFlyout === 'combinatorics'}
             triggerRef={combinePreviewRef}
             tone="combinatorics"
-            title={(engine.combineMode === 'none' ? engine.combineTool : engine.combineMode) === 'interlace' ? 'Interlace' : 'Combinatorics'}
-            preview={<CombinePreview mode={engine.combineMode} gap={engine.interlaceGap} />}
+            title={activeCombineLabel(engine.combineMode, engine.combineTool)}
+            preview={
+              <span className="combine-preview-wrap" aria-hidden="true">
+                <CombinePreview
+                  mode={activeCombineMode(engine.combineMode, engine.combineTool)}
+                  gap={engine.interlaceGap}
+                />
+                <span className="combine-preview-label">
+                  {activeCombineLabel(engine.combineMode, engine.combineTool)}
+                </span>
+              </span>
+            }
             onClose={closeFlyout}
             onMenuMouseEnter={cancelHoverClose}
             onMenuMouseLeave={scheduleHoverClose}
           >
-            {(engine.combineMode === 'none' ? engine.combineTool : engine.combineMode) === 'interlace' ? (
+            {activeCombineMode(engine.combineMode, engine.combineTool) === 'interlace' ? (
               <div className="panelParameters">
                 <ParamSlider
                   id="interlaceGapSlider"

@@ -3344,6 +3344,39 @@ body {
   color: var(--dp-text-1);
 }
 
+/* Combinatorics flyout preview: the mode icon with the selected
+   submode name overlaid, centered vertically and horizontally. */
+.shape-params-flyout.tone-combinatorics .flyout-preview {
+  position: relative;
+}
+
+.shape-params-flyout .combine-preview-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.shape-params-flyout .combine-preview-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-tech-title);
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #eab88a;
+  background: rgba(11, 14, 18, 0.72);
+  border: 1px solid var(--dp-border-soft);
+  border-radius: 4px;
+  padding: 2px 8px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
 .shape-params-flyout .flyout-text-input {
   width: 100%;
   box-sizing: border-box;
