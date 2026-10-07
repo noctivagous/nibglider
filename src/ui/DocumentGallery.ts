@@ -61,6 +61,42 @@ export function listDocuments(store: KeyValueStore = browserStore()): GalleryDoc
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+/** Number already used by an Untitled name. Bare "Untitled" is 0.
+ * "Untitled 3" is 3. Other names are not in the sequence. */
+export function untitledSequenceNumber(name: string): number | null {
+  const match = /^Untitled(?: (\d+))?$/.exec(name.trim());
+  if (!match) return null;
+  if (match[1] == null) return 0;
+  const n = Number(match[1]);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
+/** Next gallery name in the Untitled sequence: one past the highest
+ * number already used. Bare "Untitled" does not count as a number, so
+ * a gallery that only has that name still offers "Untitled 1". */
+export function nextUntitledName(store: KeyValueStore = browserStore()): string {
+  let last = 0;
+  for (const doc of parseDocs(store.getItem(GALLERY_DOCS_KEY))) {
+    const n = untitledSequenceNumber(doc.name);
+    if (n != null && n > last) last = n;
+  }
+  return `Untitled ${last + 1}`;
+}
+
+/** Name for a document that does not exist yet. A blank or a bare
+ * "Untitled" takes the next number. A numbered Untitled that is already
+ * in the gallery does too. Any other name is kept. */
+export function newDocumentName(store: KeyValueStore, requested: string): string {
+  const trimmed = requested.trim();
+  const next = nextUntitledName(store);
+  if (!trimmed || trimmed === 'Untitled') return next;
+  const number = untitledSequenceNumber(trimmed);
+  if (number == null) return trimmed;
+  const taken = parseDocs(store.getItem(GALLERY_DOCS_KEY)).some((doc) => doc.name === trimmed);
+  return taken ? next : trimmed;
+}
+
 /** Create a document entry and make it current. Returns the new id. */
 export function saveDocument(
   store: KeyValueStore,
@@ -68,12 +104,12 @@ export function saveDocument(
   svg: string,
   id: string | null = currentId(store),
 ): string {
-  const trimmed = name.trim() || 'Untitled';
   const docs = parseDocs(store.getItem(GALLERY_DOCS_KEY));
   const now = Date.now();
   if (id) {
     const existing = docs.find((doc) => doc.id === id);
     if (existing) {
+      const trimmed = name.trim() || existing.name;
       existing.name = trimmed;
       existing.svg = svg;
       existing.updatedAt = now;
@@ -82,7 +118,7 @@ export function saveDocument(
       return id;
     }
   }
-  const next: GalleryDoc = { id: makeId(), name: trimmed, svg, updatedAt: now };
+  const next: GalleryDoc = { id: makeId(), name: newDocumentName(store, name), svg, updatedAt: now };
   docs.push(next);
   writeDocs(store, docs);
   setCurrent(store, next.id);
@@ -165,8 +201,10 @@ export interface AutosaveScene {
   markDocumentClean(): void;
 }
 
-/** Persist dirty artwork to the gallery, creating the Untitled document on
- * the first save. Returns false when there was nothing to save. */
+/** Persist dirty artwork to the gallery. The first save creates a
+ * document named with the next Untitled number, so it does not reuse a
+ * bare "Untitled" already in the gallery. Returns false when there was
+ * nothing to save. */
 export function autosaveDocument(
   scene: AutosaveScene,
   store: KeyValueStore = browserStore(),
@@ -175,7 +213,7 @@ export function autosaveDocument(
   const payload = scene.exportScene();
   if (!payload || !payload.trim()) return false;
   const id = currentId(store);
-  saveDocument(store, (id && currentName(store)) || 'Untitled', payload, id);
+  saveDocument(store, (id && currentName(store)) || nextUntitledName(store), payload, id);
   scene.markDocumentClean();
   return true;
 }

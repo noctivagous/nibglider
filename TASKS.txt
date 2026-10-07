@@ -1,6 +1,47 @@
 
-[  ]  two-column grid layout of cards for customselect dropdowns for Rect Keys
-and Circle Keys.  a previous grid of cards layout was used in Select Dropdwon
+
+[  ] add: Move Object Up, Move Object Down to Layers and Objects menu.
+  [  ] two-column layout for layer functions "bring to front", etc.
+  [  ]  two-column grid layout of cards for customselect dropdowns for Rect Keys
+and Circle Keys.  a previous grid of cards layout was used in Select Dropdown
+and it was for application menu vert stack that is in archive/
+
+
+OUTLINED PATH
+An outlined path can be a mode of the path and this mode
+should be reflected in the flyout popover over the preview box
+of the.
+
+KEYS TABLE GUI WIDGET
+[ ] flag, set to on: omit undo,redo, copy, paste functions from key table widget
+
+INTERLACE
+[ ] The different between group and baked op groups of interlace is the baked op groups of
+interlace are interlace-aware but just baked vector shapes whereas if the user rotates
+a shape in an interlace group or changes its width, the InterlaceGroup shape 
+should remake the interlacing.
+
+[ ] clicking on an interlace group will reveal their Over/Under segments as overlayed controls 
+and the user can click on them (with Tab or left mouse click to flip them).  
+[ ] Interlace - Let's say the user is drawing a spline, we want the live Over or Under status 
+reflected in the cursor icon during Interlace mode spline drawing and the - and + keys will, 
+during this mode, change.
+
+TEXT BOX ALTERNATIVE
+The usual text box dynamic is one where the box has to have some text to be
+visible.  It prioritizes the presence of text to do anything.  This instead will
+be the Baseline Text.  Since it is a widget, it can fill in text with "lorem ipsum..."
+but by default will remain blank until the user enters text, versus what normally
+occurs which is that the user has to do both at once.
+[ ] Rect Keys > In-Canvas > Baseline Text.  Sits on page as empty text box.
+
+
+
+[x] When a new document is made, make sure that its name isn't the same
+as the other Untitled docs ("Untitled" without a number).  When a new Document is made from
+the File menu, show a text field in the dialog window 
+for the name, defaults to Untitled [doc gallery last Untitled number + 1].
+
 
 [  ] Make Fill Shape - let's say you have 5 empty (stroke, no fill) shapes
 intersecting.  this key, assigned to 8, should allow the user to make
@@ -494,8 +535,11 @@ to other edges or points.
 
 
 ROTATE AND SCALE KEYS
-[ ] If snapping to Points, will rotate around the hovered point.
+[ ] If snapping to Points is on, the keys will rotate around the hovered point.
+[ ] Live keys: Alt+R and Alt+S, Alt+H, and Alt+V vert shear
 
+GROUP FEATURES
+[  ] Element order list metadata, such as for shading gradations priority.
 
 The settings in the keys' popover when they are clicked should not be the same as the sections in the panels.  
 The settings in the panel sections decide what the circle keys draw whereas what shows up in the keys' 

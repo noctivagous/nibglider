@@ -22,6 +22,8 @@ import {
   deleteDocument as galleryDeleteDocument,
   docDisplayName as galleryDisplayName,
   listDocuments as galleryListDocuments,
+  newDocumentName,
+  nextUntitledName,
   renameDocument as galleryRenameDocument,
   saveDocument as gallerySaveDocument,
   setCurrent as gallerySetCurrent,
@@ -2403,49 +2405,23 @@ function HistoryButtons({
 }
 
 function CombinatoricsButtons({ engine }: { engine: NibGliderEngine }) {
-  const mode = engine.combineMode;
-  // One control, two jobs: arming a button sets the deposit mode, and
-  // with 2+ shapes already selected the same click combines the
-  // selection on the spot (the old dedicated buttons' behavior).
-  const arm = (value: CombineMode | 'none'): void => {
+  const selected = engine.combineMode === 'none' ? engine.combineTool : engine.combineMode;
+  // Arming a button turns combinatorics on in that mode. With 2+ shapes
+  // already selected the same click combines the selection on the spot.
+  const arm = (value: CombineMode): void => {
     engine.setCombineMode(value);
-    if (value !== 'none' && engine.canCombineSelection()) {
-      engine.combineSelection(value);
-    }
+    if (engine.canCombineSelection()) engine.combineSelection(value);
   };
   return (
     <span className="param-item">
       <div className="seg-ctrl" role="group" aria-label="Combine mode">
-        <button
-          key="none"
-          type="button"
-          title="None: deposit shapes plainly"
-          aria-label="No combining"
-          className={mode === 'none' ? 'active' : undefined}
-          onClick={() => arm('none')}
-        >
-          <svg
-            viewBox="0 0 16 14"
-            width="18"
-            height="16"
-            aria-hidden="true"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="8" cy="7" r="3.6" />
-            <path d="M5.5 9.5 L10.5 4.5" />
-          </svg>
-        </button>
         {COMBINE_OPTIONS.map((opt) => (
           <button
             key={opt.value}
             type="button"
             title={`${opt.tip} — arms future deposits; combines the selection now when 2+ shapes are selected`}
             aria-label={opt.label}
-            className={mode === opt.value ? 'active' : undefined}
+            className={selected === opt.value ? 'active' : undefined}
             onClick={() => arm(opt.value)}
           >
             <svg
@@ -3063,9 +3039,12 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       ) {
         return;
       }
+      const store = browserStore();
+      const name = newDocumentName(store, spec.name);
       engine.applyPageSpec(spec.widthPt, spec.heightPt, spec.unit);
       engine.newDocument();
-      gallerySetCurrent(browserStore(), null);
+      const payload = engine.exportScene();
+      if (payload) gallerySaveDocument(store, name, payload, null);
       engine.markDocumentClean();
       setNewDocOpen(false);
     },
@@ -3887,6 +3866,17 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             </TitleIcon>
             <span className="pane-title-text">Combinatorics</span></span>
           </SectionTitleButton>
+          <label className="toggle-switch square-knob">
+            <input
+              type="checkbox"
+              id="combineEnabledCheckbox"
+              checked={engine.combineMode !== 'none'}
+              aria-label="Combinatorics"
+              title="Combinatorics: deposit shapes with the armed combine mode"
+              onChange={(e) => engine.setCombineMode(e.target.checked ? engine.combineTool : 'none')}
+            />
+            <span className="slider" />
+          </label>
           <CombinatoricsButtons engine={engine} />
           <button
             type="button"
@@ -3910,13 +3900,13 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             open={paramsFlyout === 'combinatorics'}
             triggerRef={combinePreviewRef}
             tone="combinatorics"
-            title={engine.combineMode === 'interlace' ? 'Interlace' : 'Combinatorics'}
+            title={(engine.combineMode === 'none' ? engine.combineTool : engine.combineMode) === 'interlace' ? 'Interlace' : 'Combinatorics'}
             preview={<CombinePreview mode={engine.combineMode} gap={engine.interlaceGap} />}
             onClose={closeFlyout}
             onMenuMouseEnter={cancelHoverClose}
             onMenuMouseLeave={scheduleHoverClose}
           >
-            {engine.combineMode === 'interlace' ? (
+            {(engine.combineMode === 'none' ? engine.combineTool : engine.combineMode) === 'interlace' ? (
               <div className="panelParameters">
                 <ParamSlider
                   id="interlaceGapSlider"
@@ -4260,6 +4250,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       ) : null}
       {newDocOpen ? (
         <NewDocumentDialog
+          defaultName={nextUntitledName(browserStore())}
           onConfirm={handleNewDocumentConfirm}
           onClose={() => setNewDocOpen(false)}
         />

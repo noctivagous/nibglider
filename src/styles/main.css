@@ -1663,9 +1663,9 @@ body {
   min-width: min(100%, 14rem);
 }
 
-/* Six combine buttons plus the preview well. The card keeps that strip
-   on one line and wraps to the next panel row instead of shrinking
-   under the buttons. */
+/* Switch plus five combine buttons and the preview well. The card keeps
+   that strip on one line and wraps to the next panel row instead of
+   shrinking under the buttons. */
 #controlPanel #combinatoricsControls {
   flex: 0 0 auto;
   width: max-content;
@@ -5014,7 +5014,8 @@ kbd,
 .app-menu-item.focused .app-menu-icon {
   color: inherit;
 }
-.app-menu-item:disabled {
+.app-menu-item:disabled,
+.app-menu-item[aria-disabled="true"] {
   color: var(--dp-text-3);
   cursor: default;
 }
@@ -5027,7 +5028,8 @@ kbd,
   justify-content: center;
   color: var(--dp-text-2);
 }
-.app-menu-item:disabled .app-menu-icon {
+.app-menu-item:disabled .app-menu-icon,
+.app-menu-item[aria-disabled="true"] .app-menu-icon {
   color: inherit;
 }
 .app-menu-label {

@@ -5,6 +5,8 @@ import { NibGliderEngine } from '../src/engine/engine.ts';
 import {
   createDrawingPage,
   drawingPageRect,
+  pageCornerBrackets,
+  pageEdgeTicks,
   snapPageToGrid,
 } from '../src/engine/document/DrawingPage.ts';
 import { defaultGridSpacingPt, pointsPerUnit } from '../src/engine/document/MeasurementUnits.ts';
@@ -143,12 +145,15 @@ test('ruler guides default off, toggle, and persist', () => {
   } finally { second.cleanup(); }
 });
 
-test('document settings window defines ruler placement and guides', async () => {
+test('document settings window defines page presentation and rulers', async () => {
   const { readFileSync } = await import('node:fs');
   const { parseWindowXML } = await import('../src/engine/../ui/windowXML.ts');
   const xml = readFileSync(new URL('../src/ui/windows/document-settings.xml', import.meta.url), 'utf8');
   const parsed = parseWindowXML(xml);
   assert.ok('spec' in parsed);
+  const page = parsed.spec.sections.find((s) => s.id === 'page');
+  assert.equal(page?.title, 'Page');
+  assert.deepEqual(page.controls.map((c) => c.key), ['pageFill', 'pageSideTicks']);
   const rulers = parsed.spec.sections.find((s) => s.id === 'rulers');
   assert.ok(rulers);
   const keys = rulers.controls.map((c) => c.key).sort();
@@ -156,7 +161,7 @@ test('document settings window defines ruler placement and guides', async () => 
   // Size tab leads with the shared size editor; page sections follow.
   assert.deepEqual(parsed.spec.tabs.map((t) => t.id), ['size', 'page']);
   assert.deepEqual(parsed.spec.tabs[0].sectionIds, ['size-content']);
-  assert.deepEqual(parsed.spec.tabs[1].sectionIds, ['rulers']);
+  assert.deepEqual(parsed.spec.tabs[1].sectionIds, ['page', 'rulers']);
   const sizeContent = parsed.spec.sections.find((s) => s.id === 'size-content');
   assert.deepEqual(sizeContent.controls, [{ kind: 'custom', id: 'document-size' }]);
 });
@@ -221,13 +226,76 @@ test('pt documents snap pages to the 20pt grid', () => {
   } finally { cleanup(); }
 });
 
-test('page sheet stays dark on the dark canvas', () => {
+test('page corners are stroked brackets without a fill', () => {
   const { engine, cleanup } = openEngine();
   try {
     engine.setPageDimensions(800, 600, 'pt');
-    const fill = engine.pageOutline.fillColor;
-    assert.ok(fill.red < 0.5 && fill.green < 0.5 && fill.blue < 0.5);
+    const page = engine.pageRect();
+    const marks = engine.pageOutline;
+    assert.equal(marks.children.length, 4);
+    assert.equal(marks.data.isPage, true);
+    const bounds = marks.bounds;
+    assert.ok(Math.abs(bounds.x - page.x) < 0.01);
+    assert.ok(Math.abs(bounds.y - page.y) < 0.01);
+    assert.ok(Math.abs(bounds.width - page.width) < 0.01);
+    assert.ok(Math.abs(bounds.height - page.height) < 0.01);
+    for (const bracket of marks.children) {
+      assert.equal(bracket.data.pageRole, 'bracket');
+      assert.equal(bracket.fillColor, null);
+      assert.equal(bracket.closed, false);
+      assert.equal(bracket.segments.length, 3);
+      assert.ok(bracket.strokeColor);
+      assert.ok(bracket.strokeWidth > 0);
+    }
+    const arms = pageCornerBrackets(page);
+    assert.equal(arms.length, 4);
+    assert.ok(arms[0][0].x > page.x && arms[0][0].x < page.x + page.width / 2);
   } finally { cleanup(); }
+});
+
+test('page fill and side ticks follow document settings and persist', () => {
+  const shared = store();
+  const first = openEngine(shared);
+  try {
+    assert.equal(first.engine.pageFill, false);
+    assert.equal(first.engine.pageSideTicks, false);
+    first.engine.setPageDimensions(800, 600, 'pt');
+    first.engine.setPageFill(true);
+    first.engine.setPageSideTicks(true);
+    const marks = first.engine.pageOutline;
+    const fill = marks.children.find((child) => child.data.pageRole === 'fill');
+    const brackets = marks.children.filter((child) => child.data.pageRole === 'bracket');
+    const ticks = marks.children.filter((child) => child.data.pageRole === 'tick');
+    assert.ok(fill);
+    assert.equal(fill.strokeColor, null);
+    assert.ok(fill.fillColor.red < 0.5);
+    assert.equal(brackets.length, 4);
+    assert.ok(ticks.length > 8);
+    assert.ok(ticks.every((tick) => tick.segments.length === 2 && tick.fillColor === null));
+    const page = first.engine.pageRect();
+    const top = ticks.find((tick) => Math.abs(tick.segments[0].point.y - page.y) < 0.01
+      && Math.abs(tick.segments[0].point.x - page.x) < 0.01);
+    assert.ok(top);
+    assert.ok(top.segments[1].point.y > page.y);
+    const edge = pageEdgeTicks(
+      page,
+      [{ offsetPt: 0, major: true }, { offsetPt: page.width, major: false }],
+      [],
+      10,
+      6,
+    );
+    assert.equal(edge.length, 4);
+    assert.equal(edge[0].points[1].y - edge[0].points[0].y, 10);
+  } finally { first.cleanup(); }
+  const second = openEngine(shared);
+  try {
+    assert.equal(second.engine.pageFill, true);
+    assert.equal(second.engine.pageSideTicks, true);
+    second.engine.setPageDimensions(800, 600, 'pt');
+    const roles = second.engine.pageOutline.children.map((child) => child.data.pageRole);
+    assert.ok(roles.includes('fill'));
+    assert.ok(roles.includes('tick'));
+  } finally { second.cleanup(); }
 });
 
 test('grid dots cover the page rect', () => {

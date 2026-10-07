@@ -9,10 +9,27 @@ type Item = any;
 export const SCENE_FORMAT = 'nibglider-scene';
 export const SCENE_VERSION = 1;
 
+/** View to restore with the document. Optional on older saves. */
+export interface SceneView {
+  centerX: number;
+  centerY: number;
+  zoom: number;
+}
+
 export interface ScenePayload {
   format: typeof SCENE_FORMAT;
   version: number;
   items: unknown[];
+  view?: SceneView;
+}
+
+function sceneViewOf(value: unknown): SceneView | null {
+  if (!value || typeof value !== 'object') return null;
+  const view = value as Partial<SceneView>;
+  const { centerX, centerY, zoom } = view;
+  if (typeof centerX !== 'number' || typeof centerY !== 'number' || typeof zoom !== 'number') return null;
+  if (!Number.isFinite(centerX) || !Number.isFinite(centerY) || !Number.isFinite(zoom) || zoom <= 0) return null;
+  return { centerX, centerY, zoom };
 }
 
 export function isSceneJson(text: string): boolean {
@@ -57,13 +74,25 @@ export function stripSvgClips(item: Item): void {
   }
 }
 
-export function encodeSceneItems(items: Item[]): string {
+export function encodeSceneItems(items: Item[], view?: SceneView | null): string {
   const payload: ScenePayload = {
     format: SCENE_FORMAT,
     version: SCENE_VERSION,
     items: items.map((item) => JSON.parse(item.exportJSON())),
   };
+  const stored = view ? sceneViewOf(view) : null;
+  if (stored) payload.view = stored;
   return JSON.stringify(payload);
+}
+
+/** View stored with a scene, or null when the payload has none. */
+export function readSceneView(json: string): SceneView | null {
+  try {
+    const parsed = JSON.parse(json) as Partial<ScenePayload>;
+    return sceneViewOf(parsed.view);
+  } catch {
+    return null;
+  }
 }
 
 export function decodeSceneItems(project: paper.Project, json: string): Item[] {

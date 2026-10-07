@@ -5,12 +5,14 @@
 // `focused` highlight (accent-soft, like the rail's CustomSelect), Enter
 // activates, Escape closes, Left/Right move between menus. Rows whose
 // command is in checkedCommands carry a check glyph (toggle and option
-// state); rows with children expand into a flyout submenu. Tested indirectly
+// state); rows with children expand into a flyout submenu. Moving onto a
+// row that is not that parent or one of its options closes the flyout
+// (a leaf under the last parent must not leave it open). Tested indirectly
 // through App wiring; menu defs from tests/ui-state.test.mjs, stepping rules
 // from tests/menu-navigation.test.mjs.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { MenuDef, MenuItemDef } from '../ui/PanelsManager';
-import { stepFocus } from '../ui/menuNavigation';
+import { stepFocus, submenuForRow } from '../ui/menuNavigation';
 import { SnapNumInput } from './ControlPanel';
 
 /** Live numeric field hosted inside a menu option row (e.g. snap steps). */
@@ -649,29 +651,55 @@ export default function AppMenu({
           effectiveEnabled.add(`panel-show-${sec.id}`);
           if (!sec.hidden) effectiveEnabled.add(`panel-expand-${sec.id}`);
         }
-        // Visible rows: headers and items in order, with the open submenu's
+        // Visible rows: headers and items in order, with one submenu's
         // options spliced after their parent and the Panel group last.
-        // focusIdx addresses this list.
-        const rows: MenuRow[] = [];
-        for (const item of menu.items) {
-          rows.push({ item, parent: null });
-          if (item.children && openSub === item.commandId) {
-            for (const child of item.children) rows.push({ item: child, parent: item });
+        // focusIdx addresses this list. Spliced options shift every index
+        // below them, so closing a flyout has to retarget by command id.
+        const buildRows = (sub: string | null): MenuRow[] => {
+          const list: MenuRow[] = [];
+          for (const item of menu.items) {
+            list.push({ item, parent: null });
+            if (item.children && sub === item.commandId) {
+              for (const child of item.children) list.push({ item: child, parent: item });
+            }
           }
-        }
-        if (sections.length > 0) {
-          rows.push({
-            item: { commandId: `hdr-${menu.id}-panel`, label: 'Panel', header: true },
-            parent: null,
-          });
-          for (const sec of sections) {
-            rows.push({ item: { commandId: `panel-show-${sec.id}`, label: `Show ${sec.label}` }, parent: null });
-            rows.push({ item: { commandId: `panel-expand-${sec.id}`, label: `Expand ${sec.label}` }, parent: null });
+          if (sections.length > 0) {
+            list.push({
+              item: { commandId: `hdr-${menu.id}-panel`, label: 'Panel', header: true },
+              parent: null,
+            });
+            for (const sec of sections) {
+              list.push({ item: { commandId: `panel-show-${sec.id}`, label: `Show ${sec.label}` }, parent: null });
+              list.push({ item: { commandId: `panel-expand-${sec.id}`, label: `Expand ${sec.label}` }, parent: null });
+            }
           }
-        }
+          return list;
+        };
+        const rows = buildRows(openSub);
         const rowItems = rows.map((row) => row.item);
+        const placeHighlight = (commandId: string, sub: string | null): void => {
+          const idx = buildRows(sub).findIndex((row) => row.item.commandId === commandId);
+          setOpenSub(sub);
+          setFocusIdx(idx);
+        };
         const step = (from: number, dir: 1 | -1): void => {
-          setFocusIdx(stepFocus(rowItems, effectiveEnabled, from, dir));
+          const next = stepFocus(rowItems, effectiveEnabled, from, dir);
+          const row = rows[next];
+          if (!row) {
+            setFocusIdx(next);
+            return;
+          }
+          const sub = submenuForRow(openSub, {
+            commandId: row.item.commandId,
+            parentId: row.parent?.commandId ?? null,
+            hasChildren: !!row.item.children,
+          }, 'keyboard');
+          // Same flyout: the current index list still addresses this row.
+          if (sub === openSub) {
+            setFocusIdx(next);
+            return;
+          }
+          placeHighlight(row.item.commandId, sub);
         };
         const activateRow = (rowIdx: number): void => {
           const row = rows[rowIdx];
@@ -777,7 +805,20 @@ export default function AppMenu({
                 const { item } = row;
                 if (item.header) {
                   return (
-                    <div key={item.commandId}>
+                    <div
+                      key={item.commandId}
+                      onMouseEnter={() => {
+                        // Crossing a group label leaves the previous flyout.
+                        // The parent row's index does not move when its
+                        // options drop out, so the highlight can stay there.
+                        if (openSub === null) return;
+                        const parentIdx = rows.findIndex(
+                          (candidate) => candidate.parent === null && candidate.item.commandId === openSub,
+                        );
+                        setOpenSub(null);
+                        setFocusIdx(parentIdx);
+                      }}
+                    >
                       {rowIdx > 0 && <div className="app-menu-sep" role="separator" />}
                       <div className="app-menu-group" role="presentation">
                         <span>{item.label ?? commandLabel(item.commandId)}</span>
@@ -801,14 +842,17 @@ export default function AppMenu({
                       type="button"
                       role="menuitem"
                       className={rowIdx === focusIdx ? 'app-menu-item focused' : 'app-menu-item'}
-                      disabled={!clickable}
                       aria-disabled={!clickable}
                       aria-haspopup={isParent || undefined}
                       aria-expanded={isParent ? expanded : undefined}
                       tabIndex={-1}
                       onMouseEnter={() => {
-                        setFocusIdx(rowIdx);
-                        if (isParent) setOpenSub(item.commandId);
+                        const sub = submenuForRow(openSub, {
+                          commandId: item.commandId,
+                          parentId: null,
+                          hasChildren: isParent,
+                        }, 'pointer');
+                        placeHighlight(item.commandId, sub);
                       }}
                       onClick={() => activateRow(rowIdx)}
                     >
@@ -847,7 +891,6 @@ export default function AppMenu({
                                   type="button"
                                   role="menuitem"
                                   className="app-menu-item app-menu-field-toggle"
-                                  disabled={!childEnabled}
                                   aria-disabled={!childEnabled}
                                   tabIndex={-1}
                                   onClick={() => activateRow(childIdx)}
@@ -882,7 +925,6 @@ export default function AppMenu({
                               type="button"
                               role="menuitem"
                               className={childIdx === focusIdx ? 'app-menu-item focused' : 'app-menu-item'}
-                              disabled={!childEnabled}
                               aria-disabled={!childEnabled}
                               tabIndex={-1}
                               onMouseEnter={() => setFocusIdx(childIdx)}

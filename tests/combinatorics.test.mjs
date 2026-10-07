@@ -193,6 +193,18 @@ test('the interlace combine button weaves the current selection', () => {
   } finally { cleanup(); }
 });
 
+test('turning combinatorics off remembers the armed mode', () => {
+  const { e, cleanup } = engine();
+  try {
+    e.setCombineMode('crop');
+    e.setCombineMode('none');
+    assert.equal(e.combineMode, 'none');
+    assert.equal(e.combineTool, 'crop');
+    e.setCombineMode(e.combineTool);
+    assert.equal(e.combineMode, 'crop');
+  } finally { cleanup(); }
+});
+
 test('a selection combine with no overlap adds no history entry', () => {
   const { s, e, layer, cleanup } = engine();
   try {

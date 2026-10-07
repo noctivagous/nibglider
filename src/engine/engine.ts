@@ -46,7 +46,9 @@ import {
   encodeSceneItems,
   isSceneJson,
   isSvgMarkup,
+  readSceneView,
   stripSvgClips,
+  type SceneView,
 } from './document/SceneIO';
 import {
   classifyClipboardText,
@@ -118,10 +120,13 @@ import { LayerManager } from './document/LayerManager';
 import { CoordinateManager } from './document/CoordinateManager';
 import {
   drawingPageRect,
+  pageCornerBrackets,
+  pageEdgeTicks,
   snapPageToGrid,
   type DrawingPage,
   type DrawingPageRect,
 } from './document/DrawingPage';
+import { computeRulerTicks } from './document/pageRuler';
 import { defaultGridSpacingPt } from './document/MeasurementUnits';
 import { ViewportManager } from './document/ViewportManager';
 import { DocumentManager, type DocumentChange, type PageSettings } from './document/DocumentManager';
@@ -348,6 +353,10 @@ export class NibGliderEngine {
   // --- DrawingPage (the finite sheet on the infinite canvas) ---
   pageLayer: AnyItem = null;
   pageOutline: AnyItem = null;
+  /** View from a scene opened before the canvas exists. Applied on attach. */
+  private pendingSceneView: SceneView | null = null;
+  /** True while a saved view is being applied, so that does not count as an edit. */
+  private restoringView = false;
 
   // --- Snapping flags ---
   isGridSnappingEnabled = false;
@@ -445,6 +454,9 @@ export class NibGliderEngine {
   // present, each deposited shape folds into it using this mode ('none'
   // deposits plainly, exactly as before).
   combineMode: CombineMode | 'none' = 'none';
+  // Mode the segmented control shows. Survives the switch-off ('none')
+  // so turning Combinatorics back on restores the same operation.
+  combineTool: CombineMode = 'union';
   // Daylight past the over-band when Combinatorics mode is Interlace.
   // Baked weaves from the mode use this gap; the menu Interlace command
   // keeps the width-derived default.
@@ -1027,6 +1039,26 @@ export class NibGliderEngine {
     this.rulerGuides = v;
     this.updateTextContent(); this.notify();
   }
+
+  /** Filled sheet behind the page corners. Off by default. */
+  pageFill = false;
+
+  setPageFill(v: boolean): void {
+    if (v === this.pageFill) return;
+    this.pageFill = v;
+    this.drawPage();
+    this.updateTextContent(); this.notify();
+  }
+
+  /** Ruler ticks along the four page edges. Off by default. */
+  pageSideTicks = false;
+
+  setPageSideTicks(v: boolean): void {
+    if (v === this.pageSideTicks) return;
+    this.pageSideTicks = v;
+    this.drawPage();
+    this.updateTextContent(); this.notify();
+  }
   setPageDisplayUnit(unit: LengthUnit): void { this.documentManager.setDisplayUnit(unit); }
   subscribeDocumentChanges(listener: (change: DocumentChange) => void): () => void {
     return this.documentManager.subscribe(listener);
@@ -1054,15 +1086,15 @@ export class NibGliderEngine {
     this.updateTextContent(); this.notify();
   }
 
-  /** Native gallery payload: Paper JSON of artwork items only. Selection
-   * and glow are stripped for the write and restored after. */
+  /** Native gallery payload: Paper JSON of artwork items, plus the view.
+   * Selection and glow are stripped for the write and restored after. */
   exportScene(): string {
     const items = this.contentItems();
     const selected = this.selection.snapshot();
     this.selection.suspendGlow();
     try {
       for (const item of items) clearTransient(item);
-      return encodeSceneItems(items);
+      return encodeSceneItems(items, this.capturedSceneView());
     } catch {
       return '';
     } finally {
@@ -1848,12 +1880,19 @@ export class NibGliderEngine {
     return true;
   }
 
-  /** Replace all artwork with a gallery payload (JSON or legacy SVG). */
+  /** Replace all artwork with a gallery payload (JSON or legacy SVG).
+   * A scene JSON view is restored after the items land, so the artwork
+   * clamp sees the document that was saved. */
   replaceScene(label: string, blob: string, opts?: { history?: boolean }): boolean {
     if (this.isLiveDrawing) return false;
-    if (isSceneJson(blob)) return this.replaceWithItems(label, () => (
-      decodeSceneItems(this.scope.project, blob)
-    ), opts);
+    if (isSceneJson(blob)) {
+      const view = readSceneView(blob);
+      const ok = this.replaceWithItems(label, () => (
+        decodeSceneItems(this.scope.project, blob)
+      ), opts);
+      if (ok) this.restoreSceneView(view);
+      return ok;
+    }
     if (isSvgMarkup(blob)) {
       return this.replaceWithItems(label, () => {
         const imported = this.ingestSvg(blob);
@@ -2001,8 +2040,40 @@ export class NibGliderEngine {
     // the new project's content layer first.
     this.ensurePageLayer();
     this.drawPage();
+    this.applyPendingSceneView();
     this.updatePreviewBox();
     this.updateTextContent();
+  }
+
+  private capturedSceneView(): SceneView | null {
+    try {
+      const view = this.scope.view;
+      const center = view?.center;
+      if (!view || !center) return null;
+      return { centerX: center.x, centerY: center.y, zoom: view.zoom || 1 };
+    } catch {
+      return null;
+    }
+  }
+
+  private restoreSceneView(view: SceneView | null): void {
+    if (!view) return;
+    this.pendingSceneView = view;
+    this.applyPendingSceneView();
+  }
+
+  private applyPendingSceneView(): void {
+    const pending = this.pendingSceneView;
+    if (!pending || !this.scope.view) return;
+    this.pendingSceneView = null;
+    this.restoringView = true;
+    try {
+      this.viewport.restore(pending.centerX, pending.centerY, pending.zoom);
+    } catch {
+      // Headless: no view to move.
+    } finally {
+      this.restoringView = false;
+    }
   }
 
   detach(): void {
@@ -2196,6 +2267,7 @@ export class NibGliderEngine {
     if (next === this.gridSpacing) return;
     this.gridSpacing = next;
     if (this.isGridEnabled) this.drawGrid();
+    if (this.pageSideTicks) this.drawPage();
     this.updateTextContent();
     this.notify();
   }
@@ -2786,9 +2858,17 @@ export class NibGliderEngine {
   setCombineMode(m: CombineMode | 'none'): void {
     if (m !== 'none' && m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop'
       && m !== 'interlace') return;
+    if (m !== 'none') this.combineTool = m;
     this.combineMode = m;
     this.updatePreviewBox();
     this.updateTextContent();
+    this.notify();
+  }
+
+  setCombineTool(m: CombineMode): void {
+    if (m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop' && m !== 'interlace') return;
+    if (this.combineTool === m) return;
+    this.combineTool = m;
     this.notify();
   }
 
@@ -3046,9 +3126,9 @@ export class NibGliderEngine {
   drawGrid(): void {
     this.gridRenderer.draw(this.gridType, this.gridSpacing);
     this.gridLayer = this.gridRenderer.gridLayer;
-    // The solid page sheet must never cover the grid: both paint with
-    // sendToBack, so restack grid above the page chrome after every
-    // draw. moveAbove (unlike sendToBack) never migrates activation.
+    // Page corner marks and the grid both paint with sendToBack, so
+    // restack the grid above the page chrome after every draw.
+    // moveAbove (unlike sendToBack) never migrates activation.
     try {
       const chrome = this.pageLayer;
       const grid = this.gridLayer;
@@ -3091,9 +3171,12 @@ export class NibGliderEngine {
     }
   }
 
-  /** Repaint the page sheet on the infinite canvas (when page
-   * dimensions are set). Guide-layer chrome: never content, never
-   * exported, hidden with the other guides on print. */
+  /** Zoom the side ticks were built at, so a zoom rebuilds their length. */
+  private pageChromeZoom = 1;
+
+  /** Repaint the page chrome (when page dimensions are set). Guide-layer
+   * only: never content, never exported, hidden with the other guides
+   * on print. Corners always; fill and side ticks follow Document Settings. */
   drawPage(): void {
     const layer = this.ensurePageChromeLayer();
     if (!layer) return;
@@ -3103,23 +3186,62 @@ export class NibGliderEngine {
       this.pageOutline = null;
       const page = this.pageRect();
       if (page) {
-        const pageShape = new scope.Path.Rectangle(
-          new scope.Rectangle(
-            new scope.Point(page.x, page.y),
-            new scope.Size(page.width, page.height),
-          ),
-        );
-        // Dark sheet on the dark canvas (Document Settings will make
-        // page appearance configurable).
-        pageShape.fillColor = new scope.Color(0.16, 0.19, 0.24, 1);
-        pageShape.strokeColor = new scope.Color(0.48, 0.54, 0.62, 1);
-        pageShape.strokeWidth = 1 / (scope.view.zoom || 1);
-        pageShape.guide = true;
-        pageShape.locked = true;
-        if (!pageShape.data) pageShape.data = {};
-        pageShape.data.isPage = true;
-        layer.addChild(pageShape);
-        this.pageOutline = pageShape;
+        const stroke = new scope.Color(0.48, 0.54, 0.62, 1);
+        const zoom = scope.view.zoom || 1;
+        const width = 1 / zoom;
+        this.pageChromeZoom = zoom;
+        const marks: AnyItem = new scope.Group({ insert: false });
+        const addStroke = (item: AnyItem, role: string): void => {
+          item.fillColor = null;
+          item.strokeColor = stroke;
+          item.strokeWidth = width;
+          item.strokeCap = 'butt';
+          item.strokeJoin = 'miter';
+          item.guide = true;
+          item.locked = true;
+          if (!item.data) item.data = {};
+          item.data.pageRole = role;
+          marks.addChild(item);
+        };
+        if (this.pageFill) {
+          const sheet: AnyItem = new scope.Path.Rectangle({
+            point: new scope.Point(page.x, page.y),
+            size: new scope.Size(page.width, page.height),
+            insert: false,
+          });
+          sheet.fillColor = new scope.Color(0.16, 0.19, 0.24, 1);
+          sheet.strokeColor = null;
+          sheet.guide = true;
+          sheet.locked = true;
+          if (!sheet.data) sheet.data = {};
+          sheet.data.pageRole = 'fill';
+          marks.addChild(sheet);
+        }
+        for (const pts of pageCornerBrackets(page)) {
+          const bracket: AnyItem = new scope.Path({ insert: false });
+          for (const pt of pts) bracket.add(new scope.Point(pt.x, pt.y));
+          bracket.closed = false;
+          addStroke(bracket, 'bracket');
+        }
+        if (this.pageSideTicks) {
+          const unit = this.drawingPage?.unit ?? 'pt';
+          const spacing = this.gridSpacing;
+          const major = 10 / zoom;
+          const minor = 6 / zoom;
+          const along = (size: number, phase: number) => computeRulerTicks(size, spacing, unit, phase);
+          for (const tick of pageEdgeTicks(page, along(page.width, page.x), along(page.height, page.y), major, minor)) {
+            const mark: AnyItem = new scope.Path({ insert: false });
+            for (const pt of tick.points) mark.add(new scope.Point(pt.x, pt.y));
+            mark.closed = false;
+            addStroke(mark, 'tick');
+          }
+        }
+        marks.guide = true;
+        marks.locked = true;
+        if (!marks.data) marks.data = {};
+        marks.data.isPage = true;
+        layer.addChild(marks);
+        this.pageOutline = marks;
       }
       layer.sendToBack();
       scope.view?.update();
@@ -3128,10 +3250,24 @@ export class NibGliderEngine {
     }
   }
 
-  /** Keep the 1px page outline constant on screen across zoom. */
+  /** Keep the 1px page strokes constant on screen across zoom. Side
+   * ticks also keep a screen-sized length, so a zoom rebuilds them. */
   private syncPageStroke(): void {
     try {
-      if (this.pageOutline) this.pageOutline.strokeWidth = 1 / (this.scope.view.zoom || 1);
+      const zoom = this.scope.view?.zoom || 1;
+      if (this.pageSideTicks && zoom !== this.pageChromeZoom) {
+        this.drawPage();
+        return;
+      }
+      const outline = this.pageOutline;
+      if (!outline) return;
+      const width = 1 / zoom;
+      const children = outline.children;
+      if (children && children.length) {
+        for (const child of children) {
+          if (child.strokeColor) child.strokeWidth = width;
+        }
+      } else if (outline.strokeColor) outline.strokeWidth = width;
     } catch {
       // Headless.
     }
@@ -4516,13 +4652,14 @@ export class NibGliderEngine {
   private afterViewChange(): void {
     if (this.isGridEnabled) this.drawGrid();
     this.syncPageStroke();
+    if (!this.restoringView) this.documentManager.markViewDirty();
     this.emitView();
   }
 
-  // --- View subscription (scrollbars) ---
-  // Pan/zoom change view state only, never document state, so they publish
-  // on this lightweight channel instead of notify(): the full app does not
-  // rerender on every pan event, only view subscribers do.
+  // --- View subscription (scrollbars, autosave) ---
+  // Pan/zoom publish here instead of notify(): the full app does not
+  // rerender on every pan event, only view subscribers do. The edit is
+  // still dirty, so autosave can write the view into the document.
   private readonly viewListeners = new Set<() => void>();
   private viewVersion = 0;
 

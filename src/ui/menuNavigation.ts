@@ -19,6 +19,32 @@ export function focusableIndexes(items: MenuItemDef[], enabled: Set<string>): nu
   return out;
 }
 
+/** A highlighted row, enough to decide whether its flyout stays open. */
+export interface SubmenuRow {
+  commandId: string;
+  /** Set when the row is an option inside an open submenu. */
+  parentId: string | null;
+  hasChildren: boolean;
+}
+
+/**
+ * Which submenu stays open after the highlight moves onto `row`.
+ * Pointer entry on a parent opens that parent. Keyboard movement does
+ * not open a parent; it only keeps the flyout while the highlight is
+ * on that parent or one of its options. A leaf, a group header, or a
+ * different parent closes the previous flyout.
+ */
+export function submenuForRow(
+  openSub: string | null,
+  row: SubmenuRow,
+  via: 'pointer' | 'keyboard',
+): string | null {
+  if (row.parentId) return row.parentId;
+  if (!row.hasChildren) return null;
+  if (via === 'pointer' || row.commandId === openSub) return row.commandId;
+  return null;
+}
+
 /**
  * Next focusable row from `from` in `dir`, wrapping around the menu.
  * `from` of -1 starts at the near edge. Returns -1 when nothing is focusable.

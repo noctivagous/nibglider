@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import paper from 'paper';
 import { NibGliderEngine } from '../src/engine/engine.ts';
-import { isSceneJson, SCENE_FORMAT, stripSvgClips } from '../src/engine/document/SceneIO.ts';
+import { isSceneJson, readSceneView, SCENE_FORMAT, stripSvgClips } from '../src/engine/document/SceneIO.ts';
 
 function engine() {
   const s = new paper.PaperScope();
@@ -78,5 +78,54 @@ test('replaceScene rejects unknown payloads and accepts JSON', () => {
   const { e, cleanup } = engine();
   try {
     assert.equal(e.replaceScene('Open', 'not a document'), false);
+  } finally { cleanup(); }
+});
+
+test('exportScene stores the view and replaceScene restores it', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    s.view.zoom = 2;
+    s.view.center = new s.Point(140, -60);
+    const json = e.exportScene();
+    assert.deepEqual(readSceneView(json), { centerX: 140, centerY: -60, zoom: 2 });
+    s.view.zoom = 1;
+    s.view.center = new s.Point(0, 0);
+    assert.equal(e.isDocumentDirty(), false);
+    const ok = e.replaceScene('Open Untitled', json, { history: false });
+    assert.equal(ok, true);
+    assert.equal(s.view.zoom, 2);
+    assert.ok(Math.abs(s.view.center.x - 140) < 1e-6);
+    assert.ok(Math.abs(s.view.center.y + 60) < 1e-6);
+    assert.equal(e.isDocumentDirty(), false, 'restoring a saved view is not an edit');
+  } finally { cleanup(); }
+});
+
+test('a scene without a view leaves the current viewport alone', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    s.view.zoom = 1.5;
+    s.view.center = new s.Point(30, 40);
+    const legacy = JSON.stringify({ format: SCENE_FORMAT, version: 1, items: [] });
+    assert.equal(readSceneView(legacy), null);
+    assert.equal(e.replaceScene('Open', legacy, { history: false }), true);
+    assert.equal(s.view.zoom, 1.5);
+    assert.ok(Math.abs(s.view.center.x - 30) < 1e-6);
+    assert.ok(Math.abs(s.view.center.y - 40) < 1e-6);
+  } finally { cleanup(); }
+});
+
+test('panning marks the document dirty without a full notify', () => {
+  const { e, cleanup } = engine();
+  try {
+    let notified = 0;
+    e.subscribe(() => { notified += 1; });
+    assert.equal(e.isDocumentDirty(), false);
+    e.scrollViewTo(80, 50);
+    assert.equal(e.isDocumentDirty(), true);
+    assert.equal(notified, 0);
+    const view = readSceneView(e.exportScene());
+    assert.ok(view);
+    assert.ok(Math.abs(view.centerX - 80) < 1e-6);
+    assert.ok(Math.abs(view.centerY - 50) < 1e-6);
   } finally { cleanup(); }
 });

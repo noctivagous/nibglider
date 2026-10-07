@@ -1,5 +1,6 @@
-// Zoom and pan are view state. They never change page coordinates or dirty the
-// document. PointerController provides Paper project points for pan gestures.
+// Zoom and pan are view state. They never change page coordinates. The
+// engine records them into the scene on save. PointerController provides
+// Paper project points for pan gestures.
 /** One zoom step never exceeds this factor per event, so a spiky delta
  * cannot jump the view. */
 export const MAX_ZOOM_STEP = 1.3;
@@ -88,6 +89,16 @@ export class ViewportManager {
    * same artwork-reachability clamp as every other pan path. */
   setCenter(point: paper.Point): void {
     this.scope.view.center = point;
+    this.clampCenter();
+    this.changed();
+  }
+  /** Place a saved view: zoom and center together. Zoom is clamped to
+   * the same range as every other zoom path. */
+  restore(centerX: number, centerY: number, zoom: number): void {
+    const view = this.scope.view;
+    if (!view || !Number.isFinite(centerX) || !Number.isFinite(centerY) || !Number.isFinite(zoom)) return;
+    view.zoom = this.clamp(zoom);
+    view.center = new this.scope.Point(centerX, centerY);
     this.clampCenter();
     this.changed();
   }

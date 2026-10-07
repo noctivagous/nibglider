@@ -92,6 +92,7 @@ function checkMutated(e) {
   assert.equal(e.displayFlow, 'interior');
   assert.equal(e.circumferenceGap, 5);
   assert.equal(e.combineMode, 'union');
+  assert.equal(e.combineTool, 'union');
   assert.equal(e.interlaceGap, 6.5);
   assert.equal(e.quadMapping, 'projective');
   assert.equal(e.perspectiveCircle, true);

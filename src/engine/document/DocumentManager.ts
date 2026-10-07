@@ -105,6 +105,11 @@ export class DocumentManager {
     this.dirty = true;
     this.emit(reason);
   }
+  /** Pan and zoom belong to the document, but they must not notify:
+   * a full app render on every pan event is what the view channel avoids. */
+  markViewDirty(): void {
+    this.dirty = true;
+  }
   markClean(): void { if (this.dirty) { this.dirty = false; this.emit('clean'); } }
   private nextId(): string {
     this.pageSeq += 1;

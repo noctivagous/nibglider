@@ -468,9 +468,9 @@ export default function App() {
     return () => engine.detach();
   }, [engine]);
 
-  // Autosave: persist dirty artwork to the gallery shortly after it
-  // settles, and synchronously on hide/close. The first save creates the
-  // Untitled document, so work is never lost before an explicit Save.
+  // Autosave: persist dirty artwork and the view to the gallery shortly
+  // after they settle, and synchronously on hide/close. The first save
+  // creates the Untitled document, so work is never lost before an explicit Save.
   useEffect(() => {
     let timer: number | null = null;
     const save = (): void => {
@@ -493,9 +493,11 @@ export default function App() {
       save();
     };
     const unsubscribe = engine.subscribe(schedule);
+    const unsubscribeView = engine.subscribeView(schedule);
     window.addEventListener('pagehide', flush);
     return () => {
       unsubscribe();
+      unsubscribeView();
       window.removeEventListener('pagehide', flush);
       if (timer !== null) window.clearTimeout(timer);
     };

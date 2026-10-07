@@ -5,6 +5,10 @@
       <custom id="document-size" />
     </tab>
     <tab id="page" title="Page">
+      <section id="page" title="Page">
+        <toggle key="pageFill" label="Fill" />
+        <toggle key="pageSideTicks" label="Ruler ticks on the sides" />
+      </section>
       <section id="rulers" title="Rulers">
         <switch key="rulerPlacement" label="Ruler placement">
           <option value="viewer" label="Viewer edges" />

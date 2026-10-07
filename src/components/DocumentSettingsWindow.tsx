@@ -1,7 +1,7 @@
 // Document Settings window: renders an XML window spec
 // (document-settings.xml) with controls bound to engine settings.
-// Same renderer contract as SettingsWindow; today it owns ruler
-// placement, later page appearance and other document chrome.
+// Same renderer contract as SettingsWindow. Page presentation (fill,
+// side ticks) and ruler placement live here.
 // Mounted by App when the window registry names it.
 import { useState, useSyncExternalStore } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
@@ -25,6 +25,14 @@ const BINDINGS: Record<string, SettingBinding> = {
   rulerGuides: {
     get: (engine) => engine.rulerGuides,
     set: (engine, value) => engine.setRulerGuides(value === true || value === 'true'),
+  },
+  pageFill: {
+    get: (engine) => engine.pageFill,
+    set: (engine, value) => engine.setPageFill(value === true || value === 'true'),
+  },
+  pageSideTicks: {
+    get: (engine) => engine.pageSideTicks,
+    set: (engine, value) => engine.setPageSideTicks(value === true || value === 'true'),
   },
 };
 

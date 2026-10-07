@@ -184,6 +184,8 @@ const ENTRIES: SettingEntry[] = [
   num('grid.spacing', (e) => e.gridSpacing, (e, v) => e.setGridSpacing(v)),
   en('ruler.placement', ['viewer', 'page'], (e) => e.rulerPlacement, (e, v) => e.setRulerPlacement(v as never)),
   bool('ruler.guides', (e) => e.rulerGuides, (e, v) => e.setRulerGuides(v)),
+  bool('page.fill', (e) => e.pageFill, (e, v) => e.setPageFill(v)),
+  bool('page.sideTicks', (e) => e.pageSideTicks, (e, v) => e.setPageSideTicks(v)),
   bool('snap.grid', (e) => e.isGridSnappingEnabled, (e, v) => e.setGridSnappingEnabled(v)),
   bool('snap.path', (e) => e.isPathSnappingEnabled, (e, v) => e.setPathSnappingEnabled(v)),
   bool('snap.point', (e) => e.isPointSnappingEnabled, (e, v) => e.setPointSnappingEnabled(v)),
@@ -241,6 +243,7 @@ const ENTRIES: SettingEntry[] = [
   en('text.pasteLocation', ['crosshair', 'view-center'], (e) => e.textPasteLocation, (e, v) => e.setTextPasteLocation(v as never)),
   // Modes.
   en('combine.mode', ['none', 'union', 'subtract', 'intersect', 'crop', 'interlace'], (e) => e.combineMode, (e, v) => e.setCombineMode(v as never)),
+  en('combine.tool', ['union', 'subtract', 'intersect', 'crop', 'interlace'], (e) => e.combineTool, (e, v) => e.setCombineTool(v as never)),
   num('combine.interlaceGap', (e) => e.interlaceGap, (e, v) => e.setInterlaceGap(v)),
   en('quad.mapping', ['bilinear', 'projective'], (e) => e.quadMapping, (e, v) => e.setQuadMapping(v as QuadMapping)),
   bool('quad.perspectiveCircle', (e) => e.perspectiveCircle, (e, v) => e.setPerspectiveCircle(v)),

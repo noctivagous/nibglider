@@ -6,8 +6,11 @@ import {
   currentName,
   deleteDocument,
   docDisplayName,
+  GALLERY_DOCS_KEY,
   getDocument,
   listDocuments,
+  newDocumentName,
+  nextUntitledName,
   renameDocument,
   restorableDocument,
   saveDocument,
@@ -99,7 +102,7 @@ test('display name falls back to Untitled', () => {
   assert.equal(docDisplayName(mem), 'Work');
 });
 
-test('autosave creates the Untitled document and clears dirty', () => {
+test('autosave creates the next Untitled document and clears dirty', () => {
   const mem = store();
   let dirty = true;
   const scene = {
@@ -109,10 +112,31 @@ test('autosave creates the Untitled document and clears dirty', () => {
   };
   assert.equal(autosaveDocument(scene, mem), true);
   assert.equal(dirty, false);
-  assert.equal(docDisplayName(mem), 'Untitled');
+  assert.equal(docDisplayName(mem), 'Untitled 1');
   assert.ok(restorableDocument(mem));
   // A clean scene saves nothing.
   assert.equal(autosaveDocument(scene, mem), false);
+});
+
+test('new documents take the next Untitled number and skip a bare Untitled', () => {
+  const mem = store();
+  assert.equal(nextUntitledName(mem), 'Untitled 1');
+  assert.equal(saveDocument(mem, 'Untitled', SVG) && currentName(mem), 'Untitled 1');
+  mem.setItem(GALLERY_DOCS_KEY, JSON.stringify([
+    { id: 'bare', name: 'Untitled', svg: SVG, updatedAt: 1 },
+    { id: 'n4', name: 'Untitled 4', svg: SVG, updatedAt: 2 },
+    { id: 'notes', name: 'Notes', svg: SVG, updatedAt: 3 },
+  ]));
+  assert.equal(nextUntitledName(mem), 'Untitled 5');
+  assert.equal(newDocumentName(mem, ''), 'Untitled 5');
+  assert.equal(newDocumentName(mem, 'Untitled'), 'Untitled 5');
+  assert.equal(newDocumentName(mem, 'Untitled 4'), 'Untitled 5');
+  assert.equal(newDocumentName(mem, 'Untitled 2'), 'Untitled 2');
+  assert.equal(newDocumentName(mem, 'Poster'), 'Poster');
+  setCurrent(mem, null);
+  const created = saveDocument(mem, 'Untitled', SVG);
+  assert.equal(getDocument(mem, created)?.name, 'Untitled 5');
+  assert.equal(listDocuments(mem).filter((doc) => doc.name === 'Untitled').length, 1);
 });
 
 test('autosave keeps the existing name and skips empty exports', () => {
@@ -142,6 +166,6 @@ test('gallery tolerates corrupt store contents', () => {
   assert.equal(currentId(mem), null);
   setCurrent(mem, null);
   const id = saveDocument(mem, '  ', SVG);
-  assert.equal(currentName(mem), 'Untitled');
+  assert.equal(currentName(mem), 'Untitled 1');
   assert.ok(typeof id === 'string' && id.length > 0);
 });

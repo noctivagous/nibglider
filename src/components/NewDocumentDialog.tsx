@@ -34,19 +34,11 @@ import {
 } from '../engine/document/MeasurementUnits';
 
 export interface NewDocumentSpec {
+  name: string;
   widthPt: number;
   heightPt: number;
   unit: LengthUnit;
 }
-
-type TabId = 'workspace' | 'print' | 'image' | 'ratio';
-
-const TABS: Array<{ id: TabId; label: string }> = [
-  { id: 'workspace', label: 'Workspace' },
-  { id: 'print', label: 'Print' },
-  { id: 'image', label: 'Image' },
-  { id: 'ratio', label: 'Ratio' },
-];
 
 function loadSystem(): UnitSystem {
   try {
@@ -57,13 +49,16 @@ function loadSystem(): UnitSystem {
 }
 
 export default function NewDocumentDialog({
+  defaultName,
   onConfirm,
   onClose,
 }: {
+  defaultName: string;
   onConfirm: (spec: NewDocumentSpec) => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<TabId>('workspace');
+  const [name, setName] = useState(defaultName);
   // One stored-system read; all system-flavored defaults derive from it so
   // SI users land on ISO A4 / mm and English users on US Letter / inches.
   const [initial] = useState(() => {
@@ -89,9 +84,14 @@ export default function NewDocumentDialog({
   const [ratioScale, setRatioScale] = useState('120');
   const [ratioUnit, setRatioUnit] = useState<LengthUnit>(initial.ratioUnit);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    dialogRef.current?.focus();
+    const field = nameRef.current;
+    if (field) {
+      field.focus();
+      field.select();
+    } else dialogRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
@@ -124,7 +124,7 @@ export default function NewDocumentDialog({
     if (preset && units.includes(preset.unit)) setCustomUnit(preset.unit);
   };
 
-  const result = useMemo((): { spec: NewDocumentSpec; note: string } | { error: string } => {
+  const result = useMemo((): { spec: Omit<NewDocumentSpec, 'name'>; note: string } | { error: string } => {
     const fail = (error: string) => ({ error });
     if (tab === 'workspace') {
       const preset: PagePreset | undefined = WORKSPACE_PRESETS.find((p) => p.id === workspaceId);
@@ -187,7 +187,7 @@ export default function NewDocumentDialog({
 
   const commit = () => {
     if (!('spec' in result)) return;
-    onConfirm(result.spec);
+    onConfirm({ ...result.spec, name: name.trim() || defaultName });
   };
 
   return createPortal(
@@ -211,6 +211,22 @@ export default function NewDocumentDialog({
             ×
           </button>
         </div>
+        <label className="newdoc-field">
+          <span className="newdoc-field-label">Name</span>
+          <input
+            ref={nameRef}
+            type="text"
+            className="newdoc-input"
+            aria-label="Document name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              commit();
+            }}
+          />
+        </label>
         <div className="newdoc-tabs" role="tablist" aria-label="Size target">
           {TABS.map((entry) => (
             <button
