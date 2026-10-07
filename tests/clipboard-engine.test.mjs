@@ -25,6 +25,35 @@ test('select-all selects every content item and nothing when empty', () => {
   } finally { cleanup(); }
 });
 
+test('select-all shortcut claims the key unless a text field is focused', () => {
+  const { engine, rect, cleanup } = setup();
+  const press = (target) => {
+    let prevented = false;
+    const event = {
+      code: 'KeyA', key: 'a', shiftKey: false, altKey: false, ctrlKey: false, metaKey: true,
+      target, getModifierState: () => false,
+      preventDefault() { prevented = true; },
+    };
+    engine.handleKeyDown(event);
+    return prevented;
+  };
+  try {
+    const a = rect(10);
+    assert.equal(press(null), true);
+    assert.equal(engine.selectedItems.length, 1);
+    assert.equal(engine.selectedItems[0], a);
+    engine.clearOutSelection();
+    for (const target of [
+      { tagName: 'INPUT', isContentEditable: false },
+      { tagName: 'TEXTAREA', isContentEditable: false },
+      { tagName: 'DIV', isContentEditable: true },
+    ]) {
+      assert.equal(press(target), false);
+      assert.equal(engine.selectedItems.length, 0);
+    }
+  } finally { cleanup(); }
+});
+
 test('copy and cut fill the internal buffer; paste round-trips with undo', () => {
   const { engine, rect, cleanup } = setup();
   try {

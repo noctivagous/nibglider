@@ -13,17 +13,17 @@ should be reflected in the flyout popover over the preview box
 of the.
 
 KEYS TABLE GUI WIDGET
-[ ] flag, set to on: omit undo,redo, copy, paste functions from key table widget
+[ ] flag, set to on: omit undo,redo, copy, paste items from key table widget
+since these are commonly known.
 
 INTERLACE
 [ ] The different between group and baked op groups of interlace is the baked op groups of
 interlace are interlace-aware but just baked vector shapes whereas if the user rotates
 a shape in an interlace group or changes its width, the InterlaceGroup shape 
 should remake the interlacing.
-
 [ ] clicking on an interlace group will reveal their Over/Under segments as overlayed controls 
 and the user can click on them (with Tab or left mouse click to flip them).  
-[ ] Interlace - Let's say the user is drawing a spline, we want the live Over or Under status 
+[ ] Live Interlace - Let's say the user is drawing a spline, we want the live Over or Under status 
 reflected in the cursor icon during Interlace mode spline drawing and the - and + keys will, 
 during this mode, change.
 
@@ -68,14 +68,13 @@ other kinds.  this leads into the parametric features of the objects that can ex
 keeps the original spline path until there is a combinatorics operation with a path where
 the two cannot keep a stroked Path.  so, strokedPath might be a mode of the path obj.
 
-	[ ] Right-click menu > Operations >
-   		[ ] turn intersecting paths into interlace (stroked path).
-
- AI: "Interlace op (Operations > Turn intersecting paths into interlace): separate step on top. Find spine intersections, cut a gap (~width + padding) in the under-path's      
+	[x] Right-click menu > Operations >
+   		[x] turn intersecting paths into interlace (stroked path).
+       [x]  "Interlace op (Operations > Turn intersecting paths into interlace): separate step on top. Find spine intersections, cut a gap (~width + padding) in the under-path's      
   expanded band at each crossing, stack over-path above. Cheap version is a background-colored knockout; recommend the real version (boolean-subtract a gap disc from the   
   under band) so exports are clean. Needs an over/under assignment UI (alternate vs. manual pick)."
 
-[ ] Make sure that everything in the UI doesn't have selectable text so that
+[x] Make sure that everything in the UI doesn't have selectable text so that
 Select All doesn't select text in the UI.  
 
 [ ] What other technical fonts or style resources would assist in making the app?

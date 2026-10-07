@@ -258,6 +258,9 @@ export class KeyboardController {
         void host.pasteFromSystemClipboard();
         return;
       case 'select-all':
+        // Text fields return before perform(), so their select-all stands.
+        // Everywhere else, stop the browser from selecting UI labels.
+        event.preventDefault();
         host.selectAll();
         return;
       case 'clear-selection':

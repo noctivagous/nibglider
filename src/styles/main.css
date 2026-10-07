@@ -1263,6 +1263,21 @@ html, body {
   overflow: hidden !important;
 }
 
+/* Chrome is not a text document. Select All (Cmd/Ctrl+A) acts on the
+   canvas; only a focused field keeps a text selection. Inherited by
+   menus, the panel, portaled flyouts, and windows rendered from XML. */
+html {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 #mainLayout {
   display: flex !important;
   flex-direction: column !important;
