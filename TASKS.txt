@@ -719,10 +719,13 @@ information and can be a place for scrapbook.
  [ ] Export > Export to Media Gallery
  
  
- PARAMETRIC STACK CONVENTION OBJ.
+ PARAMETRIC STACK CONVENTION OBJ. (LIKE TEMPLATES)
  [  ] For sign and logos, a parametric stack
  contains a stack of (parametric) items that pertain to the
  conventions of that parametric situation.
+ In the case of signs, one type might be the shape
+ containers for text and this stack item would have
+ parameters specific to this situation.
  
  
  

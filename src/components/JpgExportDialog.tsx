@@ -8,7 +8,7 @@ import { exportPngSize } from '../engine/model/NGExportFrame';
 import { exportFileName, type ExportScopeId } from '../ui/fileCommands';
 
 const SCOPE_TITLES: Record<ExportScopeId, string> = {
-  canvas: 'Document Canvas Frame',
+  canvas: 'Document Frame',
   viewport: 'Current Viewport Frame',
   selection: 'Selected Objects',
 };
