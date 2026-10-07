@@ -6,13 +6,15 @@
 // an error box instead of a crash. Tested from tests/window-xml.test.mjs.
 //
 // Supported elements (attributes in parentheses):
-//   <window (id, title)> <section (id, title)> ... | <tab (id, title)> ...
+//   <window (id, title)> <section (id, title)> ... | <tabview> ...
+//     <tab (id, title)> <section> ... | bare controls </tab>
 //     <switch (key, label)> <option (value, label)> ... </switch>
 //     <toggle (key, label) />
 //     <custom (id) /> — host-rendered control (e.g. the size editor)
-//   A <tab> groups sections (and bare controls, wrapped in an anonymous
-//   section) into a tab-strip page. Titles and option labels fall back to
-//   the id/key/value when omitted. Inter-element whitespace is ignored;
+//   The <tabview> container holds the window's tab-strip pages; each <tab>
+//   groups sections (and bare controls, wrapped in an anonymous section).
+//   At most one <tabview> per window. Titles and option labels fall back
+//   to the id/key/value when omitted. Inter-element whitespace is ignored;
 //   any other text content is an error.
 
 import { parseXmlDocument, type XmlNode } from './xmlParser';
@@ -113,6 +115,61 @@ function parseSection(node: XmlNode): WindowSection | string {
   return { id: sectionId, title: node.attrs['title'] ?? sectionId, controls };
 }
 
+interface TabParseContext {
+  tabs: WindowTab[];
+  takeSection: (section: WindowSection) => string | null;
+}
+
+function parseTab(node: XmlNode, context: TabParseContext): string | null {
+  const tabId = node.attrs['id'];
+  if (!tabId) return '<tab> is missing its id attribute';
+  if (context.tabs.some((tab) => tab.id === tabId)) return `<tab> id "${tabId}" is used more than once`;
+  if (node.children.length === 0) return `<tab id="${tabId}"> needs at least one <section> or control child`;
+  const sectionIds: string[] = [];
+  let pending: WindowControl[] = [];
+  const flushPending = (): string | null => {
+    if (pending.length === 0) return null;
+    const anonymous = { id: `${tabId}-content`, title: '', controls: pending };
+    pending = [];
+    const duplicate = context.takeSection(anonymous);
+    if (duplicate) return duplicate;
+    sectionIds.push(anonymous.id);
+    return null;
+  };
+  for (const entry of node.children) {
+    if (entry.tag === 'section') {
+      const flushed = flushPending();
+      if (flushed) return flushed;
+      const parsed = parseSection(entry);
+      if (typeof parsed === 'string') return parsed;
+      const duplicate = context.takeSection(parsed);
+      if (duplicate) return duplicate;
+      sectionIds.push(parsed.id);
+    } else {
+      const parsed = parseControl(entry);
+      if (typeof parsed === 'string') return parsed.startsWith('<section>')
+        ? parsed.replace('<section>', `<tab id="${tabId}">`)
+        : parsed;
+      pending.push(parsed);
+    }
+  }
+  const flushed = flushPending();
+  if (flushed) return flushed;
+  context.tabs.push({ id: tabId, title: node.attrs['title'] ?? tabId, sectionIds });
+  return null;
+}
+
+function parseTabview(node: XmlNode, context: TabParseContext): string | null {
+  if (Object.keys(node.attrs).length > 0) return '<tabview> takes no attributes';
+  if (node.children.length === 0) return '<tabview> needs at least one <tab> child';
+  for (const entry of node.children) {
+    if (entry.tag !== 'tab') return `<tabview> only accepts <tab> children, found <${entry.tag}>`;
+    const failed = parseTab(entry, context);
+    if (failed) return failed;
+  }
+  return null;
+}
+
 export function parseWindowXML(xmlText: string): WindowParseResult {
   const root = parseXmlDocument(xmlText);
   if (typeof root === 'string') return { error: root };
@@ -122,58 +179,31 @@ export function parseWindowXML(xmlText: string): WindowParseResult {
   const sections: WindowSection[] = [];
   const tabs: WindowTab[] = [];
   const seenSectionIds = new Set<string>();
-  const takeSection = (section: WindowSection): string | null => {
-    if (seenSectionIds.has(section.id)) return `<section> id "${section.id}" is used more than once`;
-    seenSectionIds.add(section.id);
-    sections.push(section);
-    return null;
+  const context: TabParseContext = {
+    tabs,
+    takeSection: (section) => {
+      if (seenSectionIds.has(section.id)) return `<section> id "${section.id}" is used more than once`;
+      seenSectionIds.add(section.id);
+      sections.push(section);
+      return null;
+    },
   };
+  let seenTabview = false;
   for (const child of root.children) {
     if (child.tag === 'section') {
       const parsed = parseSection(child);
       if (typeof parsed === 'string') return { error: parsed };
-      const duplicate = takeSection(parsed);
+      const duplicate = context.takeSection(parsed);
       if (duplicate) return { error: duplicate };
       continue;
     }
-    if (child.tag !== 'tab') {
-      return { error: `<window> only accepts <section> and <tab> children, found <${child.tag}>` };
+    if (child.tag !== 'tabview') {
+      return { error: `<window> only accepts <section> and <tabview> children, found <${child.tag}>` };
     }
-    const tabId = child.attrs['id'];
-    if (!tabId) return { error: '<tab> is missing its id attribute' };
-    if (tabs.some((tab) => tab.id === tabId)) return { error: `<tab> id "${tabId}" is used more than once` };
-    if (child.children.length === 0) return { error: `<tab id="${tabId}"> needs at least one <section> or control child` };
-    const sectionIds: string[] = [];
-    let pending: WindowControl[] = [];
-    const flushPending = (): string | null => {
-      if (pending.length === 0) return null;
-      const anonymous = { id: `${tabId}-content`, title: '', controls: pending };
-      pending = [];
-      const duplicate = takeSection(anonymous);
-      if (duplicate) return duplicate;
-      sectionIds.push(anonymous.id);
-      return null;
-    };
-    for (const entry of child.children) {
-      if (entry.tag === 'section') {
-        const flushed = flushPending();
-        if (flushed) return { error: flushed };
-        const parsed = parseSection(entry);
-        if (typeof parsed === 'string') return { error: parsed };
-        const duplicate = takeSection(parsed);
-        if (duplicate) return { error: duplicate };
-        sectionIds.push(parsed.id);
-      } else {
-        const parsed = parseControl(entry);
-        if (typeof parsed === 'string') return parsed.startsWith('<section>')
-          ? { error: parsed.replace('<section>', `<tab id="${tabId}">`) }
-          : { error: parsed };
-        pending.push(parsed);
-      }
-    }
-    const flushed = flushPending();
-    if (flushed) return { error: flushed };
-    tabs.push({ id: tabId, title: child.attrs['title'] ?? tabId, sectionIds });
+    if (seenTabview) return { error: '<window> accepts at most one <tabview>' };
+    seenTabview = true;
+    const failed = parseTabview(child, context);
+    if (failed) return { error: failed };
   }
   return { spec: { id, title: root.attrs['title'] ?? id, sections, tabs } };
 }

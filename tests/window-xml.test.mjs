@@ -60,10 +60,10 @@ test('window XML falls back to ids and rejects malformed definitions', () => {
 
 test('tab views group sections and bare controls, with flattened sections', () => {
   const result = parseWindowXML(
-    '<window id="w" title="W">' +
+    '<window id="w" title="W"><tabview>' +
     '<tab id="size" title="Size"><custom id="document-size"/></tab>' +
     '<tab id="page"><section id="page" title="Page"><toggle key="pageFill"/></section></tab>' +
-    '</window>',
+    '</tabview></window>',
   );
   assert.ok('spec' in result);
   assert.deepEqual(result.spec.tabs.map((tab) => tab.id), ['size', 'page']);
@@ -82,14 +82,19 @@ test('tab views group sections and bare controls, with flattened sections', () =
   assert.deepEqual(plain.spec.tabs, []);
 
   for (const bad of [
-    '<window id="w"><tab><section id="s"/></tab></window>',
-    '<window id="w"><tab id="t"></tab></window>',
-    '<window id="w"><tab id="t"><section id="s"/><section id="s"/></tab></window>',
-    '<window id="w"><tab id="t"><section id="a"/></tab><tab id="t"><section id="b"/></tab></window>',
-    '<window id="w"><tab id="t"><custom/></tab></window>',
-    '<window id="w"><tab id="t"><custom id="c"><toggle key="k"/></custom></tab></window>',
-    '<window id="w"><tab id="t"><slider key="k"/></tab></window>',
-    '<window id="w"><section id="s-content"/><tab id="s"><toggle key="k"/></tab></window>',
+    '<window id="w"><tab id="t"><section id="s"/></tab></window>',
+    '<window id="w"><tabview></tabview></window>',
+    '<window id="w"><tabview id="v"><tab id="t"><section id="s"/></tab></tabview></window>',
+    '<window id="w"><tabview><section id="s"/></tabview></window>',
+    '<window id="w"><tabview><tab id="t"><section id="s"/></tab><tab id="t"><section id="s"/></tab></tabview></window>',
+    '<window id="w"><tabview><tab><section id="s"/></tab></tabview></window>',
+    '<window id="w"><tabview><tab id="t"></tab></tabview></window>',
+    '<window id="w"><tabview><tab id="t"><section id="s"/><section id="s"/></tab></tabview></window>',
+    '<window id="w"><tabview><tab id="t"><section id="a"/></tab></tabview><tabview><tab id="b"><section id="s"/></tab></tabview></window>',
+    '<window id="w"><tabview><tab id="t"><custom/></tab></tabview></window>',
+    '<window id="w"><tabview><tab id="t"><custom id="c"><toggle key="k"/></custom></tab></tabview></window>',
+    '<window id="w"><tabview><tab id="t"><slider key="k"/></tab></tabview></window>',
+    '<window id="w"><section id="s-content"/><tabview><tab id="s"><toggle key="k"/></tab></tabview></window>',
   ]) {
     const parsed = parseWindowXML(bad);
     assert.ok('error' in parsed, `expected an error for ${bad}`);
