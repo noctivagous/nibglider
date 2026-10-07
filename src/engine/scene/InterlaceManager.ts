@@ -1,7 +1,7 @@
 // Interlace: turn two intersecting stroked paths into an over/under weave.
 // Crossings are found on spine centerlines; at each crossing the under-side
-// band gets a real gap cut (boolean subtract of a disc), so exports stay
-// clean. Gaps alone produce the weave — no restacking is needed, since the
+// band loses its overlap with the padded over-band, so exports stay clean.
+// Gaps alone produce the weave — no restacking is needed, since the
 // background shows through each gap regardless of paint order. Results bake
 // the expansion and lower to Bézier, like other boolean results.
 // Public: canInterlaceSelection, interlaceSelection.
@@ -11,7 +11,7 @@ import type { NGBezierPath, NGCompositePath, NGBSplinePath, NGOutlinedStrokePath
 import type { BezierSegment, ResolvedVectorGeometry, Vec2 } from '../model/geometryResolution';
 import { resolveOutlinedStroke } from '../geometry/outlinedStroke';
 import { resolvePath } from '../geometry/pathResolver';
-import { canvasStrokeOf, clusterSlots, crossingKey, gapPadding, gapRectFor, ribbonPolygon } from '../geometry/interlaceWeave';
+import { canvasStrokeOf, clusterSlots, crossingKey, gapPadding, gapRectFor } from '../geometry/interlaceWeave';
 import type { WeaveMember } from '../geometry/interlaceWeave';
 import { hasBooleanArea } from '../geometry/booleanResolver';
 
@@ -316,12 +316,14 @@ export class InterlaceManager {
   // offsets by pair ordinal so appended members never shift existing pairs'
   // gaps. An override naming one pair member takes that crossing over.
   // Crossings whose gap windows overlap (a corner region crossed twice)
-  // merge into one cut under the first member's roles, with the window
-  // spanning every member site — lone crossings plan alone, unchanged.
+  // merge into one cut under the first member's roles. The cutter is the
+  // overlap of the padded over-band at those centers, so the edge follows
+  // the band however the strokes actually overlap. Lone crossings plan
+  // alone.
   private planCrossings(
     entries: Array<{ id: string; width: number }>, spines: Item[], phase: 0 | 1,
     overrides: Record<string, string>, padding?: number,
-  ): Array<{ key: string; over: number; unders: number[]; involved: number[]; center: Vec2; halfLen: number }> {
+  ): Array<{ key: string; over: number; unders: number[]; involved: number[]; center: Vec2; centers: Vec2[] }> {
     const solo: Array<{ key: string; pair: [number, number]; over: number; under: number; center: Vec2; halfLen: number }> = [];
     let pairOrdinal = 0;
     for (let i = 0; i < entries.length; i++) {
@@ -345,12 +347,11 @@ export class InterlaceManager {
     }
     return clusterSlots(solo).map((group) => {
       const head = solo[group[0]];
-      let halfLen = 0;
       const unders: number[] = [];
       const involved: number[] = [];
+      const centers: Vec2[] = [];
       for (const m of group) {
-        halfLen = Math.max(halfLen, solo[m].halfLen + Math.hypot(solo[m].center.x - head.center.x,
-          solo[m].center.y - head.center.y));
+        centers.push(solo[m].center);
         if (!unders.includes(solo[m].under)) unders.push(solo[m].under);
         for (const band of solo[m].pair) {
           if (!involved.includes(band)) involved.push(band);
@@ -361,7 +362,7 @@ export class InterlaceManager {
       // other involved band is cut.
       const targets = unders.filter((u) => u !== head.over);
       return { key: head.key, over: head.over, unders: targets,
-        involved, center: head.center, halfLen };
+        involved, center: head.center, centers };
     });
   }
 
@@ -720,36 +721,18 @@ export class InterlaceManager {
     let cutAny = false;
     for (const cross of planned) {
       const overEntry = entries[cross.over];
-      const underEntries = cross.unders.map((u) => entries[u]);
-      const cutter = this.gapCutter(cross.center, spines[cross.over], spines[cross.unders[0]],
-        overEntry.width, Math.max(...underEntries.map((entry) => entry.width)),
-        undefined, 2 * cross.halfLen, overEntry.style);
-      if (!cutter) continue;
-      try {
-        for (const u of cross.unders) {
-          const target = bands[u];
-          if (!target || typeof target.subtract !== 'function') continue;
-          let cut: Item | null = null;
-          try {
-            cut = target.subtract(cutter, { insert: false });
-          } catch {
-            // Keep the band whole at this crossing and try the rest.
-            continue;
-          }
-          if (cut && hasBooleanArea(cut.area)) {
-            if (target !== entries[u].item) this.removeDetached(target);
-            bands[u] = cut;
-            try {
-              cut.fillColor = this.fillOf(entries[u].item);
-              cut.strokeColor = null;
-            } catch { /* Style is cosmetic. */ }
-            cutAny = true;
-          } else {
-            this.removeDetached(cut);
-          }
-        }
-      } finally {
-        this.removeDetached(cutter);
+      const overSource = overEntry.source.mode === 'outlinedStroke' ? overEntry.source.spine : overEntry.source;
+      for (const u of cross.unders) {
+        const cut = this.cutOverlap(bands[u], spines[u], overSource, overEntry.style,
+          overEntry.width, gapPadding(entries[u].width), cross.centers);
+        if (!cut) continue;
+        if (bands[u] !== entries[u].item) this.removeDetached(bands[u]);
+        bands[u] = cut;
+        try {
+          cut.fillColor = this.fillOf(entries[u].item);
+          cut.strokeColor = null;
+        } catch { /* Style is cosmetic. */ }
+        cutAny = true;
       }
     }
     if (!cutAny) return null;
@@ -1200,36 +1183,17 @@ export class InterlaceManager {
       params.phase, overrides, params.padding);
     for (const cross of planned) {
       const over = ordered[cross.over];
-      const cutter = this.gapCutter(cross.center,
-        spines[members.indexOf(over)], spines[members.indexOf(ordered[cross.unders[0]])],
-        over.stroke.width,
-        Math.max(...cross.unders.map((u) => ordered[u].stroke.width)),
-        params.padding, 2 * cross.halfLen, over.stroke);
-      if (!cutter) continue;
-      try {
-        for (const u of cross.unders) {
-          const target = bands[u];
-          if (!target || typeof target.subtract !== 'function') continue;
-          let cut: Item | null = null;
-          try {
-            cut = target.subtract(cutter, { insert: false });
-          } catch {
-            // Keep the band whole at this crossing and try the rest.
-            continue;
-          }
-          if (cut && hasBooleanArea(cut.area)) {
-            this.removeDetached(target);
-            bands[u] = cut;
-            try {
-              cut.fillColor = fillOf(itemOf(ordered[u]));
-              cut.strokeColor = null;
-            } catch { /* Style is cosmetic. */ }
-          } else {
-            this.removeDetached(cut);
-          }
-        }
-      } finally {
-        this.removeDetached(cutter);
+      const overSource = over.source.mode === 'outlinedStroke' ? over.source.spine : over.source;
+      for (const u of cross.unders) {
+        const cut = this.cutOverlap(bands[u], spines[members.indexOf(ordered[u])],
+          overSource, over.stroke, over.stroke.width, params.padding, cross.centers);
+        if (!cut) continue;
+        this.removeDetached(bands[u]);
+        bands[u] = cut;
+        try {
+          cut.fillColor = fillOf(itemOf(ordered[u]));
+          cut.strokeColor = null;
+        } catch { /* Style is cosmetic. */ }
       }
     }
     for (let i = 0; i < bands.length; i++) {
@@ -1526,109 +1490,163 @@ export class InterlaceManager {
     return points;
   }
 
-  // Gap cutter at a crossing: a ribbon hugging the over-spine, so the
-  // under-band's cut ends parallel the peer — curved when the peer curves
-  // (circle-on-circle gaps follow the over-ring instead of chopping straight
-  // chords with protruding rectangle corners). Lengthened for shallow
-  // crossing angles so the under-band severs fully and the over-band hides
-  // inside.
-  private gapCutter(center: Vec2, overSpine: Item, underSpine: Item, overWidth: number, underWidth: number, padding?: number, lengthOverride?: number, style?: { join: string; miterLimit: number }): Item | null {
-    let angle = 0; let sine = 1;
-    const tan = this.crossingTangents(overSpine, underSpine, center, overWidth, underWidth);
-    if (tan) {
-      angle = Math.atan2(tan.a.y, tan.a.x);
-      const lo = Math.hypot(tan.a.x, tan.a.y); const lu = Math.hypot(tan.b.x, tan.b.y);
-      if (lo > 1e-9 && lu > 1e-9) {
-        sine = Math.abs(tan.a.x * tan.b.y - tan.a.y * tan.b.x) / (lo * lu);
-      }
-    }
-    const rect = gapRectFor(angle, overWidth, underWidth, sine, padding);
-    // Clustered cuts span every member site: never shrink the planned
-    // window back to the lone-crossing footprint.
-    if (lengthOverride !== undefined && Number.isFinite(lengthOverride) && lengthOverride > 0) {
-      rect.length = Math.max(rect.length, lengthOverride);
-    }
-    if (!(rect.length > 0) || !(rect.width > 0)
-      || !Number.isFinite(rect.length) || !Number.isFinite(rect.width)) return null;
-    // Peer-hugging ribbon first: butt ends land perpendicular to the
-    // over-spine at the window edges, so no corner extends past the gap.
-    // The ribbon inherits the over-band's join, so a window straddling a
-    // sharp corner miters along the interior angle like the band itself.
-    const ribbon = this.peerRibbon(overSpine, center, rect.length, rect.width / 2, style);
-    if (ribbon) return ribbon;
-    // Straight-spine fallback when sampling fails: the legacy rotated
-    // rectangle, which a straight ribbon would equal anyway.
-    const prev = scope.settings?.insertItems;
+  // Cut the under-band by its real overlap with the padded over-band.
+  // The cutter is that overlap (every piece that holds a cluster center),
+  // not a window sized from the crossing angle: partial overlaps, shallow
+  // angles, and corners all keep the over-band's own outline. A corner's
+  // inner miter can pinch off a sliver of the under-band inside the hole;
+  // that island holds no spine sample and is dropped.
+  private cutOverlap(
+    underBand: Item, underSpine: Item,
+    overSource: NGBezierPath | NGCompositePath | NGBSplinePath,
+    overStyle: StrokeStyle, overWidth: number, padding: number, centers: Vec2[],
+  ): Item | null {
+    if (!underBand || typeof underBand.subtract !== 'function') return null;
+    if (!(overWidth > 0) || !(padding >= 0) || !Number.isFinite(padding)) return null;
+    const padded = this.expandBand(overSource, overStyle, overWidth + 2 * padding, '#000');
+    if (!padded) return null;
+    const temps: Item[] = [padded];
     try {
-      if (scope.settings) scope.settings.insertItems = false;
-      const cutter = new scope.Path.Rectangle(
-        new scope.Point(center.x - rect.length / 2, center.y - rect.width / 2),
-        new scope.Size(rect.length, rect.width),
-      );
-      cutter.rotate(rect.angle * 180 / Math.PI, new scope.Point(center.x, center.y));
-      return cutter;
-    } catch {
-      return null;
-    } finally {
-      if (scope.settings) scope.settings.insertItems = prev;
-    }
-  }
-
-  // Short offset ribbon around a crossing center, sampled along the
-  // over-spine window. Closed spines wrap; open spines clamp. Null when the
-  // spine cannot be sampled (caller falls back to a rectangle).
-  private peerRibbon(overSpine: Item, center: Vec2, length: number, halfWidth: number,
-    style?: { join: string; miterLimit: number }): Item | null {
-    try {
-      const scope = this.host.paperScope();
-      const total = overSpine.length;
-      if (!(total > 0) || !(halfWidth > 0)) return null;
-      let off: number;
+      const cutter = this.overlapCutter(padded, underBand, centers);
+      if (!cutter) return null;
+      temps.push(cutter);
+      let cut: Item | null = null;
       try {
-        off = overSpine.getOffsetOf(new scope.Point(center.x, center.y));
+        cut = underBand.subtract(cutter, { insert: false });
       } catch {
         return null;
       }
-      if (!Number.isFinite(off)) return null;
-      const closed = !!overSpine.closed;
-      let a = off - length / 2;
-      let b = off + length / 2;
-      if (closed) {
-        if (length >= total) {
-          a = 0;
-          b = total;
-        }
-      } else {
-        a = Math.max(0, a);
-        b = Math.min(total, b);
-        if (!(b - a > 1e-6)) return null;
+      if (!cut || !hasBooleanArea(cut.area)) {
+        this.removeDetached(cut);
+        return null;
       }
-      const span = b - a;
-      const n = Math.max(2, Math.min(48, Math.ceil(span / Math.max(0.5, halfWidth / 2))));
-      const pts: Vec2[] = [];
-      for (let k = 0; k <= n; k++) {
-        let t = a + span * k / n;
-        if (closed) t = ((t % total) + total) % total;
-        let p;
-        try {
-          p = overSpine.getPointAt(t);
-        } catch {
-          return null;
-        }
-        if (!p) return null;
-        pts.push({ x: p.x, y: p.y });
+      const cleaned = this.withoutStrayIslands(cut, underSpine);
+      if (cleaned !== cut) this.removeDetached(cut);
+      if (!cleaned || !hasBooleanArea(cleaned.area)) {
+        this.removeDetached(cleaned);
+        return null;
       }
-      // A round over-band join samples smooth, so the miter ribbon tracks
-      // it; only an explicit bevel cuts the corner short like the band.
-      const poly = ribbonPolygon(pts, halfWidth, {
-        join: style?.join === 'bevel' ? 'bevel' : 'miter',
-        miterLimit: style && Number.isFinite(style.miterLimit) && style.miterLimit >= 1
-          ? style.miterLimit : 10,
-      });
-      return this.buildPath(scope, true, poly.map((p) => ({ point: { ...p },
-        handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } })));
+      return cleaned;
+    } finally {
+      for (const temp of temps) this.removeDetached(temp);
+    }
+  }
+
+  // Intersection of the padded over-band with the under-band, limited to
+  // the pieces that contain this cut's crossing centers. Other crossings
+  // of the same pair keep their own roles.
+  private overlapCutter(padded: Item, under: Item, centers: Vec2[]): Item | null {
+    let hit: Item | null = null;
+    try {
+      hit = padded.intersect(under, { insert: false });
     } catch {
       return null;
+    }
+    if (!hit || !hasBooleanArea(hit.area)) {
+      this.removeDetached(hit);
+      return null;
+    }
+    if (hit.className !== 'CompoundPath') return hit;
+    const children = [...(hit.children ?? [])];
+    const kept = children.filter((part: Item) => this.partCovers(part, centers));
+    if (!kept.length) {
+      this.removeDetached(hit);
+      return null;
+    }
+    if (kept.length === children.length) return hit;
+    try {
+      const scope = this.host.paperScope();
+      const cutter = new scope.CompoundPath({ insert: false, fillRule: 'evenodd', children: kept });
+      this.removeDetached(hit);
+      return cutter;
+    } catch {
+      this.removeDetached(hit);
+      return null;
+    }
+  }
+
+  private partCovers(part: Item, centers: Vec2[]): boolean {
+    const scope = this.host.paperScope();
+    for (const center of centers) {
+      const point = new scope.Point(center.x, center.y);
+      try {
+        if (part.contains(point)) return true;
+      } catch { /* Fall through to a near-boundary check. */ }
+      try {
+        const nearest = part.getNearestPoint(point);
+        if (nearest && Math.hypot(nearest.x - center.x, nearest.y - center.y) <= 0.75) return true;
+      } catch { /* This piece does not cover the center. */ }
+    }
+    return false;
+  }
+
+  // Drop filled contours that hold no under-spine sample. Hole contours
+  // (odd containment depth) stay, so a gapped ring keeps its opening.
+  // Corner miters leave a spineless speck in the hole; this removes it.
+  private withoutStrayIslands(band: Item, spine: Item): Item {
+    if (!band || band.className !== 'CompoundPath') return band;
+    const contours: Item[] = [...(band.children ?? [])];
+    if (contours.length < 2) return band;
+    const insides = contours.map((contour) => this.pointJustInside(contour));
+    const depth = contours.map((_, index) => contours.filter((other, otherIndex) =>
+      otherIndex !== index && insides[index] && other.contains(insides[index])).length);
+    const samples = this.spineSamples(spine);
+    const stray = contours.map((contour, index) => {
+      if (depth[index] % 2 === 1) return false;
+      return !samples.some((sample) => {
+        try { return contour.contains(sample); } catch { return false; }
+      });
+    });
+    if (!stray.some(Boolean)) return band;
+    const keep = contours.filter((_, index) => !stray[index]);
+    if (!keep.length || keep.length === contours.length) return band;
+    try {
+      const scope = this.host.paperScope();
+      if (keep.length === 1) return keep[0].clone({ insert: false });
+      return new scope.CompoundPath({
+        insert: false, fillRule: 'evenodd',
+        children: keep.map((contour) => contour.clone({ insert: false })),
+      });
+    } catch {
+      return band;
+    }
+  }
+
+  // A point just inside a closed contour, for hole-vs-island depth.
+  private pointJustInside(contour: Item): Item | null {
+    try {
+      const segments = contour.segments;
+      if (!segments || segments.length < 2) return null;
+      const a = segments[0].point;
+      const b = segments[1].point;
+      const dx = b.x - a.x; const dy = b.y - a.y;
+      const span = Math.hypot(dx, dy) || 1;
+      const sign = contour.clockwise ? 1 : -1;
+      const nx = sign * (dy / span);
+      const ny = sign * (-dx / span);
+      const scope = this.host.paperScope();
+      const toward = new scope.Point(a.x + nx * 0.75, a.y + ny * 0.75);
+      if (contour.contains(toward)) return toward;
+      const away = new scope.Point(a.x - nx * 0.75, a.y - ny * 0.75);
+      return contour.contains(away) ? away : toward;
+    } catch {
+      return null;
+    }
+  }
+
+  private spineSamples(spine: Item): Item[] {
+    try {
+      const total = spine?.length;
+      if (!(total > 0)) return [];
+      const n = Math.max(2, Math.ceil(total));
+      const samples: Item[] = [];
+      for (let i = 0; i <= n; i++) {
+        const point = spine.getPointAt(Math.min(total, total * i / n));
+        if (point) samples.push(point);
+      }
+      return samples;
+    } catch {
+      return [];
     }
   }
 

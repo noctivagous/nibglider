@@ -397,6 +397,7 @@ test('interlace in-canvas XML declares the control contract', () => {
     parsed.spec.controls.map((control) => [control.kind, control.key ?? control.label]),
     [['toggle', 'alternate'], ['field', 'padding'], ['export', 'Ungroup']],
   );
+  assert.deepEqual(parsed.spec.sections.map((s) => s.side), ['top', 'right']);
 });
 
 test('resolver weaves outlined-stroke members on their spines', () => {

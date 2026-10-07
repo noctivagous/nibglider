@@ -1,8 +1,9 @@
 // Pure interlace weave geometry: no Paper.js dependency. Flattens member
 // spines to polylines, finds ordered crossings, expands bands, and places
-// peer-aligned gap footprints. Both the baked Paper-side op and the live
-// group resolver build on these pieces; boolean cutting stays with the
-// caller (Paper subtract for the baked op, the renderer for groups).
+// peer-aligned gap footprints. Those footprints cluster crossings that share
+// one daylight region. The cut itself is not the footprint: the caller
+// subtracts the under-band's overlap with the padded over-band, so the cut
+// edge is that band's outline at whatever overlap the strokes actually have.
 import type { NGBezierPath, NGCompositePath, NGBSplinePath, NGOutlinedStrokePath } from '../model/NGPath';
 import type { ResolvedPath, Vec2 } from '../model/geometryResolution';
 import { resolvePath } from './pathResolver';
@@ -27,10 +28,11 @@ export function crossingKey(earlierId: string, laterId: string, index: number): 
   return `${earlierId}>${laterId}#${index}`;
 }
 
-/** Peer-aligned gap footprint: long sides run parallel to the over-band, so
- * the under-band's cut ends parallel the peer. Length spans the under-band
- * even at shallow crossing angles; width clears the over-band plus daylight.
- * Padding defaults to the baked-op daylight when the caller passes none. */
+/** Peer-aligned footprint for clustering crossings into one daylight region.
+ * Length spans the under-band even at shallow angles; width clears the
+ * over-band plus daylight. Padding defaults to the baked-op daylight when
+ * the caller passes none. This rectangle is not the cutter — a real overlap
+ * can be shorter, longer, or bent around a corner. */
 export function gapRectFor(overAngle: number, overWidth: number, underWidth: number, sine: number, padding?: number): InterlaceGapRect {
   const grip = Math.min(1, Math.max(sine, 0.35));
   const pad = padding === undefined ? gapPadding(underWidth) : Math.max(0, padding);
@@ -59,12 +61,11 @@ function ribbonLineIntersection(p: Vec2, d: Vec2, q: Vec2, e: Vec2): Vec2 | null
 
 /** Closed offset polygon hugging one centerline: side edges run parallel
  * to the samples (curved when the peer curves), ends are butt caps
- * perpendicular to the end tangents. Unlike a rotated rectangle, no corner
- * extends past the window ends, so gap cutters never gouge the under-band
- * outside the intended footprint. Interior vertices use true miter
- * intersections (capped by the miter limit, bevel fallback), so a window
- * straddling a sharp corner — a hexagon vertex on the peer spine — follows
- * the interior angle instead of kinking across it. */
+ * perpendicular to the end tangents. Interior vertices use true miter
+ * intersections (capped by the miter limit, bevel fallback). A finite
+ * window of this polygon is not a gap cutter: its butt ends and inner
+ * miter land inside the under-band whenever the overlap is not that
+ * window, and the boolean leftover is a stray point. */
 export function ribbonPolygon(centerline: Vec2[], halfWidth: number, opts?: RibbonJoinOptions): Vec2[] {
   if (!Array.isArray(centerline) || centerline.length < 2) throw new WeaveError('Ribbon needs at least two samples');
   if (!(halfWidth > 0) || !Number.isFinite(halfWidth)) throw new WeaveError('Ribbon needs a positive half width');

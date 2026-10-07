@@ -8,7 +8,12 @@ malformed files degrade to an error box, never a crash.
 
 ## Elements
 
-- `<inCanvas (id, title)>` — root. Contains controls.
+- `<inCanvas (id, title)>` — root. Contains `<edge>` sections (and,
+  for legacy files, bare controls, which form an implied top section).
+- `<edge (side, label)>` — one preferred exterior edge of the element's
+  frame: `top` | `right` | `bottom` | `left`. Groups the controls that
+  belong on that edge; label falls back to "Top edge" etc. Sections cannot
+  nest, and `<edge>` cannot appear inside a popover.
 - `<field (key, label, type, min, max, step) />` — text or number input.
   Number fields accept `min`/`max`/`step`.
 - `<select (key, label)>` with `<option (value, label)>` children.
@@ -16,8 +21,11 @@ malformed files degrade to an error box, never a crash.
 - `<exportButton (label) />` — the element's primary action.
 - `<popoverButton (label)>` — a button that opens a popover window
   containing more controls. Use it when an element has too many controls
-  for the canvas; popovers cannot nest.
+  for the canvas; popovers cannot nest. Author it trailing its section so
+  it overflows first.
 
-Labels fall back to the key when omitted. Unknown tags, attributes outside
-this list, and text content are errors. See `exportFrame.xml` for the
-reference example and `tests/export-frame.test.mjs` for the contract.
+When an edge cannot fit its section, trailing controls move to the widget
+strip above the canvas (underneath the status box), which mirrors the same
+sections with their labels. XML order is priority order: earlier controls
+keep the edge. See `exportFrame.xml` for the reference example and
+`tests/export-frame.test.mjs` for the contract.

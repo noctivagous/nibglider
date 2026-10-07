@@ -1,3 +1,28 @@
+
+ explain: " per-crossing over/under picking is still                                                                                                                       
+  alternate-plus-phase-flip. "                                                                                                                                              
+                                                                                                                                                                            
+◆ It means you currently can't choose the over/under winner at any single crossing — the whole weave follows one rule:                                                      
+                                                                                                                                                                            
+  • Crossings are ordered along the spine, and the winner alternates: crossing 0 goes to one strand, crossing 1 to the other, crossing 2 back, and so on.                   
+  • A single phase bit (0 or 1, stored in the memo/group params) shifts that pattern: flipping it swaps every crossing at once.                                             
+                                                                                                                                                                            
+  So your only controls are "accept the alternation" or "flip all crossings." If crossing #3 looks wrong, fixing it also flips #1, #5, etc. — there's no per-crossing       
+  override.                                                                                                                                                                 
+                                                                                                                                                                            
+  Per-crossing picking would mean storing an explicit choice per crossing (e.g. crossing #3 → strand A over, regardless of the alternation) and adding UI to toggle         
+  individual crossings, likely in-canvas on the weave itself. That's the follow-up I was flagging: the alternating engine plus one global phase is still the only assignment
+  mechanism, for both the baked op and the group variant.  
+  
+
+----
+  Current state:                                                                                                                                                            
+                                                                                                                                                                            
+  • Interlace: Op — baked boolean weave, in the right-click menu.                                                                                                           
+  • Interlace: Grouped — live group variant (members keep their data, phase/padding retunable with undo, ungroup restores members, baked pairs convertible), in the         
+    right-click menu.                                                                                                                                                       
+  • In-canvas controls — phase toggle, gap padding, ungroup, mounted while a group is selected.   
+  
 Each interlaced band carries an interlace memo in item.data holding:                                                                  
                                                                                                                                                                             
   • the spine snapshot (Bézier contour of the centerline at op time),                                                                                                       
@@ -6,12 +31,57 @@ Each interlaced band carries an interlace memo in item.data holding:
                                                                                                                                                                             
   Gaps are never stored — they're re-cut fresh every run: re-expand both bands from the snapshots, sort crossings along the first-role spine, alternate over/under (flipped 
   phase on re-run), subtract a gap disc from each under-side band.                                                                                                          
-                                                                                                                                                                            
+                                                                                                                                                                  you w          
   One honest caveat: what's stored is the resolved Bézier spine, not the original parametric one. A bSpline/composite spine gets flattened to Bézier at snapshot time, and  
   the retained authoring source lowers to Bézier like all boolean results — so post-interlace you lose the editable spline controls. If you want interlace to keep original 
   spines fully editable (re-resolving from the live outlinedStroke record each run), that's a refinement we can make; it would need the record lookup to survive across runs
   instead of today's snapshot.
 
+----
+
+
+◆ To support 3+ interlaced shapes and adding shapes to an existing group, the pair-only assumptions have to be removed in several places. Right now “more than one” really  
+  means “exactly two.”                                                                                                                                                      
+                                                                                                                                                                            
+  What would have to change:                                                                                                                                                
+                                                                                                                                                                            
+  • Generalize the group record                                                                                                                                             
+    • src/engine/model/NGGroup.ts:5 currently stores only phase, padding, and one firstId.                                                                                  
+    • For N members, we’d need member-order-stable roles or explicit per-crossing over/under assignments.                                                                   
+    • src/engine/model/serialization.ts:180 would need to allow more member IDs and validate the new role data.                                                             
+                                                                                                                                                                            
+  • Generalize the weave geometry                                                                                                                                           
+    • src/engine/geometry/interlaceWeave.ts:185 explicitly requires a two-member tuple.                                                                                     
+    • It would need all pairwise spine crossings, deterministic global crossing order, one “over” strand per crossing, and gaps cut into the other intersecting bands.      
+    • This is the main design decision: N arbitrary curves don’t have one natural alternating sequence, so the assignment rule must be chosen and stored.                   
+                                                                                                                                                                            
+  • Generalize live display construction                                                                                                                                    
+    • The pure resolver is currently exercised by tests; live group displays are built separately in src/engine/scene/InterlaceManager.ts:393.                              
+    • weaveDisplays, buildGroup, and setInterlaceParams all hardcode two members/displays.                                                                                  
+    • They would need N bands, N hidden members, crossing-aware cutters, and stable member/display identity across rebuilds.                                                
+                                                                                                                                                                            
+  • Add an “add shape to group” operation                                                                                                                                   
+    • New selection rule: one existing interlace group plus one or more new stroked paths.                                                                                  
+    • Snapshot the newcomers, reparent/hide them, append stable member records, rebuild all displays, and preserve existing roles where possible.                           
+    • Undo should use the existing custom swap-entry pattern so added members and rebuilt displays revert together.                                                         
+                                                                                                                                                                            
+  • Update selection, menus, and controls                                                                                                                                   
+    • canGroupSelection currently requires exactly two intersecting paths.                                                                                                  
+    • We’d need separate enablement for “make N-member group” versus “add to selected group,” plus likely a new menu command such as “Add to Interlace Group.”              
+    • The in-canvas popover already reports member count, so it could grow member add/remove controls.                                                                      
+                                                                                                                                                                            
+  • Cover the new behavior with tests                                                                                                                                       
+    • Three-member weave and gap assignment.                                                                                                                                
+    • Adding/removing a member.                                                                                                                                             
+    • Backward compatibility for existing two-member saved groups.                                                                                                          
+    • Non-crossing candidates rejected.                                                                                                                                     
+    • Overlapping/near-coincident crossings and serialization validation.                                                                                                   
+                                                                                                                                                                            
+  The hardest part isn’t rendering N bands; it’s defining stable over/under assignments when crossings involve different member pairs.                                      
+                                                                                                                                               
+                                                                                                                                               
+                                                                                                                                               
+                                                                                                                                               
 ---
 
 # InterlaceGroup plan (baked op + NGGroup variant, 2026-10-06)

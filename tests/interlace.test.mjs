@@ -53,8 +53,9 @@ test('cut ends parallel the peer band', () => {
     e.addItemToSelection(a);
     e.addItemToSelection(b);
     e.interlaceSelection();
-    // The under-band at the first crossing: every boundary segment near the
-    // gap must run parallel or perpendicular to the horizontal peer.
+    // The under-band at the first crossing: the gap edges near it are the
+    // sides of the padded horizontal peer. A long peer has no butt cap here,
+    // so those edges are parallel to the peer.
     const c0 = { x: -25, y: 0 };
     const under = layer.children.find((child) => !child.contains(new s.Point(c0.x, c0.y)));
     const paths = under.className === 'CompoundPath' ? [...under.children] : [under];
@@ -66,12 +67,12 @@ test('cut ends parallel the peer band', () => {
         const mx = (p0.x + p1.x) / 2; const my = (p0.y + p1.y) / 2;
         if (Math.hypot(mx - c0.x, my - c0.y) >= 13) continue;
         if (Math.hypot(p1.x - p0.x, p1.y - p0.y) < 0.5) continue;
-        const mod = ((Math.atan2(p1.y - p0.y, p1.x - p0.x) * 180 / Math.PI) % 90 + 90) % 90;
-        assert.ok(mod < 5 || mod > 85, `cut edge at ${mod.toFixed(1)}° is not peer-parallel`);
+        const mod = ((Math.atan2(p1.y - p0.y, p1.x - p0.x) * 180 / Math.PI) % 180 + 180) % 180;
+        assert.ok(mod < 5 || mod > 175, `cut edge at ${mod.toFixed(1)}° is not peer-parallel`);
         checked++;
       }
     }
-    assert.ok(checked >= 4, 'expected gap edges near the crossing');
+    assert.ok(checked >= 2, 'expected gap edges near the crossing');
   } finally { cleanup(); }
 });
 
@@ -112,6 +113,14 @@ test('a bar through a hexagon corner weaves as one shaped cut', () => {
     assert.equal(barBand.contains(new s.Point(36, 6.93)), false);
     assert.equal(barBand.contains(new s.Point(36, 40)), true);
     assert.equal(barBand.contains(new s.Point(36, -40)), true);
+    // The hex hole's inner miter used to pinch off a speck of the bar.
+    assert.equal(barBand.contains(new s.Point(30.4, 0)), false);
+    const barPaths = barBand.className === 'CompoundPath' ? [...barBand.children] : [barBand];
+    for (const path of barPaths) {
+      for (const seg of path.segments) {
+        assert.ok(Math.hypot(seg.point.x - 30.76, seg.point.y) > 0.4, 'stray miter point on the bar');
+      }
+    }
   } finally { cleanup(); }
 });
 
@@ -358,6 +367,28 @@ test('ribbon cutter miters sharp corners along the interior angle', () => {
     return best;
   };
   for (const p of limited) assert.ok(far(p) <= 4.5, 'limited miter spikes past the band');
+});
+
+test('a stroke that ends in the crossing is cut on the over edge', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const over = new s.Path({ segments: [[-40, 0], [40, 0]], strokeColor: 'black', strokeWidth: 20 });
+    const under = new s.Path({ segments: [[0, 0], [0, 50]], strokeColor: 'black', strokeWidth: 10 });
+    e.addItemToSelection(over);
+    e.addItemToSelection(under);
+    e.interlaceSelection();
+    const cut = layer.children.find((child) => !child.contains(new s.Point(0, 0)));
+    assert.ok(cut, 'under-band should be open at the crossing');
+    // Padded over half-width is 10/2 + 2. The stub ends on that edge.
+    assert.equal(cut.contains(new s.Point(0, 20)), true);
+    assert.equal(cut.contains(new s.Point(0, 6)), false);
+    const paths = cut.className === 'CompoundPath' ? [...cut.children] : [cut];
+    const points = paths.flatMap((path) => path.segments.map((seg) => seg.point));
+    assert.equal(points.length, 4);
+    for (const point of points) {
+      assert.ok(Math.abs(point.y - 12) < 0.05 || Math.abs(point.y - 50) < 0.05, `stray cut vertex at y=${point.y}`);
+    }
+  } finally { cleanup(); }
 });
 
 test('circle-on-circle gaps are symmetric and hug the over-ring', () => {

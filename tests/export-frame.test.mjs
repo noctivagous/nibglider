@@ -16,7 +16,7 @@ import { frameArtwork } from '../src/engine/scene/exportFrames.ts';
 import { resizedBounds } from '../src/engine/scene/exportFrameHandles.ts';
 import { pointsToUnit, unitToPoints } from '../src/engine/document/MeasurementUnits.ts';
 import { commandById, KEY_CAPS } from '../src/engine/input/keymap.ts';
-import { parseInCanvasXML } from '../src/ui/inCanvasGui.ts';
+import { parseInCanvasXML, resolveInCanvasPlacement } from '../src/ui/inCanvasGui.ts';
 
 function engine() {
   const s = new paper.PaperScope();
@@ -308,8 +308,54 @@ test('export-frame XML defines inline controls plus a popover, and rejects bad d
   assert.deepEqual(selects.format, ['svg', 'png']);
   const popover = parsed.spec.controls.find((c) => c.kind === 'popover');
   assert.ok(popover && popover.controls.length >= 1);
+  assert.deepEqual(parsed.spec.sections.map((s) => s.side), ['top', 'right']);
+  assert.equal(parsed.spec.sections[0].label, 'Frame');
+  assert.equal(parsed.spec.sections[1].label, 'Export');
   assert.ok('error' in parseInCanvasXML('<window id="x"><toggle key="a" /></window>'));
   assert.ok('error' in parseInCanvasXML('<inCanvas id="x"><mystery /></inCanvas>'));
   assert.ok('error' in parseInCanvasXML(
     '<inCanvas id="x"><popoverButton label="More"><popoverButton label="Inner"><toggle key="a" /></popoverButton></popoverButton></inCanvas>'));
+});
+
+test('in-canvas edge sections validate sides and reject bad nesting', () => {
+  const ok = parseInCanvasXML(
+    '<inCanvas id="x"><edge side="left"><toggle key="a" /></edge><edge side="bottom" label="Base"><toggle key="b" /></edge></inCanvas>');
+  assert.ok(!('error' in ok));
+  if ('error' in ok) return;
+  assert.deepEqual(ok.spec.sections.map((s) => [s.side, s.label]), [['left', 'Left edge'], ['bottom', 'Base']]);
+  assert.deepEqual(ok.spec.controls.map((c) => c.key), ['a', 'b']);
+  assert.ok('error' in parseInCanvasXML('<inCanvas id="x"><edge><toggle key="a" /></edge></inCanvas>'));
+  assert.ok('error' in parseInCanvasXML('<inCanvas id="x"><edge side="up"><toggle key="a" /></edge></inCanvas>'));
+  assert.ok('error' in parseInCanvasXML('<inCanvas id="x"><edge side="top"></edge></inCanvas>'));
+  assert.ok('error' in parseInCanvasXML(
+    '<inCanvas id="x"><edge side="top"><edge side="right"><toggle key="a" /></edge></edge></inCanvas>'));
+  assert.ok('error' in parseInCanvasXML(
+    '<inCanvas id="x"><popoverButton label="M"><edge side="top"><toggle key="a" /></edge></popoverButton></inCanvas>'));
+});
+
+test('bare in-canvas controls fold into an implied top section', () => {
+  const parsed = parseInCanvasXML('<inCanvas id="x"><toggle key="a" /><toggle key="b" /></inCanvas>');
+  assert.ok(!('error' in parsed));
+  if ('error' in parsed) return;
+  assert.deepEqual(parsed.spec.sections.map((s) => s.side), ['top']);
+  assert.equal(parsed.spec.sections[0].label, 'Top edge');
+  assert.deepEqual(parsed.spec.controls.map((c) => c.key), ['a', 'b']);
+});
+
+test('in-canvas placement overflows trailing controls to the widget mirror', () => {
+  const xml = readFileSync(new URL('../src/ui/inCanvas/exportFrame.xml', import.meta.url), 'utf8');
+  const parsed = parseInCanvasXML(xml);
+  assert.ok(!('error' in parsed));
+  if ('error' in parsed) return;
+  const placement = resolveInCanvasPlacement(parsed.spec);
+  assert.deepEqual(placement.edge.map((s) => s.side), ['top', 'right']);
+  assert.equal(placement.edge[0].controls.length, 4);
+  assert.deepEqual(placement.edge[1].controls.map((c) => c.kind), ['select', 'field', 'export']);
+  assert.equal(placement.widget.length, 1);
+  assert.equal(placement.widget[0].side, 'right');
+  assert.equal(placement.widget[0].label, 'Export');
+  assert.deepEqual(placement.widget[0].controls.map((c) => c.kind), ['popover']);
+  const roomy = resolveInCanvasPlacement(parsed.spec, { top: 8, right: 8, bottom: 8, left: 8 });
+  assert.equal(roomy.widget.length, 0);
+  assert.equal(roomy.edge.flatMap((s) => s.controls).length, parsed.spec.controls.length);
 });

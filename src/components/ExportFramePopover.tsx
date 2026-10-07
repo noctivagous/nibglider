@@ -5,7 +5,9 @@ import { pointsToUnit, unitToPoints } from '../engine/document/MeasurementUnits'
 import type { ExportFrameFormat } from '../engine/model/NGExportFrame';
 import {
   parseInCanvasXML,
+  resolveInCanvasPlacement,
   type InCanvasControl,
+  type InCanvasEdgeSection,
   type InCanvasSpec,
 } from '../ui/inCanvasGui';
 import exportFrameXml from '../ui/inCanvas/exportFrame.xml?raw';
@@ -132,12 +134,15 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
       download(outputs.length === 1 ? `${stem}.svg` : `${stem}-${i + 1}.svg`, entry.svg);
     });
   };
-  const renderControl = (control: InCanvasControl): React.ReactNode => {
+  // home prefixes React keys so the same control can render on both the
+  // exterior edge and the mirrored widget strip without key collisions.
+  const renderControl = (control: InCanvasControl, home: string): React.ReactNode => {
+    const key = `${home}:${control.kind}:${'key' in control ? control.key : control.label}`;
     switch (control.kind) {
       case 'field':
         if (control.key === 'name') {
           return (
-            <label className="ef-row" key={control.key}>
+            <label className="ef-row" key={key}>
               <span className="ef-label">{control.label}</span>
               <input
                 type="text"
@@ -156,7 +161,7 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
         if (control.key === 'scale') {
           return (
             <NumberControl
-              key={control.key}
+              key={key}
               label={control.label}
               value={frame.scale}
               min={control.min}
@@ -169,7 +174,7 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
         if (control.key === 'boxCount') {
           return (
             <NumberControl
-              key={control.key}
+              key={key}
               label={control.label}
               value={boxCount}
               min={control.min}
@@ -184,7 +189,7 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
           const shown = Math.round(pointsToUnit(points, unit) * 100) / 100;
           return (
             <NumberControl
-              key={control.key}
+              key={key}
               label={control.label}
               value={shown}
               min={control.min}
@@ -205,7 +210,7 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
       case 'select':
         if (control.key === 'unit') {
           return (
-            <label className="ef-row" key={control.key}>
+            <label className="ef-row" key={key}>
               <span className="ef-label">{control.label}</span>
               <select
                 className="ef-select"
@@ -220,7 +225,7 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
           );
         }
         return (
-          <label className="ef-row" key={control.key}>
+          <label className="ef-row" key={key}>
             <span className="ef-label">{control.label}</span>
             <select
               className="ef-select"
@@ -236,13 +241,13 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
         );
       case 'export':
         return (
-          <button key="export" type="button" className="ef-export" onClick={doExport}>
+          <button key={key} type="button" className="ef-export" onClick={doExport}>
             {control.label}
           </button>
         );
       case 'popover':
         return (
-          <div key={control.label} className="ef-popover-wrap">
+          <div key={key} className="ef-popover-wrap">
             <button
               type="button"
               className={'ef-popover-btn' + (popoverOpen ? ' open' : '')}
@@ -253,7 +258,7 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
             </button>
             {popoverOpen && (
               <div className="ef-popover" role="dialog" aria-label={control.label}>
-                {control.controls.map((child) => renderControl(child))}
+                {control.controls.map((child) => renderControl(child, home))}
               </div>
             )}
           </div>
@@ -262,32 +267,51 @@ export default function ExportFramePopover({ engine }: { engine: NibGliderEngine
         return null;
     }
   };
+  const placement = resolveInCanvasPlacement(spec);
+  const renderEdgeSection = (section: InCanvasEdgeSection, home: string): React.ReactNode => (
+    <div className="ef-edge" data-edge={section.side} key={`${home}:${section.side}:${section.label}`}>
+      <div className="ef-edge-label">{section.label}</div>
+      {section.controls.map((control) => renderControl(control, home))}
+    </div>
+  );
   return (
-    <div id="exportFrameCard" role="dialog" aria-label={spec.title}>
-      <div className="ef-head">
-        <span className="ef-title">{spec.title}</span>
-        <span className="ef-meta">
-          {artCount} object{artCount === 1 ? '' : 's'} in frame
-          {boxCount > 1 ? ` · ${boxCount} boxes` : ''}
-        </span>
+    <>
+      <div id="exportFrameCard" role="dialog" aria-label={spec.title}>
+        <div className="ef-head">
+          <span className="ef-title">{spec.title}</span>
+          <span className="ef-meta">
+            {artCount} object{artCount === 1 ? '' : 's'} in frame
+            {boxCount > 1 ? ` · ${boxCount} boxes` : ''}
+          </span>
+          <button
+            type="button"
+            className="ef-close"
+            title="Deselect frame"
+            aria-label="Deselect frame"
+            onClick={() => engine.clearOutSelection()}
+          >
+            ×
+          </button>
+        </div>
+        <div className="ef-controls">{placement.edge.map((section) => renderEdgeSection(section, 'edge'))}</div>
         <button
           type="button"
-          className="ef-close"
-          title="Deselect frame"
-          aria-label="Deselect frame"
-          onClick={() => engine.clearOutSelection()}
+          className="ef-delete"
+          onClick={() => engine.deleteExportFrame(frame.id)}
         >
-          ×
+          Delete frame
         </button>
       </div>
-      <div className="ef-controls">{spec.controls.map((control) => renderControl(control))}</div>
-      <button
-        type="button"
-        className="ef-delete"
-        onClick={() => engine.deleteExportFrame(frame.id)}
-      >
-        Delete frame
-      </button>
-    </div>
+      {placement.widget.length > 0 && (
+        <div
+          id="exportFrameWidgetStrip"
+          className="ic-widget-strip"
+          role="dialog"
+          aria-label={`${spec.title} overflow controls`}
+        >
+          <div className="ef-controls">{placement.widget.map((section) => renderEdgeSection(section, 'widget'))}</div>
+        </div>
+      )}
+    </>
   );
 }

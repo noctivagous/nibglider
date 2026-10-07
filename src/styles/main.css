@@ -339,6 +339,109 @@ article {
   color: #e0a3a3;
 }
 
+/* In-canvas edge sections: each <edge> group declares one preferred
+   exterior edge of the element's frame (data-edge). Sections stack in XML
+   order inside the card; controls that cannot fit overflow into the widget
+   strip below, which mirrors the same sections. */
+#exportFrameCard .ef-edge,
+#interlaceCard .ef-edge {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+#exportFrameCard .ef-edge:last-child,
+#interlaceCard .ef-edge:last-child {
+  margin-bottom: 0;
+}
+
+#exportFrameCard .ef-edge-label,
+#interlaceCard .ef-edge-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+}
+
+/* In-canvas widget strip: overflow home above the canvas, underneath the
+   status box. In-flow child of the overlay stack (left lane, below the
+   panel); interactive, so it re-enables pointer events. Same dark-pro card
+   treatment as the edge card. */
+#canvasContainer #topOverlayStack .ic-widget-strip {
+  align-self: flex-start;
+  pointer-events: auto;
+  max-width: min(640px, 100%);
+  background: rgba(13, 17, 22, 0.92);
+  border: 1px solid #0b0e12;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 4px 14px rgba(0, 0, 0, 0.5);
+  font-family: Monospace, monospace;
+  font-size: 12px;
+  color: #e8edf3;
+  padding: 8px 10px;
+}
+
+#canvasContainer #topOverlayStack .ic-widget-strip .ef-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#canvasContainer #topOverlayStack .ic-widget-strip .ef-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#canvasContainer #topOverlayStack .ic-widget-strip .ef-label {
+  flex: 0 0 64px;
+}
+
+#canvasContainer #topOverlayStack .ic-widget-strip .ef-text,
+#canvasContainer #topOverlayStack .ic-widget-strip .ef-number,
+#canvasContainer #topOverlayStack .ic-widget-strip .ef-select {
+  flex: 1;
+  min-width: 0;
+  background: #1d242e;
+  border: 1px solid #8fa3bd;
+  border-radius: 4px;
+  color: #e8edf3;
+  font: inherit;
+  padding: 2px 6px;
+}
+
+#canvasContainer #topOverlayStack .ic-widget-strip .ef-export {
+  font: inherit;
+  color: #06121f;
+  background: #2dd4bf;
+  border: 1px solid #0b0e12;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+#canvasContainer #topOverlayStack .ic-widget-strip .ef-popover-btn {
+  font: inherit;
+  color: #e8edf3;
+  background: #2b3542;
+  border: 1px solid #8fa3bd;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  width: 100%;
+}
+
+#canvasContainer #topOverlayStack .ic-widget-strip .ef-popover {
+  margin-top: 6px;
+  border-top: 1px solid #2b3542;
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 /* Keymap table widget: semitransparent dark-pro table mounted underneath
    the application menus. Display-only; pointer events fall through. */
 #controlPanel .panel-side #keymapWidget {

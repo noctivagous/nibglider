@@ -2,7 +2,9 @@ import { useState, useSyncExternalStore } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
 import {
   parseInCanvasXML,
+  resolveInCanvasPlacement,
   type InCanvasControl,
+  type InCanvasEdgeSection,
   type InCanvasSpec,
 } from '../ui/inCanvasGui';
 import interlaceXml from '../ui/inCanvas/interlace.xml?raw';
@@ -74,12 +76,13 @@ export default function InterlacePopover({ engine }: { engine: NibGliderEngine }
       </div>
     );
   }
-  const renderControl = (control: InCanvasControl): React.ReactNode => {
+  const renderControl = (control: InCanvasControl, home: string): React.ReactNode => {
+    const key = `${home}:${control.kind}:${'key' in control ? control.key : control.label}`;
     switch (control.kind) {
       case 'toggle':
         if (control.key !== 'alternate') return null;
         return (
-          <label className="ef-row" key={control.key}>
+          <label className="ef-row" key={key}>
             <span className="ef-label">{control.label}</span>
             <input
               type="checkbox"
@@ -93,7 +96,7 @@ export default function InterlacePopover({ engine }: { engine: NibGliderEngine }
         if (control.key !== 'padding') return null;
         return (
           <NumberControl
-            key={control.key}
+            key={key}
             label={control.label}
             value={group.padding}
             min={control.min}
@@ -104,7 +107,7 @@ export default function InterlacePopover({ engine }: { engine: NibGliderEngine }
       case 'export':
         return (
           <button
-            key="ungroup"
+            key={key}
             type="button"
             className="ef-export"
             onClick={() => engine.ungroupSelected()}
@@ -116,24 +119,43 @@ export default function InterlacePopover({ engine }: { engine: NibGliderEngine }
         return null;
     }
   };
-  return (
-    <div id="interlaceCard" role="dialog" aria-label={spec.title}>
-      <div className="ef-head">
-        <span className="ef-title">{spec.title}</span>
-        <span className="ef-meta">
-          {group.members} member{group.members === 1 ? '' : 's'} · phase {group.phase === 0 ? 'A' : 'B'}
-        </span>
-        <button
-          type="button"
-          className="ef-close"
-          title="Deselect group"
-          aria-label="Deselect group"
-          onClick={() => engine.clearOutSelection()}
-        >
-          ×
-        </button>
-      </div>
-      <div className="ef-controls">{spec.controls.map((control) => renderControl(control))}</div>
+  const placement = resolveInCanvasPlacement(spec);
+  const renderEdgeSection = (section: InCanvasEdgeSection, home: string): React.ReactNode => (
+    <div className="ef-edge" data-edge={section.side} key={`${home}:${section.side}:${section.label}`}>
+      <div className="ef-edge-label">{section.label}</div>
+      {section.controls.map((control) => renderControl(control, home))}
     </div>
+  );
+  return (
+    <>
+      <div id="interlaceCard" role="dialog" aria-label={spec.title}>
+        <div className="ef-head">
+          <span className="ef-title">{spec.title}</span>
+          <span className="ef-meta">
+            {group.members} member{group.members === 1 ? '' : 's'} · phase {group.phase === 0 ? 'A' : 'B'}
+          </span>
+          <button
+            type="button"
+            className="ef-close"
+            title="Deselect group"
+            aria-label="Deselect group"
+            onClick={() => engine.clearOutSelection()}
+          >
+            ×
+          </button>
+        </div>
+        <div className="ef-controls">{placement.edge.map((section) => renderEdgeSection(section, 'edge'))}</div>
+      </div>
+      {placement.widget.length > 0 && (
+        <div
+          id="interlaceWidgetStrip"
+          className="ic-widget-strip"
+          role="dialog"
+          aria-label={`${spec.title} overflow controls`}
+        >
+          <div className="ef-controls">{placement.widget.map((section) => renderEdgeSection(section, 'widget'))}</div>
+        </div>
+      )}
+    </>
   );
 }
