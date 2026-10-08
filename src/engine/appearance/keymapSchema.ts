@@ -41,6 +41,9 @@ export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
   if (snap.typingText) {
     rows.push({ keys: ['Return'], label: 'Place the text', group: 'end', ids: ['finish-typing'], section: 'guide' });
     rows.push({ keys: ['Alt', 'W'], label: 'Stamp a copy', group: 'op', ids: ['stamp-typed-text'], section: 'guide' });
+    rows.push({ keys: ['Alt', '[', ']'], label: 'Font size', group: 'neutral', ids: ['typed-font-size'], section: 'adjust' });
+    rows.push({ keys: ['Alt', ';', "'"], label: 'Rotate about the cursor', group: 'op', ids: ['typed-rotate'], section: 'adjust' });
+    rows.push({ keys: ['Alt', 'B'], label: 'Toggle bold', group: 'neutral', ids: ['typed-bold'], section: 'guide' });
     rows.push({ keys: ['Esc'], label: 'Cancel typing', group: 'end', ids: ['cancel-typing'], section: 'guide' });
     return rows;
   }

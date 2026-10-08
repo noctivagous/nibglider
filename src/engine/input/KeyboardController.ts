@@ -35,6 +35,9 @@ export interface KeyboardHost {
   finalizeTypedText(): void;
   stampTypedText(): void;
   cancelTypingText(): void;
+  adjustTypedFontSize(delta: number): void;
+  rotateTypedText(degrees: number): void;
+  toggleTypedBold(): void;
   shapeType(): string | null;
   selectedItems(): Item[];
   globalStrokeWidth(): number;
@@ -181,6 +184,32 @@ export class KeyboardController {
     if (event.key === 'Backspace' || code === 'Backspace') {
       event.preventDefault();
       host.editTypedText('backspace');
+      return;
+    }
+    // Alt+[ / ] steps the font size (Shift steps by 10pt). Code-based so
+    // Option-modified punctuation cannot move the chord.
+    if (code === 'BracketLeft' && event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      host.adjustTypedFontSize(event.shiftKey ? -10 : -1);
+      return;
+    }
+    if (code === 'BracketRight' && event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      host.adjustTypedFontSize(event.shiftKey ? 10 : 1);
+      return;
+    }
+    // Alt+; / ' rotates about the cursor (Shift for 45° via rotationStep).
+    if ((code === 'Semicolon' || code === 'Quote') && event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      const down = code === 'Semicolon';
+      const step = rotationStep(modifiersOf(event));
+      host.rotateTypedText(down ? -step : step);
+      return;
+    }
+    // Alt+B toggles bold.
+    if (code === 'KeyB' && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      host.toggleTypedBold();
       return;
     }
     // No other command runs while typing: modified chords are swallowed

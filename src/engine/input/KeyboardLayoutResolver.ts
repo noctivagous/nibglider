@@ -13,6 +13,10 @@ export function resolveKeyVariants(
   state: KeyState,
 ): KeyCommandVariant[] {
   const variants: KeyCommandVariant[] = [];
+  // Type At Cursor owns the keyboard: physical dispatch never reaches here
+  // while typing (the controller branches first), so no command resolves —
+  // keeping the on-screen caps and chord rows honest.
+  if (state.isTypingText) return variants;
   for (const variant of KEY_VARIANTS) {
     if (variant.code !== code) continue;
     if (variant.chord.shift !== modifiers.shift || variant.chord.alt !== modifiers.alt ||

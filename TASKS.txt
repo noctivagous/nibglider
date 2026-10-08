@@ -5,6 +5,10 @@ has checked the option "Preview Printer Page Setup"
 in the File Menu, then it will show margins
 and crop marks.
 
+[  ] Export Frame will have command select dropdown that
+includes Print.
+
+[  ] File Menu:  Print, Print Selection if selection of objects.
 
 -----
 
@@ -448,6 +452,7 @@ alt+W key stamps it.  Begins capturing keyboard input for type.
 Press Return/Enter to finalize.  Follows Text mode settings. 
 " P while drawing: assumption is P is ignored during live path/shape/quad sessions (like most idle keys). Confirm.                                                        
   • Multiline: out of scope — single line only; paste path already handles multiline separately.  "
+  [  ] Multiline is possible when user presses Alt + Return.  Alt + Return is newline in the Type At Cursor.
    [  ]  If a selection of objects then..
 
 

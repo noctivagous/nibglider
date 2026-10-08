@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import paper from 'paper';
-import { NibGliderEngine } from '../src/engine/engine.ts';
+import { NibGliderEngine, typeAnchorPoint } from '../src/engine/engine.ts';
 import { resolveKeyVariants } from '../src/engine/input/KeyboardLayoutResolver.ts';
 import { buildStatusSchema } from '../src/engine/appearance/statusSchema.ts';
 import { buildKeymapRows } from '../src/engine/appearance/keymapSchema.ts';
+import { applyEngineSettings, snapshotEngineSettings } from '../src/engine/engineSettings.ts';
 
 function setup() {
   const scope = new paper.PaperScope();
@@ -14,11 +15,11 @@ function setup() {
   return { scope, engine, cleanup: () => scope.project.remove() };
 }
 
-function keydown(engine, { code, key, altKey = false }) {
+function keydown(engine, { code, key, altKey = false, shiftKey = false }) {
   engine.handleKeyDown({
     code,
     key,
-    shiftKey: false,
+    shiftKey,
     altKey,
     ctrlKey: false,
     metaKey: false,
@@ -194,12 +195,133 @@ test('keymap and overlays describe the typing session', () => {
     assert.deepEqual(ids, [...new Set(ids)]);
     assert.ok(ids.includes('finish-typing'));
     assert.ok(ids.includes('stamp-typed-text'));
+    assert.ok(ids.includes('typed-font-size'));
+    assert.ok(ids.includes('typed-rotate'));
+    assert.ok(ids.includes('typed-bold'));
     assert.ok(ids.includes('cancel-typing'));
     const schema = JSON.stringify(buildStatusSchema(snap({ typingText: true, typingMode: 'new' })));
     assert.ok(schema.includes('Typing Text at Cursor'));
     assert.ok(schema.includes('Alt+W'));
+    assert.ok(schema.includes('Alt+B'));
     engine.startTypeText();
     assert.equal(engine.isTypingText, true);
     engine.cancelTypingText();
+  } finally { cleanup(); }
+});
+
+test('no command resolves while typing, so caps stay honest', () => {
+  const typing = { ...idleState, isTypingText: true, selectedCount: 0 };
+  assert.deepEqual(resolveKeyVariants('KeyP', NO_MODS, typing), []);
+  assert.deepEqual(resolveKeyVariants('BracketLeft', NO_MODS, typing), []);
+});
+
+test('anchor helper maps all nine box points', () => {
+  const rect = { left: 10, top: 20, right: 110, bottom: 60 };
+  assert.deepEqual(typeAnchorPoint(rect, 'top-left'), { x: 10, y: 20 });
+  assert.deepEqual(typeAnchorPoint(rect, 'top-center'), { x: 60, y: 20 });
+  assert.deepEqual(typeAnchorPoint(rect, 'top-right'), { x: 110, y: 20 });
+  assert.deepEqual(typeAnchorPoint(rect, 'middle-left'), { x: 10, y: 40 });
+  assert.deepEqual(typeAnchorPoint(rect, 'center'), { x: 60, y: 40 });
+  assert.deepEqual(typeAnchorPoint(rect, 'middle-right'), { x: 110, y: 40 });
+  assert.deepEqual(typeAnchorPoint(rect, 'bottom-left'), { x: 10, y: 60 });
+  assert.deepEqual(typeAnchorPoint(rect, 'bottom-center'), { x: 60, y: 60 });
+  assert.deepEqual(typeAnchorPoint(rect, 'bottom-right'), { x: 110, y: 60 });
+});
+
+test('anchor setting persists and rejects unknown values', () => {
+  const { engine, cleanup } = setup();
+  try {
+    assert.equal(engine.typeCursorAnchor, 'bottom-left');
+    engine.setTypeCursorAnchor('center');
+    assert.equal(engine.typeCursorAnchor, 'center');
+    const values = snapshotEngineSettings(engine);
+    assert.equal(values['text.typeAnchor'], 'center');
+    engine.setTypeCursorAnchor('bottom-left');
+    applyEngineSettings(engine, values);
+    assert.equal(engine.typeCursorAnchor, 'center');
+    applyEngineSettings(engine, { 'text.typeAnchor': 'nope' });
+    assert.equal(engine.typeCursorAnchor, 'center');
+    engine.setTypeCursorAnchor('nope');
+    assert.equal(engine.typeCursorAnchor, 'center');
+  } finally { cleanup(); }
+});
+
+test('Alt+[ and ] step the font size while typing', () => {
+  const { scope, engine, cleanup } = setup();
+  try {
+    const before = engine.globalText.fontSize;
+    press(engine, 'KeyP', 'p');
+    // A bare ] types instead of sizing.
+    keydown(engine, { code: 'BracketRight', key: ']' });
+    assert.equal(engine.typedText(), ']');
+    keydown(engine, { code: 'Backspace', key: 'Backspace' });
+    keydown(engine, { code: 'BracketRight', key: ']', altKey: true });
+    assert.equal(engine.globalText.fontSize, before + 1);
+    keydown(engine, { code: 'BracketRight', key: ']', altKey: true, shiftKey: true });
+    assert.equal(engine.globalText.fontSize, before + 11);
+    keydown(engine, { code: 'BracketLeft', key: '[', altKey: true, shiftKey: true });
+    keydown(engine, { code: 'BracketLeft', key: '[', altKey: true });
+    assert.equal(engine.globalText.fontSize, before);
+    typeWord(engine, 'Sized');
+    press(engine, 'Enter', 'Enter');
+    const placed = scope.project.activeLayer.children[0];
+    assert.equal(placed.content, 'Sized');
+    assert.equal(placed.fontSize, before);
+  } finally { cleanup(); }
+});
+
+test('Alt+; and Alt+\' rotate the placed line about the cursor', () => {
+  const { scope, engine, cleanup } = setup();
+  try {
+    press(engine, 'KeyP', 'p');
+    typeWord(engine, 'Tilt');
+    keydown(engine, { code: 'Semicolon', key: ';', altKey: true });
+    keydown(engine, { code: 'Semicolon', key: ';', altKey: true });
+    keydown(engine, { code: 'Quote', key: "'", altKey: true });
+    press(engine, 'Enter', 'Enter');
+    const placed = scope.project.activeLayer.children[0];
+    const angle = (Math.atan2(placed.matrix.b, placed.matrix.a) * 180) / Math.PI;
+    assert.ok(Math.abs(angle + 5) < 1e-6, `expected -5deg, got ${angle}`);
+    engine.undo();
+    assert.equal(scope.project.activeLayer.children.length, 0);
+  } finally { cleanup(); }
+});
+
+test('Alt+B toggles bold on the draft', () => {
+  const { scope, engine, cleanup } = setup();
+  try {
+    assert.equal(engine.globalText.fontWeight, 'normal');
+    press(engine, 'KeyP', 'p');
+    keydown(engine, { code: 'KeyB', key: 'b', altKey: true });
+    assert.equal(engine.globalText.fontWeight, 'bold');
+    keydown(engine, { code: 'KeyB', key: 'b', altKey: true });
+    assert.equal(engine.globalText.fontWeight, 'normal');
+    keydown(engine, { code: 'KeyB', key: 'b', altKey: true });
+    typeWord(engine, 'Bold');
+    press(engine, 'Enter', 'Enter');
+    assert.equal(scope.project.activeLayer.children[0].fontWeight, 'bold');
+  } finally { cleanup(); }
+});
+
+test('edit-mode rotation undoes and cancels cleanly', () => {
+  const { engine, cleanup } = setup();
+  try {
+    assert.equal(engine.pastePlainText('Hello'), true);
+    const root = engine.selectedItems[0];
+    const angleOf = () => (Math.atan2(root.matrix.b, root.matrix.a) * 180) / Math.PI;
+    press(engine, 'KeyP', 'p');
+    keydown(engine, { code: 'Quote', key: "'", altKey: true });
+    assert.ok(Math.abs(angleOf() - 5) < 1e-6, `expected 5deg, got ${angleOf()}`);
+    press(engine, 'Escape', 'Escape');
+    assert.ok(Math.abs(angleOf()) < 1e-6, `expected 0deg, got ${angleOf()}`);
+    assert.equal(engine.selectionText().content, 'Hello');
+    press(engine, 'KeyP', 'p');
+    keydown(engine, { code: 'Quote', key: "'", altKey: true });
+    press(engine, 'Enter', 'Enter');
+    assert.ok(Math.abs(angleOf() - 5) < 1e-6);
+    engine.undo();
+    assert.ok(Math.abs(angleOf()) < 1e-6, `expected 0deg, got ${angleOf()}`);
+    engine.redo();
+    assert.ok(Math.abs(angleOf() - 5) < 1e-6);
   } finally { cleanup(); }
 });

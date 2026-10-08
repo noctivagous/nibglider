@@ -172,7 +172,9 @@ import type {
   TextMode,
   TextPasteLocation,
   TextSpec,
+  type TypeCursorAnchor,
 } from './types';
+import { typeAnchorPoint } from './types';
 
 // Temporary compatibility re-exports. Callers may keep importing these
 // from engine.ts. New code should import from ./types.
@@ -206,12 +208,14 @@ export type {
   TextMode,
   TextPasteLocation,
   TextSpec,
+  type TypeCursorAnchor,
 } from './types';
 export {
   PT_PER_CM,
   PT_PER_INCH,
   lengthUnitToPoints,
   pointsToLengthUnit,
+  typeAnchorPoint,
 } from './types';
 
 // Paper item refs stay loosely typed: the original code leans on runtime
@@ -452,6 +456,8 @@ export class NibGliderEngine {
   // Settings window "Text pastes at Location": pasted text anchors at the
   // crosshair (cursor point, else view center) or always at the view center.
   textPasteLocation: TextPasteLocation = 'crosshair';
+  // Type At Cursor: which point of the typed line attaches to the cursor.
+  typeCursorAnchor: TypeCursorAnchor = 'bottom-left';
   displayFlow: DisplayFlow = 'exterior';
   glyphOrientation: GlyphOrientation = 'outward';
   // Vertical anchoring of Display glyphs on open spline strokes: Above
@@ -489,6 +495,7 @@ export class NibGliderEngine {
   isTypingText = false;
   typedTextMode: 'new' | 'edit' | null = null;
   private typedTextBuffer = '';
+  private typedTextRotation = 0;
   private typedTextPreview: AnyItem = null;
   private typedTextEditRoot: AnyItem = null;
   private typedTextOriginal: string[] = [];
@@ -3044,6 +3051,59 @@ export class NibGliderEngine {
     this.anchorTypingPreview();
   }
 
+  /** Alt+[ / ] while typing: step the font size (Shift steps by 10). */
+  adjustTypedFontSize(delta: number): void {
+    if (!this.isTypingText || !Number.isFinite(delta) || delta === 0) return;
+    this.setTextFontSize(this.globalText.fontSize + delta);
+    if (this.typedTextMode === 'new') this.restyleTypingPreview();
+  }
+
+  /** Alt+; / ' while typing: rotate about the cursor (edit: the anchor). */
+  rotateTypedText(degrees: number): void {
+    if (!this.isTypingText || !Number.isFinite(degrees) || degrees === 0) return;
+    this.typedTextRotation += degrees;
+    try {
+      if (this.typedTextMode === 'edit' && this.typedTextEditRoot && this.typedTextAnchor) {
+        this.typedTextEditRoot.rotate(degrees, this.typedTextAnchor);
+      } else if (this.typedTextPreview && this.mousePt) {
+        this.typedTextPreview.rotate(degrees, this.mousePt);
+      }
+    } catch { /* Keep the current angle. */ }
+    if (this.typedTextMode === 'new') this.anchorTypingPreview();
+    this.updateTextContent(); this.notify();
+  }
+
+  /** Alt+B while typing: toggle bold on the draft (and the edited object). */
+  toggleTypedBold(): void {
+    if (!this.isTypingText) return;
+    this.setTextFontWeight(this.globalText.fontWeight === 'bold' ? 'normal' : 'bold');
+    if (this.typedTextMode === 'new') this.restyleTypingPreview();
+  }
+
+  /** Re-apply Text settings to the draft preview after a style chord. */
+  private restyleTypingPreview(): void {
+    const preview = this.typedTextPreview;
+    if (!preview) return;
+    try {
+      this.styleTypedTextItem(preview);
+      preview.opacity = 0.7;
+    } catch { /* Keep the current style. */ }
+    this.anchorTypingPreview();
+    this.updateTextContent(); this.notify();
+  }
+
+  setTypeCursorAnchor(anchor: TypeCursorAnchor): void {
+    const anchors: TypeCursorAnchor[] = [
+      'top-left', 'top-center', 'top-right',
+      'middle-left', 'center', 'middle-right',
+      'bottom-left', 'bottom-center', 'bottom-right',
+    ];
+    if (!anchors.includes(anchor)) return;
+    this.typeCursorAnchor = anchor;
+    if (this.isTypingText && this.typedTextMode === 'new') this.anchorTypingPreview();
+    this.updateTextContent(); this.notify();
+  }
+
   /** Return places the typed line; an empty line ends the session silently. */
   finalizeTypedText(): void {
     if (!this.isTypingText) return;
@@ -3056,13 +3116,20 @@ export class NibGliderEngine {
       const prev = [...this.typedTextOriginal];
       const next = this.typedTextBuffer;
       const anchor = this.typedTextAnchor;
+      const rotated = this.typedTextRotation;
       const body = root?.data?.textKind === 'body';
       this.endTypingSession();
       try {
         this.context.history.push({
           label: 'Edit text',
-          undo: () => this.setTypedEditContent(root, prev.join('\n'), body, anchor),
-          redo: () => this.setTypedEditContent(root, next, body, anchor),
+          undo: () => {
+            this.setTypedEditContent(root, prev.join('\n'), body, anchor);
+            this.rotateTypedEditRoot(root, -rotated, anchor);
+          },
+          redo: () => {
+            this.setTypedEditContent(root, next, body, anchor);
+            this.rotateTypedEditRoot(root, rotated, anchor);
+          },
         });
       } catch { /* The edit itself already landed. */ }
       this.documentManager.markEdited('scene');
@@ -3102,9 +3169,19 @@ export class NibGliderEngine {
         root.data?.textKind === 'body',
         this.typedTextAnchor,
       );
+      this.rotateTypedEditRoot(root, -this.typedTextRotation, this.typedTextAnchor);
     }
     this.endTypingSession();
     this.updateTextContent(); this.notify();
+  }
+
+  /** Counter-rotate an edited root (undo/redo/cancel); a no-op at 0°. */
+  private rotateTypedEditRoot(root: AnyItem, degrees: number, anchor: AnyItem): void {
+    if (!root || !anchor || !Number.isFinite(degrees) || degrees === 0) return;
+    try {
+      root.rotate(degrees, anchor);
+    } catch { /* Keep the current angle. */ }
+    this.documentManager.markEdited('scene');
   }
 
   private endTypingSession(): void {
@@ -3114,6 +3191,7 @@ export class NibGliderEngine {
     this.isTypingText = false;
     this.typedTextMode = null;
     this.typedTextBuffer = '';
+    this.typedTextRotation = 0;
     this.typedTextPreview = null;
     this.typedTextEditRoot = null;
     this.typedTextOriginal = [];
@@ -3165,16 +3243,29 @@ export class NibGliderEngine {
     this.anchorTypingPreview();
   }
 
-  /** Pin the preview's baseline lower-left corner to the cursor hot point. */
+  /** Pin the preview's anchor point to the cursor hot point. */
   private anchorTypingPreview(): void {
     const preview = this.typedTextPreview;
     const at = this.mousePt;
     if (!preview || !at) return;
+    const pin = this.typingPinOf(preview);
+    if (!pin) return;
     try {
-      const corner = preview.bounds?.bottomLeft;
-      if (!corner) return;
-      preview.translate(at.subtract(corner));
+      preview.translate(at.subtract(pin));
     } catch { /* Keep the preview where it is. */ }
+  }
+
+  /** The cursor pin of a typed item in project coordinates, or null when
+   * the bounds are unreadable. */
+  private typingPinOf(item: AnyItem): AnyItem | null {
+    try {
+      const bounds = item?.bounds;
+      if (!bounds || !Number.isFinite(bounds.left)) return null;
+      const pin = typeAnchorPoint(bounds, this.typeCursorAnchor);
+      return new this.scope.Point(pin.x, pin.y);
+    } catch {
+      return null;
+    }
   }
 
   /** Deposit the typed line as a real editable text item at the cursor. */
@@ -3188,8 +3279,9 @@ export class NibGliderEngine {
       placed.content = buffer;
       this.styleTypedTextItem(placed);
       placed.opacity = 1;
-      const corner = placed.bounds?.bottomLeft;
-      if (corner) this.anchorTextPointOn(placed, target, corner);
+      if (this.typedTextRotation) placed.rotate(this.typedTextRotation, target);
+      const pin = this.typingPinOf(placed);
+      if (pin) this.anchorTextPointOn(placed, target, pin);
     } catch {
       return null;
     }

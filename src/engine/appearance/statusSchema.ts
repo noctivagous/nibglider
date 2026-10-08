@@ -167,6 +167,7 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
       steps.push(L('hint', [T('Move mouse to place the baseline.')]));
     }
     steps.push(L('hint', [T('Type to edit the line.')]));
+    steps.push(L('hint', [T('Alt+[ / ] sizes, Alt+; / \' rotates, Alt+B bolds.')]));
     steps.push(L('hint', [T('Return places it, Alt+W stamps a copy, Esc cancels.')]));
   }
   for (const hint of snap.liveHints) {

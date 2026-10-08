@@ -94,6 +94,33 @@ export type TextMode = 'display' | 'body';
  * always at the view center. */
 export type TextPasteLocation = 'crosshair' | 'view-center';
 
+/** Which point of the typed line attaches to the cursor while typing. */
+export type TypeCursorAnchor =
+  | 'top-left' | 'top-center' | 'top-right'
+  | 'middle-left' | 'center' | 'middle-right'
+  | 'bottom-left' | 'bottom-center' | 'bottom-right';
+
+/** Point of a bounding rect for a cursor anchor: corners, edge midpoints,
+ * and center. Pure so the anchor box and tests share it. */
+export function typeAnchorPoint(
+  rect: { left: number; top: number; right: number; bottom: number },
+  anchor: TypeCursorAnchor,
+): { x: number; y: number } {
+  const cx = (rect.left + rect.right) / 2;
+  const cy = (rect.top + rect.bottom) / 2;
+  switch (anchor) {
+    case 'top-left': return { x: rect.left, y: rect.top };
+    case 'top-center': return { x: cx, y: rect.top };
+    case 'top-right': return { x: rect.right, y: rect.top };
+    case 'middle-left': return { x: rect.left, y: cy };
+    case 'center': return { x: cx, y: cy };
+    case 'middle-right': return { x: rect.right, y: cy };
+    case 'bottom-left': return { x: rect.left, y: rect.bottom };
+    case 'bottom-center': return { x: cx, y: rect.bottom };
+    case 'bottom-right': return { x: rect.right, y: rect.bottom };
+  }
+}
+
 /** Display Text placement relative to the shape boundary. */
 export type DisplayFlow = 'interior' | 'exterior';
 

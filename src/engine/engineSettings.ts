@@ -250,6 +250,11 @@ const ENTRIES: SettingEntry[] = [
   num('text.circGap', (e) => e.circumferenceGap, (e, v) => e.setCircumferenceGap(v)),
   num('text.circAngle', (e) => e.circumferenceAngleOffset, (e, v) => e.setCircumferenceAngleOffset(v)),
   en('text.pasteLocation', ['crosshair', 'view-center'], (e) => e.textPasteLocation, (e, v) => e.setTextPasteLocation(v as never)),
+  en('text.typeAnchor', [
+    'top-left', 'top-center', 'top-right',
+    'middle-left', 'center', 'middle-right',
+    'bottom-left', 'bottom-center', 'bottom-right',
+  ], (e) => e.typeCursorAnchor, (e, v) => e.setTypeCursorAnchor(v as never)),
   // Modes.
   en('combine.mode', ['none', 'union', 'subtract', 'intersect', 'crop', 'interlace'], (e) => e.combineMode, (e, v) => e.setCombineMode(v as never)),
   en('combine.tool', ['union', 'subtract', 'intersect', 'crop', 'interlace'], (e) => e.combineTool, (e, v) => e.setCombineTool(v as never)),
