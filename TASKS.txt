@@ -371,7 +371,7 @@ a shape, if set to repeat only horizontally, it will
 
 
 IN-DRAWING WIDGETS AND ACTOR OBJECTS
-   [ ] REACTIVE PROPERTIES
+   [ ] REACTIVE PROPERTIES ON OBJECTS AND REACTOR FRAMES
        [  ]  Reacts to objects behind it.  on any property
        but to to begin with, brightness Value: The type has base color or base reaction color
       and reacts to predominant background.  If background
@@ -380,7 +380,14 @@ IN-DRAWING WIDGETS AND ACTOR OBJECTS
          [  ] Shape reactive properties: changes shape in response
          to surrounding objects, according to rules of the ones in front
          or behind.
-
+         [  ] constraint objects can sit between objects.  allows increasing
+         the size of an object and a network reacts because constraints
+         are placed between them.  Let's say there are two rectangles
+         and the constraint is golden ratio.  the increase in the size of
+         one will maintain the ratio.  implies a rule macro builder system
+         beyond simple scenarios.  e.g. reactor wells respond to a shape
+         and its location, etc.
+         
 	[ ] Rect Keys > In-Canvas Elements > REPLICATOR PORTALS
 	Placed on page with Rect Key (for rect repeats) or Circle Keys. 
 	As the person moves objects over the replicator portal
