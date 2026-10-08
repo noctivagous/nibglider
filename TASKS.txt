@@ -371,6 +371,15 @@ a shape, if set to repeat only horizontally, it will
 
 
 IN-DRAWING WIDGETS AND ACTOR OBJECTS
+   [ ] REACTIVE PROPERTIES
+       [  ]  Reacts to objects behind it.  on any property
+       but to to begin with, brightness Value: The type has base color or base reaction color
+      and reacts to predominant background.  If background
+       is black, is set to light green.  If background is white, is set to
+       dark green.  
+         [  ] Shape reactive properties: changes shape in response
+         to surrounding objects, according to rules of the ones in front
+         or behind.
 
 	[ ] Rect Keys > In-Canvas Elements > REPLICATOR PORTALS
 	Placed on page with Rect Key (for rect repeats) or Circle Keys. 
@@ -454,6 +463,7 @@ Press Return/Enter to finalize.  Follows Text mode settings.
   • Multiline: out of scope — single line only; paste path already handles multiline separately.  "
   [  ] Multiline is possible when user presses Alt + Return.  Alt + Return is newline in the Type At Cursor.
    [  ]  If a selection of objects then..
+   [  ] Text section in panel should have its preview box the same width as the other preview boxes.
 
 
 [ ] Text: Editable Text obj vs. Vector Shapes
@@ -748,8 +758,22 @@ information and can be a place for scrapbook.
  containers for text and this stack item would have
  parameters specific to this situation.
  
+ ----
  
+AI - Armature-based construction of objects.
+AI starts with armature of objects and builds them
+out with quads and section proportions.  it subdivides
+the quads as well.  Decomposition process leads to
+armature tree.  bike: frame, wheels, seat.  person: head, torso, legs
+pose: front wheel turned.  camera level.
  
+----
+
+TRANSIENT MENUS - primarily for drawing property settings.
+
+COLOR PALETTE / COLOR WHEEL TRANSIENT MENU
+Alt+C - opens up color selection.
+
 ----
 
 gui-ref/

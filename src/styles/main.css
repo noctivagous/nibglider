@@ -1610,7 +1610,8 @@ body {
 #controlPanel .titlebar-single #shapePreviewContainer,
 #controlPanel .titlebar-single #rectShapePreviewContainer,
 #controlPanel .titlebar-single #combinePreviewContainer,
-#controlPanel .titlebar-single #repeatPreviewContainer {
+#controlPanel .titlebar-single #repeatPreviewContainer,
+#controlPanel .titlebar-single #textPreviewContainer {
   width: 84px;
   height: 30px;
   flex: 0 0 84px;
@@ -3207,8 +3208,8 @@ body {
   outline-offset: 1px;
 }
 
-/* Text preview well: same treatment as the stroke/fill wells, but the
-   content is a live type sample instead of an SVG. */
+/* Text preview well: a live type sample in the same 84×30 titlebar box
+   as the shape, combinatorics, and repeat previews. */
 #controlPanel .text-preview-trigger {
   appearance: none;
   -webkit-appearance: none;
@@ -3220,13 +3221,13 @@ body {
   cursor: pointer;
   font: inherit;
   color: inherit;
-  width: 56px;
-  height: 28px;
+  width: 84px;
+  height: 30px;
   background: var(--dp-bg-1);
   border: 1px solid var(--dp-border-soft);
   border-radius: 5px;
   overflow: hidden;
-  flex: none;
+  flex: 0 0 84px;
 }
 
 #controlPanel .text-preview-trigger:hover,
