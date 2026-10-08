@@ -172,7 +172,7 @@ import type {
   TextMode,
   TextPasteLocation,
   TextSpec,
-  type TypeCursorAnchor,
+  TypeCursorAnchor,
 } from './types';
 import { typeAnchorPoint } from './types';
 
@@ -208,7 +208,7 @@ export type {
   TextMode,
   TextPasteLocation,
   TextSpec,
-  type TypeCursorAnchor,
+  TypeCursorAnchor,
 } from './types';
 export {
   PT_PER_CM,

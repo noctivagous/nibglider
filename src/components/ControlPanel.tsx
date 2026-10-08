@@ -60,7 +60,7 @@ import type {
   StrokeJoin,
   TextJustification,
   TextSpec,
-  type TypeCursorAnchor,
+  TypeCursorAnchor,
 } from '../engine/engine';
 
 const ASPECT_RATIO_PRESETS = ['1:1', '3:4', '2:3', '16:9'];
