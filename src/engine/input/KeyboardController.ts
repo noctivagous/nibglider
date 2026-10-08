@@ -141,7 +141,8 @@ export class KeyboardController {
     const code = eventCode(event);
     if (/^(Shift|Alt|Control|Meta|CapsLock)/.test(code)) return;
     // Type At Cursor captures the whole keyboard: every key types except
-    // the finalize (Return), stamp (Alt+W), and cancel (Escape) chords.
+    // the finalize (Return), newline (Alt+Return), stamp (Alt+W), and
+    // cancel (Escape) chords.
     if (this.host.isTypingText()) {
       this.handleTypingKey(event);
       return;
@@ -168,6 +169,15 @@ export class KeyboardController {
       host.cancelTypingText();
       return;
     }
+    // Alt+Return starts a new line (Shift may ride along); a bare
+    // Return/Enter finalizes. NumpadEnter counts too. Code-based so the
+    // chord survives Option-modified key output on macOS.
+    if ((code === 'Enter' || code === 'NumpadEnter' || event.key === 'Enter')
+      && event.altKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      host.editTypedText('\n');
+      return;
+    }
     // Return/Enter finalizes; NumpadEnter counts too.
     if (code === 'Enter' || code === 'NumpadEnter' || event.key === 'Enter') {
       event.preventDefault();
@@ -186,23 +196,25 @@ export class KeyboardController {
       host.editTypedText('backspace');
       return;
     }
-    // Alt+[ / ] steps the font size (Shift steps by 10pt). Code-based so
+    // Alt+[ / ] steps the font size: Shift steps by 10pt (bigger, like
+    // object scaling), Ctrl steps by 0.5pt (finer). Code-based so
     // Option-modified punctuation cannot move the chord.
-    if (code === 'BracketLeft' && event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (code === 'BracketLeft' && event.altKey && !event.metaKey) {
       event.preventDefault();
-      host.adjustTypedFontSize(event.shiftKey ? -10 : -1);
+      host.adjustTypedFontSize(event.shiftKey ? -10 : event.ctrlKey ? -0.5 : -1);
       return;
     }
-    if (code === 'BracketRight' && event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (code === 'BracketRight' && event.altKey && !event.metaKey) {
       event.preventDefault();
-      host.adjustTypedFontSize(event.shiftKey ? 10 : 1);
+      host.adjustTypedFontSize(event.shiftKey ? 10 : event.ctrlKey ? 0.5 : 1);
       return;
     }
-    // Alt+; / ' rotates about the cursor (Shift for 45° via rotationStep).
-    if ((code === 'Semicolon' || code === 'Quote') && event.altKey && !event.ctrlKey && !event.metaKey) {
+    // Alt+; / ' rotates about the cursor: Shift for 45° (bigger, like
+    // object rotation), Ctrl for 1° (finer), otherwise 5° via rotationStep.
+    if ((code === 'Semicolon' || code === 'Quote') && event.altKey && !event.metaKey) {
       event.preventDefault();
       const down = code === 'Semicolon';
-      const step = rotationStep(modifiersOf(event));
+      const step = event.shiftKey ? 45 : event.ctrlKey ? 1 : rotationStep(modifiersOf(event));
       host.rotateTypedText(down ? -step : step);
       return;
     }

@@ -1,12 +1,12 @@
 // Pointer routing for the canvas.
 //
 // Owns: hit-testing, pan, selection clicks, drag-lock movement, and the
-//   mouse-down / move / drag / up decisions.
+//   mouse-down / move / drag / up / double-click decisions.
 // May read: drawing session, snap settings, and guide items through PointerHost.
 // May mutate: the view center while panning, selection membership, and the
 //   live preview point. Shape construction stays on the engine.
 // Public methods: onMouseDown, onMouseMove, onMouseDrag, releasePointer,
-//   hitTestUnderCursor.
+//   onDoubleClick, hitTestUnderCursor.
 // Events: none. Host methods record history and refresh previews.
 // Tests: blank mousedown pans, a hit toggles selection, mouseup commits
 //   the move, and drag-lock follows the cursor. See
@@ -76,6 +76,7 @@ export interface PointerHost {
   endTransformDrag(): void;
   updateTransformLive(): boolean;
   topUserGroupOf(item: Item): Item;
+  startTextEdit(item: Item): void;
   isNonContentItem(item: Item): boolean;
   updateCanvasCursor(dragging: boolean, point: Item | null): void;
 }
@@ -276,6 +277,23 @@ export class PointerController {
     const host = this.host;
     if (host.isDrawingPath() || host.isDrawingShape() || host.isDrawingQuad()) return;
     this.applyHitSelection(this.hitTestContent(host.mousePt()));
+  }
+
+  /** Left-button double-click on editable text opens it for retyping.
+   * The two preceding clicks already ran their toggle selection, so the
+   * root is re-resolved and re-selected here before edit mode starts.
+   * Anything else (empty canvas, non-text, mid-gesture) is a no-op. */
+  onDoubleClick(point: Item, button: number): void {
+    if (button !== 0) return;
+    const host = this.host;
+    if (host.isDrawingPath() || host.isDrawingShape() || host.isDrawingQuad()) return;
+    if (host.isTypingText()) return;
+    if (host.isFrameResizing() || host.isTransformResizing()) return;
+    const hit = this.hitTestContent(point);
+    let item: Item = hit && hit.item ? hit.item : null;
+    if (item) item = host.topUserGroupOf(item);
+    if (!item || !item.data || !item.data.editableText) return;
+    host.startTextEdit(item);
   }
 
   private isRightButton(event: paper.MouseEvent): boolean {

@@ -194,6 +194,7 @@ test('keymap and overlays describe the typing session', () => {
     const ids = rows.flatMap((r) => r.ids);
     assert.deepEqual(ids, [...new Set(ids)]);
     assert.ok(ids.includes('finish-typing'));
+    assert.ok(ids.includes('typed-newline'));
     assert.ok(ids.includes('stamp-typed-text'));
     assert.ok(ids.includes('typed-font-size'));
     assert.ok(ids.includes('typed-rotate'));
@@ -203,6 +204,7 @@ test('keymap and overlays describe the typing session', () => {
     assert.ok(schema.includes('Typing Text at Cursor'));
     assert.ok(schema.includes('Alt+W'));
     assert.ok(schema.includes('Alt+B'));
+    assert.ok(schema.includes('Alt+Return'));
     engine.startTypeText();
     assert.equal(engine.isTypingText, true);
     engine.cancelTypingText();
@@ -301,6 +303,114 @@ test('bottom anchors pin the baseline by default and the descender on request', 
     item = preview();
     assert.ok(Math.abs(item.bounds.right - 100) < 1e-6);
     assert.ok(Math.abs(baselineOf(item) - 200) < 1e-6);
+  } finally { cleanup(); }
+});
+
+test('double-click opens an editable text object for retyping', () => {
+  const { engine, cleanup } = setup();
+  try {
+    assert.equal(engine.pastePlainText('Hello'), true);
+    const root = engine.selectedItems[0];
+    const center = root.bounds.center;
+    engine.clearOutSelection();
+    assert.equal(engine.isTypingText, false);
+    engine.pointer.onDoubleClick(center, 0);
+    assert.equal(engine.isTypingText, true);
+    assert.equal(engine.typedTextMode, 'edit');
+    assert.equal(engine.typedText(), 'Hello');
+    assert.deepEqual(engine.selectedItems, [root]);
+    typeWord(engine, '!');
+    assert.equal(root.content, 'Hello!');
+    press(engine, 'Enter', 'Enter');
+    assert.equal(engine.isTypingText, false);
+    assert.equal(engine.selectionText().content, 'Hello!');
+  } finally { cleanup(); }
+});
+
+test('double-click ignores empty canvas, shapes, right button, and active typing', () => {
+  const { scope, engine, cleanup } = setup();
+  try {
+    engine.pointer.onDoubleClick(new scope.Point(400, 500), 0);
+    assert.equal(engine.isTypingText, false);
+    const rect = new scope.Path.Rectangle({ from: [10, 10], to: [40, 40] });
+    engine.pointer.onDoubleClick(new scope.Point(25, 25), 0);
+    assert.equal(engine.isTypingText, false);
+    assert.deepEqual(engine.selectedItems, []);
+    rect.remove();
+    assert.equal(engine.pastePlainText('Hi'), true);
+    const root = engine.selectedItems[0];
+    engine.clearOutSelection();
+    engine.pointer.onDoubleClick(root.bounds.center, 2);
+    assert.equal(engine.isTypingText, false);
+    press(engine, 'KeyP', 'p');
+    assert.equal(engine.isTypingText, true);
+    engine.pointer.onDoubleClick(root.bounds.center, 0);
+    assert.equal(engine.typedTextMode, 'new');
+    engine.cancelTypingText();
+  } finally { cleanup(); }
+});
+
+test('Alt+Return inserts a newline and Return still places multiline text', () => {
+  const { scope, engine, cleanup } = setup();
+  const altReturn = (shiftKey) => engine.handleKeyDown({
+    code: 'Enter', key: 'Enter', shiftKey: !!shiftKey,
+    altKey: true, ctrlKey: false, metaKey: false, target: null,
+    preventDefault() {},
+  });
+  try {
+    press(engine, 'KeyP', 'p');
+    typeWord(engine, 'Hi');
+    altReturn(false);
+    assert.equal(engine.typedText(), 'Hi\n');
+    assert.equal(engine.isTypingText, true);
+    altReturn(true);
+    assert.equal(engine.typedText(), 'Hi\n\n');
+    typeWord(engine, 'Yo');
+    press(engine, 'Enter', 'Enter');
+    assert.equal(engine.isTypingText, false);
+    const placed = scope.project.activeLayer.children[0];
+    assert.equal(placed.content, 'Hi\n\nYo');
+  } finally { cleanup(); }
+});
+
+test('Alt+Return inserts a newline while retyping an object', () => {
+  const { engine, cleanup } = setup();
+  try {
+    assert.equal(engine.pastePlainText('Hello'), true);
+    press(engine, 'KeyP', 'p');
+    assert.equal(engine.typedTextMode, 'edit');
+    engine.handleKeyDown({
+      code: 'Enter', key: 'Enter', shiftKey: false,
+      altKey: true, ctrlKey: false, metaKey: false, target: null,
+      preventDefault() {},
+    });
+    assert.equal(engine.typedText(), 'Hello\n');
+    press(engine, 'Enter', 'Enter');
+    assert.equal(engine.selectionText().content, 'Hello\n');
+  } finally { cleanup(); }
+});
+
+test('Alt+Ctrl steps typed size and rotation finely, Alt+Shift steps big', () => {
+  const { scope, engine, cleanup } = setup();
+  const chord = (code, key, mods) => engine.handleKeyDown({
+    code, key, shiftKey: false, altKey: false,
+    ctrlKey: false, metaKey: false, target: null,
+    preventDefault() {}, ...mods,
+  });
+  try {
+    press(engine, 'KeyP', 'p');
+    const base = engine.globalText.fontSize;
+    chord('BracketRight', ']', { altKey: true, ctrlKey: true });
+    assert.equal(engine.globalText.fontSize, base + 0.5);
+    chord('BracketRight', ']', { altKey: true, shiftKey: true });
+    assert.equal(engine.globalText.fontSize, base + 10.5);
+    typeWord(engine, 'Tilt');
+    chord('Quote', "'", { altKey: true, ctrlKey: true });
+    chord('Quote', "'", { altKey: true, shiftKey: true });
+    press(engine, 'Enter', 'Enter');
+    const placed = scope.project.activeLayer.children[0];
+    const angle = (Math.atan2(placed.matrix.b, placed.matrix.a) * 180) / Math.PI;
+    assert.ok(Math.abs(angle - 46) < 1e-6, `expected 46deg, got ${angle}`);
   } finally { cleanup(); }
 });
 

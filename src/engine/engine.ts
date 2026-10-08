@@ -2146,6 +2146,7 @@ export class NibGliderEngine {
       onMouseMove: (event) => this.pointer.onMouseMove(event),
       onMouseDrag: (event) => this.pointer.onMouseDrag(event),
       onMouseUp: () => this.pointer.releasePointer(),
+      onDoubleClick: (event) => this.handleDoubleClick(event),
       onKeyDown: (event) => this.keyboard.handleKeyDown(event),
       onKeyHighlight: (event) => this.keyboard.reportKeyHighlight(event),
       onKeyUp: (event) => this.keyboard.reportKeyUp(event),
@@ -3001,6 +3002,17 @@ export class NibGliderEngine {
 
   /** Live typed line, for the status overlay and tests. */
   typedText(): string { return this.typedTextBuffer; }
+
+  /** Double-click entry: select the double-clicked editable text root and
+   * open it for retyping. Anything else is a no-op. */
+  startTextEdit(item: AnyItem): void {
+    if (this.isTypingText || this.isLiveDrawing) return;
+    let root = item;
+    try { root = this.topUserGroupOf(item) ?? item; } catch { /* Keep the hit item. */ }
+    if (!root?.data?.editableText) return;
+    this.selection.restore([root]);
+    this.startTypeText();
+  }
 
   startTypeText(): void {
     if (this.isTypingText || this.isLiveDrawing) return;
@@ -5311,6 +5323,24 @@ export class NibGliderEngine {
   /** Select the content item under the cursor. */
   hitTestUnderCursor(): void {
     this.pointer.hitTestUnderCursor();
+  }
+
+  /** Canvas double-click: project the cursor and let the pointer open
+   * editable text for retyping. A click can never fail the canvas. */
+  private handleDoubleClick(event: MouseEvent): void {
+    let button = 0;
+    try { button = typeof event.button === 'number' ? event.button : 0; } catch { /* Left by default. */ }
+    try {
+      const view = this.scope.view;
+      const el = view.element as HTMLCanvasElement | null;
+      if (el && typeof el.getBoundingClientRect === 'function') {
+        const rect = el.getBoundingClientRect();
+        const at = new this.scope.Point(event.clientX - rect.left, event.clientY - rect.top);
+        this.pointer.onDoubleClick(view.viewToProject(at), button);
+        return;
+      }
+    } catch { /* Fall through to the cursor point. */ }
+    try { this.pointer.onDoubleClick(this.mousePt, button); } catch { /* Never fail a click. */ }
   }
 
   /** Safari trackpad pinch: cumulative scale from gesturestart. */

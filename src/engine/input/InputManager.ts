@@ -18,6 +18,7 @@ export interface InputCallbacks {
   onMouseMove: (event: paper.MouseEvent) => void;
   onMouseDrag: (event: paper.MouseEvent) => void;
   onMouseUp: () => void;
+  onDoubleClick: (event: MouseEvent) => void;
   onKeyDown: (event: KeyboardEvent) => void;
   onKeyHighlight: (event: KeyboardEvent) => void;
   onKeyUp: (event: KeyboardEvent) => void;
@@ -61,6 +62,7 @@ export class InputManager {
     const onCanvasClick = () => {
       canvas.focus();
     };
+    const onDoubleClick = (event: MouseEvent) => handlers.onDoubleClick(event);
     const onDragOver = (event: DragEvent) => event.preventDefault();
     const onDrop = (event: DragEvent) => handlers.onDrop(event);
     const onWheel = (event: WheelEvent) => handlers.onWheel(event);
@@ -76,6 +78,7 @@ export class InputManager {
     document.addEventListener('keyup', onKeyUp);
     canvas.addEventListener('mousemove', onCanvasMove);
     canvas.addEventListener('click', onCanvasClick);
+    canvas.addEventListener('dblclick', onDoubleClick);
     canvas.addEventListener('dragover', onDragOver);
     canvas.addEventListener('drop', onDrop);
     canvas.addEventListener('wheel', onWheel, { passive: false });
@@ -98,6 +101,7 @@ export class InputManager {
       window.removeEventListener('afterprint', handlers.onAfterPrint);
       canvas.removeEventListener('mousemove', onCanvasMove);
       canvas.removeEventListener('click', onCanvasClick);
+      canvas.removeEventListener('dblclick', onDoubleClick);
       canvas.removeEventListener('dragover', onDragOver);
       canvas.removeEventListener('drop', onDrop);
       canvas.removeEventListener('wheel', onWheel);

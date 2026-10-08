@@ -146,6 +146,7 @@ export function createPointerHost(engine: Surface): PointerHost {
     endTransformDrag: () => engine.endTransformDrag(),
     updateTransformLive: () => engine.updateTransformLive(),
     topUserGroupOf: (item) => engine.topUserGroupOf(item),
+    startTextEdit: (item) => engine.startTextEdit(item),
     isNonContentItem: (item) => engine.isNonContentItem(item),
     updateCanvasCursor: (dragging, point) => { engine.updateCanvasCursor(dragging, point); },
   };
