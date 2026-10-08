@@ -1,1 +1,177 @@
 We found in the project Floating Marker that deposited points are about corners and then the segment that follows will relate to the corner.  So what we had was hardCorner, what you would make a polygon out of because the corner was hard and the segment was straight.  Then we had roundCorner, which was not an arc-based corner but just smooth and extending from it was a straight segment.  Then we had hardCorner-bowedLine and that was where we bowed the segment that followed the hard corner.  rounder-Corner-bowedLine bowed the segment that followed the roundCorner.  The bow would be on either side of the straight line so we had two keys for each: hardCorner-bowedLine-A hardCorner-bowedLine-B and  rounder-Corner-bowedLine-A and  rounder-Corner-bowedLine-B.  Separate from this was an arc point and it would draw an arc for the segment.  for the bowed lines, it relies on the curve produced by the spline and artificial points that we made that made the bowed line.  Then we had a separate bSpline key that deposited single.  The key is that we took the b-spline and made use of it into a composite spline structure we called FMStroke, which was built on top of Apple's PKStroke but we used its resources for vector-drawing.  We don't just use splines raw as they are given but instead direct them within a composite structure like described, because only this way can we have live drawing with splines that is uninterrupted.   We know that the clothoid has been utilized for fluid vector drawing, though not in key-click situations, so we are interested in seeing what it can offer as well.
+
+SPLINE DRAWING MODE
+[ ] A spline drawing mode can load its keyboard layout
+with the keyboard being utilized for various spline
+points.  We may have different spline modes, such
+as bSpline, clothoid, and they will have their own
+keyboard layouts loaded.
+
+DETAILED EXPLANATION (traced through external-proj/Floating Marker
+sources, for implementing the same keys in a spline keyboard layout)
+--------------------------------------------------------------------
+WHERE THINGS LIVE
+- Point vocabulary: `enum FMStrokePointType` in
+  "Floating Marker/Floating Marker/FMDrawable/FMStroke.swift"
+  (~line 5168): bSpline, roundedCorner, hardCorner,
+  hardCornerBowedLine, roundedCornerBowedLine, arcByThreeP1,
+  arcByThreeP2, bezierFitCurve.
+- Per-point data: `struct FMStrokePoint` (same file, ~line 5180):
+  x/y, fmStrokePointType, azimuth/altitude, brushSize,
+  bowedInfo, plus roundedCornerSegmentLength (default 25.0)
+  and cornerRoundingType (default .bSpline).
+- Bow parameters: `struct BowedInfo` in
+  "Floating Marker/Floating Marker/LineWorkInteractionEntity.swift"
+  (~line 70), assembled from user settings by
+  `bowedInfoAssembled` / `bowedInfoAssembledWithFacingA(facingA:)`
+  in InkAndLineSettingsManager.swift (~line 2210).
+- Key handlers: `bSplineKeyPress`, `roundedBSplineCornerKeyPress`,
+  `hardBSplineCornerKeyPress`, `hardBSplineCornerBowedLineKeyPress`,
+  `hardBSplineCornerBowedLineFacingBKeyPress`,
+  `roundedBSplineCornerBowedLineKeyPress`,
+  `roundedBSplineCornerBowedLineFacingBKeyPress`,
+  `arcByThreePointsKeyPress`, all in LineWorkInteractionEntity.swift
+  (~lines 1384-1747, 1971-2009). `switchRoundedCornerKeyPress` is in
+  InputInteractionManager.swift (~line 1637).
+- Key names/codes/help text: Keyboard/keyboardMappingsDescriptions.plist.
+  Plain numbers are keycodes; "$" = Shift, "~" = Option, "^" = Control,
+  "@" = Command. The spline-drawing keys are all flagged isDrawingButton.
+
+CORE MECHANISM (why "points are about corners")
+- FMStroke holds arrayOfFMStrokePoints and rebuilds a cached
+  PKStrokePath on every deposit via pkStrokePathAcc() (FMStroke.swift
+  ~line 3938): each FMStrokePoint expands to one or more PKStrokePoint
+  control points through
+  pkStrokePointsArrayForFMStrokePoint(parentArrayFMStrokePointIndex:parentArrayPassed:)
+  (~line 5313), and the concatenated array becomes
+  PKStrokePath(controlPoints:creationDate:). PencilKit's spline does
+  the smoothing between control points; FM only steers it by choosing
+  how many coincident control points each deposited point expands to:
+  .bSpline emits 1 (smooth pass-through), .roundedCorner emits 2
+  (a softened, non-arc corner), .hardCorner emits 3 coincident points
+  (a polygonal hard corner). That is the whole hard-vs-round trick:
+  triple-stacked control points pin the spline, double-stacked soften
+  it, single lets it flow. Rendering then samples the PK path with
+  interpolatedPoints(by: .distance(...)) and optionally simplifies
+  (uniformTipBezierPath, ~line 3997), so live drawing stays
+  uninterrupted: every keypress just appends to the same composite and
+  the cached path is regenerated. Ellipse/rectangle brush tips build
+  closed brush-stroke shapes from the path; uniform/uniformPath tips
+  stroke the path itself (see UniformBrushTip / UniformPathBrushTip
+  entries and displayUniformBrushTipLive, ~line 427).
+- Every deposited point also carries azimuth, altitude, and brushSize,
+  so brush-tip direction/width can vary along one stroke.
+
+LIVE-POINT DISCIPLINE (every drawing key follows this)
+- While drawing, the LAST point in the array is the live mouse point
+  (it tracks the cursor). Pressing a drawing key does two things:
+  (1) RETYPES the live point to whatever the key means, and
+  (2) DEPOSITS a fresh live point of a follow type at the cursor.
+  On the very first press (idle mode) there is no live point yet, so
+  the key just deposits and then addExtraPoint() appends the trailing
+  live bSpline point (~line 2011). Non-spline activity is cancelled
+  first (escapeCurrentActivityKeyPress), and arc bookkeeping goes
+  through ifLastPointIsArcByThreeP2ThenAddFMSPt so an unfinished arc
+  P2 slot is closed out before retyping.
+- Supporting keys: End (code 0, endKeyPress) deposits the live stroke
+  onto the page; EscapeCurrentActivity (code 53) cancels the live
+  stroke; EraseLastLivePoint (code 12) removes the last deposited live
+  point for real-time correction; MoveLineIntoShape (code 1) /
+  CompleteCurrentLine (code 15) close the live point onto the stroke's
+  first point to make a closed shape; Dab (code 4) stamps one brush tip.
+
+KEY BY KEY (plist name / code / function / behavior)
+1. B-Spline ("B-Spline", code 3, bSplineKeyPress): deposits a SINGLE
+   .bSpline point. Retypes live point to .bSpline, appends one .bSpline
+   at cursor. The free-flowing curve key; consecutive presses make a
+   plain spline with no pinned corners.
+2. Hard Corner ("Hard Corner", code 5, hardBSplineCornerKeyPress):
+   retypes the live point to .hardCorner (3 coincident PK points =
+   polygon-like corner) and appends a fresh .bSpline live point. So the
+   segment AFTER a hard corner leaves straight: the spline is pinned
+   at the corner and flows on. Note the asymmetry: unlike the bowed
+   keys, the newly deposited point here is plain .bSpline, not another
+   .hardCorner.
+3. Rounded Corner ("Rounded Corner", code 2,
+   roundedBSplineCornerKeyPress): retypes live point to .roundedCorner
+   AND stamps the current settings onto it (roundedCornerSegmentLength
+   = cornerRounding setting, cornerRoundingType = cornerRoundingType
+   setting), then appends a fresh .roundedCorner. The corner is NOT an
+   arc: by default it emits two PK points offset along the incoming and
+   outgoing directions by roundingSegmentLengthToUse, letting the PK
+   spline ease through them. If either neighbor segment is shorter
+   than twice the requested length, the length falls back to half of
+   the shorter half-distance, so tight corners never overshoot. See
+   the .roundedCorner branch (~line 5330).
+4. Hard Corner Bowed Line A/B ("Hard Corner Bowed Line", code 17, and
+   "Hard Corner Bowed Line 2", code 11; hardBSplineCornerBowedLine[+FacingB]
+   KeyPress): retypes live point to .hardCornerBowedLine with a BowedInfo
+   snapshot, appends a fresh .hardCornerBowedLine with the same info.
+   Corner behaves hard (3 coincident PK points), then the FOLLOWING
+   segment bows. A (facingA:true) offsets the bow peak to one side of
+   the straight chord, B (facingA:false) to the other (normal rotated
+   -90 vs +90 degrees from the chord direction).
+5. Rounded Corner Bowed Line A/B ("Rounded Corner Bowed Line 1", code 14,
+   and "... 2", code 8; roundedBSplineCornerBowedLine[+FacingB]KeyPress):
+   same as (4) but the corner is .roundedCornerBowedLine: 2 PK points
+   for a soft corner (also stamped with the corner-rounding settings),
+   then the bowed-line peak point(s) for the following segment.
+6. Arc ("Arc By Three Points", code 6, arcByThreePointsKeyPress): draws
+   a true arc segment, not a spline bow. Stateful multi-press protocol:
+   first press from empty deposits .hardCorner + .arcByThreeP1; second
+   press deposits .arcByThreeP1; when a press lands with last point
+   .arcByThreeP1 it deposits .arcByThreeP2; the .arcByThreeP1 branch
+   (~line 5585) then replaces its triple-point output with an arc fit
+   through (previous, P1, P2) via makeArcFromThreePoints + buildupModePoints
+   (reversed when the buildup starts at the wrong end). After a
+   completed P2, the next arc press starts a new arc with a .hardCorner
+   separator. So one arc = three presses at three locations, or two
+   presses when continuing from an existing point.
+7. Switch Rounded Corner ("Switch Rounded Corner", code $2 = Shift+2,
+   switchRoundedCornerKeyPress): cycles cornerRoundingType through
+   arc -> bSpline -> bevel (rawValue + 1 mod 3). This changes what the
+   Rounded keys (3 and 5) produce: .arc fits a real tangent arc of the
+   segment length via appendArc/buildupModePoints; .bSpline is the
+   default two-point ease described above; .bevel stacks its two offset
+   points 3x each for a chamfered corner. The plist description says
+   "arc, b-spline, and bevel".
+
+BOWEDINFO FIELDS (what each bowed key snapshots from settings)
+- isFacingA: which side of the chord the bow sits on (the ONLY thing
+  the A/B key pair changes; bowedInfoAssembledWithFacingA copies the
+  assembled struct and flips this flag).
+- normalHeight + normalHeightIsPercentageOfLineLength: bow amplitude,
+  absolute points or percent of chord length. Defaults 10.0 / true.
+- lineInterpolationLocation (default 0.5, clamped 0...1) TIMES
+  lineInterpolationLocationMultiplier (default 1.0): where along the
+  chord the peak sits; the peak = chord point at that factor, pushed
+  along the chord normal by the amplitude.
+- isArc (default false, "bowed line mode is arc" toggle): false emits
+  the peak as extra spline control point(s) so the PK spline bows;
+  true instead fits a real arc through (corner, peak, next) with
+  makeArcFromThreePoints. Degenerate chords (<= 1pt) emit just the
+  peak point.
+- lineInterpolationDualDistance (default 0, clamped 0...1): when 0, one
+  peak point; when nonzero, two peak points straddling the location by
+  half the dual distance (a flattened/wide bow apex).
+- makeCornered + corneredAsHard: optionally stack the peak point 2x
+  (rounded kink at apex) or 3x (hard kink at apex).
+- All nine fields serialize per point (fmkr:FMSPBowedInfo), so old
+  strokes keep their bows after settings change.
+
+WHAT A NIBGLIDER SPLINE LAYOUT NEEDS (mapping)
+- NibGlider already has the first three on F/G/H (sharp-point,
+  spline-point, rounded-point in src/engine/input/keymap.ts; G becomes
+  "B-SPLINE POINT" in composite path mode). The FM set adds, per spline
+  mode layout: hard-corner-bowed-A, hard-corner-bowed-B,
+  rounded-corner-bowed-A, rounded-corner-bowed-B, arc-by-three, and a
+  switch-rounded-corner cycler, plus the supporting End / erase-last /
+  close-shape / dab keys. Each bowed key needs the BowedInfo-equivalent
+  settings behind it (amplitude + absolute/percent, peak location,
+  arc-vs-spline mode, dual-distance, cornered options); each rounded
+  key needs corner length + arc/bSpline/bevel mode; every deposited
+  point must carry brush-tip size/azimuth like FM's. The existing note
+  anticipates one layout per spline flavor (bSpline, clothoid): the FM
+  handlers above are the bSpline layout, with the bow/arc math
+  isolated per point so a clothoid layout can reuse the same key
+  structure with a different segment solver.

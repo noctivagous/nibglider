@@ -369,6 +369,12 @@ what kind of repeat for Circle Keys).  When turned on it
 affects these keys respectively.  so, if the user is drawing
 a shape, if set to repeat only horizontally, it will 
 
+SPLINE DRAWING MODE
+[ ] A spline drawing mode can load its keyboard layout
+with the keyboard being utilized for various spline
+points.  We may have different spline modes, such
+as bSpline, clothoid, and they will have their own
+keyboard layouts loaded.
 
 IN-DRAWING WIDGETS AND ACTOR OBJECTS
    [ ] REACTIVE PROPERTIES ON OBJECTS AND REACTOR FRAMES
