@@ -255,6 +255,7 @@ const ENTRIES: SettingEntry[] = [
     'middle-left', 'center', 'middle-right',
     'bottom-left', 'bottom-center', 'bottom-right',
   ], (e) => e.typeCursorAnchor, (e, v) => e.setTypeCursorAnchor(v as never)),
+  en('text.typeAnchorBottom', ['baseline', 'descender'], (e) => e.typeCursorBottomEdge, (e, v) => e.setTypeCursorBottomEdge(v as never)),
   // Modes.
   en('combine.mode', ['none', 'union', 'subtract', 'intersect', 'crop', 'interlace'], (e) => e.combineMode, (e, v) => e.setCombineMode(v as never)),
   en('combine.tool', ['union', 'subtract', 'intersect', 'crop', 'interlace'], (e) => e.combineTool, (e, v) => e.setCombineTool(v as never)),

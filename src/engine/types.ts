@@ -100,14 +100,26 @@ export type TypeCursorAnchor =
   | 'middle-left' | 'center' | 'middle-right'
   | 'bottom-left' | 'bottom-center' | 'bottom-right';
 
+/** Which horizontal rule the bottom-row cursor anchors pin to: the text
+ * baseline (the lower edge of the baseline box, whose top edge is the
+ * ascender line) or the descender line (the lower edge of the full
+ * ascender-to-descender box). */
+export type TypeCursorBottomEdge = 'baseline' | 'descender';
+
 /** Point of a bounding rect for a cursor anchor: corners, edge midpoints,
- * and center. Pure so the anchor box and tests share it. */
+ * and center. Pure so the anchor box and tests share it. The optional
+ * bottomY overrides the bottom-row y (the text baseline when the bottom
+ * edge is the baseline box); other rows are unaffected. */
 export function typeAnchorPoint(
   rect: { left: number; top: number; right: number; bottom: number },
   anchor: TypeCursorAnchor,
+  bottomY?: number,
 ): { x: number; y: number } {
   const cx = (rect.left + rect.right) / 2;
   const cy = (rect.top + rect.bottom) / 2;
+  const bottom = typeof bottomY === 'number' && Number.isFinite(bottomY)
+    ? bottomY
+    : rect.bottom;
   switch (anchor) {
     case 'top-left': return { x: rect.left, y: rect.top };
     case 'top-center': return { x: cx, y: rect.top };
@@ -115,9 +127,9 @@ export function typeAnchorPoint(
     case 'middle-left': return { x: rect.left, y: cy };
     case 'center': return { x: cx, y: cy };
     case 'middle-right': return { x: rect.right, y: cy };
-    case 'bottom-left': return { x: rect.left, y: rect.bottom };
-    case 'bottom-center': return { x: cx, y: rect.bottom };
-    case 'bottom-right': return { x: rect.right, y: rect.bottom };
+    case 'bottom-left': return { x: rect.left, y: bottom };
+    case 'bottom-center': return { x: cx, y: bottom };
+    case 'bottom-right': return { x: rect.right, y: bottom };
   }
 }
 

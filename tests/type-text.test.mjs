@@ -246,6 +246,64 @@ test('anchor setting persists and rejects unknown values', () => {
   } finally { cleanup(); }
 });
 
+test('anchor helper pins the bottom row to an overriding baseline', () => {
+  const rect = { left: 10, top: 20, right: 110, bottom: 60 };
+  assert.deepEqual(typeAnchorPoint(rect, 'bottom-left', 50), { x: 10, y: 50 });
+  assert.deepEqual(typeAnchorPoint(rect, 'bottom-center', 50), { x: 60, y: 50 });
+  assert.deepEqual(typeAnchorPoint(rect, 'bottom-right', 50), { x: 110, y: 50 });
+  // Other rows ignore the override; a missing override keeps the box bottom.
+  assert.deepEqual(typeAnchorPoint(rect, 'top-left', 50), { x: 10, y: 20 });
+  assert.deepEqual(typeAnchorPoint(rect, 'center', 50), { x: 60, y: 40 });
+  assert.deepEqual(typeAnchorPoint(rect, 'bottom-left'), { x: 10, y: 60 });
+  assert.deepEqual(typeAnchorPoint(rect, 'bottom-left', Number.NaN), { x: 10, y: 60 });
+});
+
+test('bottom edge defaults to baseline, persists, and rejects unknown values', () => {
+  const { engine, cleanup } = setup();
+  try {
+    assert.equal(engine.typeCursorBottomEdge, 'baseline');
+    engine.setTypeCursorBottomEdge('descender');
+    assert.equal(engine.typeCursorBottomEdge, 'descender');
+    const values = snapshotEngineSettings(engine);
+    assert.equal(values['text.typeAnchorBottom'], 'descender');
+    engine.setTypeCursorBottomEdge('baseline');
+    applyEngineSettings(engine, values);
+    assert.equal(engine.typeCursorBottomEdge, 'descender');
+    applyEngineSettings(engine, { 'text.typeAnchorBottom': 'nope' });
+    assert.equal(engine.typeCursorBottomEdge, 'descender');
+    engine.setTypeCursorBottomEdge('nope');
+    assert.equal(engine.typeCursorBottomEdge, 'descender');
+  } finally { cleanup(); }
+});
+
+test('bottom anchors pin the baseline by default and the descender on request', () => {
+  const { scope, engine, cleanup } = setup();
+  try {
+    press(engine, 'KeyP', 'p');
+    typeWord(engine, 'Hi');
+    const preview = () => scope.project.getItems({
+      match: (item) => !!(item && item.data && item.data.typingPreview),
+    })[0];
+    const baselineOf = (item) => item.localToGlobal(new scope.Point(0, 0)).y;
+    // Default anchor is bottom-left on the baseline box.
+    let item = preview();
+    assert.ok(item);
+    assert.ok(Math.abs(item.bounds.left - 100) < 1e-6);
+    assert.ok(Math.abs(baselineOf(item) - 200) < 1e-6);
+    // Switching to the descender re-pins the live preview to the box bottom.
+    engine.setTypeCursorBottomEdge('descender');
+    item = preview();
+    assert.ok(Math.abs(item.bounds.left - 100) < 1e-6);
+    assert.ok(Math.abs(item.bounds.bottom - 200) < 1e-6);
+    // The baseline box also serves the bottom-right corner.
+    engine.setTypeCursorBottomEdge('baseline');
+    engine.setTypeCursorAnchor('bottom-right');
+    item = preview();
+    assert.ok(Math.abs(item.bounds.right - 100) < 1e-6);
+    assert.ok(Math.abs(baselineOf(item) - 200) < 1e-6);
+  } finally { cleanup(); }
+});
+
 test('Alt+[ and ] step the font size while typing', () => {
   const { scope, engine, cleanup } = setup();
   try {

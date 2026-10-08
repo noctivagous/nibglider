@@ -61,6 +61,7 @@ import type {
   TextJustification,
   TextSpec,
   TypeCursorAnchor,
+  TypeCursorBottomEdge,
 } from '../engine/engine';
 
 const ASPECT_RATIO_PRESETS = ['1:1', '3:4', '2:3', '16:9'];
@@ -1793,48 +1794,92 @@ const TYPE_CURSOR_ANCHORS: Array<{ value: TypeCursorAnchor; label: string; x: nu
   { value: 'bottom-right', label: 'Bottom right', x: 100, y: 100 },
 ];
 
+const TYPE_CURSOR_BOTTOM_EDGES: Array<{
+  value: TypeCursorBottomEdge;
+  label: string;
+  title: string;
+}> = [
+  {
+    value: 'baseline',
+    label: 'Baseline',
+    title: 'Bottom corners pin the baseline (lower edge of the baseline box)',
+  },
+  {
+    value: 'descender',
+    label: 'Descender',
+    title: 'Bottom corners pin the descender line (full ascender-to-descender box)',
+  },
+];
+
 function TypeCursorAnchorBox({ engine }: { engine: NibGliderEngine }) {
   const active = engine.typeCursorAnchor;
+  const bottomEdge = engine.typeCursorBottomEdge;
   const activeLabel = TYPE_CURSOR_ANCHORS.find((a) => a.value === active)?.label ?? active;
+  const bottomLabel = bottomEdge === 'baseline' ? 'baseline' : 'descender line';
   return (
-    <span className="param-item">
-      <label>Cursor pin: {activeLabel}</label>
-      <span
-        aria-hidden="false"
-        style={{
-          position: 'relative',
-          display: 'block',
-          width: 132,
-          height: 88,
-          border: '1px solid currentColor',
-          opacity: 0.9,
-        }}
-      >
-        {TYPE_CURSOR_ANCHORS.map((anchor) => (
-          <button
-            key={anchor.value}
-            type="button"
-            title={anchor.label}
-            aria-label={`Pin ${anchor.label} to the cursor`}
-            aria-pressed={anchor.value === active}
-            onClick={() => engine.setTypeCursorAnchor(anchor.value)}
-            style={{
-              position: 'absolute',
-              left: `${anchor.x}%`,
-              top: `${anchor.y}%`,
-              width: 14,
-              height: 14,
-              transform: 'translate(-50%, -50%)',
-              borderRadius: '50%',
-              border: '1px solid currentColor',
-              background: anchor.value === active ? 'currentColor' : 'transparent',
-              padding: 0,
-              cursor: 'pointer',
-            }}
-          />
-        ))}
+    <>
+      <span className="param-item">
+        <label>Cursor pin: {activeLabel}</label>
+        <span
+          aria-hidden="false"
+          style={{
+            position: 'relative',
+            display: 'block',
+            width: 132,
+            height: 88,
+            border: '1px solid currentColor',
+            opacity: 0.9,
+          }}
+        >
+          {TYPE_CURSOR_ANCHORS.map((anchor) => (
+            <button
+              key={anchor.value}
+              type="button"
+              title={anchor.label}
+              aria-label={`Pin ${anchor.label} to the cursor`}
+              aria-pressed={anchor.value === active}
+              onClick={() => engine.setTypeCursorAnchor(anchor.value)}
+              style={{
+                position: 'absolute',
+                left: `${anchor.x}%`,
+                top: `${anchor.y}%`,
+                width: 14,
+                height: 14,
+                transform: 'translate(-50%, -50%)',
+                borderRadius: '50%',
+                border: '1px solid currentColor',
+                background: anchor.value === active ? 'currentColor' : 'transparent',
+                padding: 0,
+                cursor: 'pointer',
+              }}
+            />
+          ))}
+        </span>
+        <span style={{ fontSize: 11, opacity: 0.75 }}>
+          Top edge: ascender · Bottom edge: {bottomLabel}
+        </span>
       </span>
-    </span>
+      <span className="param-item">
+        <label>Bottom edge</label>
+        <div
+          className="seg-ctrl seg-text"
+          role="group"
+          aria-label="Bottom edge of the cursor pin box"
+        >
+          {TYPE_CURSOR_BOTTOM_EDGES.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              title={opt.title}
+              className={bottomEdge === opt.value ? 'active' : undefined}
+              onClick={() => engine.setTypeCursorBottomEdge(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </span>
+    </>
   );
 }
 

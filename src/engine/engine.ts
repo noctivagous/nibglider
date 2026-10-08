@@ -173,6 +173,7 @@ import type {
   TextPasteLocation,
   TextSpec,
   TypeCursorAnchor,
+  TypeCursorBottomEdge,
 } from './types';
 import { typeAnchorPoint } from './types';
 
@@ -209,6 +210,7 @@ export type {
   TextPasteLocation,
   TextSpec,
   TypeCursorAnchor,
+  TypeCursorBottomEdge,
 } from './types';
 export {
   PT_PER_CM,
@@ -458,6 +460,10 @@ export class NibGliderEngine {
   textPasteLocation: TextPasteLocation = 'crosshair';
   // Type At Cursor: which point of the typed line attaches to the cursor.
   typeCursorAnchor: TypeCursorAnchor = 'bottom-left';
+  // Type At Cursor: which rule the bottom-row anchors pin to. Baseline is
+  // the lower edge of the baseline box (top edge: ascender line);
+  // descender pins the full ascender-to-descender box instead.
+  typeCursorBottomEdge: TypeCursorBottomEdge = 'baseline';
   displayFlow: DisplayFlow = 'exterior';
   glyphOrientation: GlyphOrientation = 'outward';
   // Vertical anchoring of Display glyphs on open spline strokes: Above
@@ -3104,6 +3110,13 @@ export class NibGliderEngine {
     this.updateTextContent(); this.notify();
   }
 
+  setTypeCursorBottomEdge(edge: TypeCursorBottomEdge): void {
+    if (edge !== 'baseline' && edge !== 'descender') return;
+    this.typeCursorBottomEdge = edge;
+    if (this.isTypingText && this.typedTextMode === 'new') this.anchorTypingPreview();
+    this.updateTextContent(); this.notify();
+  }
+
   /** Return places the typed line; an empty line ends the session silently. */
   finalizeTypedText(): void {
     if (!this.isTypingText) return;
@@ -3256,13 +3269,31 @@ export class NibGliderEngine {
   }
 
   /** The cursor pin of a typed item in project coordinates, or null when
-   * the bounds are unreadable. */
+   * the bounds are unreadable. Bottom-row anchors pin the baseline when the
+   * bottom edge is the baseline box, else the descender line. */
   private typingPinOf(item: AnyItem): AnyItem | null {
     try {
       const bounds = item?.bounds;
       if (!bounds || !Number.isFinite(bounds.left)) return null;
-      const pin = typeAnchorPoint(bounds, this.typeCursorAnchor);
+      let bottomY: number | undefined;
+      if (this.typeCursorBottomEdge === 'baseline' && this.typeCursorAnchor.startsWith('bottom')) {
+        bottomY = this.typingBaselineOf(item);
+        if (bottomY == null) return null;
+      }
+      const pin = typeAnchorPoint(bounds, this.typeCursorAnchor, bottomY);
       return new this.scope.Point(pin.x, pin.y);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The baseline y of a typed item in project coordinates (its local
+   * origin, as for textAnchorOf), or null when unreadable. */
+  private typingBaselineOf(item: AnyItem): number | null {
+    try {
+      const origin = item.localToGlobal(new this.scope.Point(0, 0));
+      const y = Number(origin?.y);
+      return Number.isFinite(y) ? y : null;
     } catch {
       return null;
     }
