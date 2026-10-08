@@ -29,6 +29,12 @@ export interface KeyboardHost {
   isDrawingShape(): boolean;
   isDrawingQuad(): boolean;
   isLiveDrawing(): boolean;
+  isTypingText(): boolean;
+  startTypeText(): void;
+  editTypedText(input: string): void;
+  finalizeTypedText(): void;
+  stampTypedText(): void;
+  cancelTypingText(): void;
   shapeType(): string | null;
   selectedItems(): Item[];
   globalStrokeWidth(): number;
@@ -131,6 +137,12 @@ export class KeyboardController {
     }
     const code = eventCode(event);
     if (/^(Shift|Alt|Control|Meta|CapsLock)/.test(code)) return;
+    // Type At Cursor captures the whole keyboard: every key types except
+    // the finalize (Return), stamp (Alt+W), and cancel (Escape) chords.
+    if (this.host.isTypingText()) {
+      this.handleTypingKey(event);
+      return;
+    }
     const variants = resolveKeyVariants(code, modifiersOf(event), this.keyState());
     if (!variants.length) return;
     // Resolve against one pre-command context so finishing a path cannot
@@ -144,9 +156,53 @@ export class KeyboardController {
     this.host.updateTextContent();
   }
 
+  /** Route one keydown while Type At Cursor owns the keyboard. */
+  private handleTypingKey(event: KeyboardEvent): void {
+    const host = this.host;
+    const code = eventCode(event);
+    if (event.key === 'Escape' || code === 'Escape') {
+      event.preventDefault();
+      host.cancelTypingText();
+      return;
+    }
+    // Return/Enter finalizes; NumpadEnter counts too.
+    if (code === 'Enter' || code === 'NumpadEnter' || event.key === 'Enter') {
+      event.preventDefault();
+      host.finalizeTypedText();
+      return;
+    }
+    // Alt+W stamps a copy and keeps typing. Code-based because Option+W
+    // produces '∑' instead of 'w' on macOS.
+    if (code === 'KeyW' && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      host.stampTypedText();
+      return;
+    }
+    if (event.key === 'Backspace' || code === 'Backspace') {
+      event.preventDefault();
+      host.editTypedText('backspace');
+      return;
+    }
+    // No other command runs while typing: modified chords are swallowed
+    // (Option chords would otherwise insert glyphs like '∑'), and every
+    // printable key appends to the typed line.
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      event.preventDefault();
+      return;
+    }
+    if (typeof event.key === 'string' && event.key.length === 1) {
+      event.preventDefault();
+      host.editTypedText(event.key);
+      return;
+    }
+    event.preventDefault();
+  }
+
   /** Second keydown listener: highlights the on-screen keycap. */
   reportKeyHighlight(event: KeyboardEvent): void {
     if (isTextEntryTarget(event)) return;
+    // Typed letters must not light up the drawing keys they spell.
+    if (this.host.isTypingText()) return;
     // Slash resets tension or toggles the grid and does not light a keycap.
     if (event.key.toLowerCase() === '/') return;
     if (event.code && !/^(Shift|Alt|Control|Meta|CapsLock)/.test(event.code)) {
@@ -168,6 +224,7 @@ export class KeyboardController {
       isLiveDrawing: host.isLiveDrawing(),
       shapeType: host.shapeType(),
       selectedCount: host.selectedItems().length,
+      isTypingText: host.isTypingText(),
       isInDragLock: host.isInDragLock(),
       liveAdjustApplies: host.liveAdjustApplies(),
       isCompositePath: host.compositePathEnabled(),
@@ -302,6 +359,9 @@ export class KeyboardController {
         return;
       case 'quad':
         host.quadPointKC();
+        return;
+      case 'type-text':
+        host.startTypeText();
         return;
       case 'tension-down':
         host.setSplineTension(Math.max(0.1, host.splineTension() - 0.1));

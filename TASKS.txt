@@ -442,9 +442,14 @@ If Point Snapping is on, we want to be able to get to that circle origin.
 
 TEXT
 
-[ ] - Type At Cursor / Type Text - P key.  press and if no selection of objects, starts typing
-on single line that follows cursor.  alt+W key stamps it.  Begins capturing keyboard input for type. 
-Press Return/Enter to finalize.  Follows Text mode settings.
+[ ] - Type Text - P key.  press and if no selection of objects, is in Type At Cursor mode, takes over keyboard 
+starts typing on single line that follows cursor.  Baseline lower left corner is cursor hot point.  
+alt+W key stamps it.  Begins capturing keyboard input for type. 
+Press Return/Enter to finalize.  Follows Text mode settings. 
+" P while drawing: assumption is P is ignored during live path/shape/quad sessions (like most idle keys). Confirm.                                                        
+  • Multiline: out of scope — single line only; paste path already handles multiline separately.  "
+   [  ]  If a selection of objects then..
+
 
 [ ] Text: Editable Text obj vs. Vector Shapes
    Editable Text will retain: [Display Text | Body Text | Sign Text].

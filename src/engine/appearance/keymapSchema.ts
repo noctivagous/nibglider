@@ -37,6 +37,13 @@ function actionById(id: string): AdjustAction | undefined {
 
 export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
   const rows: KeymapRow[] = [];
+  // Type At Cursor owns the keyboard: only its own chords apply.
+  if (snap.typingText) {
+    rows.push({ keys: ['Return'], label: 'Place the text', group: 'end', ids: ['finish-typing'], section: 'guide' });
+    rows.push({ keys: ['Alt', 'W'], label: 'Stamp a copy', group: 'op', ids: ['stamp-typed-text'], section: 'guide' });
+    rows.push({ keys: ['Esc'], label: 'Cancel typing', group: 'end', ids: ['cancel-typing'], section: 'guide' });
+    return rows;
+  }
   // Actions a live hint already covers: no static row for them.
   const liveCovered = new Set(
     snap.liveHints.map((h) => h.actionId).filter((id): id is string => !!id),

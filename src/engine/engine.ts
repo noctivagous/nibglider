@@ -483,6 +483,18 @@ export class NibGliderEngine {
   // Kerned advance measurement (parsed font bytes → canvas → estimate).
   textMetrics = new FontMetrics();
 
+  // --- Type At Cursor (P key) session state ---
+  // While true the keyboard types a single line instead of key-clicking.
+  // 'new' drafts a line at the cursor; 'edit' retypes the selected text.
+  isTypingText = false;
+  typedTextMode: 'new' | 'edit' | null = null;
+  private typedTextBuffer = '';
+  private typedTextPreview: AnyItem = null;
+  private typedTextEditRoot: AnyItem = null;
+  private typedTextOriginal: string[] = [];
+  private typedTextAnchor: AnyItem = null;
+  private typedTextSnap: { before: AnyItem[]; selected: AnyItem[]; retained: Map<string, RetainedPath> } | null = null;
+
   // --- Drawing mode / shape state (drawingToolsAndFunctions.js) ---
   pathDrawingMode: 'legacy' | 'ngComposite' = 'legacy';
   private readonly drawing = new DrawingSession();
@@ -2967,6 +2979,253 @@ export class NibGliderEngine {
     });
   }
 
+  // --- Type At Cursor (P key) ---
+  // P with no selection drafts a single line at the cursor: the keyboard
+  // types, the preview follows the cursor with its baseline lower-left at
+  // the hot point, Alt+W stamps a copy, and Return places it. P with an
+  // editable text selection retypes that object instead. P with only
+  // non-text selected is a no-op (see typeTextNonTextSelection).
+
+  /** Live typed line, for the status overlay and tests. */
+  typedText(): string { return this.typedTextBuffer; }
+
+  startTypeText(): void {
+    if (this.isTypingText || this.isLiveDrawing) return;
+    const roots = this.editableTextRoots();
+    if (this.selectedItems.length === 0) {
+      this.typedTextSnap = this.captureDeposit();
+      this.typedTextBuffer = '';
+      this.typedTextMode = 'new';
+      this.isTypingText = true;
+      this.refreshTypingPreview();
+      this.updateTextContent(); this.notify();
+      return;
+    }
+    if (roots.length > 0) {
+      const root = roots[0];
+      this.typedTextSnap = this.captureDeposit();
+      this.typedTextEditRoot = root;
+      this.typedTextOriginal = this.editableLines(root).map((line) => String(line.content ?? ''));
+      this.typedTextBuffer = this.typedTextOriginal.join(' ');
+      this.typedTextAnchor = this.textAnchorOf(root, root.data?.textKind === 'body');
+      this.typedTextMode = 'edit';
+      this.isTypingText = true;
+      this.applyTypedBufferToEditRoot();
+      this.updateTextContent(); this.notify();
+      return;
+    }
+    this.typeTextNonTextSelection();
+  }
+
+  /** P over a non-text selection: reserved for a future feature. */
+  private typeTextNonTextSelection(): void {
+    // No-op for now. A later change will hang the non-text typing feature
+    // here (e.g. text-on-path or label flow) without touching startTypeText.
+  }
+
+  /** Append a character or apply backspace to the live typed line. */
+  editTypedText(input: string): void {
+    if (!this.isTypingText) return;
+    if (input === 'backspace') {
+      this.typedTextBuffer = this.typedTextBuffer.slice(0, -1);
+    } else if (input.length === 1 && this.typedTextBuffer.length < 500) {
+      this.typedTextBuffer += input;
+    } else {
+      return;
+    }
+    if (this.typedTextMode === 'edit') this.applyTypedBufferToEditRoot();
+    else this.refreshTypingPreview();
+    this.updateTextContent(); this.notify();
+  }
+
+  /** Follow the cursor with the draft preview (new-line mode only). */
+  updateTypingPreview(): void {
+    if (!this.isTypingText || this.typedTextMode !== 'new') return;
+    this.anchorTypingPreview();
+  }
+
+  /** Return places the typed line; an empty line ends the session silently. */
+  finalizeTypedText(): void {
+    if (!this.isTypingText) return;
+    if (!this.typedTextBuffer.trim()) {
+      this.cancelTypingText();
+      return;
+    }
+    if (this.typedTextMode === 'edit') {
+      const root = this.typedTextEditRoot;
+      const prev = [...this.typedTextOriginal];
+      const next = this.typedTextBuffer;
+      const anchor = this.typedTextAnchor;
+      const body = root?.data?.textKind === 'body';
+      this.endTypingSession();
+      try {
+        this.context.history.push({
+          label: 'Edit text',
+          undo: () => this.setTypedEditContent(root, prev.join('\n'), body, anchor),
+          redo: () => this.setTypedEditContent(root, next, body, anchor),
+        });
+      } catch { /* The edit itself already landed. */ }
+      this.documentManager.markEdited('scene');
+      this.updateTextContent(); this.notify();
+      return;
+    }
+    const snap = this.typedTextSnap ?? this.captureDeposit();
+    const placed = this.depositTypedLine();
+    this.endTypingSession();
+    if (!placed) {
+      this.updateTextContent(); this.notify();
+      return;
+    }
+    this.selection.restore([placed]);
+    this.recordSceneCommand('Type text', snap.before, snap.selected, [placed], snap.retained);
+    this.updateTextContent(); this.notify();
+  }
+
+  /** Alt+W deposits a copy of the typed line and keeps typing. */
+  stampTypedText(): void {
+    if (!this.isTypingText || !this.typedTextBuffer.trim()) return;
+    const snap = this.captureDeposit();
+    const placed = this.depositTypedLine();
+    if (!placed) return;
+    this.recordSceneCommand('Stamp text', snap.before, snap.selected, [placed], snap.retained);
+    this.updateTextContent(); this.notify();
+  }
+
+  /** Escape abandons the draft (edit mode restores the original text). */
+  cancelTypingText(): void {
+    if (!this.isTypingText) return;
+    if (this.typedTextMode === 'edit' && this.typedTextEditRoot) {
+      const root = this.typedTextEditRoot;
+      this.setTypedEditContent(
+        root,
+        this.typedTextOriginal.join('\n'),
+        root.data?.textKind === 'body',
+        this.typedTextAnchor,
+      );
+    }
+    this.endTypingSession();
+    this.updateTextContent(); this.notify();
+  }
+
+  private endTypingSession(): void {
+    if (this.typedTextPreview) {
+      try { this.typedTextPreview.remove(); } catch { /* Detached already. */ }
+    }
+    this.isTypingText = false;
+    this.typedTextMode = null;
+    this.typedTextBuffer = '';
+    this.typedTextPreview = null;
+    this.typedTextEditRoot = null;
+    this.typedTextOriginal = [];
+    this.typedTextAnchor = null;
+    this.typedTextSnap = null;
+  }
+
+  /** Draft target: the cursor, else the view center. */
+  private typingTarget(): AnyItem {
+    if (this.mousePt) {
+      try { return this.mousePt.clone(); } catch { /* Fall through. */ }
+    }
+    try {
+      const view = this.scope.view;
+      if (view && view.center) return view.center.clone();
+    } catch { /* Fall through. */ }
+    return new this.scope.Point(0, 0);
+  }
+
+  private styleTypedTextItem(pt: AnyItem): void {
+    const spec = this.globalText;
+    const cfg = this.textLayoutConfig();
+    const size = Math.max(4, spec.fontSize);
+    pt.fontFamily = spec.fontFamily;
+    pt.fontSize = size;
+    pt.fontWeight = spec.fontWeight;
+    pt.fillColor = cfg.fillEnabled ? cfg.fillColor : cfg.strokeColor;
+    pt.strokeColor = null;
+    pt.justification = spec.justification;
+    pt.leading = Math.max(0.8, spec.leading || 1.2) * size;
+    pt.data.textKind = 'display';
+    pt.data.editableText = true;
+    this.setLineItalic(pt, spec.italic);
+  }
+
+  /** Rebuild (or move) the draft preview from the buffer at the cursor. */
+  private refreshTypingPreview(): void {
+    const target = this.typingTarget();
+    let preview = this.typedTextPreview;
+    if (!preview) {
+      preview = new this.scope.PointText(target);
+      this.styleTypedTextItem(preview);
+      preview.opacity = 0.7;
+      preview.data.typingPreview = true;
+      this.mountGuideItem(preview);
+      this.typedTextPreview = preview;
+    }
+    preview.content = this.typedTextBuffer.length > 0 ? this.typedTextBuffer : ' ';
+    this.anchorTypingPreview();
+  }
+
+  /** Pin the preview's baseline lower-left corner to the cursor hot point. */
+  private anchorTypingPreview(): void {
+    const preview = this.typedTextPreview;
+    const at = this.mousePt;
+    if (!preview || !at) return;
+    try {
+      const corner = preview.bounds?.bottomLeft;
+      if (!corner) return;
+      preview.translate(at.subtract(corner));
+    } catch { /* Keep the preview where it is. */ }
+  }
+
+  /** Deposit the typed line as a real editable text item at the cursor. */
+  private depositTypedLine(): AnyItem | null {
+    const buffer = this.typedTextBuffer;
+    if (!buffer.trim()) return null;
+    const target = this.typingTarget();
+    let placed: AnyItem = null;
+    try {
+      placed = new this.scope.PointText(target);
+      placed.content = buffer;
+      this.styleTypedTextItem(placed);
+      placed.opacity = 1;
+      const corner = placed.bounds?.bottomLeft;
+      if (corner) this.anchorTextPointOn(placed, target, corner);
+    } catch {
+      return null;
+    }
+    if (!placed) return null;
+    try {
+      this.layers.addToActive(placed);
+    } catch {
+      return null;
+    }
+    return placed;
+  }
+
+  /** Live-apply the buffer to the edited root, keeping its anchor pinned. */
+  private applyTypedBufferToEditRoot(): void {
+    const root = this.typedTextEditRoot;
+    if (!root) return;
+    this.setTypedEditContent(
+      root,
+      this.typedTextBuffer,
+      root.data?.textKind === 'body',
+      this.typedTextAnchor,
+    );
+  }
+
+  private setTypedEditContent(root: AnyItem, text: string, body: boolean, anchor: AnyItem): void {
+    if (!root) return;
+    try {
+      this.setEditableContent(root, text.length > 0 ? text : ' ');
+    } catch { /* Keep the existing text. */ }
+    try {
+      const current = this.textAnchorOf(root, !!body);
+      if (anchor && current) this.anchorTextPointOn(root, anchor, current);
+    } catch { /* Keep the root where it is. */ }
+    this.documentManager.markEdited('scene');
+  }
+
   setTextModeEnabled(v: boolean): void {
     this.textModeEnabled = !!v;
     this.updatePreviewBox();
@@ -3579,6 +3838,7 @@ export class NibGliderEngine {
   private drawingIgnoredItems(): Set<AnyItem> {
     return new Set([
       this.path,
+      this.typedTextPreview,
       this.previewPath,
       this.previewShape,
       this.previewRect,
@@ -3860,11 +4120,11 @@ export class NibGliderEngine {
   private pasteCascade = 0;
 
   canSelectAll(): boolean {
-    return !this.isLiveDrawing && this.contentItems().length > 0;
+    return !this.isLiveDrawing && !this.isTypingText && this.contentItems().length > 0;
   }
 
   selectAll(): boolean {
-    if (this.isLiveDrawing) return false;
+    if (this.isLiveDrawing || this.isTypingText) return false;
     const items = this.contentItems();
     if (items.length === 0) return false;
     this.commitMoveGesture();
@@ -3994,7 +4254,7 @@ export class NibGliderEngine {
    * are Display Text pinned by their lower-left box corner, multiline
    * pastes are Body Text pinned by their ascender top-left corner. */
   pastePlainText(text: string, at?: AnyItem): boolean {
-    if (this.isLiveDrawing || typeof text !== 'string') return false;
+    if (this.isLiveDrawing || this.isTypingText || typeof text !== 'string') return false;
     const clean = text.replace(/\r\n?/g, '\n');
     if (!clean.trim()) return false;
     const before = this.contentItems();
@@ -4056,7 +4316,7 @@ export class NibGliderEngine {
   /** Data-URL raster paste. The image decodes asynchronously; the history
    * entry records on load, mirroring DropController. */
   pasteImageDataUrl(dataUrl: string, at?: AnyItem): boolean {
-    if (this.isLiveDrawing || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return false;
+    if (this.isLiveDrawing || this.isTypingText || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return false;
     const target = this.pasteTarget(at);
     const selectedBefore = [...this.selectedItems];
     let raster: AnyItem = null;
@@ -4083,7 +4343,7 @@ export class NibGliderEngine {
   /** Full paste path for the Edit menu and the pasteshortcut: system
    * clipboard first, internal buffer when it is unavailable or empty. */
   async pasteFromSystemClipboard(): Promise<boolean> {
-    if (this.isLiveDrawing) return false;
+    if (this.isLiveDrawing || this.isTypingText) return false;
     try {
       const clip = await readSystemClipboard();
       if (clip.imageBlob) {
@@ -4105,7 +4365,7 @@ export class NibGliderEngine {
   /** Drop of an image URL (from text/uri-list): fetch, decode, deposit at
    * the drop point. Failures surface as a drop note, never a throw. */
   async depositImageUrl(url: string, at?: AnyItem): Promise<boolean> {
-    if (this.isLiveDrawing || typeof url !== 'string') return false;
+    if (this.isLiveDrawing || this.isTypingText || typeof url !== 'string') return false;
     const first = url.split(/[\r\n]+/).map((line) => line.trim())
       .find((line) => line && !line.startsWith('#'));
     if (!first || !/^https?:\/\//i.test(first)) return false;
@@ -4309,6 +4569,7 @@ export class NibGliderEngine {
   cancelCurrentDrawingOperation(): void {
     // A handle-resize gesture is not a drawing session; drop it uncommitted.
     this.frameResize = null;
+    this.cancelTypingText();
     const restoreSelection = this.isDrawingShape && this.shapeType === 'rectangle_select'
       ? this.selectionRectSnapshot
       : null;
@@ -5098,6 +5359,8 @@ export class NibGliderEngine {
       hasSecondEdge: this.shapePt2 != null,
       drawingQuad: this.isDrawingQuad,
       quadPointCount: this.quadPointCount,
+      typingText: this.isTypingText,
+      typingMode: this.typedTextMode,
       liveHints: this.liveStatusHints(),
       transformMode: this.isTransformMode,
       transformLive: this.transformLive ? this.transformLive.kind : null,

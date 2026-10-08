@@ -22,6 +22,7 @@ export interface KeyState {
   isLiveDrawing: boolean;
   shapeType: string | null;
   selectedCount: number;
+  isTypingText: boolean;
   isInDragLock: boolean;
   /** Live scale/rotate applies to paths, quads, and circle previews. */
   liveAdjustApplies: boolean;
@@ -478,6 +479,16 @@ export const KEY_COMMANDS: KeyCommand[] = [
     exclusive: true,
   },
   {
+    id: 'type-text',
+    action: 'type-text',
+    keycap: 'P',
+    group: 'neutral',
+    help: 'Type text at cursor',
+    match: letter('p'),
+    available: idle,
+    exclusive: true,
+  },
+  {
     id: 'tension-down',
     action: 'tension-down',
     keycap: 'J',
@@ -716,7 +727,7 @@ export const KEY_CAPS: KeyCap[] = [
   { id: 'KeyU', dataKey: 'u', commandId: 'rect-two-edges', row: 'q', className: 'keyboardkey uKey drawingButton enabledButton rectangleButton', transform: 'translate(-45%, 0%)', legend: 'RECT.<br/>BY 2 EDGES', badge: 'rect' },
   { id: 'KeyI', dataKey: 'i', commandId: 'rect-diagonal', row: 'q', className: 'keyboardkey iKey drawingButton enabledButton rectangleButton', transform: 'translate(-47%, 0%)', legend: 'RECT.<br/>BY DIAG.', badge: 'rect' },
   { id: 'KeyO', dataKey: 'o', commandId: 'quad', row: 'q', className: 'keyboardkey oKey drawingButton enabledButton quadButton', transform: 'translate(-45%, 0%)', legend: 'QUAD<br/>4 PTS' },
-  { id: 'KeyP', dataKey: 'p', row: 'q', className: 'keyboardkey pKey ', legend: '' },
+  { id: 'KeyP', dataKey: 'p', commandId: 'type-text', row: 'q', className: 'keyboardkey pKey drawingButton enabledButton', legend: 'TYPE<br/>TEXT' },
   { id: 'BracketLeft', dataKey: '[', commandId: 'scale-down', row: 'q', className: 'keyboardkey  bracketLeftKey operationButton enabledButton', legend: 'SCALE -' },
   { id: 'BracketRight', dataKey: ']', commandId: 'scale-up', row: 'q', className: 'keyboardkey  bracketRightKey operationButton enabledButton', legend: 'SCALE +' },
   { id: 'Backslash', dataKey: '\\', row: 'q', className: 'keyboardkey  backslashKey', legend: '' },
@@ -787,6 +798,7 @@ export function matchAppCommand(
     isLiveDrawing: state.isDrawingPath,
     shapeType: null,
     selectedCount: 0,
+    isTypingText: false,
     isInDragLock: false,
     liveAdjustApplies: false,
     isTransformMode: false,
@@ -815,6 +827,7 @@ export function isCommandAvailable(
     isLiveDrawing: state.isDrawingPath,
     shapeType: null,
     selectedCount: 0,
+    isTypingText: false,
     isInDragLock: false,
     liveAdjustApplies: false,
     isTransformMode: false,

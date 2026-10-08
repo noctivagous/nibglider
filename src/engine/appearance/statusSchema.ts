@@ -30,6 +30,8 @@ export interface StatusSnapshot {
   hasSecondEdge: boolean;
   drawingQuad: boolean;
   quadPointCount: number;
+  typingText?: boolean;
+  typingMode?: 'new' | 'edit' | null;
   liveHints: Array<{ label: string; keys: string[]; actionId?: string }>;
   transformMode?: boolean;
   transformLive?: 'scale' | 'rotate' | 'shearH' | 'shearV' | null;
@@ -158,6 +160,14 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
   if (snap.drawingQuad) {
     state.push(L('title', [T('Drawing Quadrilateral (' + snap.quadPointCount + '/4)')]));
     steps.push(L('hint', [T('Add points to the quadrilateral, or cancel.')]));
+  }
+  if (snap.typingText) {
+    state.push(L('title', [T(snap.typingMode === 'edit' ? 'Editing Text' : 'Typing Text at Cursor')]));
+    if (snap.typingMode !== 'edit') {
+      steps.push(L('hint', [T('Move mouse to place the baseline.')]));
+    }
+    steps.push(L('hint', [T('Type to edit the line.')]));
+    steps.push(L('hint', [T('Return places it, Alt+W stamps a copy, Esc cancels.')]));
   }
   for (const hint of snap.liveHints) {
     if (adjustCovered && hint.label.includes('°') && /rotate/i.test(hint.label)) continue;

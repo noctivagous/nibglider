@@ -19,6 +19,8 @@ export interface PointerHost {
   isDrawingPath(): boolean;
   isDrawingShape(): boolean;
   isDrawingQuad(): boolean;
+  isTypingText(): boolean;
+  updateTypingPreview(): void;
   shapeType(): string | null;
   shapeStartPoint(): Item;
   shapePt2(): Item;
@@ -93,6 +95,14 @@ export class PointerController {
     const host = this.host;
     host.setMousePt(event.point);
     if (host.isDrawingPath() || host.isDrawingShape() || host.isDrawingQuad()) return;
+    // Clicks while typing only move the baseline anchor: selection and pan
+    // stay parked until the line is placed or cancelled.
+    if (host.isTypingText()) {
+      host.updateTypingPreview();
+      host.updateTextContent();
+      host.notify();
+      return;
+    }
     // Export-frame resize handles take precedence over selection and pan.
     const handle = host.frameHandleAt(host.mousePt());
     if (handle) {
@@ -194,6 +204,8 @@ export class PointerController {
       }
     }
     host.updateGridCursor();
+    // The typed line tracks the cursor baseline while typing.
+    if (host.isTypingText()) host.updateTypingPreview();
     // An armed S/R/H/V live transform steers from the cursor instead of
     // dragging; drag-lock stays parked until the gesture commits.
     if (!host.updateTransformLive()) this.handleDragLock();
