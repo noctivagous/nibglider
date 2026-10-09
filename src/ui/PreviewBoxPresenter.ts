@@ -11,6 +11,7 @@ const COMBINE_PREVIEW_LABELS: Record<CombineMode, string> = {
   subtract: 'Subtract',
   intersect: 'Intersect',
   crop: 'Crop',
+  cut: 'Cut',
   interlace: 'Interlace',
 };
 

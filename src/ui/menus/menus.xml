@@ -119,6 +119,7 @@
       <option command="combinatorics-subtract" label="Subtract" icon="combinatorics-subtract" />
       <option command="combinatorics-intersect" label="Intersect" icon="combinatorics-intersect" />
       <option command="combinatorics-crop" label="Crop" icon="combinatorics-crop" />
+      <option command="combinatorics-cut" label="Cut" icon="combinatorics-cut" />
       <option command="combinatorics-interlace" label="Interlace" icon="combinatorics-interlace" />
     </item>
     <item command="snapping" label="Snapping" icon="snapping">

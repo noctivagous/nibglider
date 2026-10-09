@@ -1,8 +1,8 @@
 // Selection combine and deposit-time combine.
 // Owns no mode or note. Reads the host's selection, layer, and combine mode.
-// Mutates Paper items through unite, subtract, intersect, and per-target
-// crop (destructive clip), then asks the host to retain a lowered Bézier
-// result and record one selection command.
+// Mutates Paper items through unite, subtract, intersect, per-target crop
+// (destructive clip), and per-target cut (cookie-cutter divide), then asks
+// the host to retain a lowered Bézier result and record one selection command.
 // Public: canCombineSelection, combineSelection, depositWithCombine.
 // Tested from tests/combinatorics.test.mjs and tests/composite-path.test.mjs.
 
@@ -44,6 +44,7 @@ const LABELS: Record<CombineMode, string> = {
   subtract: 'Subtract',
   intersect: 'Intersect',
   crop: 'Crop',
+  cut: 'Cut',
   interlace: 'Interlace',
 };
 
@@ -87,6 +88,19 @@ export class CombinatoricsManager {
       host.notify();
       return;
     }
+    if (mode === 'cut') {
+      const placed = this.combineCut();
+      if (placed) {
+        for (const item of placed) host.retain(item);
+        host.commit(LABELS[mode], snap, placed);
+        host.setCombineNote(placed.length > 0 ? '' : EMPTY_NOTE);
+      } else {
+        host.setCombineNote(SELECT_NOTE);
+      }
+      host.updateTextContent();
+      host.notify();
+      return;
+    }
     const result = this.combinePair(mode);
     if (result) {
       host.retain(result);
@@ -104,6 +118,10 @@ export class CombinatoricsManager {
     const host = this.host;
     const mode = host.combineMode();
     if (!deposited || mode === 'none' || mode === 'interlace') return deposited;
+    // Cut divides each touched target along the deposit and consumes the
+    // deposit, so it scans targets on its own instead of sharing the
+    // single-operation target loop below.
+    if (mode === 'cut') return this.depositCut(deposited);
     const opName = mode === 'union' ? 'unite' : mode === 'crop' ? 'intersect' : mode;
     const depositGeo = host.shapePartOf(deposited);
     if (!depositGeo || typeof depositGeo[opName] !== 'function') return deposited;
@@ -246,6 +264,154 @@ export class CombinatoricsManager {
     host.removeFromSelection(frame);
     try { frame.remove(); } catch { /* Already detached. */ }
     return placed;
+  }
+
+  // Cut: the last-selected item is the cutter; every other selected
+  // item is divided along it into separate pieces. Returns the surviving
+  // replacements (possibly empty when nothing overlapped), or null when
+  // the cutter cannot cut. Untouched items keep their selection; the
+  // cutter is consumed.
+  private combineCut(): Item[] | null {
+    const host = this.host;
+    const items = [...host.selectedItems()];
+    if (items.length < 2) return null;
+    const cutter = items.pop();
+    const cutterGeo = cutter ? host.shapePartOf(cutter) : null;
+    if (!cutter || !cutterGeo || !this.canDivide(cutterGeo)) return null;
+    const layer = host.activeLayer();
+    const placed: Item[] = [];
+    for (const art of items) {
+      if (!art) continue;
+      const geo = host.shapePartOf(art);
+      if (!geo || !this.canDivide(geo)) continue;
+      if (!this.shapesTouch(geo, cutterGeo)) continue;
+      let pieces: Item[] = [];
+      try {
+        pieces = this.divideTarget(geo, cutterGeo);
+      } catch {
+        pieces = [];
+      }
+      if (pieces.length === 0) continue;
+      host.removeFromSelection(art);
+      try { art.remove(); } catch { /* Already detached. */ }
+      for (const piece of pieces) {
+        const replaced = this.retext(piece);
+        layer.addChild(replaced);
+        host.prependSelection(replaced);
+        placed.push(replaced);
+      }
+    }
+    host.removeFromSelection(cutter);
+    try { cutter.remove(); } catch { /* Already detached. */ }
+    return placed;
+  }
+
+  // Deposit-time cut: the deposit is the cookie cutter. Every touched
+  // target is divided along it into separate pieces; the deposit is
+  // consumed. Returns null (consumed) or the deposit when nothing was
+  // touched. Callers already record the deposit command.
+  private depositCut(deposited: Item): Item | null {
+    const host = this.host;
+    const depositGeo = host.shapePartOf(deposited);
+    if (!depositGeo || !this.canDivide(depositGeo)) return deposited;
+    let touched = false;
+    const layer = host.activeLayer();
+    for (const item of host.layerChildren()) {
+      if (!item || item === deposited) continue;
+      if (item === host.drawingPath() || item === host.quadPath()) continue;
+      if (host.isNonContentItem(item)) continue;
+      const geo = host.shapePartOf(item);
+      if (!geo || geo === depositGeo || !this.canDivide(geo)) continue;
+      if (!this.shapesTouch(depositGeo, geo)) continue;
+      let pieces: Item[] = [];
+      try {
+        pieces = this.divideTarget(geo, depositGeo);
+      } catch {
+        pieces = [];
+      }
+      if (pieces.length === 0) continue;
+      touched = true;
+      const wasSelected = host.isSelected(item);
+      host.dropItem(item);
+      for (const piece of pieces) {
+        const replaced = this.retext(piece);
+        layer.addChild(replaced);
+        if (wasSelected) host.addToSelection(replaced);
+      }
+    }
+    if (!touched) return deposited;
+    for (const doomed of new Set([deposited, depositGeo])) this.removeDetached(doomed);
+    host.setCombineNote('');
+    return null;
+  }
+
+  private canDivide(geo: Item): boolean {
+    if (!geo) return false;
+    if (typeof geo.divide === 'function') return true;
+    return typeof geo.subtract === 'function' && typeof geo.intersect === 'function';
+  }
+
+  // Divide one target along the cutter, returning the surviving pieces
+  // as detached items (possibly empty). Prefers Paper's divide; falls
+  // back to subtract + intersect when divide is missing or throws.
+  private divideTarget(geo: Item, cutterGeo: Item): Item[] {
+    let raw: Item = null;
+    if (typeof geo.divide === 'function') {
+      try {
+        raw = geo.divide(cutterGeo, { insert: false });
+      } catch {
+        raw = null;
+      }
+    }
+    if (raw) return this.splitPieces(raw, geo);
+    const pieces: Item[] = [];
+    if (typeof geo.subtract === 'function') {
+      try {
+        pieces.push(...this.splitPieces(geo.subtract(cutterGeo, { insert: false }), geo));
+      } catch { /* No outside piece. */ }
+    }
+    if (typeof geo.intersect === 'function') {
+      try {
+        const inside = geo.intersect(cutterGeo, { insert: false });
+        if (inside && hasBooleanArea(inside.area)) pieces.push(this.stylePiece(inside, geo));
+        else this.removeDetached(inside);
+      } catch { /* No inside piece. */ }
+    }
+    return pieces;
+  }
+
+  // A boolean result may hold several disjoint contours (one item). Split
+  // them into separate detached pieces, dropping empty ones.
+  private splitPieces(raw: Item, source: Item): Item[] {
+    const pieces: Item[] = [];
+    try {
+      const kids = Array.isArray(raw?.children) ? [...raw.children] : [raw];
+      for (const kid of kids) {
+        if (!kid || !hasBooleanArea(kid.area)) {
+          this.removeDetached(kid);
+          continue;
+        }
+        try { kid.remove(); } catch { /* Already detached. */ }
+        pieces.push(this.stylePiece(kid, source));
+      }
+    } catch { /* Fall through with whatever survived. */ }
+    this.removeDetached(raw);
+    return pieces;
+  }
+
+  // Paper's divide drops the source paint on some children; restore the
+  // target's paint on pieces that came back unpainted.
+  private stylePiece(piece: Item, source: Item): Item {
+    try {
+      if (piece && source) {
+        if (piece.fillColor == null && source.fillColor != null) piece.fillColor = source.fillColor;
+        if (piece.strokeColor == null && source.strokeColor != null) {
+          piece.strokeColor = source.strokeColor;
+          piece.strokeWidth = source.strokeWidth;
+        }
+      }
+    } catch { /* Keep the piece unstyled. */ }
+    return piece;
   }
 
   private retext(geo: Item): Item {

@@ -218,3 +218,53 @@ test('a selection combine with no overlap adds no history entry', () => {
     assert.equal(layer.children.length, 2);
   } finally { cleanup(); }
 });
+
+test('selection cut divides the base along the tool and consumes the tool', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const base = new s.Path.Rectangle({ from: [0, 0], to: [120, 80], fillColor: 'black' });
+    const tool = new s.Path.Rectangle({ from: [40, 20], to: [160, 100], fillColor: 'red' });
+    e.addItemToSelection(base);
+    e.addItemToSelection(tool);
+    e.combineSelection('cut');
+    assert.equal(e.lastCombineNote, '');
+    assert.equal(e.undoLabel(), 'Cut');
+    assert.equal(tool.parent, null);
+    assert.equal(base.parent, null);
+    // The band crosses the base, so it falls into an outside cap plus the overlap.
+    assert.ok(layer.children.length >= 2);
+    const area = layer.children.reduce((sum, child) => sum + Math.abs(child.area), 0);
+    assert.ok(Math.abs(area - 120 * 80) < 1, `pieces cover the base, got ${area}`);
+    e.undo();
+    assert.equal(layer.children.length, 2);
+    assert.ok(layer.children.includes(base));
+    assert.ok(layer.children.includes(tool));
+  } finally { cleanup(); }
+});
+
+test('deposit cut splits a circle along a drawn rectangle and consumes the rectangle', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    const target = new s.Path.Circle({ center: [100, 100], radius: 50, fillColor: 'black' });
+    const targetArea = Math.abs(target.area);
+    const outside = new s.Path.Rectangle({ from: [300, 300], to: [360, 360], fillColor: 'black' });
+    e.setCombineMode('cut');
+    e.mousePt = new s.Point(80, 40);
+    e.rectDiagonalKC();
+    e.pointer.onMouseMove({ point: new s.Point(120, 160) });
+    e.rectDiagonalKC();
+    assert.equal(e.lastCombineNote, '');
+    // The rectangle band crosses the circle: caps plus the middle strip survive
+    // as separate pieces, the untouched shape survives, the cutter is consumed.
+    assert.ok(layer.children.includes(outside));
+    assert.equal(target.parent, null);
+    const pieces = layer.children.filter((child) => child !== outside);
+    assert.ok(pieces.length >= 2, `expected 2+ pieces, got ${pieces.length}`);
+    const area = pieces.reduce((sum, child) => sum + Math.abs(child.area), 0);
+    assert.ok(Math.abs(area - targetArea) < 1, `pieces cover the circle, got ${area}`);
+    e.undo();
+    assert.ok(layer.children.includes(target));
+    assert.ok(layer.children.includes(outside));
+    assert.equal(layer.children.length, 2);
+  } finally { cleanup(); }
+});

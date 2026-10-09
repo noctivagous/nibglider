@@ -82,7 +82,7 @@ const MENU_COMMANDS: Set<string> = new Set([
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
   'bring-to-front', 'send-to-back', 'duplicate-selection',
   'group', 'ungroup-selection', 'delete-selection', 'transform-mode',
-  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-crop', 'combinatorics-interlace',
+  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-crop', 'combinatorics-cut', 'combinatorics-interlace',
   'interlace', 'interlace-group', 'remove-from-interlace',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
   'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
@@ -442,7 +442,7 @@ export default function App() {
     else if (commandId === 'remove-from-interlace') engine.removeFromInterlace();
     else if (commandId.startsWith('combinatorics-')) {
       const mode = commandId.slice('combinatorics-'.length);
-      if (mode === 'none' || mode === 'union' || mode === 'subtract' || mode === 'intersect' || mode === 'crop' || mode === 'interlace') {
+      if (mode === 'none' || mode === 'union' || mode === 'subtract' || mode === 'intersect' || mode === 'crop' || mode === 'cut' || mode === 'interlace') {
         // Panel parity (ControlPanel arm): arming with a selection combines immediately.
         engine.setCombineMode(mode);
         if (mode !== 'none' && engine.canCombineSelection()) engine.combineSelection(mode);

@@ -2283,6 +2283,17 @@ const COMBINE_OPTIONS: Array<{
     ),
   },
   {
+    value: 'cut',
+    label: 'Cut',
+    tip: 'Cut: split each touched shape along the deposited cutter; the cutter is consumed',
+    icon: (
+      <>
+        <circle cx="8" cy="7" r="3.6" />
+        <path d="M8 3.4 V10.6" />
+      </>
+    ),
+  },
+  {
     value: 'interlace',
     label: 'Interlace',
     tip: 'Interlace: weave the deposited shape with the strokes it lands on',
@@ -2375,6 +2386,13 @@ function CombinePreview({
       <>
         <circle cx="32" cy="16" r="8" strokeDasharray="2.2 1.6" />
         <path d="M26 10 H38 V22 H26 Z" />
+      </>
+    );
+  } else if (mode === 'cut') {
+    body = (
+      <>
+        <circle cx="32" cy="16" r="8" />
+        <path d="M32 8 V24" />
       </>
     );
   } else {

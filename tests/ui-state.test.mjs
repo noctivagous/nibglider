@@ -429,6 +429,7 @@ test('combinatorics preview box labels the selected option, none when off', () =
   assert.equal(combinePreviewBoxLabel('subtract'), 'Subtract');
   assert.equal(combinePreviewBoxLabel('intersect'), 'Intersect');
   assert.equal(combinePreviewBoxLabel('crop'), 'Crop');
+  assert.equal(combinePreviewBoxLabel('cut'), 'Cut');
   assert.equal(combinePreviewBoxLabel('interlace'), 'Interlace');
 });
 

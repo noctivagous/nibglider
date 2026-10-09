@@ -3462,13 +3462,13 @@ export class NibGliderEngine {
       this.interlace.interlaceSelection(this.interlaceGap);
       return;
     }
-    if (mode !== 'union' && mode !== 'subtract' && mode !== 'intersect' && mode !== 'crop') return;
+    if (mode !== 'union' && mode !== 'subtract' && mode !== 'intersect' && mode !== 'crop' && mode !== 'cut') return;
     this.combinatorics.combineSelection(mode);
   }
 
   setCombineMode(m: CombineMode | 'none'): void {
     if (m !== 'none' && m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop'
-      && m !== 'interlace') return;
+      && m !== 'cut' && m !== 'interlace') return;
     if (m !== 'none') this.combineTool = m;
     this.combineMode = m;
     this.updatePreviewBox();
@@ -3477,7 +3477,7 @@ export class NibGliderEngine {
   }
 
   setCombineTool(m: CombineMode): void {
-    if (m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop' && m !== 'interlace') return;
+    if (m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop' && m !== 'cut' && m !== 'interlace') return;
     if (this.combineTool === m) return;
     this.combineTool = m;
     this.notify();

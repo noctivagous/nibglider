@@ -505,6 +505,12 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M5.5 4.5 H10.5 V9.5 H5.5 Z" />
     </Thumb1614>
   ),
+  'combinatorics-cut': (
+    <Thumb1614>
+      <circle cx="8" cy="7" r="3.6" />
+      <path d="M8 3.4 V10.6" />
+    </Thumb1614>
+  ),
   'combinatorics-interlace': (
     <Thumb1614>
       <path d="M2 7 H14" />

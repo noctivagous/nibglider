@@ -257,8 +257,8 @@ const ENTRIES: SettingEntry[] = [
   ], (e) => e.typeCursorAnchor, (e, v) => e.setTypeCursorAnchor(v as never)),
   en('text.typeAnchorBottom', ['baseline', 'descender'], (e) => e.typeCursorBottomEdge, (e, v) => e.setTypeCursorBottomEdge(v as never)),
   // Modes.
-  en('combine.mode', ['none', 'union', 'subtract', 'intersect', 'crop', 'interlace'], (e) => e.combineMode, (e, v) => e.setCombineMode(v as never)),
-  en('combine.tool', ['union', 'subtract', 'intersect', 'crop', 'interlace'], (e) => e.combineTool, (e, v) => e.setCombineTool(v as never)),
+  en('combine.mode', ['none', 'union', 'subtract', 'intersect', 'crop', 'cut', 'interlace'], (e) => e.combineMode, (e, v) => e.setCombineMode(v as never)),
+  en('combine.tool', ['union', 'subtract', 'intersect', 'crop', 'cut', 'interlace'], (e) => e.combineTool, (e, v) => e.setCombineTool(v as never)),
   num('combine.interlaceGap', (e) => e.interlaceGap, (e, v) => e.setInterlaceGap(v)),
   en('quad.mapping', ['bilinear', 'projective'], (e) => e.quadMapping, (e, v) => e.setQuadMapping(v as QuadMapping)),
   bool('quad.perspectiveCircle', (e) => e.perspectiveCircle, (e, v) => e.setPerspectiveCircle(v)),
