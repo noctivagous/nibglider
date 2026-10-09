@@ -1,17 +1,21 @@
+[ ] AI menu
+[  ] web MCP server for AI to compose (see armature mention in this doc).
 
-[ ] add combine mode: cut.  a rectangle is drawn over a circle with this mode. 
-the rectangle will act like a cookie cutter.
+---
 
-[ ] make flag, set to on: omit undo,redo, copy, paste items from key table widget
+[ ] add combine mode: cut.  e.g. a rectangle is drawn over a circle with this mode. 
+the rectangle will act like a cookie cutter.  The circle is there the same (unless inspected closely) but in two pieces.
+
+[x] make flag, set to on: omit undo,redo, copy, paste items from key table widget
 since these are commonly known by users.
-[ ] when there is a selection, list alt+t in the keys table for transform.
+[x] when there is a selection, list alt+t in the keys table for transform.
 
 [ ] make combinatorics operations work on images for subtraction:  if you remove
 or crop a portion of an image with subtract/crop, it will change the clipping mask/shape
 for that image.  A decision needs to be made whether it will clip the pixels
 or just the image and it might depend on what % of the the image was clipped.
 
-[ ] vectorization - built-in for images > potrace like utility that shows floating
+[ ] vectorization - placed in "Images". potrace like utility that shows floating
 panel, accessed from right-click menu.
 
 [x] Make "Image" top level menu in the application menu bar

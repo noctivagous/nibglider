@@ -58,6 +58,7 @@ function mutate(engine) {
   engine.setInterlaceGap(6.5);
   engine.setQuadMapping('projective');
   engine.setPerspectiveCircle(true);
+  engine.setHideCommonKeymapRows(false);
   engine.setTextPasteLocation('view-center');
 }
 
@@ -96,6 +97,7 @@ function checkMutated(e) {
   assert.equal(e.interlaceGap, 6.5);
   assert.equal(e.quadMapping, 'projective');
   assert.equal(e.perspectiveCircle, true);
+  assert.equal(e.hideCommonKeymapRows, false);
   assert.equal(e.textPasteLocation, 'view-center');
 }
 
@@ -110,6 +112,13 @@ test('settings round-trip across paint, shapes, text, grid, and modes', () => {
   try {
     checkMutated(second.engine);
   } finally { second.cleanup(); }
+});
+
+test('keys table hides common shortcuts by default', () => {
+  const opened = openEngine(store());
+  try {
+    assert.equal(opened.engine.hideCommonKeymapRows, true);
+  } finally { opened.cleanup(); }
 });
 
 test('popover schema writes persist through reload', () => {

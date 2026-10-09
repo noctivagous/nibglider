@@ -249,7 +249,8 @@ test('status schema and keymap rows name S R H V in transform mode', () => {
   const keys = rows.filter((r) => r.ids[0]?.startsWith('transform-')).map((r) => r.keys.join(''));
   assert.deepEqual(keys, ['S', 'R', 'H', 'V']);
   const off = buildKeymapRows(snap({ selectedCount: 1 }));
-  assert.ok(!off.flatMap((r) => r.ids).some((id) => id.startsWith('transform-')));
+  assert.ok(!off.flatMap((r) => r.ids).some((id) => id.startsWith('transform-') && id !== 'transform-mode'));
+  assert.deepEqual(off.find((r) => r.ids.includes('transform-mode'))?.keys, ['Alt', 'T']);
 });
 
 test('shear commits and previews through the transform layer with undo', () => {

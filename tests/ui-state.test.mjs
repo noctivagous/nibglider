@@ -402,6 +402,42 @@ test('chord rows still surface uncovered primary-modifier commands', () => {
   assert.deepEqual(ids, [...new Set(ids)]);
 });
 
+test('hiding common shortcuts drops undo/redo/copy/paste chord rows', () => {
+  const withMeta = { ...NO_MODS, meta: true };
+  const resolved = resolveKeyboardLayout(withMeta, 'other', keyState({ selectedCount: 2 }));
+  const schemaRows = buildKeymapRows(snap({ selectedCount: 2 }));
+  const coveredIds = schemaRows.flatMap((r) => r.ids);
+  const hidden = buildChordRows(resolved, { primary: true, coveredIds, hideCommon: true });
+  for (const id of ['undo', 'redo', 'cut', 'copy', 'paste']) {
+    assert.equal(hidden.some((r) => r.ids.includes(id)), false, id);
+  }
+  const shown = buildChordRows(resolved, { primary: true, coveredIds, hideCommon: false });
+  assert.ok(shown.some((r) => r.ids.includes('undo')));
+  assert.ok(shown.some((r) => r.ids.includes('cut')));
+});
+
+test('idle selection lists a platform-aware Transform row', () => {
+  const rows = buildKeymapRows(snap({ selectedCount: 2 }));
+  const found = rows.filter((r) => r.ids.includes('transform-mode'));
+  assert.equal(found.length, 1);
+  assert.equal(found[0].label, 'Transform');
+  assert.deepEqual(found[0].keys, ['Alt', 'T']);
+  assert.equal(found[0].section, 'guide');
+  const mac = buildKeymapRows(snap({ selectedCount: 2, platform: 'mac' }));
+  assert.deepEqual(mac.find((r) => r.ids.includes('transform-mode')).keys, ['Option', 'T']);
+  for (const over of [
+    {},
+    { typingText: true },
+    { drawingShape: true, shapeType: 'rectangle_diagonal' },
+    { drawingPath: true },
+    { drawingQuad: true },
+    { transformMode: true },
+    { drawingShape: true, shapeType: 'rectangle_select', selectedCount: 2 },
+  ]) {
+    assert.equal(buildKeymapRows(snap(over)).some((r) => r.ids.includes('transform-mode')), false, JSON.stringify(over));
+  }
+});
+
 test('preview presenter writes circle and rect path data', () => {
   const s = new paper.PaperScope();
   s.setup(new s.Size(100, 100));

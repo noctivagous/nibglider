@@ -775,6 +775,10 @@ export function commandKeycap(id: string): string {
   return commandById(id)?.keycap ?? id;
 }
 
+/** Chord commands hidden from the keys table while the hide-common flag is
+ * on: universally known shortcuts that would otherwise crowd the widget. */
+export const COMMON_KEYMAP_IDS = ['undo', 'redo', 'cut', 'copy', 'paste'];
+
 /** Typing in panel fields must never arm canvas functions. */
 export function isTextEntryTarget(event: KeyboardEvent): boolean {
   const t = event.target as HTMLElement | null;

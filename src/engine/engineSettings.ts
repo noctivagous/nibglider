@@ -195,6 +195,8 @@ const ENTRIES: SettingEntry[] = [
   bool('ruler.guides', (e) => e.rulerGuides, (e, v) => e.setRulerGuides(v)),
   bool('page.fill', (e) => e.pageFill, (e, v) => e.setPageFill(v)),
   bool('page.sideTicks', (e) => e.pageSideTicks, (e, v) => e.setPageSideTicks(v)),
+  // Keys table widget.
+  bool('keymap.hideCommon', (e) => e.hideCommonKeymapRows, (e, v) => e.setHideCommonKeymapRows(v)),
   bool('snap.grid', (e) => e.isGridSnappingEnabled, (e, v) => e.setGridSnappingEnabled(v)),
   bool('snap.path', (e) => e.isPathSnappingEnabled, (e, v) => e.setPathSnappingEnabled(v)),
   bool('snap.point', (e) => e.isPointSnappingEnabled, (e, v) => e.setPointSnappingEnabled(v)),

@@ -35,6 +35,10 @@ export interface StatusSnapshot {
   liveHints: Array<{ label: string; keys: string[]; actionId?: string }>;
   transformMode?: boolean;
   transformLive?: 'scale' | 'rotate' | 'shearH' | 'shearV' | null;
+  /** Host platform for modifier labels ('Option' on mac, 'Alt' elsewhere). */
+  platform?: 'mac' | 'other';
+  /** Hide undo/redo/copy/paste rows from the keys table. Defaults to true. */
+  hideCommonKeymapRows?: boolean;
 }
 
 export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {

@@ -36,7 +36,7 @@ import {
   PointerController,
   type PointerHost,
 } from './input/PointerController';
-import { keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
+import { keyGroupForLabel, keyboardPlatform, scaleFactor, rotationStep } from './input/keymap';
 import { CombinatoricsManager } from './scene/CombinatoricsManager';
 import { InterlaceManager } from './scene/InterlaceManager';
 import { DropController, viewFitScale } from './document/DropController';
@@ -369,6 +369,9 @@ export class NibGliderEngine {
   // existing endpoint; the welding happens at deposit time.
   depositPointMode = 1;
   endpointSnapTolerance = 12;
+  // --- Keys table widget ---
+  /** Hide undo/redo/copy/paste rows from the keys table. On by default. */
+  hideCommonKeymapRows = true;
   // --- Grid / cursors ---
   isGridEnabled = false;
   gridType: GridType = 'square';
@@ -2385,6 +2388,12 @@ export class NibGliderEngine {
   setGridSnappingEnabled(v: boolean): void {
     this.isGridSnappingEnabled = v;
     this.updateGridCursor();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setHideCommonKeymapRows(v: boolean): void {
+    this.hideCommonKeymapRows = v;
     this.updateTextContent();
     this.notify();
   }
@@ -5879,6 +5888,8 @@ export class NibGliderEngine {
       liveHints: this.liveStatusHints(),
       transformMode: this.isTransformMode,
       transformLive: this.transformLive ? this.transformLive.kind : null,
+      platform: keyboardPlatform(),
+      hideCommonKeymapRows: this.hideCommonKeymapRows,
     };
     this.setStatusSchema(buildStatusSchema(snapshot), buildKeymapRows(snapshot));
   }

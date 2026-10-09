@@ -7,6 +7,9 @@
     </switch>
     <toggle key="perspectiveCircle" label="Use perspective on Circle" />
   </section>
+  <section id="keymap" title="Keys table">
+    <toggle key="keymapHideCommon" label="Hide common shortcuts (Undo, Redo, Cut, Copy, Paste)" />
+  </section>
   <section id="text" title="Text">
     <switch key="textPasteLocation" label="Text pastes at Location">
       <option value="crosshair" label="Crosshair" />

@@ -11,8 +11,12 @@ test('settings window XML loads the Projection section with both switches', () =
   assert.ok(!('error' in result), 'error' in result ? result.error : 'parse failed');
   const spec = result.spec;
   assert.equal(spec.id, 'settings');
-  assert.equal(spec.sections.length, 2);
-  const [section, text] = spec.sections;
+  assert.equal(spec.sections.length, 3);
+  const [section, keymap, text] = spec.sections;
+  assert.equal(keymap.id, 'keymap');
+  assert.equal(keymap.controls.length, 1);
+  assert.equal(keymap.controls[0].kind, 'toggle');
+  assert.equal(keymap.controls[0].key, 'keymapHideCommon');
   assert.equal(section.id, 'projection');
   assert.equal(section.controls.length, 2);
   const [mapping, circle] = section.controls;

@@ -6,7 +6,7 @@
 // Public: buildKeymapRows.
 // Tested from tests/ui-state.test.mjs. The ui module re-exports this file.
 
-import { ADJUST_ACTIONS, commandKeycap, keyGroupForLabel, type AdjustAction } from '../input/keymap';
+import { ADJUST_ACTIONS, COMMON_KEYMAP_IDS, commandKeycap, keyGroupForLabel, type AdjustAction } from '../input/keymap';
 import type { KeymapRow, StatusKeyGroup } from '../types';
 import type { StatusSnapshot } from './statusSchema';
 
@@ -76,6 +76,28 @@ export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
     rows.push(row(['stamp'], 'Stamp'));
     emitAction('scale');
     emitAction('rotate');
+  }
+  // Idle selection advertises the transform toggle with its browser-safe
+  // chord, labelled for the host platform (Option on mac, Alt elsewhere).
+  // Skipped once the mode is on (live rows cover it) and while the
+  // selection marquee is still drawing.
+  if (
+    !snap.typingText &&
+    snap.selectedCount > 0 &&
+    !snap.transformMode &&
+    !snap.drawingPath &&
+    !snap.drawingShape &&
+    !snap.drawingQuad &&
+    snap.shapeType !== 'rectangle_select' &&
+    !liveCovered.has('transform-mode')
+  ) {
+    rows.push({
+      keys: [snap.platform === 'mac' ? 'Option' : 'Alt', 'T'],
+      label: 'Transform',
+      group: 'neutral',
+      ids: ['transform-mode'],
+      section: 'guide',
+    });
   }
   if (snap.transformMode) {
     rows.push(row(['transform-scale'], 'Live scale from the cursor', 'adjust'));
@@ -168,6 +190,9 @@ export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
         section: 'guide',
       });
     }
+  }
+  if (snap.hideCommonKeymapRows !== false) {
+    return rows.filter((r) => !r.ids.every((id) => COMMON_KEYMAP_IDS.includes(id)));
   }
   return rows;
 }

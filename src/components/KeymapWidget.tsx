@@ -30,6 +30,7 @@ export default function KeymapWidget({ engine }: { engine: NibGliderEngine }) {
     {
       primary: modifiers.control || modifiers.meta,
       coveredIds: schemaRows.flatMap((r) => r.ids),
+      hideCommon: engine.hideCommonKeymapRows,
     },
   );
   const rows = [...schemaRows, ...chords];

@@ -29,6 +29,10 @@ const BINDINGS: Record<string, SettingBinding> = {
       if (value === 'crosshair' || value === 'view-center') engine.setTextPasteLocation(value);
     },
   },
+  keymapHideCommon: {
+    get: (engine) => engine.hideCommonKeymapRows,
+    set: (engine, value) => engine.setHideCommonKeymapRows(value === true || value === 'true'),
+  },
 };
 
 function SwitchControl({

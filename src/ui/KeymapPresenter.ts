@@ -6,6 +6,7 @@
 // Tested from tests/ui-state.test.mjs.
 
 import type { ResolvedKeyCap } from '../engine/input/KeyboardLayoutResolver';
+import { COMMON_KEYMAP_IDS } from '../engine/input/keymap';
 import type { KeymapRow } from '../engine/types';
 
 // Commands whose chord rows join the recurring adjust cluster; every other
@@ -21,13 +22,14 @@ const UNMODIFIED_CHORD_IDS = [
 
 export function buildChordRows(
   resolved: ResolvedKeyCap[],
-  opts: { primary: boolean; coveredIds: ReadonlySet<string> | readonly string[] },
+  opts: { primary: boolean; coveredIds: ReadonlySet<string> | readonly string[]; hideCommon?: boolean },
 ): KeymapRow[] {
   const covered = opts.coveredIds instanceof Set ? opts.coveredIds : new Set(opts.coveredIds);
   return resolved.flatMap((cap): KeymapRow[] => {
     const id = cap.commandId;
     if (!cap.available || !cap.variant || !id) return [];
     if (covered.has(id)) return [];
+    if (opts.hideCommon && COMMON_KEYMAP_IDS.includes(id)) return [];
     if (!opts.primary && !UNMODIFIED_CHORD_IDS.includes(id)) return [];
     return [{
       keys: [cap.dataKey.toUpperCase()],
