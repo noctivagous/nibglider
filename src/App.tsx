@@ -11,10 +11,12 @@ import ControlPanel, { type ControlPanelHandle } from './components/ControlPanel
 import {
   EXPORT_COMMANDS,
   FILE_COMMANDS,
+  IMPORT_COMMANDS,
   exportFileName,
   exportScopeOf,
   type ExportScopeId,
   type FileCommand,
+  type ImportCommand,
   type RasterFormat,
   type VectorFormat,
 } from './ui/fileCommands';
@@ -24,6 +26,7 @@ import AppMenu, {
   type PanelSectionAction,
 } from './components/AppMenu';
 import JpgExportDialog from './components/JpgExportDialog';
+import { svgToPdfBlob } from './engine/document/pdfExport';
 import ContextMenu from './components/ContextMenu';
 import SettingsWindow from './components/SettingsWindow';
 import DocumentInfoWindow from './components/DocumentInfoWindow';
@@ -37,6 +40,7 @@ import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
 import ExportFramePopover from './components/ExportFramePopover';
 import InterlacePopover from './components/InterlacePopover';
+import FiltersPanel from './components/FiltersPanel';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
 import { formatInUnit } from './engine/document/MeasurementUnits';
 import { autosaveDocument, currentName, restorableDocument } from './ui/DocumentGallery';
@@ -69,6 +73,7 @@ const HIDE_SECTION_TITLES = true;
 /** Menu commands with a wired handler; everything else renders disabled. */
 const MENU_COMMANDS: Set<string> = new Set([
   ...FILE_COMMANDS,
+  ...IMPORT_COMMANDS,
   ...EXPORT_COMMANDS,
   'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
   'undo', 'redo',
@@ -92,6 +97,7 @@ const MENU_COMMANDS: Set<string> = new Set([
   'image-place', 'image-replace', 'image-info',
   'image-scale-half', 'image-scale-double', 'image-fit-view',
   'image-grayscale', 'image-flatten', 'image-convert-png', 'image-convert-jpeg',
+  'image-filters',
 ]);
 
 /** Guard prefix dispatch: the shape setters assign blindly, so only known values pass. */
@@ -308,8 +314,8 @@ export default function App() {
   }, [tutorialRunner]);
 
   const controlPanelRef = useRef<ControlPanelHandle>(null);
-  // Image menu file intake: File > Import only takes SVG, so raster place
-  // and replace share this picker; the mode records which row opened it.
+  // Image menu file intake. Raster place and replace share this picker;
+  // the mode records which row opened it. File > Import uses its own input.
   const imageFileInputRef = useRef<HTMLInputElement>(null);
   const imageFileModeRef = useRef<'place' | 'replace'>('place');
   const handleImageFile = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -327,8 +333,7 @@ export default function App() {
     reader.readAsDataURL(file);
   }, [engine]);
   // File > Export format state. SVG is the vector default; PNG is the
-  // raster default. Unavailable formats (WEBP, PDF,
-  // DXF) render disabled and never reach the dispatch below.
+  // raster default. WEBP and DXF stay disabled and never reach dispatch.
   const [rasterFormat, setRasterFormat] = useState<RasterFormat>('png');
   const [vectorFormat, setVectorFormat] = useState<VectorFormat>('svg');
   // JPG exports pause in an intermediate dialog for quality controls;
@@ -364,11 +369,19 @@ export default function App() {
   }, []);
 
   const runVectorExport = useCallback((scope: ExportScopeId) => {
-    if (vectorFormat !== 'svg') return;
     const output = engine.exportScopeSVG(scope);
     if (!output) return;
+    if (vectorFormat === 'pdf') {
+      void (async (): Promise<void> => {
+        const blob = await svgToPdfBlob(output.svg, output.box);
+        if (!blob) return;
+        downloadBlob(exportFileName(exportFileStem(), scope, 'pdf'), blob);
+      })();
+      return;
+    }
+    if (vectorFormat !== 'svg') return;
     downloadText(exportFileName(exportFileStem(), scope, 'svg'), output.svg, 'image/svg+xml');
-  }, [downloadText, engine, exportFileStem, vectorFormat]);
+  }, [downloadBlob, downloadText, engine, exportFileStem, vectorFormat]);
 
   const runRasterExport = useCallback((scope: ExportScopeId) => {
     if (rasterFormat === 'jpg') {
@@ -384,8 +397,9 @@ export default function App() {
   }, [downloadBlob, engine, exportFileStem, rasterFormat]);
 
   const handleMenuCommand = useCallback((commandId: string) => {
-    if ((FILE_COMMANDS as readonly string[]).includes(commandId)) {
-      controlPanelRef.current?.dispatchFileCommand(commandId as FileCommand);
+    if ((FILE_COMMANDS as readonly string[]).includes(commandId)
+      || (IMPORT_COMMANDS as readonly string[]).includes(commandId)) {
+      controlPanelRef.current?.dispatchFileCommand(commandId as FileCommand | ImportCommand);
       return;
     }
     const exportScope = exportScopeOf(commandId);
@@ -463,6 +477,7 @@ export default function App() {
     else if (commandId === 'image-flatten') engine.flattenSelectedRasters();
     else if (commandId === 'image-convert-png') engine.convertSelectedRaster('png');
     else if (commandId === 'image-convert-jpeg') engine.convertSelectedRaster('jpeg');
+    else if (commandId === 'image-filters') gui.toggleFilters();
   }, [engine, gui, runRasterExport, runVectorExport, startTutorial]);
 
   // Re-render on engine changes so menu checkmarks (length unit) stay fresh.
@@ -521,6 +536,7 @@ export default function App() {
     ...(ui.controlsVisible ? ['toggle-panel'] : []),
     ...(ui.keyboardVisible ? ['toggle-keyboard'] : []),
     ...(ui.statusVisible ? ['toggle-status'] : []),
+    ...(ui.filtersVisible ? ['image-filters'] : []),
     `length-unit-${engine.lengthUnit}`,
     `combinatorics-${engine.combineMode}`,
     `rect-shape-${engine.rectangleInnerShapeType}`,
@@ -559,7 +575,7 @@ export default function App() {
       label: 'Vector format',
       options: [
         { value: 'svg', label: 'SVG' },
-        { value: 'pdf', label: 'PDF', disabled: true, title: 'Not available yet' },
+        { value: 'pdf', label: 'PDF' },
         { value: 'dxf', label: 'DXF', disabled: true, title: 'Not available yet' },
       ],
     },
@@ -567,7 +583,7 @@ export default function App() {
   const handleExportSegment = useCallback((commandId: string, value: string) => {
     if (commandId === 'export-raster' && (value === 'png' || value === 'jpg')) {
       setRasterFormat(value);
-    } else if (commandId === 'export-vector' && value === 'svg') {
+    } else if (commandId === 'export-vector' && (value === 'svg' || value === 'pdf')) {
       setVectorFormat(value);
     }
   }, []);
@@ -888,6 +904,7 @@ export default function App() {
           />
           <ExportFramePopover engine={engine} />
           <InterlacePopover engine={engine} />
+          {ui.filtersVisible && <FiltersPanel engine={engine} gui={gui} />}
         </div>
         <div className="corner-div">
           <div

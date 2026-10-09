@@ -47,6 +47,20 @@ test('keyboard width treats a blank store as the default and menu layout stays s
   assert.ok(APPLICATION_MENUS.some((menu) => menu.items.some((item) => typeof item.icon === 'string')));
 });
 
+test('filters panel visibility defaults off and toggles through the store', () => {
+  const mem = store();
+  const gui = new GUIManager(mem);
+  assert.equal(gui.filtersVisible, false);
+  assert.equal(gui.getSnapshot().filtersVisible, false);
+  gui.toggleFilters();
+  assert.equal(gui.filtersVisible, true);
+  assert.equal(gui.getSnapshot().filtersVisible, true);
+  const again = new GUIManager(mem);
+  assert.equal(again.filtersVisible, true);
+  again.setFiltersVisible(false);
+  assert.equal(again.filtersVisible, false);
+});
+
 test('panel order round-trips through the store', () => {
   const mem = store();
   const panels = new PanelsManager(mem);
@@ -106,6 +120,10 @@ test('application menus cover file, edit, image, document, operations, modes, la
     'export-raster', 'export-vector', 'import',
     'settings',
   ]);
+  assert.deepEqual(
+    (byId.file.items.find((item) => item.commandId === 'import').children ?? []).map((child) => child.commandId),
+    ['import-svg', 'import-pdf', 'import-raster'],
+  );
   for (const parent of ['export-raster', 'export-vector']) {
     const submenu = byId.file.items.find((item) => item.commandId === parent);
     assert.deepEqual((submenu.children ?? []).map((child) => child.commandId), [

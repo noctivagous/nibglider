@@ -18,6 +18,7 @@ export const KEYBOARD_WIDTH_KEY = 'nibglider.keyboardWidth';
 export const KEYBOARD_VISIBLE_KEY = 'nibglider.keyboardVisible';
 export const CONTROLS_VISIBLE_KEY = 'nibglider.controlsVisible';
 export const STATUS_VISIBLE_KEY = 'nibglider.statusVisible';
+export const FILTERS_VISIBLE_KEY = 'nibglider.filtersVisible';
 export const MENU_LAYOUT_KEY = 'nibglider.menuLayout';
 
 export interface GUISnapshot {
@@ -25,6 +26,7 @@ export interface GUISnapshot {
   keyboardVisible: boolean;
   controlsVisible: boolean;
   statusVisible: boolean;
+  filtersVisible: boolean;
   showSpacebar: boolean;
   menuLayout: MenuLayout;
   /** Id of the XML-defined window currently open, or null. */
@@ -71,6 +73,7 @@ export class GUIManager {
   keyboardVisible: boolean;
   controlsVisible: boolean;
   statusVisible: boolean;
+  filtersVisible: boolean;
   showSpacebar = false;
   menuLayout: MenuLayout;
   /** XML-defined window currently open; window content itself is transient. */
@@ -84,6 +87,7 @@ export class GUIManager {
     this.keyboardVisible = loadFlag(store, KEYBOARD_VISIBLE_KEY, true);
     this.controlsVisible = loadFlag(store, CONTROLS_VISIBLE_KEY, true);
     this.statusVisible = loadFlag(store, STATUS_VISIBLE_KEY, true);
+    this.filtersVisible = loadFlag(store, FILTERS_VISIBLE_KEY, false);
     this.menuLayout = loadLayout(store);
     this.snapshot = this.capture();
   }
@@ -105,6 +109,7 @@ export class GUIManager {
   setKeyboardVisible(visible: boolean): void { this.setFlag('keyboardVisible', KEYBOARD_VISIBLE_KEY, visible); }
   setControlsVisible(visible: boolean): void { this.setFlag('controlsVisible', CONTROLS_VISIBLE_KEY, visible); }
   setStatusVisible(visible: boolean): void { this.setFlag('statusVisible', STATUS_VISIBLE_KEY, visible); }
+  setFiltersVisible(visible: boolean): void { this.setFlag('filtersVisible', FILTERS_VISIBLE_KEY, visible); }
   setShowSpacebar(visible: boolean): void {
     this.showSpacebar = visible;
     this.emit();
@@ -112,6 +117,7 @@ export class GUIManager {
   toggleKeyboard(): void { this.setKeyboardVisible(!this.keyboardVisible); }
   toggleControls(): void { this.setControlsVisible(!this.controlsVisible); }
   toggleStatus(): void { this.setStatusVisible(!this.statusVisible); }
+  toggleFilters(): void { this.setFiltersVisible(!this.filtersVisible); }
 
   setMenuLayout(layout: MenuLayout): void {
     if (layout !== 'stack' && layout !== 'grid') return;
@@ -133,7 +139,7 @@ export class GUIManager {
     this.emit();
   }
 
-  private setFlag(field: 'keyboardVisible' | 'controlsVisible' | 'statusVisible', key: string, visible: boolean): void {
+  private setFlag(field: 'keyboardVisible' | 'controlsVisible' | 'statusVisible' | 'filtersVisible', key: string, visible: boolean): void {
     this[field] = visible;
     this.persist(key, visible ? '1' : '0');
     this.emit();
@@ -149,6 +155,7 @@ export class GUIManager {
       keyboardVisible: this.keyboardVisible,
       controlsVisible: this.controlsVisible,
       statusVisible: this.statusVisible,
+      filtersVisible: this.filtersVisible,
       showSpacebar: this.showSpacebar,
       menuLayout: this.menuLayout,
       openWindowId: this.openWindowId,

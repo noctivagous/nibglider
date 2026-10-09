@@ -15,7 +15,11 @@
       <option command="export-vector-viewport" label="Current Viewport Frame" icon="reset-zoom" />
       <option command="export-vector-selection" label="Selected Objects" icon="select-all" />
     </item>
-    <item command="import" icon="import" />
+    <item command="import" label="Import" icon="import">
+      <option command="import-svg" label="SVG" icon="import" />
+      <option command="import-pdf" label="PDF" icon="import" />
+      <option command="import-raster" label="Raster / Bitmap" icon="import" />
+    </item>
     <item command="settings" icon="settings" />
   </menu>
   <menu id="edit" title="Edit">
@@ -33,6 +37,7 @@
     </group>
   </menu>
   <menu id="image" title="Image">
+    <item command="image-filters" label="Filters…" icon="filters" />
     <group label="Place">
       <item command="image-place" label="Place image…" icon="import" />
       <item command="image-replace" label="Replace image…" icon="import" />

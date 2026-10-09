@@ -552,6 +552,13 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <circle cx="18" cy="8" r="1.2" fill="currentColor" stroke="none" />
     </MenuGlyph>
   ),
+  filters: (
+    <MenuGlyph>
+      <path d="M4 7 h16 M4 17 h16" />
+      <circle cx="9" cy="7" r="2.2" fill="currentColor" stroke="none" opacity="0.85" />
+      <circle cx="15" cy="17" r="2.2" fill="currentColor" stroke="none" opacity="0.85" />
+    </MenuGlyph>
+  ),
 };
 
 /** Glyphs for the top-level menu triggers, left of each title in the bar. */

@@ -40,7 +40,15 @@ import { keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
 import { CombinatoricsManager } from './scene/CombinatoricsManager';
 import { InterlaceManager } from './scene/InterlaceManager';
 import { DropController, viewFitScale } from './document/DropController';
-import { flattenPixels, grayscalePixels } from './image/rasterOps';
+import {
+  boxBlurPixels,
+  brightnessPixels,
+  contrastPixels,
+  flattenPixels,
+  grayscalePixels,
+  invertPixels,
+  sharpenPixels,
+} from './image/rasterOps';
 import {
   clearTransient,
   decodeSceneItems,
@@ -4451,7 +4459,7 @@ export class NibGliderEngine {
 
   /** Data-URL raster paste. The image decodes asynchronously; the history
    * entry records on load, mirroring DropController. */
-  pasteImageDataUrl(dataUrl: string, at?: AnyItem): boolean {
+  pasteImageDataUrl(dataUrl: string, at?: AnyItem, label = 'Paste image'): boolean {
     if (this.isLiveDrawing || this.isTypingText || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return false;
     const target = this.pasteTarget(at);
     const selectedBefore = [...this.selectedItems];
@@ -4467,12 +4475,71 @@ export class NibGliderEngine {
         try { raster.position = target.clone(); } catch { /* Keep the decoded position. */ }
         this.fitPlacedToView(raster);
         this.selection.restore([raster]);
-        this.history.recordDrop('Paste image', raster, selectedBefore);
+        this.lastDropNote = '';
+        this.history.recordDrop(label, raster, selectedBefore);
+        this.updateTextContent(); this.notify();
+      };
+      raster.onError = () => {
+        try { raster.remove(); } catch { /* Already gone. */ }
+        this.lastDropNote = 'Import failed: that image did not decode.';
         this.updateTextContent(); this.notify();
       };
     } catch {
       return false;
     }
+    return true;
+  }
+
+  /** Surface an import failure in the status overlay. */
+  noteImportFailure(note: string): void {
+    this.lastDropNote = note;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** File > Import > Raster. Same decode path as an image paste. */
+  importRasterDataUrl(dataUrl: string, label: string): boolean {
+    return this.pasteImageDataUrl(dataUrl, undefined, label);
+  }
+
+  /** Place already-decoded canvases (PDF page rasters) as one undoable
+   * item at the view center, fitted like a drop. Several pages become a group. */
+  importRasterCanvases(label: string, sources: HTMLCanvasElement[]): boolean {
+    if (this.isLiveDrawing || this.isTypingText || sources.length === 0) return false;
+    const selectedBefore = [...this.selectedItems];
+    const scope = this.scope;
+    let placed: AnyItem = null;
+    try {
+      const gap = 24 / Math.max(this.zoomLevel, 0.1);
+      let cursor = 0;
+      const rasters: AnyItem[] = [];
+      for (const source of sources) {
+        const raster: AnyItem = new scope.Raster(source);
+        const width = raster.bounds?.width ?? source.width;
+        raster.position = new scope.Point(cursor + width / 2, (raster.bounds?.height ?? source.height) / 2);
+        cursor += width + gap;
+        rasters.push(raster);
+      }
+      if (rasters.length === 1) {
+        placed = rasters[0];
+      } else {
+        const group: AnyItem = new scope.Group(rasters);
+        try { group.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
+        placed = group;
+      }
+      const center = scope.view?.center;
+      if (center) placed.position = center.clone();
+      this.fitPlacedToView(placed);
+    } catch {
+      this.lastDropNote = 'Import failed: could not place those pages.';
+      this.updateTextContent(); this.notify();
+      return false;
+    }
+    if (!placed) return false;
+    this.selection.restore([placed]);
+    this.lastDropNote = '';
+    this.history.recordDrop(label, placed, selectedBefore);
+    this.updateTextContent(); this.notify();
     return true;
   }
 
@@ -4600,8 +4667,13 @@ export class NibGliderEngine {
   }
 
   /** Run a pixel filter over every selected image's live canvas, with one
-   * shared undo entry. Failures surface as a note, never a throw. */
-  private mutateSelectedRasterPixels(label: string, mutate: (pixels: Uint8ClampedArray) => void): boolean {
+   * shared undo entry. The filter may mutate in place or return a
+   * replacement buffer (for neighborhood ops like blur). Failures surface
+   * as a note, never a throw. */
+  private mutateSelectedRasterPixels(
+    label: string,
+    mutate: (pixels: Uint8ClampedArray, width: number, height: number) => void | Uint8ClampedArray,
+  ): boolean {
     if (this.isLiveDrawing) return false;
     const rasters = this.selectedRasters();
     if (rasters.length === 0) return false;
@@ -4614,8 +4686,9 @@ export class NibGliderEngine {
         if (!ctx) continue;
         const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const pixels = new Uint8ClampedArray(before.data);
-        mutate(pixels);
-        const after = new ImageData(pixels, before.width, before.height);
+        const out = mutate(pixels, before.width, before.height);
+        const result = out instanceof Uint8ClampedArray && out.length === before.data.length ? out : pixels;
+        const after = new ImageData(result, before.width, before.height);
         ctx.putImageData(after, 0, 0);
         jobs.push({ ctx, before, after });
       } catch {
@@ -4644,6 +4717,49 @@ export class NibGliderEngine {
     return this.mutateSelectedRasterPixels('Flatten image transparency', (pixels) => {
       flattenPixels(pixels, 255, 255, 255);
     });
+  }
+
+  /** Negative of every selected image, with undo. */
+  invertSelectedRasters(): boolean {
+    return this.mutateSelectedRasterPixels('Invert image', invertPixels);
+  }
+
+  /** Brightness shift (-255..255) on every selected image, with undo.
+   * Zero is a no-op and returns false. */
+  adjustSelectedRasterBrightness(delta: number): boolean {
+    if (!Number.isFinite(delta) || delta === 0) return false;
+    const shift = Math.min(255, Math.max(-255, Math.round(delta)));
+    return this.mutateSelectedRasterPixels('Adjust image brightness', (pixels) => {
+      brightnessPixels(pixels, shift);
+    });
+  }
+
+  /** Contrast factor on every selected image, with undo. One is a no-op
+   * and returns false; the factor clamps to a sane 0.1..4 range. */
+  adjustSelectedRasterContrast(factor: number): boolean {
+    if (!Number.isFinite(factor) || factor === 1) return false;
+    const clamped = Math.min(4, Math.max(0.1, factor));
+    return this.mutateSelectedRasterPixels('Adjust image contrast', (pixels) => {
+      contrastPixels(pixels, clamped);
+    });
+  }
+
+  /** Box blur (radius 1..10) on every selected image, with undo. */
+  blurSelectedRasters(radius: number): boolean {
+    if (!Number.isFinite(radius)) return false;
+    const r = Math.min(10, Math.max(1, Math.round(radius)));
+    return this.mutateSelectedRasterPixels('Blur image', (pixels, width, height) =>
+      boxBlurPixels(pixels, width, height, r));
+  }
+
+  /** Unsharp mask (radius 1..10, strength 0.1..3) on every selected
+   * image, with undo. */
+  sharpenSelectedRasters(radius: number, amount = 1): boolean {
+    if (!Number.isFinite(radius) || !Number.isFinite(amount) || amount <= 0) return false;
+    const r = Math.min(10, Math.max(1, Math.round(radius)));
+    const k = Math.min(3, Math.max(0.1, amount));
+    return this.mutateSelectedRasterPixels('Sharpen image', (pixels, width, height) =>
+      sharpenPixels(pixels, width, height, r, k));
   }
 
   /** Re-encode every selected image in place (PNG keeps alpha; JPEG

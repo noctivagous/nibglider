@@ -13,7 +13,7 @@ const WIRED_COMMANDS = [
   'open-gallery', 'new-document', 'save-gallery', 'rename-document',
   'export-raster-canvas', 'export-raster-viewport', 'export-raster-selection',
   'export-vector-canvas', 'export-vector-viewport', 'export-vector-selection',
-  'import',
+  'import-svg', 'import-pdf', 'import-raster',
   'scale-dialog', 'rotate-dialog',
   'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
   'undo', 'redo',
@@ -35,10 +35,11 @@ const WIRED_COMMANDS = [
   'image-place', 'image-replace', 'image-info',
   'image-scale-half', 'image-scale-double', 'image-fit-view',
   'image-grayscale', 'image-flatten', 'image-convert-png', 'image-convert-jpeg',
+  'image-filters',
 ];
 const PLACEHOLDER_COMMANDS = [
   'page-size', 'length-unit', 'reset-zoom', 'select',
-  'export-raster', 'export-vector',
+  'export-raster', 'export-vector', 'import',
   'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
   'image-transform', 'image-raster', 'image-trace',
   'repeat-grid', 'repeat-circle',
@@ -257,6 +258,7 @@ test('image menu groups place/selection/arrange around transform and raster subm
   const image = menus.find((menu) => menu.id === 'image');
   assert.equal(image.title, 'Image');
   assert.deepEqual(image.items.map((item) => item.commandId), [
+    'image-filters',
     'hdr-image-1', 'image-place', 'image-replace',
     'hdr-image-2', 'image-info',
     'image-transform', 'image-raster',

@@ -422,6 +422,115 @@ article {
   font-weight: 700;
 }
 
+/* Filters floating card: same dark pro chrome as the export-frame card,
+ * mounted in the overlay stack by FiltersPanel. Tab strip reuses the
+ * global settings-tabs classes. */
+#filtersCard {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 500;
+  width: 248px;
+  background: rgba(13, 17, 22, 0.92);
+  border: 1px solid #0b0e12;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 4px 14px rgba(0, 0, 0, 0.5);
+  font-family: Monospace, monospace;
+  font-size: 12px;
+  color: #e8edf3;
+  padding: 8px 10px;
+}
+
+#filtersCard .fp-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+#filtersCard .fp-title {
+  font-weight: 700;
+}
+
+#filtersCard .fp-meta {
+  flex: 1;
+  opacity: 0.75;
+  font-size: 11px;
+}
+
+#filtersCard .fp-close {
+  background: none;
+  border: none;
+  color: #e8edf3;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+#filtersCard .settings-tabs {
+  margin-bottom: 8px;
+}
+
+#filtersCard .fp-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#filtersCard .fp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#filtersCard .fp-label {
+  flex: 0 0 64px;
+}
+
+#filtersCard .fp-hint {
+  opacity: 0.75;
+  font-size: 11px;
+}
+
+#filtersCard .fp-color {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  background: #1d242e;
+  border: 1px solid #8fa3bd;
+  border-radius: 4px;
+  padding: 1px 3px;
+}
+
+#filtersCard .fp-color:disabled {
+  opacity: 0.4;
+}
+
+#filtersCard .fp-btn {
+  flex: 1;
+  font: inherit;
+  color: #e8edf3;
+  background: #2b3542;
+  border: 1px solid #8fa3bd;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+#filtersCard .fp-btn.fp-apply {
+  flex: 0 0 auto;
+  color: #06121f;
+  background: #2dd4bf;
+  border-color: #0b0e12;
+  font-weight: 700;
+}
+
+#filtersCard .fp-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 #canvasContainer #topOverlayStack .ic-widget-strip .ef-popover-btn {
   font: inherit;
   color: #e8edf3;
