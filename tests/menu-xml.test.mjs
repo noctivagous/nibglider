@@ -32,11 +32,15 @@ const WIRED_COMMANDS = [
   'circle-shape-kite',
   'snap-grid', 'snap-path', 'snap-points', 'snap-angle', 'snap-length', 'snap-aspect',
   'text-mode-display', 'text-mode-body',
+  'image-place', 'image-replace', 'image-info',
+  'image-scale-half', 'image-scale-double', 'image-fit-view',
+  'image-grayscale', 'image-flatten', 'image-convert-png', 'image-convert-jpeg',
 ];
 const PLACEHOLDER_COMMANDS = [
   'page-size', 'length-unit', 'reset-zoom', 'select',
   'export-raster', 'export-vector',
   'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
+  'image-transform', 'image-raster', 'image-trace',
   'repeat-grid', 'repeat-circle',
   'cut', 'copy', 'paste', 'select-all',
 ];
@@ -49,9 +53,9 @@ function loadMenus() {
 
 test('menus XML parses to the application menus in order', () => {
   const menus = loadMenus();
-  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
+  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'edit', 'image', 'document', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
   assert.deepEqual(menus.map((menu) => menu.title), [
-    'File', 'Edit', 'Document and Settings', 'Operations', 'Modes', 'Layers and Objects', 'Object', 'Help', 'Debug',
+    'File', 'Edit', 'Image', 'Document and Settings', 'Operations', 'Modes', 'Layers and Objects', 'Object', 'Help', 'Debug',
   ]);
 });
 
@@ -246,4 +250,27 @@ test('menu XML rejects malformed definitions', () => {
     assert.ok('error' in result, `expected an error for ${xml}`);
     assert.ok(result.error.length > 0);
   }
+});
+
+test('image menu groups place/selection/arrange around transform and raster submenus', () => {
+  const menus = loadMenus();
+  const image = menus.find((menu) => menu.id === 'image');
+  assert.equal(image.title, 'Image');
+  assert.deepEqual(image.items.map((item) => item.commandId), [
+    'hdr-image-1', 'image-place', 'image-replace',
+    'hdr-image-2', 'image-info',
+    'image-transform', 'image-raster',
+    'hdr-image-3', 'bring-to-front', 'send-to-back',
+  ]);
+  assert.deepEqual(
+    image.items.filter((item) => item.header).map((item) => item.label),
+    ['Place', 'Selection', 'Arrange'],
+  );
+  const byId = Object.fromEntries(image.items.map((item) => [item.commandId, item]));
+  assert.deepEqual(byId['image-transform'].children.map((child) => child.commandId), [
+    'image-scale-half', 'image-scale-double', 'image-fit-view', 'scale-dialog',
+  ]);
+  assert.deepEqual(byId['image-raster'].children.map((child) => child.commandId), [
+    'image-grayscale', 'image-flatten', 'image-convert-png', 'image-convert-jpeg', 'image-trace',
+  ]);
 });

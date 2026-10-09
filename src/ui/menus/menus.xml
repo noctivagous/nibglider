@@ -32,6 +32,32 @@
       <item command="select-all" label="Select all" icon="select-all" shortcut="Primary+A" />
     </group>
   </menu>
+  <menu id="image" title="Image">
+    <group label="Place">
+      <item command="image-place" label="Place image…" icon="import" />
+      <item command="image-replace" label="Replace image…" icon="import" />
+    </group>
+    <group label="Selection">
+      <item command="image-info" label="Image info" icon="toggle-status" />
+    </group>
+    <item command="image-transform" label="Transform" icon="scale-dialog">
+      <option command="image-scale-half" label="Scale to 50%" icon="scale-dialog" />
+      <option command="image-scale-double" label="Scale to 200%" icon="scale-dialog" />
+      <option command="image-fit-view" label="Fit to view" icon="reset-zoom" />
+      <option command="scale-dialog" label="Scale…" icon="scale-dialog" />
+    </item>
+    <item command="image-raster" label="Raster" icon="image">
+      <option command="image-grayscale" label="Grayscale" icon="image-grayscale" />
+      <option command="image-flatten" label="Flatten transparency" icon="image-flatten" />
+      <option command="image-convert-png" label="Convert to PNG" icon="export" />
+      <option command="image-convert-jpeg" label="Convert to JPEG" icon="export" />
+      <option command="image-trace" label="Trace to vector (future)" icon="image-trace" />
+    </item>
+    <group label="Arrange">
+      <item command="bring-to-front" label="Bring to front" icon="bring-to-front" />
+      <item command="send-to-back" label="Send to back" icon="send-to-back" />
+    </group>
+  </menu>
   <menu id="document" title="Document and Settings">
     <item command="canvas-size" icon="page-size" />
     <item command="document-settings" label="Document Settings" icon="settings" />

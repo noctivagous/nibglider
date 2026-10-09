@@ -96,9 +96,10 @@ test('dragging across a row boundary keeps the requested visual row', () => {
   assert.equal(sectionOrder(again.order).indexOf('textControls'), 6);
 });
 
-test('application menus cover file, edit, document, operations, modes, layers, context-object, help, and debug', () => {
+test('application menus cover file, edit, image, document, operations, modes, layers, context-object, help, and debug', () => {
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
-  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'document', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
+  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'image', 'document', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
+  assert.equal(byId.image.title, 'Image');
   assert.equal(byId.file.title, 'File');
   assert.deepEqual(byId.file.items.map((item) => item.commandId), [
     'open-gallery', 'new-document', 'save-gallery', 'rename-document',

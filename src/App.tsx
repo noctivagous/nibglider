@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type CSSProperties } from 'react';
 import paper from 'paper';
 import {
   NibGliderEngine,
@@ -89,6 +89,9 @@ const MENU_COMMANDS: Set<string> = new Set([
   'snap-grid', 'snap-path', 'snap-points', 'snap-angle', 'snap-length', 'snap-aspect',
   'text-mode-display', 'text-mode-body',
   'scale-dialog', 'rotate-dialog',
+  'image-place', 'image-replace', 'image-info',
+  'image-scale-half', 'image-scale-double', 'image-fit-view',
+  'image-grayscale', 'image-flatten', 'image-convert-png', 'image-convert-jpeg',
 ]);
 
 /** Guard prefix dispatch: the shape setters assign blindly, so only known values pass. */
@@ -305,6 +308,24 @@ export default function App() {
   }, [tutorialRunner]);
 
   const controlPanelRef = useRef<ControlPanelHandle>(null);
+  // Image menu file intake: File > Import only takes SVG, so raster place
+  // and replace share this picker; the mode records which row opened it.
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const imageFileModeRef = useRef<'place' | 'replace'>('place');
+  const handleImageFile = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onerror = () => { /* A failed read places nothing. */ };
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return;
+      if (imageFileModeRef.current === 'replace') engine.replaceSelectedRaster(dataUrl);
+      else engine.pasteImageDataUrl(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  }, [engine]);
   // File > Export format state. SVG is the vector default; PNG is the
   // raster default. Unavailable formats (WEBP, PDF,
   // DXF) render disabled and never reach the dispatch below.
@@ -432,6 +453,16 @@ export default function App() {
     else if (commandId === 'text-mode-body') engine.setTextMode('body');
     else if (commandId === 'scale-dialog') controlPanelRef.current?.openOperationDialog('scale');
     else if (commandId === 'rotate-dialog') controlPanelRef.current?.openOperationDialog('rotate');
+    else if (commandId === 'image-place') { imageFileModeRef.current = 'place'; imageFileInputRef.current?.click(); }
+    else if (commandId === 'image-replace') { imageFileModeRef.current = 'replace'; imageFileInputRef.current?.click(); }
+    else if (commandId === 'image-info') engine.noteSelectedRasterInfo();
+    else if (commandId === 'image-scale-half') engine.scaleSelectedRasters(0.5);
+    else if (commandId === 'image-scale-double') engine.scaleSelectedRasters(2);
+    else if (commandId === 'image-fit-view') engine.fitSelectedRastersToView();
+    else if (commandId === 'image-grayscale') engine.grayscaleSelectedRasters();
+    else if (commandId === 'image-flatten') engine.flattenSelectedRasters();
+    else if (commandId === 'image-convert-png') engine.convertSelectedRaster('png');
+    else if (commandId === 'image-convert-jpeg') engine.convertSelectedRaster('jpeg');
   }, [engine, gui, runRasterExport, runVectorExport, startTutorial]);
 
   // Re-render on engine changes so menu checkmarks (length unit) stay fresh.
@@ -559,6 +590,12 @@ export default function App() {
     'export-raster-viewport': exportViewportDetail,
     'export-vector-viewport': exportViewportDetail,
   };
+  // Image menu rows (except Place) need a selected raster; without one
+  // they render disabled, like Export's selection scope without a selection.
+  const hasRasterSelection = engine.hasSelectedRaster();
+  const enabledMenuCommands = hasRasterSelection
+    ? MENU_COMMANDS
+    : new Set([...MENU_COMMANDS].filter((id) => id === 'image-place' || !id.startsWith('image-')));
   const exportMenus = panels.menus
     .filter((menu) => menu.id !== CONTEXT_MENU_ID)
     .map((menu) => {
@@ -768,7 +805,7 @@ export default function App() {
     <div id="mainLayout">
       <AppMenu
         menus={exportMenus}
-        enabledCommands={MENU_COMMANDS}
+        enabledCommands={enabledMenuCommands}
         checkedCommands={checkedCommands}
         labelOverrides={{ 'canvas-size': canvasSizeLabel }}
         detailOverrides={exportDetailOverrides}
@@ -779,6 +816,15 @@ export default function App() {
         onSegmentSelect={handleExportSegment}
         panelSections={menuPanelSections}
         onPanelSection={handlePanelSection}
+      />
+      <input
+        ref={imageFileInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        aria-hidden="true"
+        tabIndex={-1}
+        onChange={handleImageFile}
       />
       {jpgScope && (
         <JpgExportDialog

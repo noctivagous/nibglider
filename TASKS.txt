@@ -1,6 +1,19 @@
-[x] find out why left mouse click drag works inconsistently
-on the first drag.
+[x] Make "Image" top level menu in the application menu bar
+and fill out with menu items and submenus with 
+image manipulation capabilities
 
+[  ] - utilize jsPDF or whichever PDF library fits the codebase best
+for the Export menu items.  enable the PDF export and import.
+   File > Import 
+       > PDF  will show options for import of PDF
+    enable the File > Export  PDF file format option.
+ 
+[ ] File > Import > 
+    [ ] > SVG
+    [ ] > PDF
+    [ ] > Raster/Bitmap
+    
+    
 ----
 
 [  ] Export > Single-Use Export Frame
@@ -46,24 +59,31 @@ separated by underscores.
 
 ----
 
+
+[x] find out why left mouse click drag works inconsistently
+on the first drag.
+
+----
+
 In the File Menu redo the Export function:
 
-[ ] Export > Raster >
+[x] Export > Raster >
    [PNG | JPG | WEBP]   (Webp option present, not avail yet)
    [ ] Document Canvas  [dimensions size and units]
    [ ] Current Viewport Frame  (current functionality)
    [ ] Selected Objects  (only show if there are selected objects)
 
-[ ] Export > Vector >
+[x] Export > Vector >
    segm ctrl embedded in menu item: [ SVG* | PDF | DXF ]  (PDF, DXF option present, not avail yet)
    [ ] Document Canvas  [dimensions size and units]
    [ ] Current Viewport Frame  (current functionality)
    [ ] Selected Objects  (only show if there are selected objects)
 
-[ ] Import > 
-    [ ] SVG
-    [ ] PDF (not avail. yet)
-
+[ ] File > Import > 
+    [ ] > SVG
+    [ ] > PDF (not avail. yet)
+    [ ] > Raster
+[  ] Edit > Insert Image...
 
 ---
 

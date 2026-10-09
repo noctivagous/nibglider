@@ -524,6 +524,34 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M2.5 3.5 h11 M2.5 7 h11 M2.5 10.5 h11" />
     </Thumb1614>
   ),
+  // Image menu rows: picture frame, half-tone grayscale, flattened sheet,
+  // and a trace path over a frame.
+  image: (
+    <MenuGlyph>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="9" cy="10" r="1.6" />
+      <path d="M3 17 l5 -4 4 3 3 -2 6 4" />
+    </MenuGlyph>
+  ),
+  'image-grayscale': (
+    <MenuGlyph>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 4 a8 8 0 0 1 0 16 Z" fill="currentColor" stroke="none" />
+    </MenuGlyph>
+  ),
+  'image-flatten': (
+    <MenuGlyph>
+      <rect x="4" y="3" width="16" height="12" rx="1" strokeDasharray="3 2" />
+      <path d="M4 15 h16 v5 H4 Z" fill="currentColor" stroke="none" opacity="0.45" />
+    </MenuGlyph>
+  ),
+  'image-trace': (
+    <MenuGlyph>
+      <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="3 2" />
+      <path d="M6 16 C9 10 11 18 14 12 S17 8 18 8" />
+      <circle cx="18" cy="8" r="1.2" fill="currentColor" stroke="none" />
+    </MenuGlyph>
+  ),
 };
 
 /** Glyphs for the top-level menu triggers, left of each title in the bar. */
@@ -538,6 +566,13 @@ const TRIGGER_ICONS: Record<string, ReactNode> = {
     <MenuGlyph size={13}>
       <path d="M4 20 l1 -4 L16 5 l3 3 L8 19 Z" />
       <path d="M14 7 l3 3" />
+    </MenuGlyph>
+  ),
+  image: (
+    <MenuGlyph size={13}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="9" cy="10" r="1.6" />
+      <path d="M3 17 l5 -4 4 3 3 -2 6 4" />
     </MenuGlyph>
   ),
   document: (

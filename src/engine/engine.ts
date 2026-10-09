@@ -40,6 +40,7 @@ import { keyGroupForLabel, scaleFactor, rotationStep } from './input/keymap';
 import { CombinatoricsManager } from './scene/CombinatoricsManager';
 import { InterlaceManager } from './scene/InterlaceManager';
 import { DropController, viewFitScale } from './document/DropController';
+import { flattenPixels, grayscalePixels } from './image/rasterOps';
 import {
   clearTransient,
   decodeSceneItems,
@@ -4516,6 +4517,196 @@ export class NibGliderEngine {
     } catch {
       this.lastDropNote = 'Drop skipped: could not load that image URL.';
       this.updateTextContent(); this.notify();
+      return false;
+    }
+  }
+
+  // --- Image menu (Image top-level menu) ---
+  // Placed images are Paper Rasters; pixel work runs on the raster's live
+  // canvas in the browser, never through Sharp (Node-only).
+
+  /** Paper Rasters among the current selection. Empty when none selected. */
+  selectedRasters(): AnyItem[] {
+    try {
+      const Raster = this.scope?.Raster;
+      if (!Raster) return [];
+      return this.selectedItems.filter((item) => item instanceof Raster);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Whether at least one placed image is selected. Gates Image menu rows. */
+  hasSelectedRaster(): boolean {
+    return this.selectedRasters().length > 0;
+  }
+
+  /** Scale every selected image about its collective center, with undo. */
+  scaleSelectedRasters(factor: number): boolean {
+    if (this.isLiveDrawing || !Number.isFinite(factor) || factor <= 0 || factor === 1) return false;
+    const rasters = this.selectedRasters();
+    if (rasters.length === 0) return false;
+    const center = this.collectiveCenter(rasters);
+    for (const raster of rasters) raster.scale(factor, center);
+    this.selection.refreshCentroids();
+    this.history.recordScale(rasters, factor, center);
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  /** Shrink selected images that overflow the view, with undo. Images that
+   * already fit are left alone; when none change, a note says so. */
+  fitSelectedRastersToView(): boolean {
+    if (this.isLiveDrawing) return false;
+    const rasters = this.selectedRasters();
+    if (rasters.length === 0) return false;
+    try {
+      const vb = this.scope.view.bounds;
+      let applied = 0;
+      for (const raster of rasters) {
+        const center = raster.bounds.center;
+        const scale = viewFitScale(raster.bounds, vb);
+        if (!(scale < 1)) continue;
+        raster.scale(scale, center);
+        this.history.recordScale([raster], scale, center);
+        applied += 1;
+      }
+      this.lastDropNote = applied > 0 ? 'Image fit to view.' : 'Image already fits the view.';
+      this.selection.refreshCentroids();
+      this.updateTextContent(); this.notify();
+      return applied > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Surface the first selected image's pixel and placed size in the status
+   * overlay, through the same note channel as drop outcomes. */
+  noteSelectedRasterInfo(): boolean {
+    const raster = this.selectedRasters()[0];
+    if (!raster) return false;
+    try {
+      const w = Math.round(raster.width ?? 0);
+      const h = Math.round(raster.height ?? 0);
+      const bw = Math.round(raster.bounds?.width ?? 0);
+      const bh = Math.round(raster.bounds?.height ?? 0);
+      const extra = (bw !== w || bh !== h) ? `, placed ${bw} × ${bh} pt` : '';
+      this.lastDropNote = `Image: ${w} × ${h} px${extra}.`;
+    } catch {
+      this.lastDropNote = 'Image info unavailable.';
+    }
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  /** Run a pixel filter over every selected image's live canvas, with one
+   * shared undo entry. Failures surface as a note, never a throw. */
+  private mutateSelectedRasterPixels(label: string, mutate: (pixels: Uint8ClampedArray) => void): boolean {
+    if (this.isLiveDrawing) return false;
+    const rasters = this.selectedRasters();
+    if (rasters.length === 0) return false;
+    const jobs: Array<{ ctx: AnyItem; before: AnyItem; after: AnyItem }> = [];
+    for (const raster of rasters) {
+      try {
+        const canvas = raster.canvas as HTMLCanvasElement | undefined;
+        if (!canvas || !canvas.width || !canvas.height) continue;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) continue;
+        const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const pixels = new Uint8ClampedArray(before.data);
+        mutate(pixels);
+        const after = new ImageData(pixels, before.width, before.height);
+        ctx.putImageData(after, 0, 0);
+        jobs.push({ ctx, before, after });
+      } catch {
+        continue;
+      }
+    }
+    if (jobs.length === 0) {
+      this.lastDropNote = 'Image pixels are not readable.';
+      this.updateTextContent(); this.notify();
+      return false;
+    }
+    this.pushUndoCommand(label,
+      () => { for (const job of jobs) job.ctx.putImageData(job.before, 0, 0); },
+      () => { for (const job of jobs) job.ctx.putImageData(job.after, 0, 0); });
+    return true;
+  }
+
+  /** Desaturate every selected image, with undo. Alpha is preserved. */
+  grayscaleSelectedRasters(): boolean {
+    return this.mutateSelectedRasterPixels('Grayscale image', grayscalePixels);
+  }
+
+  /** Composite every selected image onto white, with undo. JPEG export
+   * flattens the same way (see Sharp's default background). */
+  flattenSelectedRasters(): boolean {
+    return this.mutateSelectedRasterPixels('Flatten image transparency', (pixels) => {
+      flattenPixels(pixels, 255, 255, 255);
+    });
+  }
+
+  /** Re-encode every selected image in place (PNG keeps alpha; JPEG
+   * flattens onto white first since the format holds no alpha), with undo
+   * via source swap. */
+  convertSelectedRaster(format: 'png' | 'jpeg'): boolean {
+    if (this.isLiveDrawing || (format !== 'png' && format !== 'jpeg')) return false;
+    const rasters = this.selectedRasters();
+    if (rasters.length === 0) return false;
+    let applied = false;
+    for (const raster of rasters) {
+      try {
+        const canvas = raster.canvas as HTMLCanvasElement | undefined;
+        if (!canvas || !canvas.width || !canvas.height) continue;
+        let source: HTMLCanvasElement = canvas;
+        if (format === 'jpeg') {
+          const flat = document.createElement('canvas');
+          flat.width = canvas.width;
+          flat.height = canvas.height;
+          const flatCtx = flat.getContext('2d');
+          if (!flatCtx) continue;
+          flatCtx.fillStyle = '#ffffff';
+          flatCtx.fillRect(0, 0, flat.width, flat.height);
+          flatCtx.drawImage(canvas, 0, 0);
+          source = flat;
+        }
+        const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+        const dataUrl = source.toDataURL(mime, 0.9);
+        if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) continue;
+        const before = raster.source;
+        raster.source = dataUrl;
+        const after = raster.source;
+        this.pushUndoCommand(`Convert image to ${format.toUpperCase()}`,
+          () => { raster.source = before; },
+          () => { raster.source = after; });
+        applied = true;
+      } catch {
+        continue;
+      }
+    }
+    if (!applied) {
+      this.lastDropNote = 'Image pixels are not readable.';
+      this.updateTextContent(); this.notify();
+    }
+    return applied;
+  }
+
+  /** Swap the first selected image's source for picked file bytes, keeping
+   * its placement. Undo swaps the original source back. */
+  replaceSelectedRaster(dataUrl: string): boolean {
+    if (this.isLiveDrawing || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return false;
+    const raster = this.selectedRasters()[0];
+    if (!raster) return false;
+    try {
+      const before = raster.source;
+      raster.source = dataUrl;
+      const after = raster.source;
+      this.lastDropNote = 'Image replaced.';
+      this.pushUndoCommand('Replace image',
+        () => { raster.source = before; },
+        () => { raster.source = after; });
+      return true;
+    } catch {
       return false;
     }
   }
