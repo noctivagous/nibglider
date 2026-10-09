@@ -292,3 +292,33 @@ test('right mousedown never acts like a left click', () => {
     rect.remove();
   } finally { s.project.remove(); }
 });
+
+test('the first drag sample moves a shape, including one already selected', () => {
+  const s = scope(); const engine = new NibGliderEngine(s, () => {});
+  try {
+    const rect = new s.Path.Rectangle({ from: [0, 0], to: [100, 100] });
+    rect.fillColor = 'black';
+    const drag = (from, to) => {
+      // The move Paper emits before mousedown clears the drag anchor.
+      engine.pointer.onMouseMove({ point: from });
+      engine.pointer.onMouseDown({ point: from });
+      engine.pointer.onMouseDrag({ point: to, delta: to.subtract(from) });
+      engine.pointer.releasePointer();
+    };
+    drag(new s.Point(50, 50), new s.Point(90, 50));
+    assert.equal(rect.bounds.x, 40);
+    assert.equal(rect.bounds.y, 0);
+    assert.equal(engine.selectedItems.length, 1);
+    drag(new s.Point(90, 50), new s.Point(130, 70));
+    assert.equal(rect.bounds.x, 80);
+    assert.equal(rect.bounds.y, 20);
+    assert.ok(engine.selectedItems.includes(rect));
+    // A press that does not leave the down point still deselects.
+    const click = new s.Point(120, 60);
+    engine.pointer.onMouseDown({ point: click });
+    assert.equal(engine.selectedItems.length, 1);
+    engine.pointer.releasePointer();
+    assert.equal(engine.selectedItems.length, 0);
+    rect.remove();
+  } finally { s.project.remove(); }
+});

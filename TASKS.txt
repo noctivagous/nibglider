@@ -1,14 +1,33 @@
+[x] find out why left mouse click drag works inconsistently
+on the first drag.
+
+----
+
+[  ] Export > Single-Use Export Frame
+  Puts export frame on the canvas
+  that shows dimensions.  Allows the
+  user to resize then commit the
+  size to file.  Export frame has text fields
+  and unit dropdown so that user
+  can make it exact.
+
+----
+
+PRINTING AND DOCUMENT SIZE
+
 [  ] Page Setup vs. Document Size.
 We will separate printer page setup
 from Document Size, but if the user
 has checked the option "Preview Printer Page Setup"
 in the File Menu, then it will show margins
-and crop marks.
-
-[  ] Export Frame will have command select dropdown that
-includes Print.
+and crop marks.  Separate Page Setup 
+section in the menu.
 
 [  ] File Menu:  Print, Print Selection if selection of objects.
+
+[  ] Export Frame should have command select dropdown that
+includes Print.
+
 
 -----
 
@@ -315,7 +334,7 @@ operations, path change, then it moves to regular Path.
 
 NOISE section of Panel Widget
 [ ] Look at Floating Marker code base and make Noise section.
-This will alter the current path by applying Perlin Noise.
+This will alter the current path when it is turned on by applying Perlin Noise.
 
 SUBDIVISION SECTION of Panel Widget
   - subdivide rectangles and regular polygons
@@ -533,6 +552,13 @@ right according to the angle and radius, as it is configured.  That is,
 the parametric adaptive shape can be configured to react in
 different ways to the live drawing.
 
+
+[  ] ACTION KEYBOARD LAYOUTS - program is
+prepared to load different keyboard layouts with keyboard
+layout switcher.
+[  ] Repeat Action Keyboard Layout - Each key is a repeat
+function on the object underneath the cursor (and can be
+configured in the settings of the popover).
 
 COMMAND BAR
 Alt+Space - command bar

@@ -4,6 +4,23 @@
 // Public: writePreviewPaths.
 // Tested from tests/ui-state.test.mjs.
 
+import type { CombineMode } from '../engine/types';
+
+const COMBINE_PREVIEW_LABELS: Record<CombineMode, string> = {
+  union: 'Union',
+  subtract: 'Subtract',
+  intersect: 'Intersect',
+  crop: 'Crop',
+  interlace: 'Interlace',
+};
+
+// Label for the combinatorics titlebar preview box: the selected option,
+// "None" when combinatorics is off.
+export function combinePreviewBoxLabel(mode: CombineMode | 'none'): string {
+  if (mode === 'none') return 'None';
+  return COMBINE_PREVIEW_LABELS[mode] ?? 'Combinatorics';
+}
+
 export interface PreviewDocument {
   getElementById(id: string): { setAttribute(name: string, value: string): void } | null;
 }

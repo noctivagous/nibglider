@@ -3353,6 +3353,44 @@ body {
   pointer-events: none;
 }
 
+/* Combinatorics titlebar preview box: the selected option name overlaid
+   on the graphic, centered horizontally and vertically. Smaller type than
+   the flyout so long names (e.g. Interlace) fit the 84x30 well. */
+#combinePreviewContainer {
+  position: relative;
+}
+
+#combinePreviewContainer .combine-preview-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#combinePreviewContainer .combine-preview-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 8px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-tech-title);
+  font-weight: 700;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #eab88a;
+  background: rgba(11, 14, 18, 0.72);
+  border: 1px solid var(--dp-border-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
 .shape-params-flyout .flyout-text-input {
   width: 100%;
   box-sizing: border-box;

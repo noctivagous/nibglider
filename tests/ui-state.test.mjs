@@ -6,7 +6,7 @@ import { APPLICATION_MENUS, MENU_PANEL_SECTIONS, PANEL_SECTIONS, PanelsManager, 
 import { buildKeymapRows, buildStatusSchema } from '../src/ui/StatusPresenter.ts';
 import { resolveKeyboardLayout, resolveKeyVariants } from '../src/engine/input/KeyboardLayoutResolver.ts';
 import { buildChordRows } from '../src/ui/KeymapPresenter.ts';
-import { writePreviewPaths } from '../src/ui/PreviewBoxPresenter.ts';
+import { combinePreviewBoxLabel, writePreviewPaths } from '../src/ui/PreviewBoxPresenter.ts';
 import { keycapClick } from '../src/ui/KeyboardViewModel.ts';
 import { NibGliderEngine } from '../src/engine/engine.ts';
 import paper from 'paper';
@@ -402,6 +402,15 @@ test('preview presenter writes circle and rect path data', () => {
     assert.ok(attrs.rectShapePreviewPath.startsWith('M'));
     assert.notEqual(attrs.shapePreviewPath, attrs.rectShapePreviewPath);
   } finally { s.project.remove(); }
+});
+
+test('combinatorics preview box labels the selected option, none when off', () => {
+  assert.equal(combinePreviewBoxLabel('none'), 'None');
+  assert.equal(combinePreviewBoxLabel('union'), 'Union');
+  assert.equal(combinePreviewBoxLabel('subtract'), 'Subtract');
+  assert.equal(combinePreviewBoxLabel('intersect'), 'Intersect');
+  assert.equal(combinePreviewBoxLabel('crop'), 'Crop');
+  assert.equal(combinePreviewBoxLabel('interlace'), 'Interlace');
 });
 
 test('onscreen caps open settings instead of running the drawing command', () => {

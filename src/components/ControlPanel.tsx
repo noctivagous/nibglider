@@ -15,6 +15,7 @@ import {
 import { createPortal } from 'react-dom';
 import { primaryShortcut } from '../engine/input/keymap';
 import { PanelsManager, sectionLabel, sectionOrder } from '../ui/PanelsManager';
+import { combinePreviewBoxLabel } from '../ui/PreviewBoxPresenter';
 import { browserStore } from '../ui/GUIManager';
 import {
   currentId as galleryCurrentId,
@@ -3986,7 +3987,12 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             onMouseLeave={scheduleHoverClose}
             onClick={() => toggleFlyout('combinatorics')}
           >
-            <CombinePreview mode={engine.combineMode} gap={engine.interlaceGap} />
+            <span className="combine-preview-wrap" aria-hidden="true">
+              <CombinePreview mode={engine.combineMode} gap={engine.interlaceGap} />
+              <span className="combine-preview-label">
+                {combinePreviewBoxLabel(engine.combineMode)}
+              </span>
+            </span>
           </button>
           <ShapeParamsFlyout
             open={paramsFlyout === 'combinatorics'}

@@ -9,8 +9,9 @@
 //   onDoubleClick, hitTestUnderCursor.
 // Events: none. Host methods record history and refresh previews.
 // Tests: blank mousedown pans, a hit toggles selection, mouseup commits
-//   the move, and drag-lock follows the cursor. See
-//   refs/engine-smoke-checklist.md.
+//   the move, and drag-lock follows the cursor. The first drag sample is
+//   measured from the down point, and a drag keeps an already selected
+//   shape selected. See refs/engine-smoke-checklist.md.
 
 type Item = any;
 
@@ -83,6 +84,13 @@ export interface PointerHost {
 
 export class PointerController {
   private readonly host: PointerHost;
+  /** Selected root under the button. A click with no movement toggles it
+   * off on release. A drag leaves it selected so the move has a target. */
+  private pressedSelection: Item = null;
+  /** Down point for this press. Any later drag point that leaves it counts
+   * as a drag, even when snapping zeroes the movement delta. */
+  private downPoint: Item = null;
+  private dragMoved = false;
 
   constructor(host: PointerHost) {
     this.host = host;
@@ -93,6 +101,7 @@ export class PointerController {
     // click (select, deselect, pan, or start a move). The native button rides
     // on the wrapped DOM event; calls without one take the normal path.
     if (this.isRightButton(event)) return;
+    this.resetPress();
     const host = this.host;
     host.setMousePt(event.point);
     if (host.isDrawingPath() || host.isDrawingShape() || host.isDrawingQuad()) return;
@@ -130,8 +139,18 @@ export class PointerController {
       return;
     }
     host.endPan();
-    this.applyHitSelection(hit);
+    // An already selected root stays selected for the drag. Toggling it off
+    // here used to snapshot an empty move, so the first drag did nothing.
+    // A press that never leaves the down point still deselects on release.
+    const root = this.hitRoot(hit);
+    if (root && this.isSelected(root)) {
+      this.pressedSelection = root;
+    } else {
+      this.applyHitSelection(hit);
+    }
+    this.downPoint = this.pointClone(event.point);
     host.beginMoveGesture();
+    this.anchorDrag();
     host.updateCanvasCursor(false, event.point);
   }
 
@@ -250,26 +269,38 @@ export class PointerController {
       return;
     }
     host.setMousePt(host.snapToGrid(event.point));
-    if (host.lastMousePt() === null) host.setLastMousePt(host.mousePt());
+    if (host.lastMousePt() === null) this.anchorDrag();
+    if (this.leftDownPoint(event.point)) this.dragMoved = true;
     const delta = host.mousePt().subtract(host.lastMousePt());
     host.moveSelectionBy(delta);
-    host.setLastMousePt(host.mousePt());
+    host.setLastMousePt(this.pointClone(host.mousePt()));
     host.updateCanvasCursor(true, event.point);
   }
 
   releasePointer(): void {
     if (this.host.isFrameResizing()) {
+      this.resetPress();
       this.host.endFrameResize();
       this.host.updateCanvasCursor(false, this.host.mousePt());
       return;
     }
     if (this.host.isTransformResizing()) {
+      this.resetPress();
       this.host.endTransformDrag();
       this.host.updateCanvasCursor(false, this.host.mousePt());
       return;
     }
+    const deselect = this.pressedSelection;
+    const moved = this.dragMoved;
+    this.resetPress();
     this.endPan();
     this.host.commitMoveGesture();
+    // Click-without-drag still toggles a shape that was already selected.
+    if (deselect && !moved) {
+      this.host.toggleSelection(deselect);
+      this.host.updateTextContent();
+      this.host.notify();
+    }
     this.host.updateCanvasCursor(false, this.host.mousePt());
   }
 
@@ -319,11 +350,48 @@ export class PointerController {
     }
   }
 
+  private resetPress(): void {
+    this.pressedSelection = null;
+    this.downPoint = null;
+    this.dragMoved = false;
+  }
+
+  /** Remember the down point so the first drag sample is a real delta.
+   * The move that Paper emits before mousedown clears lastMousePt, and
+   * treating that null as the anchor used to drop the opening sample. */
+  private anchorDrag(): void {
+    const host = this.host;
+    const point = host.mousePt();
+    host.setLastMousePt(this.pointClone(point ? host.snapToGrid(point) : point));
+  }
+
+  private leftDownPoint(point: Item): boolean {
+    const down = this.downPoint;
+    if (!down || !point) return false;
+    if (typeof point.getDistance === 'function') return point.getDistance(down) > 0;
+    return point.x !== down.x || point.y !== down.y;
+  }
+
+  private pointClone(point: Item): Item {
+    if (!point || typeof point.clone !== 'function') return point;
+    return point.clone();
+  }
+
+  private isSelected(item: Item): boolean {
+    const items = this.host.selectedItems();
+    return !!item && !!items && items.includes(item);
+  }
+
+  private hitRoot(hitResult: Item): Item {
+    let item: Item = hitResult && hitResult.item ? hitResult.item : null;
+    if (item) item = this.host.topUserGroupOf(item);
+    return item;
+  }
+
   private applyHitSelection(hitResult: Item): void {
     const host = this.host;
     // Clicking a grouped child selects its user group as one item.
-    let item: Item = hitResult && hitResult.item ? hitResult.item : null;
-    if (item) item = host.topUserGroupOf(item);
+    const item = this.hitRoot(hitResult);
     if (item) {
       host.toggleSelection(item);
     } else {
