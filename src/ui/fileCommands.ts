@@ -13,10 +13,25 @@ export const FILE_COMMANDS = [
   'new-document',
   'save-gallery',
   'rename-document',
-  'import',
 ] as const;
 
 export type FileCommand = (typeof FILE_COMMANDS)[number];
+
+/** File > Import leaves. The parent `import` only expands. */
+export const IMPORT_COMMANDS = [
+  'import-svg',
+  'import-pdf',
+  'import-raster',
+] as const;
+
+export type ImportCommand = (typeof IMPORT_COMMANDS)[number];
+
+/** File-picker accept list for each Import leaf. */
+export const IMPORT_ACCEPT: Record<ImportCommand, string> = {
+  'import-svg': '.svg,image/svg+xml',
+  'import-pdf': '.pdf,application/pdf',
+  'import-raster': '.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.ico,image/png,image/jpeg,image/gif,image/webp,image/bmp,image/avif,image/x-icon,image/vnd.microsoft.icon',
+};
 
 /** File > Export scope leaves, one per Export submenu (menus.xml ids).
  * Handled in App because the active raster/vector format and the JPG
@@ -40,7 +55,7 @@ export const RASTER_FORMATS = ['png', 'jpg', 'webp'] as const;
 export type RasterFormat = (typeof RASTER_FORMATS)[number];
 
 /** Vector formats offered by the Export Vector segmented control. SVG is
- * the default; PDF and DXF stay visible but disabled. */
+ * the default and PDF exports through jsPDF. DXF stays visible but disabled. */
 export const VECTOR_FORMATS = ['svg', 'pdf', 'dxf'] as const;
 
 export type VectorFormat = (typeof VECTOR_FORMATS)[number];

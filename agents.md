@@ -52,6 +52,7 @@ Core tech: React 19, TypeScript, Vite, Paper.js for canvas, opentype.js for font
 - `input/` — KeyboardController, keymap, InputManager, PointerController, KeySettingsRegistry, KeyboardLayoutResolver, ModifierStateTracker, KeySettingsViewModel
 - `document/` — CoordinateManager, SceneIO, DropController, ViewportManager, DocumentManager, LayerManager, MeasurementUnits
 - `scene/` — SelectionManager, CombinatoricsManager, DrawableRenderer, SceneRepository, exportFrames
+- `image/` — Node-only Sharp codec (`sharpCodec.ts`). Do not import from the Vite browser graph (`App.tsx`, `engine.ts`, `DropController`, `exportFrames`). Browser raster export stays on DOM canvas.
 - `model/` — NGPath, NGShape, NGGroup, NGText, NGImage, NGDrawable, NGExportFrame, serialization, geometryResolution
 - `appearance/` — StyleManager, TextLayout, strokePosition, statusSchema, keymapSchema
 - `history/` — HistoryManager, TransformManager

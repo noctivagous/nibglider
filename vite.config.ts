@@ -9,5 +9,10 @@ export default defineConfig({
   // Vite does not scan their unrelated HTML/JavaScript files.
   optimizeDeps: {
     entries: ['index.html'],
+    // Sharp is a native Node addon. Keep it out of the browser pre-bundle.
+    exclude: ['sharp'],
+  },
+  ssr: {
+    external: ['sharp'],
   },
 })

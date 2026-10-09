@@ -1,3 +1,5 @@
+Used by src/engine/image/sharpCodec.ts (Node-only; not imported by the Vite client).
+
 https://github.com/lovell/sharp
 
 sharp

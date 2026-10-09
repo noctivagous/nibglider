@@ -1,4 +1,5 @@
 import { stripSvgClips } from './SceneIO';
+import { adoptImportedArtwork } from './vectorArtwork';
 import { classifyClipboardText, SCENE_MIME } from './clipboardIngest';
 
 // SVG, raster, and string drops (pasted strings route through the same
@@ -164,9 +165,10 @@ export class DropController {
           this.note(`Drop failed: ${fileName} did not import.`);
           return;
         }
-        try { imported.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
         stripSvgClips(imported);
-        this.place(`Deposit ${fileName}`, imported, at, selBefore);
+        const adopted = adoptImportedArtwork(this.host.scope(), imported) ?? imported;
+        try { adopted.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
+        this.place(`Deposit ${fileName}`, adopted, at, selBefore);
       });
     } catch {
       this.note(`Drop failed: ${fileName} did not import.`);

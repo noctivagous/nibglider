@@ -60,6 +60,12 @@ import {
   type SceneView,
 } from './document/SceneIO';
 import {
+  adoptImportedArtwork,
+  artworkNodeHasVectors,
+  buildArtworkNode,
+  type PdfArtworkGroup,
+} from './document/vectorArtwork';
+import {
   classifyClipboardText,
   isMultilineText,
   richTextToPlainText,
@@ -2054,7 +2060,10 @@ export class NibGliderEngine {
         if (!imported) return;
         stripSvgClips(imported);
         clearTransient(imported);
-        placed = imported;
+        // Nested groups become one-level-at-a-time user groups, shapes
+        // expand to paths, and a loose path is wrapped so Ungroup never
+        // deletes the import.
+        placed = adoptImportedArtwork(this.scope, imported) ?? imported;
       });
     } catch {
       return null;
@@ -4503,8 +4512,9 @@ export class NibGliderEngine {
   }
 
   /** Place already-decoded canvases (PDF page rasters) as one undoable
-   * item at the view center, fitted like a drop. Several pages become a group. */
-  importRasterCanvases(label: string, sources: HTMLCanvasElement[]): boolean {
+   * item at the view center, fitted like a drop. Pages share one user
+   * group so Ungroup releases them one level at a time. */
+  importRasterCanvases(label: string, sources: HTMLCanvasElement[], note = ''): boolean {
     if (this.isLiveDrawing || this.isTypingText || sources.length === 0) return false;
     const selectedBefore = [...this.selectedItems];
     const scope = this.scope;
@@ -4520,13 +4530,9 @@ export class NibGliderEngine {
         cursor += width + gap;
         rasters.push(raster);
       }
-      if (rasters.length === 1) {
-        placed = rasters[0];
-      } else {
-        const group: AnyItem = new scope.Group(rasters);
-        try { group.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
-        placed = group;
-      }
+      const group: AnyItem = new scope.Group(rasters);
+      try { group.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
+      placed = group;
       const center = scope.view?.center;
       if (center) placed.position = center.clone();
       this.fitPlacedToView(placed);
@@ -4537,8 +4543,57 @@ export class NibGliderEngine {
     }
     if (!placed) return false;
     this.selection.restore([placed]);
-    this.lastDropNote = '';
+    this.lastDropNote = note;
     this.history.recordDrop(label, placed, selectedBefore);
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  /** File > Import > PDF vector path. Each page's artwork lands as a user
+   * group; several pages share one outer group. One undo entry. False when
+   * no page built anything, so the caller can fall back to raster. */
+  importPdfArtwork(label: string, pages: { width: number; height: number; group: PdfArtworkGroup }[]): boolean {
+    if (this.isLiveDrawing || this.isTypingText || pages.length === 0) return false;
+    if (!pages.some((page) => artworkNodeHasVectors(page.group))) return false;
+    const selectedBefore = [...this.selectedItems];
+    const scope = this.scope;
+    const placed: AnyItem[] = [];
+    try {
+      const gap = 24 / Math.max(this.zoomLevel, 0.1);
+      let cursor = 0;
+      for (const page of pages) {
+        const built = buildArtworkNode(scope, page.group);
+        const item = built ? adoptImportedArtwork(scope, built) : null;
+        if (!item) continue;
+        const width = item.bounds?.width ?? page.width;
+        const height = item.bounds?.height ?? page.height;
+        try {
+          item.position = new scope.Point(cursor + width / 2, height / 2);
+        } catch { /* Keep the recovered coordinates. */ }
+        cursor += width + gap;
+        placed.push(item);
+      }
+    } catch {
+      return false;
+    }
+    if (placed.length === 0) return false;
+    let top: AnyItem = placed.length === 1 ? placed[0] : null;
+    if (!top) {
+      try {
+        top = new scope.Group(placed);
+        try { top.data.isUserGroup = true; } catch { /* Grouping just won't apply. */ }
+      } catch {
+        return false;
+      }
+    }
+    try {
+      const center = scope.view?.center;
+      if (center) top.position = center.clone();
+    } catch { /* Keep the laid-out position. */ }
+    this.fitPlacedToView(top);
+    this.selection.restore([top]);
+    this.lastDropNote = '';
+    this.history.recordDrop(label, top, selectedBefore);
     this.updateTextContent(); this.notify();
     return true;
   }

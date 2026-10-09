@@ -5,6 +5,8 @@ import { parseMenuXML } from '../src/ui/menuXML.ts';
 import {
   EXPORT_COMMANDS,
   FILE_COMMANDS,
+  IMPORT_ACCEPT,
+  IMPORT_COMMANDS,
   exportScopeOf,
   renameTarget,
   saveTarget,
@@ -29,7 +31,7 @@ test('file commands cover every top File menu entry', () => {
   // Settings and Tutorial already have App handlers; the Export submenu
   // parents only expand; everything else in the File menu must route
   // through the shared file-command layer so no entry renders disabled.
-  const covered = new Set([...FILE_COMMANDS, 'export-raster', 'export-vector', 'settings', 'tutorial']);
+  const covered = new Set([...FILE_COMMANDS, 'export-raster', 'export-vector', 'import', 'settings', 'tutorial']);
   for (const id of ids) {
     assert.ok(covered.has(id), `File menu entry ${id} has no command handler`);
   }
@@ -43,12 +45,20 @@ test('export leaves cover both Export submenus and resolve scopes', () => {
   assert.ok(!('error' in result));
   const file = result.menus.find((menu) => menu.id === 'file');
   assert.ok(file);
-  const leaves = file.items.flatMap((item) => item.children ?? []);
+  const exportLeaves = file.items
+    .filter((item) => item.commandId === 'export-raster' || item.commandId === 'export-vector')
+    .flatMap((item) => item.children ?? []);
   for (const command of EXPORT_COMMANDS) {
-    assert.ok(leaves.some((leaf) => leaf.commandId === command), `export command ${command} has no Export menu entry`);
+    assert.ok(exportLeaves.some((leaf) => leaf.commandId === command), `export command ${command} has no Export menu entry`);
     assert.ok(exportScopeOf(command), `export command ${command} resolves no scope`);
   }
-  assert.equal(leaves.length, EXPORT_COMMANDS.length);
+  assert.equal(exportLeaves.length, EXPORT_COMMANDS.length);
+  const importItem = file.items.find((item) => item.commandId === 'import');
+  assert.ok(importItem);
+  assert.deepEqual((importItem.children ?? []).map((child) => child.commandId), [...IMPORT_COMMANDS]);
+  assert.equal(IMPORT_ACCEPT['import-svg'].includes('svg'), true);
+  assert.equal(IMPORT_ACCEPT['import-pdf'].includes('pdf'), true);
+  assert.equal(IMPORT_ACCEPT['import-raster'].includes('png'), true);
 });
 
 test('save targets the open document, or the gallery when untitled', () => {

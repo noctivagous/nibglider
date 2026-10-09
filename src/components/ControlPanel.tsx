@@ -34,7 +34,14 @@ import {
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import DocumentGallery, { type GalleryMode } from './DocumentGallery';
 import NewDocumentDialog, { type NewDocumentSpec } from './NewDocumentDialog';
-import { renameTarget, saveTarget, type FileCommand } from '../ui/fileCommands';
+import PdfImportDialog from './PdfImportDialog';
+import {
+  IMPORT_ACCEPT,
+  renameTarget,
+  saveTarget,
+  type FileCommand,
+  type ImportCommand,
+} from '../ui/fileCommands';
 import {
   formatInUnit,
   pointsToUnit,
@@ -2776,7 +2783,7 @@ const RECT_OPTION_TREE: CustomSelectOption[] = [
 /** Actions the top File menu forwards to the panel, which owns the
  * gallery and New Document dialogs. */
 export interface ControlPanelHandle {
-  dispatchFileCommand: (command: FileCommand) => void;
+  dispatchFileCommand: (command: FileCommand | ImportCommand) => void;
   openOperationDialog: (kind: 'scale' | 'rotate') => void;
 }
 
@@ -3089,6 +3096,8 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   // size on confirm (dirty guard included) instead of wiping immediately.
   const [newDocOpen, setNewDocOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const importKindRef = useRef<ImportCommand>('import-svg');
+  const [pdfImport, setPdfImport] = useState<{ name: string; bytes: Uint8Array } | null>(null);
   const refreshGallery = useCallback(() => {
     setGalleryDocs(galleryListDocuments(browserStore()));
   }, []);
@@ -3182,7 +3191,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   // Top File menu entry point: the menu bar owns the File menu, the panel
   // owns the dialogs, so App forwards commands here. Export scope leaves
   // are handled in App (format state + JPG dialog live there), not here.
-  const dispatchFileCommand = useCallback((command: FileCommand) => {
+  const dispatchFileCommand = useCallback((command: FileCommand | ImportCommand) => {
     dismissSelects();
     switch (command) {
       case 'open-gallery':
@@ -3200,9 +3209,16 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       case 'rename-document':
         openGallery(renameTarget(browserStore()));
         break;
-      case 'import':
-        importInputRef.current?.click();
+      case 'import-svg':
+      case 'import-pdf':
+      case 'import-raster': {
+        importKindRef.current = command;
+        const input = importInputRef.current;
+        if (!input) break;
+        input.accept = IMPORT_ACCEPT[command];
+        input.click();
         break;
+      }
     }
   }, [dismissSelects, openGallery, saveSceneToGallery]);
   // Top Operations menu entry point for the scale/rotate modal dialog.
@@ -3226,11 +3242,42 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       const file = e.target.files?.[0];
       e.target.value = '';
       if (!file) return;
+      const kind = importKindRef.current;
       const reader = new FileReader();
-      reader.onerror = () => { /* A failed read imports nothing. */ };
+      reader.onerror = () => {
+        engine.noteImportFailure(`Import failed: could not read ${file.name}.`);
+      };
+      if (kind === 'import-pdf') {
+        reader.onload = () => {
+          const result = reader.result;
+          if (!(result instanceof ArrayBuffer)) return;
+          setPdfImport({ name: file.name, bytes: new Uint8Array(result) });
+        };
+        reader.readAsArrayBuffer(file);
+        return;
+      }
+      if (kind === 'import-raster') {
+        reader.onload = () => {
+          const result = reader.result;
+          if (typeof result !== 'string') return;
+          const image = new Image();
+          image.onerror = () => {
+            engine.noteImportFailure(`Import failed: ${file.name} did not decode.`);
+          };
+          image.onload = () => {
+            engine.importRasterDataUrl(result, `Import ${file.name}`);
+          };
+          image.src = result;
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
       reader.onload = () => {
         const text = reader.result;
-        if (typeof text !== 'string' || !/<svg[\s>]/i.test(text.slice(0, 4096))) return;
+        if (typeof text !== 'string' || !/<svg[\s>]/i.test(text.slice(0, 4096))) {
+          engine.noteImportFailure(`Import failed: ${file.name} is not SVG.`);
+          return;
+        }
         engine.importSceneSVG(text, `Import ${file.name}`);
       };
       reader.readAsText(file);
@@ -4488,12 +4535,20 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       <input
         ref={importInputRef}
         type="file"
-        accept=".svg,image/svg+xml"
+        accept={IMPORT_ACCEPT['import-svg']}
         hidden
         aria-hidden="true"
         tabIndex={-1}
         onChange={handleImportFile}
       />
+      {pdfImport ? (
+        <PdfImportDialog
+          engine={engine}
+          fileName={pdfImport.name}
+          bytes={pdfImport.bytes}
+          onClose={() => setPdfImport(null)}
+        />
+      ) : null}
       {galleryMode ? (
         <DocumentGallery
           mode={galleryMode}
