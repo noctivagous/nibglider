@@ -1520,7 +1520,7 @@ export class InterlaceManager {
     return band;
   }
 
-  private sanitizeStyle(raw: InterlaceMemo): StrokeStyle {
+  private sanitizeStyle(raw: Pick<InterlaceMemo, 'cap' | 'join' | 'miterLimit' | 'dashLength' | 'gapLength' | 'position'>): StrokeStyle {
     return {
       cap: raw.cap === 'round' || raw.cap === 'square' ? raw.cap : 'butt',
       join: raw.join === 'bevel' || raw.join === 'round' ? raw.join : 'miter',

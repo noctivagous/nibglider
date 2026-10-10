@@ -194,6 +194,7 @@ export function validateDrawable(value: unknown): asserts value is NGDrawable {
           string(over, at);
           const pair = /^(.+)>(.+)#(\d+)$/.exec(key);
           requireValue(!!pair, at, 'crossing key');
+          if (!pair) throw new ModelValidationError(`${at}: expected crossing key`);
           requireValue((ids as unknown[]).includes(pair[1]) && (ids as unknown[]).includes(pair[2])
             && pair[1] !== pair[2], at, 'member pair');
           requireValue(over === pair[1] || over === pair[2], at, 'pair member');

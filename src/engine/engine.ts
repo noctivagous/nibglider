@@ -37,7 +37,7 @@ import {
   type PointerHost,
 } from './input/PointerController';
 import { keyGroupForLabel, keyboardPlatform, scaleFactor, rotationStep } from './input/keymap';
-import { CombinatoricsManager } from './scene/CombinatoricsManager';
+import { CombinatoricsManager, type CombinatoricsHost } from './scene/CombinatoricsManager';
 import { InterlaceManager } from './scene/InterlaceManager';
 import { DropController, viewFitScale } from './document/DropController';
 import {
@@ -789,7 +789,7 @@ export class NibGliderEngine {
         mount: (item) => this.mountCentroidMarker(item),
         unmount: (item) => { try { item.remove(); } catch { /* Detached already. */ } },
       });
-    const combinatoricsHost = {
+    const combinatoricsHost: CombinatoricsHost = {
       combineMode: () => this.combineMode,
       setCombineNote: (note) => { this.lastCombineNote = note; },
       selectedItems: () => this.selectedItems,
@@ -1084,7 +1084,7 @@ export class NibGliderEngine {
           } catch { /* Detached; keep looking. */ }
         }
       }
-      if (active && !active.guide) {
+      if (active && !(active as any).guide) {
         page.layerId = `paper-layer-${active.id}`;
         return active;
       }
@@ -1938,7 +1938,7 @@ export class NibGliderEngine {
       line.strokeColor = new this.scope.Color('#4dabf7');
       line.strokeWidth = 1;
       line.dashArray = [4, 3];
-      line.guide = true;
+      (line as any).guide = true;
       line.locked = true;
       if (!line.data) line.data = {};
       line.data.isTransformLine = true;
@@ -3314,12 +3314,12 @@ export class NibGliderEngine {
     try {
       const bounds = item?.bounds;
       if (!bounds || !Number.isFinite(bounds.left)) return null;
-      let bottomY: number | undefined;
+      let bottomY: number | null | undefined;
       if (this.typeCursorBottomEdge === 'baseline' && this.typeCursorAnchor.startsWith('bottom')) {
         bottomY = this.typingBaselineOf(item);
         if (bottomY == null) return null;
       }
-      const pin = typeAnchorPoint(bounds, this.typeCursorAnchor, bottomY);
+      const pin = typeAnchorPoint(bounds, this.typeCursorAnchor, bottomY ?? undefined);
       return new this.scope.Point(pin.x, pin.y);
     } catch {
       return null;
@@ -4749,10 +4749,11 @@ export class NibGliderEngine {
         const ctx = canvas.getContext('2d');
         if (!ctx) continue;
         const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const pixels = new Uint8ClampedArray(before.data);
+        const pixels = Uint8ClampedArray.from(before.data);
         const out = mutate(pixels, before.width, before.height);
         const result = out instanceof Uint8ClampedArray && out.length === before.data.length ? out : pixels;
-        const after = new ImageData(result, before.width, before.height);
+        const after = new ImageData(before.width, before.height);
+        after.data.set(result);
         ctx.putImageData(after, 0, 0);
         jobs.push({ ctx, before, after });
       } catch {

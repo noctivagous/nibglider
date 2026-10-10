@@ -236,8 +236,9 @@ function toSegments(loop: Vec2[]): BezierSegment[] {
 
 export function resolveOutlinedStroke(path: NGOutlinedStrokePath, options: SamplingOptions = {}): ResolvedVectorGeometry {
   validatePath(path);
-  if (path.spine.mode === 'outlinedStroke' || path.spine.mode === 'smoothedPolyline') {
-    throw new Error(`Interpolation for ${path.spine.mode} spine is not implemented yet`);
+  const spineMode = (path.spine as { mode: string }).mode;
+  if (spineMode === 'outlinedStroke' || spineMode === 'smoothedPolyline') {
+    throw new Error(`Interpolation for ${spineMode} spine is not implemented yet`);
   }
   const tolerance = options.tolerance ?? 0.1;
   if (!Number.isFinite(tolerance) || tolerance <= 0) throw new Error('Sampling tolerance must be positive');

@@ -2919,7 +2919,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     setIconMenu(null);
   }, []);
   const openFlyoutAndDismissSelects = useCallback(
-    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics') => {
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat') => {
       setParamsFlyout(name);
       dismissSelects();
       setIconMenu(null);
@@ -2927,7 +2927,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     [dismissSelects],
   );
   const hoverOpenFlyout = useCallback(
-    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics') => {
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat') => {
       if (window.matchMedia?.('(hover: none)').matches) return;
       cancelHoverClose();
       openFlyoutAndDismissSelects(name);
