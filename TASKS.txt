@@ -22,7 +22,7 @@ panel, accessed from right-click menu.
 and fill out with menu items and submenus with 
 image manipulation capabilities
 
-[  ] - utilize jsPDF or whichever PDF library fits the codebase best
+[x] - utilize jsPDF or whichever PDF library fits the codebase best
 for the Export menu items.  enable the PDF export and import.
    File > Import 
        > PDF  will show options for import of PDF
@@ -56,7 +56,8 @@ in the File Menu, then it will show margins
 and crop marks.  Separate Page Setup 
 section in the menu.
 
-[  ] File Menu:  Print, Print Selection if selection of objects.
+[  ] File Menu:  Print > Print Selection. if selection of objects,
+prints frame.
 
 [  ] Export Frame should have command select dropdown that
 includes Print.
@@ -89,15 +90,15 @@ In the File Menu redo the Export function:
 
 [x] Export > Raster >
    [PNG | JPG | WEBP]   (Webp option present, not avail yet)
-   [ ] Document Canvas  [dimensions size and units]
-   [ ] Current Viewport Frame  (current functionality)
-   [ ] Selected Objects  (only show if there are selected objects)
+   [x] Document Canvas  [dimensions size and units]
+   [x] Current Viewport Frame  (current functionality)
+   [x] Selected Objects  (only show if there are selected objects)
 
 [x] Export > Vector >
    segm ctrl embedded in menu item: [ SVG* | PDF | DXF ]  (PDF, DXF option present, not avail yet)
-   [ ] Document Canvas  [dimensions size and units]
-   [ ] Current Viewport Frame  (current functionality)
-   [ ] Selected Objects  (only show if there are selected objects)
+   [x] Document Canvas  [dimensions size and units]
+   [x] Current Viewport Frame  (current functionality)
+   [x] Selected Objects  (only show if there are selected objects)
 
 [ ] File > Import > 
     [ ] > SVG
@@ -120,7 +121,7 @@ should be reflected in the flyout popover over the preview box
 of the.
 
 KEYS TABLE GUI WIDGET
-[ ] make flag, set to on: omit undo,redo, copy, paste items from key table widget
+[x] make flag, set to on: omit undo,redo, copy, paste items from key table widget
 since these are commonly known.
 
 INTERLACE
@@ -187,9 +188,21 @@ Select All doesn't select text in the UI.
 [ ] What other technical fonts or style resources would assist in making the app?
 
 
+SECONDARY MODES AND KEYBOARD LAYOUT LOADING.
+
 [ ] Make it so that Grid Paint mode and other modes like Metaballs that are custom or non-path-vector-drawing 
 will be able to load a different keyboard layout tree.
+        [  ] paints on existing grid in paperjs canvas, configurable.
+        
+            mode 1: paint shapes in grid.  a hexagon is turned on or off in a hexagon grid.
+            mode 2: paint shape on grid points.  the object is painted on points at different
+            sizes.  circles produce the effect of shading.
+        
 		[ ] Alt/Opt +  G for Grid Paint mode
+	     	[  ]  equilateral triangle painter - horizontal and vertical facing.
+	     	   [ ] split equilateral triangle painter (two right triangles)  - horizontal and vertical facing.
+	     	[  ] hexagon - horizontal and vertical
+	     	[  ] rectangle - 1:1, other ratios allowed
 
 [ ]  menu item under grid section menu:  Sync Grid Snapping to Grid Visibility.
 turn on by default.  toggling on either turns the other on.
