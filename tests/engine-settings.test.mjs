@@ -121,6 +121,19 @@ test('keys table hides common shortcuts by default', () => {
   } finally { opened.cleanup(); }
 });
 
+test('point snapping starts on and a stored off value still wins', () => {
+  const fresh = openEngine(store());
+  try {
+    assert.equal(fresh.engine.isPointSnappingEnabled, true);
+  } finally { fresh.cleanup(); }
+  const stored = openEngine(store({
+    [ENGINE_SETTINGS_KEY]: JSON.stringify({ version: 1, values: { 'snap.point': false } }),
+  }));
+  try {
+    assert.equal(stored.engine.isPointSnappingEnabled, false);
+  } finally { stored.cleanup(); }
+});
+
 test('popover schema writes persist through reload', () => {
   const shared = store();
   const first = openEngine(shared);

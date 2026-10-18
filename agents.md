@@ -47,15 +47,16 @@ Core tech: React 19, TypeScript, Vite, Paper.js for canvas, opentype.js for font
 - `undoManager.ts` — Undo/redo coordination
 - `fontMetrics.ts` — Font measurement utilities
 - `drawing/` — RectangleTool, QuadTool, CircleTool, PathTool, DrawingSession, PathDrawingSession, DrawingHost, PathRenderer, stampFrame
-- `geometry/` — ShapeFactory, RectangleGeometry, booleanResolver, pathResolver, compositeExpansion, splineInterpolation
-- `snapping/` — SnappingManager, GridRenderer, snappingMath
+- `geometry/` — ShapeFactory, RectangleGeometry, booleanResolver, pathResolver, compositeExpansion, splineInterpolation, GridGeometry, RepeatGeometry, outlinedStroke, polylineFit, shapeCenters, interlaceWeave
+- `snapping/` — SnappingManager, GridRenderer, snappingMath, textSnap
 - `input/` — KeyboardController, keymap, InputManager, PointerController, KeySettingsRegistry, KeyboardLayoutResolver, ModifierStateTracker, KeySettingsViewModel
-- `document/` — CoordinateManager, SceneIO, DropController, ViewportManager, DocumentManager, LayerManager, MeasurementUnits
-- `scene/` — SelectionManager, CombinatoricsManager, DrawableRenderer, SceneRepository, exportFrames
-- `image/` — Node-only Sharp codec (`sharpCodec.ts`). Do not import from the Vite browser graph (`App.tsx`, `engine.ts`, `DropController`, `exportFrames`). Browser raster export stays on DOM canvas.
+- `document/` — CoordinateManager, SceneIO, DropController, ViewportManager, DocumentManager, DrawableCatalog, LayerManager, MeasurementUnits, DrawingPage, pdfImport, pdfExport, pdfPageRange, vectorArtwork, systemClipboard, clipboardIngest, pageRuler, scrollbarMath
+- `scene/` — SelectionManager, CombinatoricsManager, DrawableRenderer, SceneSynchronizer, SceneRepository, exportFrames, InterlaceManager, transformHandles, exportFrameHandles
+- `image/` — Node-only Sharp codec (`sharpCodec.ts`), rasterOps. Do not import from the Vite browser graph (`App.tsx`, `engine.ts`, `DropController`, `exportFrames`). Browser raster export stays on DOM canvas.
 - `model/` — NGPath, NGShape, NGGroup, NGText, NGImage, NGDrawable, NGExportFrame, serialization, geometryResolution
-- `appearance/` — StyleManager, TextLayout, strokePosition, statusSchema, keymapSchema
+- `appearance/` — StyleManager, TextLayout, strokePosition, statusSchema, keymapSchema, cursorState
 - `history/` — HistoryManager, TransformManager
+- `repeat/` — RepeatManager
 
 **UI modules** (in `src/ui/`):
 - `GUIManager.ts` — GUI orchestration
@@ -66,6 +67,8 @@ Core tech: React 19, TypeScript, Vite, Paper.js for canvas, opentype.js for font
 - `menuNavigation.ts`, `menuXML.ts`, `xmlParser.ts`, `windowXML.ts` — Menu/window XML system
 - `WidgetLayout.ts`, `KeymapPresenter.ts`, `StatusPresenter.ts`, `PreviewBoxPresenter.ts` — Widget presenters
 - `DocumentGallery.ts` — Document gallery
+- `ConfigSummary.ts` — Config summary resolver
+- `useGallerySnapshot.ts` — Gallery snapshot hook
 
 **Components** (in `src/components/`):
 - `ControlPanel.tsx` — Main control panel
@@ -75,11 +78,18 @@ Core tech: React 19, TypeScript, Vite, Paper.js for canvas, opentype.js for font
 - `OnscreenKeyboard.tsx`, `KeymapWidget.tsx`, `KeySettingsPopover.tsx` — Keyboard UI
 - `DocumentGallery.tsx`, `TutorialOverlay.tsx`, `DemoOverlay.tsx`, `StatusOverlay.tsx` — Overlays
 - `WidgetHandle.tsx`, `CustomSelect.tsx`, `FontFamilySelect.tsx`, `NumericStepper.tsx` — Widgets
+- `DocumentInfoWindow.tsx`, `PdfImportDialog.tsx`, `FiltersPanel.tsx`, `ConfigSummaryBox.tsx`, `JpgExportDialog.tsx`, `DocumentSizeEditor.tsx`, `sizeControls.tsx`, `DocumentSizeWindow.tsx`, `DocumentSettingsWindow.tsx`, `InterlacePopover.tsx`, `PageRuler.tsx`, `CanvasScrollbars.tsx`, `ContextMenu.tsx` — Additional UI components
 - `selectMenuPolicy.ts` — Menu policies
 
 **Tutorial system** (in `src/tutorial/`):
 - `TutorialRunner.ts`, `tutorialLoader.ts`, `tutorialSchema.ts`, `tutorialProgress.ts`
 - `demonstrationPlayer.ts`, `completionDetectors.ts`, `TargetResolver.ts`
+
+**Document-model authority** (Phase 1 of `refs/document-scene-refactor_a8790b06.plan.md`):
+`DrawableCatalog` owns ordered page-scoped `NGDrawable` records and is the only content-model lookup.
+`SceneSynchronizer` is the production path that creates, updates, or removes derived Paper.js items
+through `DrawableRenderer` (every derived item carries `drawableId`). `SceneRepository` keeps no model-item
+map; it bridges scene identity to the catalog, with retained Paper paths as the legacy compatibility boundary.
 
 ## Testing
 
@@ -102,6 +112,7 @@ When working on tasks, identify the relevant subsystem:
 - **Input/keyboard**: `src/engine/input/`, `src/ui/KeyboardViewModel.ts`, `src/components/OnscreenKeyboard.tsx`
 - **UI components**: `src/components/`, `src/ui/`
 - **Document/viewport**: `src/engine/document/`
+- **Document model**: `src/engine/document/DrawableCatalog.ts` (authoritative records), `src/engine/scene/SceneSynchronizer.ts` + `DrawableRenderer.ts` (derived Paper items)
 - **Selection/combinatorics**: `src/engine/scene/SelectionManager.ts`, `CombinatoricsManager.ts`
 - **Text/typography**: `src/engine/appearance/TextLayout.ts`
 - **Styling**: `src/engine/appearance/StyleManager.ts`, `strokePosition.ts`
@@ -109,5 +120,9 @@ When working on tasks, identify the relevant subsystem:
 - **Parametric components**: Tasks under "PARAMETRIC ADAPTIVE SHAPES" in TASKS.txt
 - **Repeat/pattern**: Tasks under "REPEAT" in TASKS.txt
 - **Export/manufacture**: Tasks under "MANUFACTURE" in TASKS.txt
+- **Interlace**: `src/engine/scene/InterlaceManager.ts`, `src/engine/geometry/interlaceWeave.ts`
+- **PDF import/export**: `src/engine/document/pdfImport.ts`, `pdfExport.ts`, `pdfPageRange.ts`
+- **Clipboard**: `src/engine/document/systemClipboard.ts`, `clipboardIngest.ts`
+- **Config summary**: `src/ui/ConfigSummary.ts`, `src/components/ConfigSummaryBox.tsx`
 
 Cross-cutting: keyboard shortcuts (input ↔ UI), snap system (geometry ↔ drawing ↔ selection), live preview (drawing ↔ parametric ↔ UI), undo/history (engine ↔ all mutation), tutorial system (tutorial ↔ UI ↔ engine).

@@ -4,14 +4,10 @@ import paper from 'paper';
 import { NibGliderEngine } from '../src/engine/engine.ts';
 import {
   currentName,
+  memoryGallery,
   renameDocument,
   saveDocument,
 } from '../src/ui/DocumentGallery.ts';
-
-function store() {
-  const mem = new Map();
-  return { getItem: (key) => (mem.has(key) ? mem.get(key) : null), setItem: (key, value) => { mem.set(key, value); } };
-}
 
 function setup() {
   const s = new paper.PaperScope();
@@ -41,13 +37,13 @@ test('deposited artwork counts as objects; guide layers never count', () => {
   } finally { scope.project.remove(); }
 });
 
-test('gallery rename flow backing the Document Info name field', () => {
-  const mem = store();
-  const id = saveDocument(mem, 'First', '<svg></svg>');
-  assert.equal(currentName(mem), 'First');
-  assert.equal(renameDocument(mem, id, '  Second  '), true);
-  assert.equal(currentName(mem), 'Second');
-  assert.equal(renameDocument(mem, id, '   '), false);
-  assert.equal(currentName(mem), 'Second');
-  assert.equal(renameDocument(mem, 'unknown-id', 'Nope'), false);
+test('gallery rename flow backing the Document Info name field', async () => {
+  const db = memoryGallery();
+  const id = await saveDocument(db, 'First', '<svg></svg>');
+  assert.equal(await currentName(db), 'First');
+  assert.equal(await renameDocument(db, id, '  Second  '), true);
+  assert.equal(await currentName(db), 'Second');
+  assert.equal(await renameDocument(db, id, '   '), false);
+  assert.equal(await currentName(db), 'Second');
+  assert.equal(await renameDocument(db, 'unknown-id', 'Nope'), false);
 });

@@ -11,16 +11,7 @@ import {
   renameTarget,
   saveTarget,
 } from '../src/ui/fileCommands.ts';
-import { saveDocument } from '../src/ui/DocumentGallery.ts';
-
 const MENUS_URL = new URL('../src/ui/menus/menus.xml', import.meta.url);
-
-function store() {
-  const mem = new Map();
-  return { getItem: (key) => (mem.has(key) ? mem.get(key) : null), setItem: (key, value) => { mem.set(key, value); } };
-}
-
-const SVG = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>';
 
 test('file commands cover every top File menu entry', () => {
   const result = parseMenuXML(readFileSync(MENUS_URL, 'utf8'));
@@ -62,15 +53,11 @@ test('export leaves cover both Export submenus and resolve scopes', () => {
 });
 
 test('save targets the open document, or the gallery when untitled', () => {
-  const mem = store();
-  assert.deepEqual(saveTarget(mem), { kind: 'gallery' });
-  saveDocument(mem, 'Work', SVG);
-  assert.deepEqual(saveTarget(mem), { kind: 'direct', name: 'Work' });
+  assert.deepEqual(saveTarget({ id: null, name: null }), { kind: 'gallery' });
+  assert.deepEqual(saveTarget({ id: 'doc', name: 'Work' }), { kind: 'direct', name: 'Work' });
 });
 
 test('rename targets the open document, or falls back to save', () => {
-  const mem = store();
-  assert.equal(renameTarget(mem), 'save');
-  saveDocument(mem, 'Work', SVG);
-  assert.equal(renameTarget(mem), 'rename');
+  assert.equal(renameTarget({ id: null }), 'save');
+  assert.equal(renameTarget({ id: 'doc' }), 'rename');
 });

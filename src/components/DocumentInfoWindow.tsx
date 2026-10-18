@@ -5,14 +5,9 @@
 // window registry names it.
 import { useState } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
-import { browserStore, type GUIManager } from '../ui/GUIManager';
-import {
-  currentId as galleryCurrentId,
-  currentName as galleryCurrentName,
-  docDisplayName as galleryDisplayName,
-  renameDocument as galleryRenameDocument,
-  saveDocument as gallerySaveDocument,
-} from '../ui/DocumentGallery';
+import type { GUIManager } from '../ui/GUIManager';
+import { browserGallerySession } from '../ui/DocumentGallery';
+import { useGallerySnapshot } from '../ui/useGallerySnapshot';
 import { formatInUnit } from '../engine/document/MeasurementUnits';
 
 function InfoRow({ label, value, title }: { label: string; value: string; title?: string }) {
@@ -31,11 +26,12 @@ export default function DocumentInfoWindow({
   gui: GUIManager;
   windowId: string;
 }) {
-  const store = browserStore();
-  const [draft, setDraft] = useState(() => galleryCurrentName(store) ?? 'Untitled');
-  const [savedName, setSavedName] = useState(() => galleryDisplayName(store));
+  const gallery = useGallerySnapshot();
+  const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (windowId !== 'document-info') return null;
+  const savedName = gallery.displayName;
+  const value = draft ?? (gallery.ready ? (gallery.currentName ?? 'Untitled') : savedName);
 
   const page = engine.getPageSettings();
   const sizeValue =
@@ -46,30 +42,32 @@ export default function DocumentInfoWindow({
   const stats = engine.documentStats();
 
   const commitRename = () => {
-    const trimmed = draft.trim();
+    const trimmed = value.trim();
     if (!trimmed) {
       setError('Name cannot be empty.');
       return;
     }
-    const id = galleryCurrentId(store);
-    if (id) {
-      if (!galleryRenameDocument(store, id, trimmed)) {
-        setError('Could not rename this document.');
-        return;
+    void (async () => {
+      const session = await browserGallerySession();
+      const id = session.getSnapshot().currentId;
+      if (id) {
+        if (!await session.rename(id, trimmed)) {
+          setError('Could not rename this document.');
+          return;
+        }
+      } else {
+        // Untitled work with no gallery entry yet: naming it saves it.
+        const payload = engine.exportScene();
+        if (!payload) {
+          setError('There is nothing to save yet.');
+          return;
+        }
+        await session.save(trimmed, payload);
+        engine.markDocumentClean();
       }
-    } else {
-      // Untitled work with no gallery entry yet: naming it saves it.
-      const payload = engine.exportScene();
-      if (!payload) {
-        setError('There is nothing to save yet.');
-        return;
-      }
-      gallerySaveDocument(store, trimmed, payload);
-      engine.markDocumentClean();
-    }
-    setSavedName(trimmed);
-    setDraft(trimmed);
-    setError(null);
+      setDraft(null);
+      setError(null);
+    })();
   };
 
   return (
@@ -94,7 +92,7 @@ export default function DocumentInfoWindow({
               type="text"
               className="docinfo-input"
               aria-label="Document name"
-              value={draft}
+              value={value}
               placeholder={savedName}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -107,7 +105,7 @@ export default function DocumentInfoWindow({
               className="settings-option active"
               onClick={commitRename}
               disabled={draft.trim() === savedName}
-              title={galleryCurrentId(store) ? 'Rename this document' : 'Name and save this document to the gallery'}
+              title={gallery.currentId ? 'Rename this document' : 'Name and save this document to the gallery'}
             >
               Rename
             </button>

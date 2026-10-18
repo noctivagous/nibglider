@@ -7,6 +7,7 @@
 
 import type { DropController } from './document/DropController';
 import type { DocumentManager } from './document/DocumentManager';
+import type { DrawableCatalog } from './document/DrawableCatalog';
 import type { LayerManager } from './document/LayerManager';
 import type { ViewportManager } from './document/ViewportManager';
 import type { CircleTool } from './drawing/CircleTool';
@@ -19,8 +20,10 @@ import type { ShapeFactory } from './geometry/ShapeFactory';
 import type { HistoryManager } from './history/HistoryManager';
 import type { TransformManager } from './history/TransformManager';
 import type { CombinatoricsManager } from './scene/CombinatoricsManager';
+import type { DrawableRenderer } from './scene/DrawableRenderer';
 import type { InterlaceManager } from './scene/InterlaceManager';
 import type { SceneRepository } from './scene/SceneRepository';
+import type { SceneSynchronizer } from './scene/SceneSynchronizer';
 import type { SelectionManager } from './scene/SelectionManager';
 import type { GridRenderer } from './snapping/GridRenderer';
 import type { SnappingManager } from './snapping/SnappingManager';
@@ -36,7 +39,10 @@ export class EngineContext {
   layers!: LayerManager;
   viewport!: ViewportManager;
   documentManager!: DocumentManager;
+  catalog!: DrawableCatalog;
   scene!: SceneRepository;
+  renderer!: DrawableRenderer;
+  synchronizer!: SceneSynchronizer;
   history!: HistoryManager;
   selection!: SelectionManager;
   combinatorics!: CombinatoricsManager;

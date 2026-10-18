@@ -1,19 +1,28 @@
-// Active-layer scene access and the temporary source-to-Paper identity bridge.
-// A later document service will own durable records. This service never builds
-// geometry from a model; DrawableRenderer remains the model rendering boundary.
+// Active-layer scene access and the catalog-backed identity bridge.
+// Durable drawable records live in DrawableCatalog; this service keeps no
+// model-item map of its own. Retained Paper paths (records) remain the
+// legacy compatibility boundary until their source kinds are modeled.
+// This service never builds geometry from a model; DrawableRenderer
+// remains the model rendering boundary.
 import type { NGPathDrawable } from '../model/NGDrawable';
 import type { NGDrawable } from '../model/NGDrawable';
 import type { NGPath, NGBezierPath } from '../model/NGPath';
+import type { DrawableCatalog } from '../document/DrawableCatalog';
 import { LayerManager } from '../document/LayerManager';
 
 type Item = any;
 export interface RetainedPath { source: NGPath; item: paper.PathItem; geometryKey: string }
 export interface SceneOverlayRefs { gridLayer: Item; cursors: Item[]; previews: Item[] }
+export interface CatalogAttachment {
+  catalog: DrawableCatalog;
+  resolvePage: () => string;
+  currentItemOf?: (id: string) => paper.Item | undefined;
+}
 
 export class SceneRepository {
   readonly scope: paper.PaperScope;
   records = new Map<string, RetainedPath>();
-  private readonly modelItems = new Map<string, { drawable: NGDrawable; item: paper.Item }>();
+  private catalogAttachment: CatalogAttachment | null = null;
   private readonly overlays: () => SceneOverlayRefs;
   private readonly layers: LayerManager;
 
@@ -64,20 +73,32 @@ export class SceneRepository {
   drawableIdOf(item: paper.Item): string | null {
     for (let candidate: paper.Item | null = item; candidate; candidate = candidate.parent) {
       const id: unknown = candidate.data?.drawableId;
-      if (typeof id === 'string' && this.isInScene(candidate) &&
-        (this.records.get(id)?.item === candidate || this.modelItems.get(id)?.item === candidate)) return id;
+      if (typeof id !== 'string' || !this.isInScene(candidate)) continue;
+      if (this.records.get(id)?.item === candidate) return id;
+      const attachment = this.catalogAttachment;
+      if (attachment && attachment.catalog.has(id) &&
+        (!attachment.currentItemOf || attachment.currentItemOf(id) === candidate)) return id;
     }
     return null;
   }
 
+  attachCatalog(attachment: CatalogAttachment): void { this.catalogAttachment = attachment; }
+  detachCatalog(): void { this.catalogAttachment = null; }
+
   bindDrawable(drawable: NGDrawable, item: paper.Item): void {
     if (!this.isInScene(item) || item.data?.drawableId !== drawable.id) throw new Error('Drawable item is not in the active scene');
-    this.modelItems.set(drawable.id, { drawable: structuredClone(drawable), item });
+    const attachment = this.catalogAttachment;
+    if (!attachment) throw new Error('SceneRepository has no catalog: attach a DrawableCatalog before binding drawables');
+    attachment.catalog.upsert(attachment.resolvePage(), drawable);
   }
-  unbindDrawable(id: string): void { this.modelItems.delete(id); }
+  unbindDrawable(_id: string): void {
+    // Derived-item removal flows through SceneSynchronizer/DrawableRenderer
+    // and never deletes catalog data; nothing is stored here to unbind.
+  }
   drawableOf(id: string): NGDrawable | null {
-    const entry = this.modelItems.get(id);
-    return entry && this.isInScene(entry.item) ? structuredClone(entry.drawable) : null;
+    // Model-first: catalog data stays authoritative even when the derived
+    // item is detached. Derived-item presence is the renderer's concern.
+    return this.catalogAttachment?.catalog.get(id) ?? null;
   }
 
   getRetainedPathDrawable(id: string): NGPathDrawable | null {

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import paper from 'paper';
 import { NibGliderEngine } from '../src/engine/engine.ts';
+import { commandById, KEY_CAPS } from '../src/engine/input/keymap.ts';
 
 function scope() {
   const s = new paper.PaperScope();
@@ -262,4 +263,17 @@ test('rectangle diagonal cancel drops the frame and a fitted stamp does not end 
     assert.equal(e.undoLabel(), 'Stamp');
     assert.ok(layer.children.some((item) => item !== e.previewLine && item !== e.previewRect && item !== e.previewInner));
   } finally { cleanup(); }
+});
+
+test('N draws a circle by radius and M draws a circle by diameter', () => {
+  const radius = commandById('circle-radius');
+  const diameter = commandById('circle-diameter');
+  assert.equal(radius.keycap, 'N');
+  assert.equal(diameter.keycap, 'M');
+  assert.equal(radius.match({ key: 'n' }), true);
+  assert.equal(radius.match({ key: 'm' }), false);
+  assert.equal(diameter.match({ key: 'm' }), true);
+  assert.equal(diameter.match({ key: 'n' }), false);
+  assert.equal(KEY_CAPS.find((cap) => cap.id === 'KeyN').commandId, 'circle-radius');
+  assert.equal(KEY_CAPS.find((cap) => cap.id === 'KeyM').commandId, 'circle-diameter');
 });

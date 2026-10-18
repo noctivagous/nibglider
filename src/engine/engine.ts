@@ -97,6 +97,9 @@ import { QuadTool } from './drawing/QuadTool';
 import { DrawingSession } from './drawing/DrawingSession';
 import type { DrawingHost } from './drawing/DrawingHost';
 import { SceneRepository, type RetainedPath } from './scene/SceneRepository';
+import { DrawableCatalog } from './document/DrawableCatalog';
+import { DrawableRenderer } from './scene/DrawableRenderer';
+import { SceneSynchronizer } from './scene/SceneSynchronizer';
 import {
   EXPORT_FRAME_KEY,
   EXPORT_FRAME_RECORD,
@@ -404,7 +407,7 @@ export class NibGliderEngine {
   // --- Snapping flags ---
   isGridSnappingEnabled = false;
   isPathSnappingEnabled = false;
-  isPointSnappingEnabled = false;
+  isPointSnappingEnabled = true;
   isAngleSnappingEnabled = false;
   isLengthSnappingEnabled = false;
   // Snap increments: angle in degrees, length in pt.
@@ -586,6 +589,9 @@ export class NibGliderEngine {
   private get quadTool(): QuadTool { return this.context.quadTool; }
   // Services live on EngineContext. These getters keep the existing call sites.
   private get scene(): SceneRepository { return this.context.scene; }
+  private get catalog(): DrawableCatalog { return this.context.catalog; }
+  private get renderer(): DrawableRenderer { return this.context.renderer; }
+  private get synchronizer(): SceneSynchronizer { return this.context.synchronizer; }
   private get history(): HistoryManager { return this.context.history; }
   private get combinatorics(): CombinatoricsManager { return this.context.combinatorics; }
   private get interlace(): InterlaceManager { return this.context.interlace; }
@@ -781,6 +787,17 @@ export class NibGliderEngine {
       previews: [this.previewInner, this.previewSplineText, this.previewShape,
         this.previewLine, this.previewPath, this.previewRect],
     }), this.layers);
+    this.context.catalog = new DrawableCatalog();
+    this.context.renderer = new DrawableRenderer(scope, {
+      layerForId: (id) => this.layers.layerForId(id),
+      scene: this.context.scene,
+    });
+    this.context.synchronizer = new SceneSynchronizer(this.context.catalog, this.context.renderer);
+    this.context.scene.attachCatalog({
+      catalog: this.context.catalog,
+      resolvePage: () => this.documentManager.currentPageId ?? 'page-1',
+      currentItemOf: (id) => this.context.renderer.getItem(id),
+    });
     this.context.history = new HistoryManager(this.scene, () => this.selection,
       () => this.documentManager.markEdited('scene'));
     this.context.selection = new SelectionManager(this.scene, this.history,
@@ -907,8 +924,12 @@ export class NibGliderEngine {
   }
 
   // hosts.ts calls these through the untyped surface. The references keep
-  // the private methods live for noUnusedLocals.
+  // the private methods live for noUnusedLocals. Catalog accessors land here
+  // until the Phase 2 deposit pipeline calls them through the facade.
   private retainHostCallbacks(): void {
+    void this.catalog;
+    void this.renderer;
+    void this.synchronizer;
     void this.placeDeposited;
     void this.topUserGroupOf;
     void this.retainCompositeResult;

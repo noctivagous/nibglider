@@ -1,6 +1,7 @@
 [ ] AI menu
 [  ] web MCP server for AI to compose (see armature mention in this doc).
 
+[  ] Interface app menu  reflects
 ---
 
 [ ] add combine mode: cut.  e.g. a rectangle is drawn over a circle with this mode. 
@@ -186,6 +187,7 @@ the two cannot keep a stroked Path.  so, strokedPath might be a mode of the path
 Select All doesn't select text in the UI.  
 
 [ ] What other technical fonts or style resources would assist in making the app?
+
 
 
 SECONDARY MODES AND KEYBOARD LAYOUT LOADING.

@@ -43,7 +43,8 @@ import InterlacePopover from './components/InterlacePopover';
 import FiltersPanel from './components/FiltersPanel';
 import { browserStore, GUIManager, KEYBOARD_WIDTH_DEFAULT } from './ui/GUIManager';
 import { formatInUnit } from './engine/document/MeasurementUnits';
-import { autosaveDocument, currentName, restorableDocument } from './ui/DocumentGallery';
+import { browserGallerySession } from './ui/DocumentGallery';
+import { useGallerySnapshot } from './ui/useGallerySnapshot';
 import { CONTEXT_MENU_ID, MENU_PANEL_SECTIONS, PanelsManager, hideMenuSection, sectionLabel } from './ui/PanelsManager';
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
@@ -362,11 +363,12 @@ export default function App() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, []);
 
+  const gallery = useGallerySnapshot();
   const exportFileStem = useCallback((): string => {
-    const raw = currentName(browserStore()) ?? 'untitled';
+    const raw = gallery.currentName ?? 'untitled';
     const stem = raw.trim().replace(/[^\w-]+/g, '-');
     return stem.length > 0 ? stem : 'untitled';
-  }, []);
+  }, [gallery.currentName]);
 
   const runVectorExport = useCallback((scope: ExportScopeId) => {
     const output = engine.exportScopeSVG(scope);
@@ -652,14 +654,22 @@ export default function App() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     engine.attach(canvas);
-    try {
-      const doc = restorableDocument(browserStore());
-      if (doc && !engine.hasContent()
-        && engine.replaceScene(`Open ${doc.name}`, doc.svg, { history: false })) {
-        engine.markDocumentClean();
-      }
-    } catch { /* A bad save never blocks startup. */ }
-    return () => engine.detach();
+    let cancelled = false;
+    void (async () => {
+      try {
+        const session = await browserGallerySession();
+        if (cancelled || engine.hasContent()) return;
+        const doc = await session.restorable();
+        if (cancelled || !doc || engine.hasContent()) return;
+        if (engine.replaceScene(`Open ${doc.name}`, doc.svg, { history: false })) {
+          engine.markDocumentClean();
+        }
+      } catch { /* A bad save never blocks startup. */ }
+    })();
+    return () => {
+      cancelled = true;
+      engine.detach();
+    };
   }, [engine]);
 
   // Autosave: persist dirty artwork and the view to the gallery shortly
@@ -667,10 +677,16 @@ export default function App() {
   // creates the Untitled document, so work is never lost before an explicit Save.
   useEffect(() => {
     let timer: number | null = null;
+    let session: Awaited<ReturnType<typeof browserGallerySession>> | null = null;
+    let cancelled = false;
+    void browserGallerySession().then((next) => {
+      if (!cancelled) session = next;
+    });
     const save = (): void => {
-      try {
-        autosaveDocument(engine, browserStore());
-      } catch { /* Autosave never interrupts drawing. */ }
+      const run = session
+        ? session.autosave(engine)
+        : browserGallerySession().then((next) => next.autosave(engine));
+      void run.catch(() => { /* Autosave never interrupts drawing. */ });
     };
     const schedule = (): void => {
       if (timer !== null) window.clearTimeout(timer);
@@ -690,6 +706,7 @@ export default function App() {
     const unsubscribeView = engine.subscribeView(schedule);
     window.addEventListener('pagehide', flush);
     return () => {
+      cancelled = true;
       unsubscribe();
       unsubscribeView();
       window.removeEventListener('pagehide', flush);

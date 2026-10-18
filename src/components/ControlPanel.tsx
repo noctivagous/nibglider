@@ -16,20 +16,13 @@ import { createPortal } from 'react-dom';
 import { primaryShortcut } from '../engine/input/keymap';
 import { PanelsManager, sectionLabel, sectionOrder } from '../ui/PanelsManager';
 import { combinePreviewBoxLabel } from '../ui/PreviewBoxPresenter';
-import { browserStore } from '../ui/GUIManager';
 import {
-  currentId as galleryCurrentId,
-  currentName as galleryCurrentName,
-  deleteDocument as galleryDeleteDocument,
-  docDisplayName as galleryDisplayName,
-  listDocuments as galleryListDocuments,
-  newDocumentName,
-  nextUntitledName,
-  renameDocument as galleryRenameDocument,
-  saveDocument as gallerySaveDocument,
-  setCurrent as gallerySetCurrent,
-  type GalleryDoc,
+  browserGallerySession,
+  newDocumentNameFrom,
+  nextUntitledFrom,
+  type GalleryMeta,
 } from '../ui/DocumentGallery';
+import { useGallerySnapshot } from '../ui/useGallerySnapshot';
 
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import DocumentGallery, { type GalleryMode } from './DocumentGallery';
@@ -3098,94 +3091,97 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   // cards (Export, Import) render as beveled grid buttons; Learn stays a
   // plain row. All cards are backed by the gallery store and the engine's
   // document-session API.
-  // Open document name for the page title and the rail label. The panel
-  // re-renders on every engine change, and every gallery mutation ends in
-  // a state update, so both stay fresh without a store subscription.
-  const docName = galleryDisplayName(browserStore());
+  // Open document name for the page title and the rail label. Gallery
+  // writes update this snapshot, so the title stays current without
+  // reading IndexedDB during render.
+  const gallery = useGallerySnapshot();
+  const docName = gallery.displayName;
   const docDirty = engine.isDocumentDirty();
   useEffect(() => {
     document.title = `${docName}${docDirty ? ' •' : ''} — NibGlider`;
   }, [docName, docDirty]);
-  // Document gallery dialog state. Docs are re-read from the store on open
-  // and after every mutation while the dialog is showing.
+  // Document gallery dialog state. The list comes from the gallery snapshot,
+  // which updates after every mutation while the dialog is showing.
   const [galleryMode, setGalleryMode] = useState<GalleryMode | null>(null);
-  const [galleryDocs, setGalleryDocs] = useState<GalleryDoc[]>([]);
   // New Document dialog: opened from File > New, applies the chosen canvas
   // size on confirm (dirty guard included) instead of wiping immediately.
   const [newDocOpen, setNewDocOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const importKindRef = useRef<ImportCommand>('import-svg');
   const [pdfImport, setPdfImport] = useState<{ name: string; bytes: Uint8Array } | null>(null);
-  const refreshGallery = useCallback(() => {
-    setGalleryDocs(galleryListDocuments(browserStore()));
-  }, []);
   const openGallery = useCallback(
     (mode: GalleryMode) => {
       dismissSelects();
-      refreshGallery();
       setGalleryMode(mode);
     },
-    [dismissSelects, refreshGallery],
+    [dismissSelects],
   );
   const saveSceneToGallery = useCallback(
-    (name: string): boolean => {
+    async (name: string): Promise<boolean> => {
       const payload = engine.exportScene();
       if (!payload) return false;
-      gallerySaveDocument(browserStore(), name, payload);
+      const session = await browserGallerySession();
+      await session.save(name, payload);
       engine.markDocumentClean();
       return true;
     },
     [engine],
   );
   const handleGalleryOpen = useCallback(
-    (doc: GalleryDoc) => {
-      if (
-        engine.isDocumentDirty() &&
-        !window.confirm(`Open "${doc.name}"? Unsaved changes will be lost.`)
-      ) {
-        return;
-      }
-      if (engine.replaceScene(`Open ${doc.name}`, doc.svg)) {
-        gallerySetCurrent(browserStore(), doc.id);
-        engine.markDocumentClean();
-      }
-      setGalleryMode(null);
-      refreshGallery();
+    (meta: GalleryMeta) => {
+      void (async () => {
+        if (
+          engine.isDocumentDirty() &&
+          !window.confirm(`Open "${meta.name}"? Unsaved changes will be lost.`)
+        ) {
+          return;
+        }
+        const session = await browserGallerySession();
+        const doc = await session.get(meta.id);
+        if (!doc) return;
+        if (engine.replaceScene(`Open ${doc.name}`, doc.svg)) {
+          await session.setCurrent(doc.id);
+          engine.markDocumentClean();
+        }
+        setGalleryMode(null);
+      })();
     },
-    [engine, refreshGallery],
+    [engine],
   );
   // Summary box document menu: switch to the picked gallery document
   // through the same guarded open path as the gallery dialog.
   const handleSummarySelect = useCallback(
     (id: string) => {
-      const doc = galleryListDocuments(browserStore()).find((entry) => entry.id === id);
-      if (doc) handleGalleryOpen(doc);
+      const meta = gallery.docs.find((entry) => entry.id === id);
+      if (meta) handleGalleryOpen(meta);
     },
-    [handleGalleryOpen],
+    [gallery.docs, handleGalleryOpen],
   );
   const handleGallerySave = useCallback(
     (name: string) => {
-      saveSceneToGallery(name);
-      setGalleryMode(null);
-      refreshGallery();
+      void saveSceneToGallery(name).then((saved) => {
+        if (!saved) return;
+        setGalleryMode(null);
+      });
     },
-    [saveSceneToGallery, refreshGallery],
+    [saveSceneToGallery],
   );
   const handleGalleryRename = useCallback(
     (name: string) => {
-      const id = galleryCurrentId(browserStore());
-      if (id) galleryRenameDocument(browserStore(), id, name);
-      setGalleryMode(null);
-      refreshGallery();
+      void (async () => {
+        const session = await browserGallerySession();
+        const id = session.getSnapshot().currentId;
+        if (id) await session.rename(id, name);
+        setGalleryMode(null);
+      })();
     },
-    [refreshGallery],
+    [],
   );
   const handleGalleryDelete = useCallback(
     (id: string) => {
-      galleryDeleteDocument(browserStore(), id);
-      refreshGallery();
+      void browserGallerySession().then((session) => session.remove(id));
     },
-    [refreshGallery],
+    [],
   );
   const handleNewDocumentConfirm = useCallback(
     (spec: NewDocumentSpec) => {
@@ -3195,14 +3191,18 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       ) {
         return;
       }
-      const store = browserStore();
-      const name = newDocumentName(store, spec.name);
-      engine.applyPageSpec(spec.widthPt, spec.heightPt, spec.unit);
-      engine.newDocument();
-      const payload = engine.exportScene();
-      if (payload) gallerySaveDocument(store, name, payload, null);
-      engine.markDocumentClean();
-      setNewDocOpen(false);
+      void (async () => {
+        const session = await browserGallerySession();
+        const name = newDocumentNameFrom(session.getSnapshot().docs, spec.name);
+        engine.applyPageSpec(spec.widthPt, spec.heightPt, spec.unit);
+        engine.newDocument();
+        const payload = engine.exportScene();
+        try {
+          if (payload) await session.save(name, payload, null);
+          engine.markDocumentClean();
+        } catch { /* The new canvas stays dirty so autosave can retry. */ }
+        setNewDocOpen(false);
+      })();
     },
     [engine],
   );
@@ -3219,13 +3219,13 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         setNewDocOpen(true);
         break;
       case 'save-gallery': {
-        const target = saveTarget(browserStore());
-        if (target.kind === 'direct') saveSceneToGallery(target.name);
+        const target = saveTarget({ id: gallery.currentId, name: gallery.currentName });
+        if (target.kind === 'direct') void saveSceneToGallery(target.name);
         else openGallery('save');
         break;
       }
       case 'rename-document':
-        openGallery(renameTarget(browserStore()));
+        openGallery(renameTarget({ id: gallery.currentId }));
         break;
       case 'import-svg':
       case 'import-pdf':
@@ -3238,7 +3238,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         break;
       }
     }
-  }, [dismissSelects, openGallery, saveSceneToGallery]);
+  }, [dismissSelects, gallery.currentId, gallery.currentName, openGallery, saveSceneToGallery]);
   // Top Operations menu entry point for the scale/rotate modal dialog.
   const openOperationDialog = useCallback((kind: 'scale' | 'rotate') => {
     if (!engine.canTransformSelection()) return;
@@ -3476,8 +3476,8 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           engine={engine}
           docName={docName}
           docDirty={docDirty}
-          currentDocId={galleryCurrentId(browserStore())}
-          documents={galleryListDocuments(browserStore())}
+          currentDocId={gallery.currentId}
+          documents={gallery.docs}
           selectedCount={engine.selectedItems.length}
           selection={sel}
           onSelectDocument={handleSummarySelect}
@@ -4570,9 +4570,9 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       {galleryMode ? (
         <DocumentGallery
           mode={galleryMode}
-          docs={galleryDocs}
-          openId={galleryCurrentId(browserStore())}
-          initialName={galleryCurrentName(browserStore()) ?? 'Untitled'}
+          docs={gallery.docs}
+          openId={gallery.currentId}
+          initialName={gallery.currentName ?? 'Untitled'}
           saveLabel="Save"
           onOpen={handleGalleryOpen}
           onSave={handleGallerySave}
@@ -4583,7 +4583,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       ) : null}
       {newDocOpen ? (
         <NewDocumentDialog
-          defaultName={nextUntitledName(browserStore())}
+          defaultName={nextUntitledFrom(gallery.docs)}
           onConfirm={handleNewDocumentConfirm}
           onClose={() => setNewDocOpen(false)}
         />

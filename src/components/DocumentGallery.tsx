@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { GalleryDoc } from '../ui/DocumentGallery';
+import type { GalleryMeta } from '../ui/DocumentGallery';
 
 export type GalleryMode = 'open' | 'save' | 'rename';
 
@@ -33,11 +33,11 @@ export default function DocumentGallery({
   onClose,
 }: {
   mode: GalleryMode;
-  docs: GalleryDoc[];
+  docs: GalleryMeta[];
   openId: string | null;
   initialName: string;
   saveLabel: string;
-  onOpen: (doc: GalleryDoc) => void;
+  onOpen: (doc: GalleryMeta) => void;
   onSave: (name: string) => void;
   onRename: (name: string) => void;
   onDelete: (id: string) => void;

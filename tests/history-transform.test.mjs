@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import paper from 'paper';
 import { SceneRepository } from '../src/engine/scene/SceneRepository.ts';
 import { SelectionManager } from '../src/engine/scene/SelectionManager.ts';
+import { DrawableCatalog } from '../src/engine/document/DrawableCatalog.ts';
 import { DrawableRenderer } from '../src/engine/scene/DrawableRenderer.ts';
 import { HistoryManager } from '../src/engine/history/HistoryManager.ts';
 import { TransformManager } from '../src/engine/history/TransformManager.ts';
@@ -71,7 +72,14 @@ test('model command restores plain drawable state before rebuilding derived Pape
       opacity: 1, visible: true, locked: false });
     const before = drawable(20); const after = drawable(40);
     const models = new Map([[after.id, structuredClone(after)]]);
-    const renderer = new DrawableRenderer(scope, { layerForId: () => scene.layer, scene });
+    const catalog = new DrawableCatalog();
+    let renderer;
+    scene.attachCatalog({
+      catalog,
+      resolvePage: () => 'page-1',
+      currentItemOf: (id) => renderer?.getItem(id),
+    });
+    renderer = new DrawableRenderer(scope, { layerForId: () => scene.layer, scene });
     renderer.render(after);
     const events = [];
     const host = {

@@ -4,6 +4,7 @@ import paper from 'paper';
 import { SceneRepository } from '../src/engine/scene/SceneRepository.ts';
 import { SelectionManager } from '../src/engine/scene/SelectionManager.ts';
 import { HistoryManager } from '../src/engine/history/HistoryManager.ts';
+import { DrawableCatalog } from '../src/engine/document/DrawableCatalog.ts';
 import { DrawableRenderer } from '../src/engine/scene/DrawableRenderer.ts';
 import { NibGliderEngine } from '../src/engine/engine.ts';
 
@@ -41,7 +42,7 @@ test('scene repository filters overlays, restores content order, and maps retain
   } finally { cleanup(); }
 });
 
-test('model renderer registers current drawable identity with scene repository', () => {
+test('model renderer registers current drawable identity through the catalog', () => {
   const { scope, scene, cleanup } = setup();
   try {
     const model = { id: 'drawable-a', kind: 'path', layerId: 'active',
@@ -51,7 +52,14 @@ test('model renderer registers current drawable identity with scene repository',
       ] }] },
       transform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
       opacity: 1, visible: true, locked: false };
-    const renderer = new DrawableRenderer(scope, { layerForId: () => scene.layer, scene });
+    const catalog = new DrawableCatalog();
+    let renderer;
+    scene.attachCatalog({
+      catalog,
+      resolvePage: () => 'page-1',
+      currentItemOf: (id) => renderer?.getItem(id),
+    });
+    renderer = new DrawableRenderer(scope, { layerForId: () => scene.layer, scene });
     const first = renderer.render(model);
     assert.equal(scene.drawableIdOf(first), model.id);
     assert.deepEqual(scene.drawableOf(model.id), model);
@@ -62,7 +70,9 @@ test('model renderer registers current drawable identity with scene repository',
     assert.equal(scene.drawableIdOf(second), model.id);
     assert.equal(scene.drawableOf(model.id).transform.tx, 30);
     renderer.remove(model.id);
-    assert.equal(scene.drawableOf(model.id), null);
+    assert.equal(renderer.getItem(model.id), undefined);
+    assert.equal(scene.drawableIdOf(second), null);
+    assert.equal(scene.drawableOf(model.id).transform.tx, 30);
   } finally { cleanup(); }
 });
 
