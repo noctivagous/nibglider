@@ -1,7 +1,7 @@
 # In-Canvas Element GUI definitions
 
-Each In-Canvas Element (Export Frame, and later Repeat portals, Filter
-covers, Crop frames) owns one XML file here that declares the controls
+Each In-Canvas Element (Export Frame, Printify Garment, and later Repeat
+portals, Filter covers, Crop frames) owns one XML file here that declares the controls
 mounted into the canvas while the element is selected. Controls withdraw
 on deselect. Parsed by `src/ui/inCanvasGui.ts` (`parseInCanvasXML`);
 malformed files degrade to an error box, never a crash.
@@ -28,4 +28,6 @@ When an edge cannot fit its section, trailing controls move to the widget
 strip above the canvas (underneath the status box), which mirrors the same
 sections with their labels. XML order is priority order: earlier controls
 keep the edge. See `exportFrame.xml` for the reference example and
-`tests/export-frame.test.mjs` for the contract.
+`tests/export-frame.test.mjs` for the contract. `printifyGarment.xml`
+declares the garment group GUI: garment identity on the top edge, per-area
+export/upload plus the product popover (shop ID, price) on the right edge.

@@ -45,6 +45,16 @@ export const EXPORT_COMMANDS = [
 
 export type ExportCommand = (typeof EXPORT_COMMANDS)[number];
 
+/** File > Export > Printify leaves (menus.xml ids). Each leaf exports one
+ * garment area PNG at its required placeholder pixels, then uploads it
+ * through the Printify client (token from Settings, never committed). */
+export const PRINTIFY_COMMANDS = [
+  'export-printify-area',
+  'export-printify-product',
+] as const;
+
+export type PrintifyCommand = (typeof PRINTIFY_COMMANDS)[number];
+
 /** Raster formats offered by the Export Raster segmented control. Only
  * PNG and JPG export today; WEBP stays visible but disabled. */
 export const RASTER_FORMATS = ['png', 'jpg', 'webp'] as const;

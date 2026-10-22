@@ -1,0 +1,28 @@
+<!-- Printify Garment In-Canvas Element GUI (Rect Keys > In-Canvas Elements >
+  PRINTIFY GARMENT). Mounted while the garment group or one of its areas is
+  selected, withdrawn on deselect. Garment identity (blueprint, provider,
+  variants) prefers the top edge; per-area export/upload prefers the right
+  edge. The product popover trails the right section so it overflows first
+  into the widget strip under the status box, mirroring exportFrame.xml. -->
+<inCanvas id="printifyGarment" title="Printify Garment">
+  <edge side="top" label="Garment">
+    <field key="name" label="Name" type="text" />
+    <field key="blueprintId" label="Blueprint" type="number" min="1" step="1" />
+    <field key="printProviderId" label="Provider" type="number" min="1" step="1" />
+    <select key="position" label="Area">
+      <option value="front" label="Front" />
+      <option value="back" label="Back" />
+    </select>
+  </edge>
+  <edge side="right" label="Printify">
+    <select key="format" label="Format">
+      <option value="png" label="PNG" />
+    </select>
+    <field key="scale" label="Scale" type="number" min="0.25" max="8" step="0.25" />
+    <exportButton label="Export area PNG" />
+    <popoverButton label="Product…">
+      <field key="shopId" label="Shop ID" type="text" />
+      <field key="priceCents" label="Price (cents)" type="number" min="1" step="1" />
+    </popoverButton>
+  </edge>
+</inCanvas>
