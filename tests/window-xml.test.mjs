@@ -95,6 +95,43 @@ test('window XML parses text, number, and password fields', () => {
   }
 });
 
+test('window XML groups fields into aligned tables', () => {
+  const result = parseWindowXML(
+    '<window id="w"><section id="s">' +
+    '<table align="left"><field key="name" label="Name"/><field key="n" type="number" min="1"/></table>' +
+    '<table><field key="token" type="password"/></table>' +
+    '</section></window>',
+  );
+  assert.ok('spec' in result);
+  assert.deepEqual(result.spec.sections[0].controls, [
+    {
+      kind: 'table',
+      align: 'left',
+      rows: [
+        { kind: 'field', key: 'name', label: 'Name', fieldType: 'text' },
+        { kind: 'field', key: 'n', label: 'n', fieldType: 'number', min: 1 },
+      ],
+    },
+    {
+      kind: 'table',
+      align: 'right',
+      rows: [{ kind: 'field', key: 'token', label: 'token', fieldType: 'password' }],
+    },
+  ]);
+
+  for (const bad of [
+    '<window id="w"><section id="s"><table align="middle"><field key="k"/></table></section></window>',
+    '<window id="w"><section id="s"><table></table></section></window>',
+    '<window id="w"><section id="s"><table><toggle key="k"/></table></section></window>',
+    '<window id="w"><section id="s"><table><table><field key="k"/></table></table></section></window>',
+    '<window id="w"><section id="s"><table><field key="k" type="number" min="wide"/></table></section></window>',
+  ]) {
+    const parsed = parseWindowXML(bad);
+    assert.ok('error' in parsed, `expected an error for ${bad}`);
+    assert.ok(parsed.error.length > 0);
+  }
+});
+
 test('tab views group sections and bare controls, with flattened sections', () => {
   const result = parseWindowXML(
     '<window id="w" title="W"><tabview>' +

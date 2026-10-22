@@ -11,12 +11,16 @@
 //     <switch (key, label)> <option (value, label)> ... </switch>
 //     <toggle (key, label) />
 //     <field (key, label, type, min, max, step, placeholder) />
+//     <table (align)> <field> ... </table>
 //     <custom (id) /> — host-rendered control (e.g. the size editor)
 //   <field> takes no children. type is text (default), number, or password.
 //   min/max/step are numbers and only valid for number fields; placeholder
 //   is free text. Password fields are commit-only: hosts must never display
 //   the stored value back, and password bindings must stay out of persisted
 //   engine settings (memory-only, like the Printify token).
+//   <table> lays its <field> children out as parameter rows: the field
+//   label sits in the left column, the input in the right column. align is
+//   left or right (default) and justifies the label column.
 //   The <tabview> container holds the window's tab-strip pages; each <tab>
 //   groups sections (and bare controls, wrapped in an anonymous section).
 //   At most one <tabview> per window. Titles and option labels fall back
@@ -61,7 +65,15 @@ export interface WindowCustomControl {
   id: string;
 }
 
-export type WindowControl = WindowSwitchControl | WindowToggleControl | WindowFieldControl | WindowCustomControl;
+export type WindowTableAlign = 'left' | 'right';
+
+export interface WindowTableControl {
+  kind: 'table';
+  align: WindowTableAlign;
+  rows: WindowFieldControl[];
+}
+
+export type WindowControl = WindowSwitchControl | WindowToggleControl | WindowFieldControl | WindowTableControl | WindowCustomControl;
 
 export interface WindowSection {
   id: string;
@@ -139,6 +151,20 @@ function parseField(node: XmlNode): WindowFieldControl | string {
   return control;
 }
 
+function parseTable(node: XmlNode): WindowTableControl | string {
+  const align = node.attrs['align'] ?? 'right';
+  if (align !== 'left' && align !== 'right') return '<table> align must be left or right';
+  if (node.children.length === 0) return '<table> needs at least one <field> child';
+  const rows: WindowFieldControl[] = [];
+  for (const child of node.children) {
+    if (child.tag !== 'field') return `<table> only accepts <field> children, found <${child.tag}>`;
+    const parsed = parseField(child);
+    if (typeof parsed === 'string') return parsed;
+    rows.push(parsed);
+  }
+  return { kind: 'table', align, rows };
+}
+
 function parseCustom(node: XmlNode): WindowCustomControl | string {
   const customId = node.attrs['id'];
   if (!customId) return '<custom> is missing its id attribute';
@@ -150,8 +176,9 @@ function parseControl(node: XmlNode): WindowControl | string {
   if (node.tag === 'switch') return parseSwitch(node);
   if (node.tag === 'toggle') return parseToggle(node);
   if (node.tag === 'field') return parseField(node);
+  if (node.tag === 'table') return parseTable(node);
   if (node.tag === 'custom') return parseCustom(node);
-  return `<section> only accepts <switch>, <toggle>, <field>, and <custom> children, found <${node.tag}>`;
+  return `<section> only accepts <switch>, <toggle>, <field>, <table>, and <custom> children, found <${node.tag}>`;
 }
 
 function parseSection(node: XmlNode): WindowSection | string {

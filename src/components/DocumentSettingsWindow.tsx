@@ -11,6 +11,7 @@ import documentSettingsXML from '../ui/windows/document-settings.xml?raw';
 import DocumentSizeEditor from './DocumentSizeEditor';
 import {
   FieldControl,
+  TableControl,
 } from './WindowFieldControls';
 import {
   settingFor,
@@ -127,7 +128,9 @@ function SettingsSection({
             ? <ToggleControl key={control.key} control={control} engine={engine} />
             : control.kind === 'field'
               ? <FieldControl key={control.key} control={control} engine={engine} bindings={BINDINGS} />
-              : <CustomControl key={control.id} control={control} engine={engine} />
+              : control.kind === 'table'
+                ? <TableControl key={control.rows.map((row) => row.key).join('+')} control={control} engine={engine} bindings={BINDINGS} />
+                : <CustomControl key={control.id} control={control} engine={engine} />
       ))}
     </div>
   );

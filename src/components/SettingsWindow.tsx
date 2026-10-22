@@ -8,6 +8,7 @@ import { parseWindowXML, type WindowControl } from '../ui/windowXML';
 import settingsXML from '../ui/windows/settings.xml?raw';
 import {
   FieldControl,
+  TableControl,
 } from './WindowFieldControls';
 import {
   settingFor,
@@ -128,7 +129,9 @@ export default function SettingsWindow({
                     ? <ToggleControl key={control.key} control={control} engine={engine} />
                     : control.kind === 'field'
                       ? <FieldControl key={control.key} control={control} engine={engine} bindings={BINDINGS} />
-                      : <span key={control.id} className="settings-unknown">Unknown control: {control.id}</span>
+                      : control.kind === 'table'
+                        ? <TableControl key={control.rows.map((row) => row.key).join('+')} control={control} engine={engine} bindings={BINDINGS} />
+                        : <span key={control.id} className="settings-unknown">Unknown control: {control.id}</span>
               ))}
             </div>
           ))
