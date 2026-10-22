@@ -6,13 +6,15 @@ import type { NibGliderEngine } from '../engine/engine';
 import type { GUIManager } from '../ui/GUIManager';
 import { parseWindowXML, type WindowControl } from '../ui/windowXML';
 import settingsXML from '../ui/windows/settings.xml?raw';
+import {
+  FieldControl,
+} from './WindowFieldControls';
+import {
+  settingFor,
+  type FieldBinding,
+} from './WindowFieldBindings';
 
-interface SettingBinding {
-  get(engine: NibGliderEngine): string | boolean;
-  set(engine: NibGliderEngine, value: string | boolean): void;
-}
-
-const BINDINGS: Record<string, SettingBinding> = {
+const BINDINGS: Record<string, FieldBinding> = {
   quadMapping: {
     get: (engine) => engine.quadMapping,
     set: (engine, value) => {
@@ -41,7 +43,7 @@ function SwitchControl({
   control: Extract<WindowControl, { kind: 'switch' }>;
   engine: NibGliderEngine;
 }) {
-  const binding = BINDINGS[control.key];
+  const binding = settingFor(BINDINGS, control.key);
   const current = binding ? String(binding.get(engine)) : null;
   return (
     <div className="settings-row">
@@ -71,7 +73,7 @@ function ToggleControl({
   control: Extract<WindowControl, { kind: 'toggle' }>;
   engine: NibGliderEngine;
 }) {
-  const binding = BINDINGS[control.key];
+  const binding = settingFor(BINDINGS, control.key);
   const pressed = binding ? binding.get(engine) === true : false;
   return (
     <div className="settings-row">
@@ -124,7 +126,9 @@ export default function SettingsWindow({
                   ? <SwitchControl key={control.key} control={control} engine={engine} />
                   : control.kind === 'toggle'
                     ? <ToggleControl key={control.key} control={control} engine={engine} />
-                    : <span key={control.id} className="settings-unknown">Unknown control: {control.id}</span>
+                    : control.kind === 'field'
+                      ? <FieldControl key={control.key} control={control} engine={engine} bindings={BINDINGS} />
+                      : <span key={control.id} className="settings-unknown">Unknown control: {control.id}</span>
               ))}
             </div>
           ))

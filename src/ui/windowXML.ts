@@ -10,7 +10,13 @@
 //     <tab (id, title)> <section> ... | bare controls </tab>
 //     <switch (key, label)> <option (value, label)> ... </switch>
 //     <toggle (key, label) />
+//     <field (key, label, type, min, max, step, placeholder) />
 //     <custom (id) /> — host-rendered control (e.g. the size editor)
+//   <field> takes no children. type is text (default), number, or password.
+//   min/max/step are numbers and only valid for number fields; placeholder
+//   is free text. Password fields are commit-only: hosts must never display
+//   the stored value back, and password bindings must stay out of persisted
+//   engine settings (memory-only, like the Printify token).
 //   The <tabview> container holds the window's tab-strip pages; each <tab>
 //   groups sections (and bare controls, wrapped in an anonymous section).
 //   At most one <tabview> per window. Titles and option labels fall back
@@ -37,12 +43,25 @@ export interface WindowToggleControl {
   label: string;
 }
 
+export type WindowFieldType = 'text' | 'number' | 'password';
+
+export interface WindowFieldControl {
+  kind: 'field';
+  key: string;
+  label: string;
+  fieldType: WindowFieldType;
+  min?: number;
+  max?: number;
+  step?: number;
+  placeholder?: string;
+}
+
 export interface WindowCustomControl {
   kind: 'custom';
   id: string;
 }
 
-export type WindowControl = WindowSwitchControl | WindowToggleControl | WindowCustomControl;
+export type WindowControl = WindowSwitchControl | WindowToggleControl | WindowFieldControl | WindowCustomControl;
 
 export interface WindowSection {
   id: string;
@@ -89,6 +108,37 @@ function parseToggle(node: XmlNode): WindowToggleControl | string {
   return { kind: 'toggle', key, label: node.attrs['label'] ?? key };
 }
 
+function parseField(node: XmlNode): WindowFieldControl | string {
+  const key = node.attrs['key'];
+  if (!key) return '<field> is missing its key attribute';
+  if (node.children.length > 0) return `<field key="${key}"> takes no children`;
+  const rawType = node.attrs['type'] ?? 'text';
+  if (rawType !== 'text' && rawType !== 'number' && rawType !== 'password') {
+    return `<field key="${key}"> type must be text, number, or password`;
+  }
+  const numeric: { min?: number; max?: number; step?: number } = {};
+  for (const name of ['min', 'max', 'step'] as const) {
+    const raw = node.attrs[name];
+    if (raw === undefined) continue;
+    if (rawType !== 'number') return `<field key="${key}"> ${name} is only valid for number fields`;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return `<field key="${key}"> ${name} must be a finite number`;
+    numeric[name] = value;
+  }
+  if (numeric.step !== undefined && numeric.step <= 0) {
+    return `<field key="${key}"> step must be positive`;
+  }
+  if (numeric.min !== undefined && numeric.max !== undefined && numeric.min > numeric.max) {
+    return `<field key="${key}"> min must not exceed max`;
+  }
+  const control: WindowFieldControl = { kind: 'field', key, label: node.attrs['label'] ?? key, fieldType: rawType };
+  if (numeric.min !== undefined) control.min = numeric.min;
+  if (numeric.max !== undefined) control.max = numeric.max;
+  if (numeric.step !== undefined) control.step = numeric.step;
+  if (node.attrs['placeholder'] !== undefined) control.placeholder = node.attrs['placeholder'];
+  return control;
+}
+
 function parseCustom(node: XmlNode): WindowCustomControl | string {
   const customId = node.attrs['id'];
   if (!customId) return '<custom> is missing its id attribute';
@@ -99,8 +149,9 @@ function parseCustom(node: XmlNode): WindowCustomControl | string {
 function parseControl(node: XmlNode): WindowControl | string {
   if (node.tag === 'switch') return parseSwitch(node);
   if (node.tag === 'toggle') return parseToggle(node);
+  if (node.tag === 'field') return parseField(node);
   if (node.tag === 'custom') return parseCustom(node);
-  return `<section> only accepts <switch>, <toggle>, and <custom> children, found <${node.tag}>`;
+  return `<section> only accepts <switch>, <toggle>, <field>, and <custom> children, found <${node.tag}>`;
 }
 
 function parseSection(node: XmlNode): WindowSection | string {

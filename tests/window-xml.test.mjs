@@ -62,6 +62,39 @@ test('window XML falls back to ids and rejects malformed definitions', () => {
   }
 });
 
+test('window XML parses text, number, and password fields', () => {
+  const result = parseWindowXML(
+    '<window id="w"><section id="s">' +
+    '<field key="name" label="Name" type="text" placeholder="Untitled"/>' +
+    '<field key="scale" label="Scale" type="number" min="0.25" max="8" step="0.25"/>' +
+    '<field key="token" label="Token" type="password"/>' +
+    '<field key="plain"/>' +
+    '</section></window>',
+  );
+  assert.ok('spec' in result);
+  assert.deepEqual(result.spec.sections[0].controls, [
+    { kind: 'field', key: 'name', label: 'Name', fieldType: 'text', placeholder: 'Untitled' },
+    { kind: 'field', key: 'scale', label: 'Scale', fieldType: 'number', min: 0.25, max: 8, step: 0.25 },
+    { kind: 'field', key: 'token', label: 'Token', fieldType: 'password' },
+    { kind: 'field', key: 'plain', label: 'plain', fieldType: 'text' },
+  ]);
+
+  for (const bad of [
+    '<window id="w"><section id="s"><field label="No key"/></section></window>',
+    '<window id="w"><section id="s"><field key="k" type="slider"/></section></window>',
+    '<window id="w"><section id="s"><field key="k"><toggle key="x"/></field></section></window>',
+    '<window id="w"><section id="s"><field key="k" type="number" min="wide"/></section></window>',
+    '<window id="w"><section id="s"><field key="k" type="number" step="0"/></section></window>',
+    '<window id="w"><section id="s"><field key="k" type="number" min="10" max="2"/></section></window>',
+    '<window id="w"><section id="s"><field key="k" type="text" min="1"/></section></window>',
+    '<window id="w"><section id="s"><field key="k" type="password" step="1"/></section></window>',
+  ]) {
+    const parsed = parseWindowXML(bad);
+    assert.ok('error' in parsed, `expected an error for ${bad}`);
+    assert.ok(parsed.error.length > 0);
+  }
+});
+
 test('tab views group sections and bare controls, with flattened sections', () => {
   const result = parseWindowXML(
     '<window id="w" title="W"><tabview>' +

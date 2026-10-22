@@ -9,13 +9,15 @@ import type { GUIManager } from '../ui/GUIManager';
 import { parseWindowXML, type WindowControl, type WindowSection } from '../ui/windowXML';
 import documentSettingsXML from '../ui/windows/document-settings.xml?raw';
 import DocumentSizeEditor from './DocumentSizeEditor';
+import {
+  FieldControl,
+} from './WindowFieldControls';
+import {
+  settingFor,
+  type FieldBinding,
+} from './WindowFieldBindings';
 
-interface SettingBinding {
-  get(engine: NibGliderEngine): string | boolean;
-  set(engine: NibGliderEngine, value: string | boolean): void;
-}
-
-const BINDINGS: Record<string, SettingBinding> = {
+const BINDINGS: Record<string, FieldBinding> = {
   rulerPlacement: {
     get: (engine) => engine.rulerPlacement,
     set: (engine, value) => {
@@ -42,7 +44,7 @@ function SwitchControl({
   control: Extract<WindowControl, { kind: 'switch' }>;
   engine: NibGliderEngine;
 }) {
-  const binding = BINDINGS[control.key];
+  const binding = settingFor(BINDINGS, control.key);
   const current = binding ? String(binding.get(engine)) : null;
   return (
     <div className="settings-row">
@@ -72,7 +74,7 @@ function ToggleControl({
   control: Extract<WindowControl, { kind: 'toggle' }>;
   engine: NibGliderEngine;
 }) {
-  const binding = BINDINGS[control.key];
+  const binding = settingFor(BINDINGS, control.key);
   const pressed = binding ? binding.get(engine) === true : false;
   return (
     <div className="settings-row">
@@ -123,7 +125,9 @@ function SettingsSection({
           ? <SwitchControl key={control.key} control={control} engine={engine} />
           : control.kind === 'toggle'
             ? <ToggleControl key={control.key} control={control} engine={engine} />
-            : <CustomControl key={control.id} control={control} engine={engine} />
+            : control.kind === 'field'
+              ? <FieldControl key={control.key} control={control} engine={engine} bindings={BINDINGS} />
+              : <CustomControl key={control.id} control={control} engine={engine} />
       ))}
     </div>
   );
