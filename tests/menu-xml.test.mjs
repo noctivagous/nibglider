@@ -16,6 +16,7 @@ const WIRED_COMMANDS = [
   'import-svg', 'import-pdf', 'import-raster',
   'scale-dialog', 'rotate-dialog',
   'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
+  'printify-settings',
   'undo', 'redo',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
@@ -54,9 +55,9 @@ function loadMenus() {
 
 test('menus XML parses to the application menus in order', () => {
   const menus = loadMenus();
-  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'edit', 'image', 'document', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
+  assert.deepEqual(menus.map((menu) => menu.id), ['file', 'edit', 'image', 'document', 'services', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
   assert.deepEqual(menus.map((menu) => menu.title), [
-    'File', 'Edit', 'Image', 'Document and Settings', 'Operations', 'Modes', 'Layers and Objects', 'Object', 'Help', 'Debug',
+    'File', 'Edit', 'Image', 'Document and Settings', 'Services', 'Operations', 'Modes', 'Layers and Objects', 'Object', 'Help', 'Debug',
   ]);
 });
 

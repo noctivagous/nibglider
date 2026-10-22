@@ -29,6 +29,7 @@ import JpgExportDialog from './components/JpgExportDialog';
 import { svgToPdfBlob } from './engine/document/pdfExport';
 import ContextMenu from './components/ContextMenu';
 import SettingsWindow from './components/SettingsWindow';
+import PrintifySettingsDialog from './components/PrintifySettingsDialog';
 import DocumentInfoWindow from './components/DocumentInfoWindow';
 import DocumentSettingsWindow from './components/DocumentSettingsWindow';
 import DocumentSizeWindow from './components/DocumentSizeWindow';
@@ -77,6 +78,7 @@ const MENU_COMMANDS: Set<string> = new Set([
   ...IMPORT_COMMANDS,
   ...EXPORT_COMMANDS,
   'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
+  'printify-settings',
   'undo', 'redo',
   'cut', 'copy', 'paste', 'select-all',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
@@ -411,6 +413,7 @@ export default function App() {
       return;
     }
     if (commandId === 'settings') gui.openWindow('settings');
+    else if (commandId === 'printify-settings') gui.openWindow('printify-settings');
     else if (commandId === 'document-settings') gui.openWindow('document-settings');
     else if (commandId === 'canvas-size') gui.openWindow('document-size');
     else if (commandId === 'tutorial') startTutorial();
@@ -869,6 +872,9 @@ export default function App() {
       )}
       {ui.openWindowId === 'settings' && (
         <SettingsWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
+      )}
+      {ui.openWindowId === 'printify-settings' && (
+        <PrintifySettingsDialog engine={engine} onClose={() => gui.closeWindow()} />
       )}
       {ui.openWindowId === 'document-info' && (
         <DocumentInfoWindow engine={engine} gui={gui} windowId={ui.openWindowId} />

@@ -77,6 +77,9 @@
     <item command="toggle-keyboard" icon="toggle-keyboard" />
     <item command="toggle-status" icon="toggle-status" />
   </menu>
+  <menu id="services" title="Services">
+    <item command="printify-settings" label="Printify…" icon="settings" />
+  </menu>
   <menu id="operations" title="Operations">
     <group label="Repeat">
       <item command="repeat-grid" label="Repeat grid (future)" icon="repeat-grid" />

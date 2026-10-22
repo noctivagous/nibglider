@@ -5428,7 +5428,8 @@ kbd,
 }
 
 .settings-number,
-.settings-select {
+.settings-select,
+.settings-text {
   background: var(--dp-bg-1);
   border: 1px solid var(--dp-border);
   border-radius: 4px;
@@ -5436,6 +5437,11 @@ kbd,
   font: inherit;
   font-size: 0.8125rem;
   padding: 4px 8px;
+}
+
+.settings-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .settings-number {

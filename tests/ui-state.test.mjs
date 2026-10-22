@@ -110,9 +110,9 @@ test('dragging across a row boundary keeps the requested visual row', () => {
   assert.equal(sectionOrder(again.order).indexOf('textControls'), 6);
 });
 
-test('application menus cover file, edit, image, document, operations, modes, layers, context-object, help, and debug', () => {
+test('application menus cover file, edit, image, document, services, operations, modes, layers, context-object, help, and debug', () => {
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
-  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'image', 'document', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
+  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'image', 'document', 'services', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
   assert.equal(byId.image.title, 'Image');
   assert.equal(byId.file.title, 'File');
   assert.deepEqual(byId.file.items.map((item) => item.commandId), [
@@ -131,6 +131,8 @@ test('application menus cover file, edit, image, document, operations, modes, la
     ]);
   }
   assert.deepEqual(byId.help.items.map((item) => item.commandId), ['tutorial']);
+  assert.equal(byId.services.title, 'Services');
+  assert.deepStrictEqual(byId.services.items.map((item) => item.commandId), ['printify-settings']);
   assert.ok(byId.document.items.some((item) => item.commandId === 'length-unit'));
   // Object control lives in Layers, not Operations.
   assert.ok(!byId.operations.items.some((item) => item.commandId === 'group'));
