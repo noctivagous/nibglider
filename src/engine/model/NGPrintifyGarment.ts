@@ -168,16 +168,32 @@ export function validatePrintifyGarment(value: unknown): asserts value is Printi
   if (new Set(areaIds).size !== areaIds.length) fail('printifyGarment.areas', 'unique area ids');
 }
 
-export function createPrintifyGarment(opts: {
-  id?: string;
+/** Placeholder pixel size for one printable position, as listed by the
+ * Printify variants endpoint. */
+export interface PrintifyPlaceholderSpec {
+  width: number;
+  height: number;
+  decorationMethod?: string;
+}
+
+/** Deposit spec: garment identity plus one area per printable position.
+ * Area rects default to the placeholder aspect at a readable height. */
+export interface PrintifyGarmentSpec {
   name?: string;
   blueprintId: number;
   printProviderId: number;
   variantIds: number[];
   templateSrcs?: string[];
-  areas: { position: string; decorationMethod: string; requiredPx: PrintifyPxSize; rect?: { x: number; y: number; width: number; height: number } }[];
+  areas: {
+    position: string;
+    decorationMethod: string;
+    requiredPx: PrintifyPxSize;
+    rect?: { x: number; y: number; width: number; height: number };
+  }[];
   origin?: { x: number; y: number };
-}): PrintifyGarmentRecord {
+}
+
+export function createPrintifyGarment(opts: PrintifyGarmentSpec & { id?: string }): PrintifyGarmentRecord {
   const origin = opts.origin ?? { x: 0, y: 0 };
   let cursorX = origin.x;
   const areas: PrintifyAreaRecord[] = opts.areas.map((area) => {

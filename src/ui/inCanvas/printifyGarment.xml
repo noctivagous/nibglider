@@ -12,6 +12,9 @@
     <select key="position" label="Area">
       <option value="front" label="Front" />
       <option value="back" label="Back" />
+      <option value="left_sleeve" label="Left sleeve" />
+      <option value="right_sleeve" label="Right sleeve" />
+      <option value="left_chest" label="Left chest" />
     </select>
   </edge>
   <edge side="right" label="Printify">

@@ -264,6 +264,9 @@ const ENTRIES: SettingEntry[] = [
   num('combine.interlaceGap', (e) => e.interlaceGap, (e, v) => e.setInterlaceGap(v)),
   en('quad.mapping', ['bilinear', 'projective'], (e) => e.quadMapping, (e, v) => e.setQuadMapping(v as QuadMapping)),
   bool('quad.perspectiveCircle', (e) => e.perspectiveCircle, (e, v) => e.setPerspectiveCircle(v)),
+  // Printify: the shop id persists; the token stays memory-only and is
+  // never a settings entry.
+  str('printify.shopId', (e) => e.printifyShopId, (e, v) => e.setPrintifyShopId(v)),
 ];
 
 export function snapshotEngineSettings(engine: NibGliderEngine): Record<string, unknown> {

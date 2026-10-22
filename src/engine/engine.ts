@@ -119,6 +119,32 @@ import {
   type ExportFrameBox,
   type ExportFrameRecord,
 } from './model/NGExportFrame';
+import {
+  createPrintifyGarment,
+  exportPngSizeForArea,
+  exportScaleForArea,
+  placeholderRectPoints,
+  validatePrintifyGarment,
+  type PrintifyGarmentRecord,
+  type PrintifyGarmentSpec,
+  type PrintifyPlaceholderSpec,
+} from './model/NGPrintifyGarment';
+import {
+  garmentAreaArtwork,
+  isPrintifyAreaItem,
+  isPrintifyGarmentItem,
+  PRINTIFY_AREA_DATA_KEY,
+  PRINTIFY_AREA_GARMENT_KEY,
+  PRINTIFY_AREA_POSITION_KEY,
+  PRINTIFY_GARMENT_DATA_KEY,
+  PRINTIFY_GARMENT_RECORD_KEY,
+  readPrintifyGarment,
+} from './scene/printifyGarment';
+import {
+  printifyFetch,
+  productPayloadForGarment,
+  uploadPayloadForArea,
+} from './document/printifyClient';
 import { SelectionManager } from './scene/SelectionManager';
 import {
   ExportFrameHandles,
@@ -540,12 +566,20 @@ export class NibGliderEngine {
     mount: (item) => this.mountGuideItem(item),
     unmount: (item) => this.unmountGuideItem(item),
   });
-  /** Active handle-resize gesture, or null while idle. */
+  /** Active handle-resize gesture, or null while idle. The label names the
+   * undo entry; export-frame and garment-area resizes share the gesture. */
   private frameResize: {
     item: AnyItem;
     handle: ExportFrameHandleId;
     before: { x: number; y: number; width: number; height: number };
+    label: string;
   } | null = null;
+  /** Printify token lives in memory only: it is never persisted to settings
+   * or document JSON. The shop id is ordinary persisted engine settings. */
+  private printifyToken = '';
+  printifyShopId = '';
+  /** Last fetched mockup image urls by Printify product id. Memory only. */
+  private readonly printifyMockups = new Map<string, string[]>();
   /** Conventional transform controls (Ctrl/Cmd+T on a selection). */
   isTransformMode = false;
   private readonly transformHandles = new TransformHandles({
@@ -1240,6 +1274,8 @@ export class NibGliderEngine {
     hide(this.previewPath);
     hide(this.previewRect);
     for (const frame of this.exportFrameItems()) hide(frame);
+    for (const outline of this.printifyGarmentItems()) hide(outline);
+    for (const area of this.printifyAreaItems()) hide(area);
     try {
       this.selection.suspendGlow();
     } catch { /* Headless. */ }
@@ -1568,12 +1604,13 @@ export class NibGliderEngine {
     return true;
   }
 
-  /** Handle id under the document point for the selected frame, if any.
-   * Used by the pointer controller; null while drawing or unselected. */
+  /** Handle id under the document point for the selected frame or garment
+   * area, if any. Used by the pointer controller; null while drawing or
+   * unselected. */
   frameHandleAt(point: { x: number; y: number }): ExportFrameHandleId | null {
     if (this.isLiveDrawing) return null;
     try {
-      const frame = this.singleSelectedFrameItem();
+      const frame = this.singleSelectedResizeItem();
       if (!frame) return null;
       this.frameHandles.refresh(frame);
       const zoom = this.scope.view?.zoom;
@@ -1588,18 +1625,19 @@ export class NibGliderEngine {
     return this.frameResize !== null;
   }
 
-  /** Begin a handle-resize gesture on the selected frame. */
+  /** Begin a handle-resize gesture on the selected frame or garment area. */
   beginFrameResize(handle: ExportFrameHandleId): void {
     if (this.isLiveDrawing || this.frameResize || this.transformDrag) return;
-    const frame = this.singleSelectedFrameItem();
-    if (!frame) return;
+    const target = this.singleSelectedResizeItem();
+    if (!target) return;
     let before: { x: number; y: number; width: number; height: number } | null = null;
     try {
-      const b = frame.bounds;
+      const b = target.bounds;
       if (b && b.width > 0 && b.height > 0) before = { x: b.x, y: b.y, width: b.width, height: b.height };
     } catch { /* Detached already. */ }
     if (!before) return;
-    this.frameResize = { item: frame, handle, before };
+    const label = isPrintifyAreaItem(target) ? 'Resize garment area' : 'Resize export frame';
+    this.frameResize = { item: target, handle, before, label };
   }
 
   /** Live step of a handle-resize gesture: rescale the frame so the
@@ -1635,10 +1673,576 @@ export class NibGliderEngine {
     const changed = after.x !== gesture.before.x || after.y !== gesture.before.y
       || after.width !== gesture.before.width || after.height !== gesture.before.height;
     if (changed) {
-      this.history.recordBounds('Resize export frame', gesture.item, gesture.before, after);
+      this.history.recordBounds(gesture.label, gesture.item, gesture.before, after);
       this.documentManager.markEdited('scene');
     }
     this.updateTextContent(); this.notify();
+  }
+
+  // --- Printify garments (Rect Keys > In-Canvas Elements > PRINTIFY GARMENT) ---
+  // A garment is an outline guide plus one live area rect per Printify
+  // placeholder, all selectable Paper items on the artwork layer (so native
+  // save, undo, marquee-select, and hit-testing keep working). Outlines and
+  // areas are never artwork: whole-scene export hides them, and area export
+  // crops via the SVG viewBox without clipping the live elements.
+  printifyGarmentItems(): AnyItem[] {
+    const layer = this.layers.activeLayer;
+    return layer ? [...layer.children].filter(isPrintifyGarmentItem) : [];
+  }
+
+  printifyAreaItems(): AnyItem[] {
+    const layer = this.layers.activeLayer;
+    return layer ? [...layer.children].filter(isPrintifyAreaItem) : [];
+  }
+
+  /** Deposit a garment group with undo + selection. Returns the garment id,
+   * or null for degenerate specs. */
+  depositPrintifyGarment(spec: PrintifyGarmentSpec): string | null {
+    if (this.isLiveDrawing) return null;
+    const before = this.contentItems();
+    const selectedBefore = [...this.selectedItems];
+    const placed = this.placePrintifyGarmentItems(spec);
+    if (!placed) return null;
+    for (const item of placed.items) this.addItemToSelection(item);
+    this.recordSceneCommand('Deposit printify garment', before, selectedBefore, placed.items);
+    this.updateTextContent(); this.notify();
+    return placed.garmentId;
+  }
+
+  /** Build, tag, and mount a garment's outline + area items without history.
+   * The Rect-Key tool finish path uses this; the outer deposit owns undo. */
+  private placePrintifyGarmentItems(spec: PrintifyGarmentSpec): { garmentId: string; items: AnyItem[] } | null {
+    const layer = this.layers.activeLayer;
+    if (!layer) return null;
+    let record: PrintifyGarmentRecord;
+    try {
+      record = createPrintifyGarment(spec);
+    } catch {
+      return null;
+    }
+    const made: AnyItem[] = [];
+    try {
+      const union = record.areas.reduce(
+        (acc, area) => ({
+          x: Math.min(acc.x, area.rect.x),
+          y: Math.min(acc.y, area.rect.y),
+          maxX: Math.max(acc.maxX, area.rect.x + area.rect.width),
+          maxY: Math.max(acc.maxY, area.rect.y + area.rect.height),
+        }),
+        { x: Infinity, y: Infinity, maxX: -Infinity, maxY: -Infinity },
+      );
+      const pad = 24;
+      const outline = new this.scope.Path.Rectangle({
+        point: new this.scope.Point(union.x - pad, union.y - pad),
+        size: new this.scope.Size(union.maxX - union.x + pad * 2, union.maxY - union.y + pad * 2),
+      });
+      outline.strokeColor = new this.scope.Color(0.42, 0.42, 0.45);
+      outline.fillColor = null;
+      outline.strokeWidth = 1;
+      outline.dashArray = [6, 4];
+      outline.name = record.name;
+      outline.data[PRINTIFY_GARMENT_DATA_KEY] = true;
+      outline.data[PRINTIFY_GARMENT_RECORD_KEY] = record;
+      layer.addChild(outline);
+      made.push(outline);
+      for (const area of record.areas) {
+        const item = new this.scope.Path.Rectangle({
+          point: new this.scope.Point(area.rect.x, area.rect.y),
+          size: new this.scope.Size(area.rect.width, area.rect.height),
+        });
+        item.strokeColor = new this.scope.Color(0.15, 0.4, 0.85);
+        item.fillColor = null;
+        item.strokeWidth = 1;
+        item.dashArray = [6, 4];
+        item.name = `${record.name} ${area.position}`;
+        item.data[PRINTIFY_AREA_DATA_KEY] = true;
+        item.data[PRINTIFY_AREA_GARMENT_KEY] = record.id;
+        item.data[PRINTIFY_AREA_POSITION_KEY] = area.position;
+        item.data.printifyAreaId = area.id;
+        layer.addChild(item);
+        made.push(item);
+      }
+    } catch {
+      for (const item of made) {
+        try { item.remove(); } catch { /* Detached already. */ }
+      }
+      return null;
+    }
+    return { garmentId: record.id, items: made };
+  }
+
+  private garmentOutlineById(id: string): AnyItem | null {
+    for (const item of this.printifyGarmentItems()) {
+      try {
+        if (item.data?.[PRINTIFY_GARMENT_RECORD_KEY]?.id === id) return item;
+      } catch { /* Detached already. */ }
+    }
+    return null;
+  }
+
+  private garmentAreaItem(garmentId: string, areaId: string): AnyItem | null {
+    for (const item of this.printifyAreaItems()) {
+      try {
+        if (item.data?.[PRINTIFY_AREA_GARMENT_KEY] === garmentId
+          && item.data?.printifyAreaId === areaId) return item;
+      } catch { /* Detached already. */ }
+    }
+    return null;
+  }
+
+  garmentAreaItemByPosition(garmentId: string, position: string): AnyItem | null {
+    for (const item of this.printifyAreaItems()) {
+      try {
+        if (item.data?.[PRINTIFY_AREA_GARMENT_KEY] === garmentId
+          && item.data?.[PRINTIFY_AREA_POSITION_KEY] === position) return item;
+      } catch { /* Detached already. */ }
+    }
+    return null;
+  }
+
+  /** Live garment record: area rects follow the live items so dragged or
+   * resized areas stay exact, and each area scale re-derives from its
+   * required Printify pixels. */
+  private liveGarmentRecord(outline: AnyItem): PrintifyGarmentRecord | null {
+    const record = readPrintifyGarment(outline);
+    if (!record) return null;
+    for (const area of record.areas) {
+      const item = this.garmentAreaItem(record.id, area.id);
+      if (!item) continue;
+      try {
+        const b = item.bounds;
+        if (b && b.width > 0 && b.height > 0) {
+          area.rect = { x: b.x, y: b.y, width: b.width, height: b.height };
+          area.scale = exportScaleForArea(area.rect, area.requiredPx);
+        }
+      } catch { /* Detached already. */ }
+    }
+    try {
+      validatePrintifyGarment(record);
+    } catch {
+      return null;
+    }
+    return record;
+  }
+
+  listPrintifyGarments(): PrintifyGarmentRecord[] {
+    const out: PrintifyGarmentRecord[] = [];
+    for (const outline of this.printifyGarmentItems()) {
+      const record = this.liveGarmentRecord(outline);
+      if (record) out.push(record);
+    }
+    return out;
+  }
+
+  getPrintifyGarment(id: string): PrintifyGarmentRecord | null {
+    const outline = this.garmentOutlineById(id);
+    return outline ? this.liveGarmentRecord(outline) : null;
+  }
+
+  /** The garment whose GUI is mounted: exactly one outline or area of one
+   * garment selected. Outlines win when both are selected. */
+  selectedPrintifyGarment(): PrintifyGarmentRecord | null {
+    const outlines = this.selectedItems.filter(isPrintifyGarmentItem);
+    if (outlines.length === 1) return this.liveGarmentRecord(outlines[0]);
+    const areas = this.selectedItems.filter(isPrintifyAreaItem);
+    if (areas.length === 0) return null;
+    let garmentId: string | null = null;
+    try {
+      garmentId = areas[0].data?.[PRINTIFY_AREA_GARMENT_KEY] ?? null;
+    } catch { /* Detached already. */ }
+    if (typeof garmentId !== 'string') return null;
+    if (areas.some((area) => {
+      try {
+        return area.data?.[PRINTIFY_AREA_GARMENT_KEY] !== garmentId;
+      } catch {
+        return true;
+      }
+    })) return null;
+    const outline = this.garmentOutlineById(garmentId);
+    return outline ? this.liveGarmentRecord(outline) : null;
+  }
+
+  updatePrintifyGarment(id: string, patch: { name: string }): boolean {
+    const outline = this.garmentOutlineById(id);
+    if (!outline) return false;
+    const current = this.liveGarmentRecord(outline);
+    if (!current) return false;
+    if (typeof patch.name !== 'string' || patch.name.trim().length === 0) return false;
+    const next: PrintifyGarmentRecord = { ...current, name: patch.name };
+    try {
+      validatePrintifyGarment(next);
+    } catch {
+      return false;
+    }
+    try {
+      outline.data[PRINTIFY_GARMENT_RECORD_KEY] = next;
+      outline.name = next.name;
+      for (const area of next.areas) {
+        const item = this.garmentAreaItem(next.id, area.id);
+        if (item) item.name = `${next.name} ${area.position}`;
+      }
+    } catch {
+      return false;
+    }
+    this.documentManager.markEdited('scene');
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  /** Switch the garment to new variants: every area keeps its center and
+   * height, takes the new placeholder aspect, and re-derives its export
+   * scale. One undo entry per resized area. */
+  setPrintifyGarmentVariants(
+    id: string,
+    variantIds: number[],
+    placeholders: Record<string, PrintifyPlaceholderSpec>,
+  ): boolean {
+    const outline = this.garmentOutlineById(id);
+    if (!outline || this.isLiveDrawing) return false;
+    const current = this.liveGarmentRecord(outline);
+    if (!current) return false;
+    if (!Array.isArray(variantIds) || variantIds.length === 0 || variantIds.length > 256) return false;
+    if (!variantIds.every((v) => Number.isSafeInteger(v) && v > 0)) return false;
+    if (new Set(variantIds).size !== variantIds.length) return false;
+    const specs = new Map<string, PrintifyPlaceholderSpec>();
+    for (const area of current.areas) {
+      const spec = (placeholders as Record<string, unknown>)[area.position];
+      if (!spec || typeof spec !== 'object') return false;
+      const { width, height, decorationMethod } = spec as PrintifyPlaceholderSpec;
+      if (!Number.isSafeInteger(width) || (width as number) <= 0) return false;
+      if (!Number.isSafeInteger(height) || (height as number) <= 0) return false;
+      if (decorationMethod !== undefined
+        && (typeof decorationMethod !== 'string' || (decorationMethod as string).trim().length === 0)) return false;
+      specs.set(area.position, spec as PrintifyPlaceholderSpec);
+    }
+    const next: PrintifyGarmentRecord = {
+      ...current,
+      variantIds: [...variantIds],
+      areas: current.areas.map((area) => ({ ...area, requiredPx: { ...area.requiredPx } })),
+    };
+    for (const area of next.areas) {
+      const item = this.garmentAreaItem(next.id, area.id);
+      const spec = specs.get(area.position);
+      if (!item || !spec) return false;
+      let before: { x: number; y: number; width: number; height: number } | null = null;
+      try {
+        const b = item.bounds;
+        if (b && b.width > 0 && b.height > 0) before = { x: b.x, y: b.y, width: b.width, height: b.height };
+      } catch { /* Detached already. */ }
+      if (!before) return false;
+      let size: { width: number; height: number };
+      try {
+        size = placeholderRectPoints({ width: spec.width, height: spec.height }, before.height);
+      } catch {
+        return false;
+      }
+      const after = {
+        x: before.x + (before.width - size.width) / 2,
+        y: before.y,
+        width: size.width,
+        height: size.height,
+      };
+      try {
+        item.bounds = new this.scope.Rectangle(
+          new this.scope.Point(after.x, after.y),
+          new this.scope.Size(after.width, after.height),
+        );
+      } catch {
+        return false;
+      }
+      area.requiredPx = { width: spec.width, height: spec.height };
+      if (spec.decorationMethod !== undefined) area.decorationMethod = spec.decorationMethod;
+      area.rect = { ...after };
+      try {
+        area.scale = exportScaleForArea(area.rect, area.requiredPx);
+      } catch {
+        return false;
+      }
+      this.history.recordBounds('Switch garment variant', item, before, after);
+    }
+    try {
+      validatePrintifyGarment(next);
+    } catch {
+      return false;
+    }
+    try {
+      outline.data[PRINTIFY_GARMENT_RECORD_KEY] = next;
+    } catch {
+      return false;
+    }
+    this.documentManager.markEdited('scene');
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  /** Set one area's dimensions in document points, anchored at the center.
+   * Undoable through the same bounds entry as handle resizing. */
+  setPrintifyAreaSize(garmentId: string, position: string, width: number, height: number): boolean {
+    const item = this.garmentAreaItemByPosition(garmentId, position);
+    if (!item || this.isLiveDrawing) return false;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false;
+    let before: { x: number; y: number; width: number; height: number } | null = null;
+    try {
+      const b = item.bounds;
+      if (b && b.width > 0 && b.height > 0) before = { x: b.x, y: b.y, width: b.width, height: b.height };
+    } catch { /* Detached already. */ }
+    if (!before) return false;
+    const after = {
+      x: before.x + (before.width - width) / 2,
+      y: before.y + (before.height - height) / 2,
+      width,
+      height,
+    };
+    try {
+      item.bounds = new this.scope.Rectangle(
+        new this.scope.Point(after.x, after.y),
+        new this.scope.Size(after.width, after.height),
+      );
+    } catch {
+      return false;
+    }
+    this.history.recordBounds('Resize garment area', item, before, after);
+    this.documentManager.markEdited('scene');
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  deletePrintifyGarment(id: string): boolean {
+    const outline = this.garmentOutlineById(id);
+    if (!outline || this.isLiveDrawing) return false;
+    const record = readPrintifyGarment(outline);
+    const areas = record
+      ? record.areas.map((area) => this.garmentAreaItem(id, area.id)).filter((item) => !!item)
+      : [];
+    const before = this.contentItems();
+    const selBefore = [...this.selectedItems];
+    for (const item of [outline, ...areas]) {
+      this.removeItemFromSelection(item as AnyItem);
+      try { (item as AnyItem).remove(); } catch { /* Detached already. */ }
+    }
+    this.history.recordDelete(before, selBefore);
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  /** Artwork contained in or intersecting one garment area. */
+  garmentAreaArtworkCount(garmentId: string, position: string): number {
+    const item = this.garmentAreaItemByPosition(garmentId, position);
+    if (!item) return 0;
+    let box: { x: number; y: number; width: number; height: number } | null = null;
+    try {
+      const b = item.bounds;
+      if (b && b.width > 0 && b.height > 0) box = { x: b.x, y: b.y, width: b.width, height: b.height };
+    } catch { /* Detached already. */ }
+    if (!box) return 0;
+    const layer = this.layers.activeLayer;
+    if (!layer) return 0;
+    try {
+      return garmentAreaArtwork(box, [...layer.children]).length;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Live bounds of one garment area in document points. */
+  garmentAreaBox(garmentId: string, position: string): ExportFrameBox | null {
+    const item = this.garmentAreaItemByPosition(garmentId, position);
+    if (!item) return null;
+    try {
+      const b = item.bounds;
+      if (!b || !(b.width > 0) || !(b.height > 0)) return null;
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Export one area as SVG cropped to its box. Live artwork is never
+   * clipped or modified. Needs DOM; null when unavailable. */
+  garmentAreaSVG(garmentId: string, position: string): { box: ExportFrameBox; svg: string } | null {
+    const box = this.garmentAreaBox(garmentId, position);
+    if (!box) return null;
+    const svg = this.exportBoxSVG(box);
+    return svg ? { box: { ...box }, svg } : null;
+  }
+
+  /** Export one area as PNG at its exact required Printify pixels. Needs
+   * DOM (Image + canvas); null when rasterization is unavailable. */
+  async garmentAreaPNG(garmentId: string, position: string): Promise<{ box: ExportFrameBox; blob: Blob } | null> {
+    const outline = this.garmentOutlineById(garmentId);
+    const record = outline ? this.liveGarmentRecord(outline) : null;
+    const output = this.garmentAreaSVG(garmentId, position);
+    const area = record?.areas.find((candidate) => candidate.position === position);
+    if (!record || !output || !area) return null;
+    const blob = await rasterizeSvgToPng(
+      output.svg, exportPngSizeForArea(output.box, area.scale), null);
+    if (!blob) return null;
+    return { box: { ...output.box }, blob };
+  }
+
+  private blobToBase64(blob: Blob): Promise<string | null> {
+    if (typeof FileReader === 'undefined') return Promise.resolve(null);
+    return new Promise((resolve) => {
+      try {
+        const reader = new FileReader();
+        reader.onload = (): void => {
+          try {
+            const url = reader.result;
+            if (typeof url !== 'string' || !url.includes(',')) {
+              resolve(null);
+              return;
+            }
+            resolve(url.slice(url.indexOf(',') + 1));
+          } catch {
+            resolve(null);
+          }
+        };
+        reader.onerror = (): void => resolve(null);
+        reader.readAsDataURL(blob);
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+
+  /** Render one area to PNG and wrap it as a Printify upload payload.
+   * Null when rasterization is unavailable (headless). */
+  async printifyAreaUploadPayload(
+    garmentId: string,
+    position: string,
+  ): Promise<{ fileName: string; base64: string } | null> {
+    const outline = this.garmentOutlineById(garmentId);
+    const record = outline ? this.liveGarmentRecord(outline) : null;
+    if (!record) return null;
+    const rendered = await this.garmentAreaPNG(garmentId, position);
+    if (!rendered) return null;
+    const base64 = await this.blobToBase64(rendered.blob);
+    if (!base64) return null;
+    const payload = uploadPayloadForArea(record.name, position, base64);
+    return { fileName: payload.file_name, base64: payload.contents };
+  }
+
+  // --- Printify account (token memory-only, shop id persisted) ---
+  /** Store the personal access token for this session. Never persisted:
+   * settings snapshots and document JSON can never carry it. */
+  setPrintifyToken(token: string): boolean {
+    if (typeof token !== 'string' || token.trim().length === 0) return false;
+    this.printifyToken = token.trim();
+    return true;
+  }
+
+  clearPrintifyToken(): void {
+    this.printifyToken = '';
+  }
+
+  hasPrintifyToken(): boolean {
+    return this.printifyToken.length > 0;
+  }
+
+  setPrintifyShopId(shopId: string): void {
+    this.printifyShopId = typeof shopId === 'string' ? shopId.trim() : '';
+    this.updateTextContent(); this.notify();
+  }
+
+  private printifyTokenOrThrow(): string {
+    if (!this.printifyToken) throw new Error('Printify token is not set');
+    return this.printifyToken;
+  }
+
+  private printifyShopIdOrThrow(): string {
+    if (!this.printifyShopId) throw new Error('Printify shop id is not set');
+    return this.printifyShopId;
+  }
+
+  /** List available blueprints (shirts etc.) from the Printify catalog. */
+  async fetchPrintifyBlueprints(): Promise<unknown> {
+    return printifyFetch('/catalog/blueprints.json', this.printifyTokenOrThrow());
+  }
+
+  /** List variants + placeholders for one blueprint + print provider. */
+  async fetchPrintifyVariants(blueprintId: number, printProviderId: number): Promise<unknown> {
+    if (!Number.isSafeInteger(blueprintId) || blueprintId <= 0) {
+      return Promise.reject(new Error('blueprintId: expected positive integer'));
+    }
+    if (!Number.isSafeInteger(printProviderId) || printProviderId <= 0) {
+      return Promise.reject(new Error('printProviderId: expected positive integer'));
+    }
+    return printifyFetch(
+      `/catalog/blueprints/${blueprintId}/print_providers/${printProviderId}/variants.json`,
+      this.printifyTokenOrThrow(),
+    );
+  }
+
+  /** Upload one rendered area; resolves to the Printify image id. */
+  async uploadPrintifyArea(garmentId: string, position: string): Promise<string> {
+    const token = this.printifyTokenOrThrow();
+    const rendered = await this.printifyAreaUploadPayload(garmentId, position);
+    if (!rendered) throw new Error('Area rasterization unavailable');
+    const json = await printifyFetch('/uploads.json', token, {
+      method: 'POST',
+      body: { file_name: rendered.fileName, contents: rendered.base64 },
+    }) as { id?: unknown };
+    if (!json || typeof json.id !== 'string' || json.id.length === 0) {
+      throw new Error('Printify upload returned no image id');
+    }
+    return json.id;
+  }
+
+  /** Create a shop product wiring each garment area to its uploaded image.
+   * Caches the returned mockup image urls by product id for preview. */
+  async createPrintifyProduct(
+    garmentId: string,
+    uploadsByPosition: Record<string, string>,
+    opts?: { title?: string; description?: string; priceCents?: number },
+  ): Promise<unknown> {
+    const token = this.printifyTokenOrThrow();
+    const shopId = this.printifyShopIdOrThrow();
+    const outline = this.garmentOutlineById(garmentId);
+    const record = outline ? this.liveGarmentRecord(outline) : null;
+    if (!record) throw new Error('Unknown garment');
+    const payload = productPayloadForGarment(record, uploadsByPosition, opts);
+    const json = await printifyFetch(`/shops/${shopId}/products.json`, token, {
+      method: 'POST',
+      body: payload,
+    }) as { id?: unknown; images?: unknown };
+    this.cachePrintifyMockups(json);
+    return json;
+  }
+
+  /** Refresh one product (mockups included) and cache its mockup urls. */
+  async fetchPrintifyProduct(productId: string): Promise<unknown> {
+    if (typeof productId !== 'string' || productId.length === 0) {
+      throw new Error('productId: expected non-empty string');
+    }
+    const json = await printifyFetch(
+      `/shops/${this.printifyShopIdOrThrow()}/products/${productId}.json`,
+      this.printifyTokenOrThrow(),
+    ) as { id?: unknown; images?: unknown };
+    const id = typeof json?.id === 'string' && json.id ? json.id : productId;
+    this.cachePrintifyMockups({ ...json, id });
+    return json;
+  }
+
+  private cachePrintifyMockups(product: { id?: unknown; images?: unknown }): void {
+    try {
+      if (!product || typeof product.id !== 'string' || !Array.isArray(product.images)) return;
+      const srcs = (product.images as unknown[])
+        .map((image) => (image as { src?: unknown }).src)
+        .filter((src): src is string => typeof src === 'string' && src.length > 0);
+      this.printifyMockups.set(product.id, srcs);
+    } catch { /* Preview cache is best-effort. */ }
+  }
+
+  /** Last fetched mockup image urls for a product, or null when unknown. */
+  printifyProductMockups(productId: string): string[] | null {
+    const cached = this.printifyMockups.get(productId);
+    return cached ? [...cached] : null;
+  }
+
+  /** Blank-product template urls stored on the garment record. */
+  printifyTemplatesFor(garmentId: string): string[] | null {
+    const record = this.getPrintifyGarment(garmentId);
+    return record ? [...record.templateSrcs] : null;
   }
 
   // --- Transform controls (Ctrl/Cmd+T on a selection) ---
@@ -2138,11 +2742,23 @@ export class NibGliderEngine {
     return selected.length === 1 ? selected[0] : null;
   }
 
+  /** The selected garment area item when exactly one area is selected. */
+  private singleSelectedGarmentAreaItem(): AnyItem | null {
+    const selected = this.selectedItems.filter(isPrintifyAreaItem);
+    return selected.length === 1 ? selected[0] : null;
+  }
+
+  /** Resize target: the single selected frame, else the single selected
+   * garment area. Frames win when both are somehow selected. */
+  private singleSelectedResizeItem(): AnyItem | null {
+    return this.singleSelectedFrameItem() ?? this.singleSelectedGarmentAreaItem();
+  }
+
   /** Rebuild resize handles for the current selection. Identity-checked,
    * so the per-notify cost is one selection filter while idle. */
   private refreshFrameHandles(): void {
     try {
-      this.frameHandles.refresh(this.isLiveDrawing ? null : this.singleSelectedFrameItem());
+      this.frameHandles.refresh(this.isLiveDrawing ? null : this.singleSelectedResizeItem());
     } catch { /* Headless or mid-teardown. */ }
   }
 

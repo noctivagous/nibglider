@@ -10,6 +10,61 @@ export const PRINTIFY_API_BASE = 'https://api.printify.com/v1';
 export const PRINTIFY_GLOBAL_RATE_LIMIT_PER_MIN = 600;
 export const PRINTIFY_CATALOG_RATE_LIMIT_PER_MIN = 100;
 
+export class PrintifyApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'PrintifyApiError';
+    this.status = status;
+  }
+}
+
+function fetchImpl(): typeof fetch | null {
+  try {
+    const impl = (globalThis as { fetch?: typeof fetch }).fetch;
+    return typeof impl === 'function' ? impl : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Authenticated V1 request. Throws PrintifyApiError on HTTP failures and
+ * when no fetch implementation exists (e.g. restricted runtimes). The token
+ * travels only in the Authorization header, never in document JSON. */
+export async function printifyFetch(
+  path: string,
+  token: string,
+  init?: { method?: string; body?: unknown },
+): Promise<unknown> {
+  if (!token || token.trim().length === 0) throw new PrintifyApiError(0, 'Missing Printify token');
+  const impl = fetchImpl();
+  if (!impl) throw new PrintifyApiError(0, 'fetch unavailable');
+  let res: Response;
+  try {
+    res = await impl(`${PRINTIFY_API_BASE}${path}`, {
+      method: init?.method ?? 'GET',
+      headers: {
+        Authorization: `Bearer ${token.trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: init?.body === undefined ? undefined : JSON.stringify(init.body),
+    });
+  } catch (error) {
+    throw new PrintifyApiError(0, error instanceof Error ? error.message : 'Network failure');
+  }
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
+  if (!res.ok) {
+    const detail = (json as { message?: unknown } | null)?.message;
+    throw new PrintifyApiError(res.status, typeof detail === 'string' && detail ? detail : `Printify request failed (${res.status})`);
+  }
+  return json;
+}
+
 export function catalogBlueprintsUrl(): string {
   return `${PRINTIFY_API_BASE}/catalog/blueprints.json`;
 }

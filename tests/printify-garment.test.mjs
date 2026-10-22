@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import paper from 'paper';
+import { NibGliderEngine } from '../src/engine/engine.ts';
+import { applyEngineSettings, snapshotEngineSettings } from '../src/engine/engineSettings.ts';
+import { PrintifyApiError } from '../src/engine/document/printifyClient.ts';
 import {
   createPrintifyGarment,
   exportPngSizeForArea,
@@ -108,4 +112,197 @@ test('printify file commands and in-canvas spec exist', () => {
   const parsed = parseInCanvasXML(xml);
   assert.ok('spec' in parsed);
   if ('spec' in parsed) assert.equal(parsed.spec.id, 'printifyGarment');
+});
+
+function engine() {
+  const s = new paper.PaperScope();
+  s.setup(new s.Size(800, 600));
+  const e = new NibGliderEngine(s, () => {});
+  return {
+    s, e, layer: s.project.activeLayer,
+    cleanup: () => { e.cancelCurrentDrawingOperation(); s.project.remove(); },
+  };
+}
+
+function depositCircle(s, e) {
+  e.mousePt = new s.Point(120, 90);
+  e.circleInnerShapeType = 'circle';
+  e.circleKC('radius');
+  e.pointer.onMouseMove({ point: new s.Point(170, 90) });
+  e.endPathOrShape();
+}
+
+function assertBoxesClose(actual, expected) {
+  for (const key of ['x', 'y', 'width', 'height']) {
+    assert.ok(Math.abs(actual[key] - expected[key]) < 1e-6, `${key}: ${actual[key]} vs ${expected[key]}`);
+  }
+}
+
+function garmentSpec() {
+  return {
+    name: 'Tee',
+    blueprintId: 6,
+    printProviderId: 1,
+    variantIds: [101, 102],
+    templateSrcs: ['https://example.com/tee-front.svg'],
+    areas: [
+      { position: 'front', decorationMethod: 'dtg', requiredPx: { width: 4500, height: 5700 } },
+      { position: 'back', decorationMethod: 'dtg', requiredPx: { width: 4500, height: 5700 } },
+    ],
+    origin: { x: 0, y: 0 },
+  };
+}
+
+test('garment deposit, select, update, and delete manage the group lifecycle with undo', () => {
+  const { e, layer, cleanup } = engine();
+  try {
+    assert.equal(e.depositPrintifyGarment({ ...garmentSpec(), blueprintId: 0 }), null);
+    const id = e.depositPrintifyGarment(garmentSpec());
+    assert.ok(typeof id === 'string');
+    assert.equal(e.listPrintifyGarments().length, 1);
+    assert.equal(layer.children.length, 3);
+    assert.equal(e.getPrintifyGarment(id)?.areas.length, 2);
+    assert.equal(e.selectedPrintifyGarment()?.id, id);
+    assert.equal(e.updatePrintifyGarment(id, { name: '' }), false);
+    assert.equal(e.updatePrintifyGarment('missing', { name: 'x' }), false);
+    assert.equal(e.updatePrintifyGarment(id, { name: 'Long Tee' }), true);
+    assert.equal(e.getPrintifyGarment(id)?.name, 'Long Tee');
+    const before = e.garmentAreaBox(id, 'front');
+    assert.equal(e.setPrintifyAreaSize(id, 'front', before.width + 40, before.height + 40), true);
+    assert.equal(e.setPrintifyAreaSize(id, 'front', 0, 10), false);
+    e.undo();
+    assertBoxesClose(e.garmentAreaBox(id, 'front'), before);
+    assert.equal(e.deletePrintifyGarment('missing'), false);
+    assert.equal(e.deletePrintifyGarment(id), true);
+    assert.equal(e.listPrintifyGarments().length, 0);
+    assert.equal(layer.children.length, 0);
+    e.undo();
+    assert.equal(e.listPrintifyGarments().length, 1);
+    e.redo();
+    assert.equal(e.listPrintifyGarments().length, 0);
+  } finally { cleanup(); }
+});
+
+test('garment areas scope artwork and export null headless', async () => {
+  const { s, e, cleanup } = engine();
+  try {
+    depositCircle(s, e);
+    const id = e.depositPrintifyGarment({
+      ...garmentSpec(),
+      areas: garmentSpec().areas.map((area) => ({
+        ...area,
+        rect: { x: 100, y: 70, width: 60, height: 60 },
+      })),
+    });
+    assert.ok(id);
+    assert.equal(e.garmentAreaArtworkCount(id, 'front'), 1);
+    assert.equal(e.garmentAreaArtworkCount(id, 'missing'), 0);
+    assert.equal(e.garmentAreaSVG(id, 'front'), null);
+    assert.equal(await e.garmentAreaPNG(id, 'front'), null);
+    assert.equal(await e.printifyAreaUploadPayload(id, 'front'), null);
+  } finally { cleanup(); }
+});
+
+test('variant switch resizes areas preserving centers and rejects bad input', () => {
+  const { e, cleanup } = engine();
+  try {
+    const id = e.depositPrintifyGarment(garmentSpec());
+    assert.ok(id);
+    const before = e.garmentAreaBox(id, 'front');
+    assert.ok(before);
+    assert.equal(e.setPrintifyGarmentVariants(id, [201], { back: { width: 4500, height: 5700 } }), false);
+    assert.equal(e.setPrintifyGarmentVariants(id, [], {
+      front: { width: 3000, height: 3000 }, back: { width: 4500, height: 5700 },
+    }), false);
+    assert.equal(e.setPrintifyGarmentVariants(id, [201, 201], {
+      front: { width: 3000, height: 3000 }, back: { width: 4500, height: 5700 },
+    }), false);
+    assert.equal(e.setPrintifyGarmentVariants(id, [201], {
+      front: { width: 3000, height: 3000 }, back: { width: 4500, height: 5700 },
+    }), true);
+    const after = e.garmentAreaBox(id, 'front');
+    assert.ok(after);
+    assert.ok(Math.abs(after.width - after.height) < 1e-6);
+    assert.ok(Math.abs((before.x + before.width / 2) - (after.x + after.width / 2)) < 1e-6);
+    assert.deepStrictEqual(e.getPrintifyGarment(id)?.areas.find((a) => a.position === 'front')?.requiredPx,
+      { width: 3000, height: 3000 });
+    e.undo();
+    e.undo();
+    assertBoxesClose(e.garmentAreaBox(id, 'front'), before);
+  } finally { cleanup(); }
+});
+
+test('printify account keeps the token out of persisted state', () => {
+  const { e, cleanup } = engine();
+  try {
+    assert.equal(e.setPrintifyToken(''), false);
+    assert.equal(e.hasPrintifyToken(), false);
+    assert.equal(e.setPrintifyToken('  tok  '), true);
+    assert.equal(e.hasPrintifyToken(), true);
+    e.setPrintifyShopId('  123  ');
+    assert.equal(e.printifyShopId, '123');
+    const snap = snapshotEngineSettings(e);
+    assert.equal(snap['printify.shopId'], '123');
+    assert.ok(!JSON.stringify(snap).includes('tok'));
+    assert.ok(!e.exportScene().includes('tok'));
+    e.clearPrintifyToken();
+    assert.equal(e.hasPrintifyToken(), false);
+    const { e: e2, cleanup: cleanup2 } = engine();
+    try {
+      applyEngineSettings(e2, { 'printify.shopId': '42' });
+      assert.equal(e2.printifyShopId, '42');
+      assert.equal(e2.hasPrintifyToken(), false);
+    } finally { cleanup2(); }
+  } finally { cleanup(); }
+});
+
+test('printify network uses bearer auth and caches mockups', async () => {
+  const { e, cleanup } = engine();
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  try {
+    const id = e.depositPrintifyGarment(garmentSpec());
+    assert.ok(id);
+    globalThis.fetch = async (url, init) => {
+      calls.push({ url, init });
+      return { ok: true, json: async () => ({ id: 'prod-1', images: [{ src: 'https://mock/1.jpg' }] }) };
+    };
+    e.setPrintifyToken('tok');
+    e.setPrintifyShopId('123');
+    await e.fetchPrintifyBlueprints();
+    assert.equal(calls[0].url, 'https://api.printify.com/v1/catalog/blueprints.json');
+    assert.equal(calls[0].init.headers.Authorization, 'Bearer tok');
+    await assert.rejects(() => e.fetchPrintifyVariants(0, 1), /blueprintId/);
+    await e.fetchPrintifyVariants(6, 1);
+    assert.equal(calls[1].url, 'https://api.printify.com/v1/catalog/blueprints/6/print_providers/1/variants.json');
+    const product = await e.createPrintifyProduct(id, { front: 'u1', back: 'u2' }, { priceCents: 2500 });
+    assert.equal(calls[2].url, 'https://api.printify.com/v1/shops/123/products.json');
+    const body = JSON.parse(calls[2].init.body);
+    assert.equal(body.blueprint_id, 6);
+    assert.deepStrictEqual(body.print_areas[0].placeholders.map((p) => p.position), ['front', 'back']);
+    assert.equal(body.variants[0].price, 2500);
+    assert.deepStrictEqual(e.printifyProductMockups('prod-1'), ['https://mock/1.jpg']);
+    assert.equal(e.printifyProductMockups('unknown'), null);
+    globalThis.fetch = async () => ({ ok: false, status: 429, json: async () => ({ message: 'slow down' }) });
+    await assert.rejects(() => e.fetchPrintifyBlueprints(),
+      (err) => err instanceof PrintifyApiError && err.status === 429);
+    e.clearPrintifyToken();
+    await assert.rejects(() => e.fetchPrintifyBlueprints(), /token/i);
+    e.setPrintifyToken('tok');
+    await assert.rejects(() => e.uploadPrintifyArea(id, 'front'), /rasterization/i);
+    void product;
+  } finally {
+    globalThis.fetch = realFetch;
+    cleanup();
+  }
+});
+
+test('printify templates come from the garment record', () => {
+  const { e, cleanup } = engine();
+  try {
+    const id = e.depositPrintifyGarment(garmentSpec());
+    assert.ok(id);
+    assert.deepStrictEqual(e.printifyTemplatesFor(id), ['https://example.com/tee-front.svg']);
+    assert.equal(e.printifyTemplatesFor('missing'), null);
+  } finally { cleanup(); }
 });
