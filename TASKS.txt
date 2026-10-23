@@ -1,3 +1,12 @@
+
+[ ] right-click on display text and it allows
+placing it in template sign shapes.  
+[  ] right-click on display text overlapping with
+shape and functions are available for molding
+around shape, putting inside it.
+
+----
+
 [ ] AI menu
 [  ] web MCP server for AI to compose (see armature mention in this doc).
 

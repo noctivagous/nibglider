@@ -11,16 +11,17 @@
 //     <switch (key, label)> <option (value, label)> ... </switch>
 //     <toggle (key, label) />
 //     <field (key, label, type, min, max, step, placeholder) />
-//     <table (align)> <field> ... </table>
+//     <table (align)> <field> ... | <toggle> ... </table>
 //     <custom (id) /> — host-rendered control (e.g. the size editor)
 //   <field> takes no children. type is text (default), number, or password.
 //   min/max/step are numbers and only valid for number fields; placeholder
 //   is free text. Password fields are commit-only: hosts must never display
 //   the stored value back, and password bindings must stay out of persisted
 //   engine settings (memory-only, like the Printify token).
-//   <table> lays its <field> children out as parameter rows: the field
-//   label sits in the left column, the input in the right column. align is
-//   left or right (default) and justifies the label column.
+//   <table> lays its <field> and <toggle> children out as parameter
+//   rows: the row label sits in the left column, the input or toggle in
+//   the right column. align is left or right (default) and justifies the
+//   label column.
 //   The <tabview> container holds the window's tab-strip pages; each <tab>
 //   groups sections (and bare controls, wrapped in an anonymous section).
 //   At most one <tabview> per window. Titles and option labels fall back
@@ -67,10 +68,12 @@ export interface WindowCustomControl {
 
 export type WindowTableAlign = 'left' | 'right';
 
+export type WindowTableRow = WindowFieldControl | WindowToggleControl;
+
 export interface WindowTableControl {
   kind: 'table';
   align: WindowTableAlign;
-  rows: WindowFieldControl[];
+  rows: WindowTableRow[];
 }
 
 export type WindowControl = WindowSwitchControl | WindowToggleControl | WindowFieldControl | WindowTableControl | WindowCustomControl;
@@ -154,11 +157,13 @@ function parseField(node: XmlNode): WindowFieldControl | string {
 function parseTable(node: XmlNode): WindowTableControl | string {
   const align = node.attrs['align'] ?? 'right';
   if (align !== 'left' && align !== 'right') return '<table> align must be left or right';
-  if (node.children.length === 0) return '<table> needs at least one <field> child';
-  const rows: WindowFieldControl[] = [];
+  if (node.children.length === 0) return '<table> needs at least one <field> or <toggle> child';
+  const rows: WindowTableRow[] = [];
   for (const child of node.children) {
-    if (child.tag !== 'field') return `<table> only accepts <field> children, found <${child.tag}>`;
-    const parsed = parseField(child);
+    if (child.tag !== 'field' && child.tag !== 'toggle') {
+      return `<table> only accepts <field> and <toggle> children, found <${child.tag}>`;
+    }
+    const parsed = child.tag === 'field' ? parseField(child) : parseToggle(child);
     if (typeof parsed === 'string') return parsed;
     rows.push(parsed);
   }

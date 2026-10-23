@@ -98,7 +98,7 @@ test('window XML parses text, number, and password fields', () => {
 test('window XML groups fields into aligned tables', () => {
   const result = parseWindowXML(
     '<window id="w"><section id="s">' +
-    '<table align="left"><field key="name" label="Name"/><field key="n" type="number" min="1"/></table>' +
+    '<table align="left"><field key="name" label="Name"/><field key="n" type="number" min="1"/><toggle key="flag" label="Flag"/></table>' +
     '<table><field key="token" type="password"/></table>' +
     '</section></window>',
   );
@@ -110,6 +110,7 @@ test('window XML groups fields into aligned tables', () => {
       rows: [
         { kind: 'field', key: 'name', label: 'Name', fieldType: 'text' },
         { kind: 'field', key: 'n', label: 'n', fieldType: 'number', min: 1 },
+        { kind: 'toggle', key: 'flag', label: 'Flag' },
       ],
     },
     {
@@ -122,7 +123,8 @@ test('window XML groups fields into aligned tables', () => {
   for (const bad of [
     '<window id="w"><section id="s"><table align="middle"><field key="k"/></table></section></window>',
     '<window id="w"><section id="s"><table></table></section></window>',
-    '<window id="w"><section id="s"><table><toggle key="k"/></table></section></window>',
+    '<window id="w"><section id="s"><table><custom id="c"/></table></section></window>',
+    '<window id="w"><section id="s"><table><toggle/></table></section></window>',
     '<window id="w"><section id="s"><table><table><field key="k"/></table></table></section></window>',
     '<window id="w"><section id="s"><table><field key="k" type="number" min="wide"/></table></section></window>',
   ]) {

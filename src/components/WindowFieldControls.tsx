@@ -132,6 +132,35 @@ export function FieldControl({ control, engine, bindings }: FieldProps) {
     : <TextFieldControl control={control} engine={engine} bindings={bindings} />;
 }
 
+/** The bare toggle button for one toggle row, without any row or label
+ * chrome. The table cell shows On/Off; the row label sits in the label
+ * column. Standalone rows keep their labeled buttons in the hosts. */
+export function ToggleInput({
+  control, engine, bindings,
+}: {
+  control: Extract<WindowControl, { kind: 'toggle' }>;
+  engine: NibGliderEngine;
+  bindings: Record<string, FieldBinding>;
+}) {
+  const binding = settingFor(bindings, control.key);
+  const pressed = binding ? binding.get(engine) === true : false;
+  return (
+    <>
+      <button
+        type="button"
+        className={pressed ? 'settings-toggle active' : 'settings-toggle'}
+        aria-pressed={pressed}
+        aria-label={control.label}
+        disabled={!binding}
+        onClick={() => binding?.set(engine, !pressed)}
+      >
+        {pressed ? 'On' : 'Off'}
+      </button>
+      {!binding && <span className="settings-unknown">Unknown setting: {control.key}</span>}
+    </>
+  );
+}
+
 /** A two-column parameter table: field labels in the left column, inputs
  * in the right column. The align attribute justifies the label column. */
 export function TableControl({
@@ -147,7 +176,9 @@ export function TableControl({
         <div key={row.key} className="settings-table-row">
           <span className="settings-table-label">{row.label}</span>
           <span className="settings-table-cell">
-            <FieldInput control={row} engine={engine} bindings={bindings} />
+            {row.kind === 'field'
+              ? <FieldInput control={row} engine={engine} bindings={bindings} />
+              : <ToggleInput control={row} engine={engine} bindings={bindings} />}
           </span>
         </div>
       ))}
