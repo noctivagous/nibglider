@@ -134,6 +134,60 @@ test('window XML groups fields into aligned tables', () => {
   }
 });
 
+test('window XML parses vertical and horizontal accordions', () => {
+  const result = parseWindowXML(
+    '<window id="w"><section id="s">' +
+    '<accordion orientation="horizontal"><pane title="Size"><field key="w" label="Width" type="number"/>' +
+    '<toggle key="fill" label="Fill"/></pane><pane title="Notes"><table><field key="n"/></table></pane></accordion>' +
+    '<accordion><pane title="Solo"><field key="a"/></pane></accordion>' +
+    '</section></window>',
+  );
+  assert.ok('spec' in result);
+  assert.deepEqual(result.spec.sections[0].controls, [
+    {
+      kind: 'accordion',
+      orientation: 'horizontal',
+      panes: [
+        {
+          title: 'Size',
+          controls: [
+            { kind: 'field', key: 'w', label: 'Width', fieldType: 'number' },
+            { kind: 'toggle', key: 'fill', label: 'Fill' },
+          ],
+        },
+        {
+          title: 'Notes',
+          controls: [
+            {
+              kind: 'table',
+              align: 'right',
+              rows: [{ kind: 'field', key: 'n', label: 'n', fieldType: 'text' }],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      kind: 'accordion',
+      orientation: 'vertical',
+      panes: [{ title: 'Solo', controls: [{ kind: 'field', key: 'a', label: 'a', fieldType: 'text' }] }],
+    },
+  ]);
+
+  for (const bad of [
+    '<window id="w"><section id="s"><accordion orientation="diagonal"><pane title="P"><field key="k"/></pane></accordion></section></window>',
+    '<window id="w"><section id="s"><accordion></accordion></section></window>',
+    '<window id="w"><section id="s"><accordion><section id="x"/></accordion></section></window>',
+    '<window id="w"><section id="s"><accordion><pane><field key="k"/></pane></accordion></section></window>',
+    '<window id="w"><section id="s"><accordion><pane title="P"><accordion><pane title="Q"><field key="k"/></pane></accordion></pane></accordion></section></window>',
+    '<window id="w"><section id="s"><accordion><pane title="P"><slider key="k"/></pane></accordion></section></window>',
+  ]) {
+    const parsed = parseWindowXML(bad);
+    assert.ok('error' in parsed, `expected an error for ${bad}`);
+    assert.ok(parsed.error.length > 0);
+  }
+});
+
 test('tab views group sections and bare controls, with flattened sections', () => {
   const result = parseWindowXML(
     '<window id="w" title="W"><tabview>' +

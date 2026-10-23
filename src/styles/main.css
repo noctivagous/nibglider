@@ -5522,6 +5522,73 @@ kbd,
   flex: 1;
   min-width: 0;
 }
+/* Accordions: collapsible titled panes. Vertical stacks them; horizontal
+   lays panes side by side with vertical titlebars whose labels flow top
+   to bottom (writing-mode). The marker turns as panes expand. */
+.settings-accordion-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+}
+.settings-accordion-horizontal {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+  padding: 6px 0;
+}
+.settings-accordion-pane {
+  border: 1px solid var(--dp-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.settings-accordion-horizontal .settings-accordion-pane {
+  display: flex;
+  min-width: 0;
+}
+.settings-accordion-horizontal .settings-accordion-pane.expanded {
+  flex: 1;
+}
+.settings-accordion-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--dp-bg-3);
+  border: none;
+  border-radius: 0;
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.settings-accordion-horizontal .settings-accordion-title {
+  writing-mode: vertical-rl;
+  width: auto;
+  padding: 10px 6px;
+}
+.settings-accordion-marker {
+  display: inline-block;
+  color: var(--dp-text-2);
+  transition: transform 0.12s ease-out;
+}
+.settings-accordion-pane.expanded .settings-accordion-marker {
+  transform: rotate(90deg);
+}
+.settings-accordion-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-accordion-content {
+  padding: 4px 10px 8px;
+  min-width: 0;
+}
+.settings-accordion-horizontal .settings-accordion-content {
+  flex: 1;
+}
 .jpg-quality {
   display: flex;
   align-items: center;

@@ -4,7 +4,7 @@
 // and <table> the same way. Password bindings are commit-only on purpose:
 // hosts never display the stored value back, and secrets must stay out of
 // persisted engine settings (memory-only, like the Printify token).
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
 import type { WindowControl } from '../ui/windowXML';
 import {
@@ -182,6 +182,52 @@ export function TableControl({
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** A collapsible panel group shared by both accordion orientations. The
+ * host renders pane controls through renderControl so switches, customs,
+ * and any future kinds keep working inside panes. The first pane starts
+ * open; panes toggle independently. */
+export function AccordionControl({
+  control, renderControl,
+}: {
+  control: Extract<WindowControl, { kind: 'accordion' }>;
+  renderControl: (control: WindowControl, key: string) => ReactNode;
+}) {
+  const [open, setOpen] = useState<ReadonlySet<number>>(() => new Set([0]));
+  const togglePane = (index: number): void => {
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+  return (
+    <div className={`settings-accordion settings-accordion-${control.orientation}`}>
+      {control.panes.map((pane, index) => {
+        const expanded = open.has(index);
+        return (
+          <div key={`${pane.title}-${index}`} className={`settings-accordion-pane${expanded ? ' expanded' : ''}`}>
+            <button
+              type="button"
+              className="settings-accordion-title"
+              aria-expanded={expanded}
+              onClick={() => togglePane(index)}
+            >
+              <span className="settings-accordion-marker" aria-hidden="true">▸</span>
+              <span className="settings-accordion-label">{pane.title}</span>
+            </button>
+            {expanded && (
+              <div className="settings-accordion-content">
+                {pane.controls.map((child, childIndex) => renderControl(child, `${index}-${childIndex}`))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

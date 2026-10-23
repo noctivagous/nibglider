@@ -3,13 +3,14 @@
 // Same renderer contract as SettingsWindow. Page presentation (fill,
 // side ticks) and ruler placement live here.
 // Mounted by App when the window registry names it.
-import { useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
 import type { GUIManager } from '../ui/GUIManager';
 import { parseWindowXML, type WindowControl, type WindowSection } from '../ui/windowXML';
 import documentSettingsXML from '../ui/windows/document-settings.xml?raw';
 import DocumentSizeEditor from './DocumentSizeEditor';
 import {
+  AccordionControl,
   FieldControl,
   TableControl,
 } from './WindowFieldControls';
@@ -110,6 +111,29 @@ function CustomControl({
   );
 }
 
+function renderControl(control: WindowControl, engine: NibGliderEngine, key: string): ReactNode {
+  switch (control.kind) {
+    case 'switch':
+      return <SwitchControl key={key} control={control} engine={engine} />;
+    case 'toggle':
+      return <ToggleControl key={key} control={control} engine={engine} />;
+    case 'field':
+      return <FieldControl key={key} control={control} engine={engine} bindings={BINDINGS} />;
+    case 'table':
+      return <TableControl key={key} control={control} engine={engine} bindings={BINDINGS} />;
+    case 'accordion':
+      return (
+        <AccordionControl
+          key={key}
+          control={control}
+          renderControl={(child, childKey) => renderControl(child, engine, `${key}-${childKey}`)}
+        />
+      );
+    default:
+      return <CustomControl key={key} control={control} engine={engine} />;
+  }
+}
+
 function SettingsSection({
   section, engine,
 }: {
@@ -121,17 +145,7 @@ function SettingsSection({
       {section.title !== '' && (
         <div className="settings-section-title">{section.title}</div>
       )}
-      {section.controls.map((control) => (
-        control.kind === 'switch'
-          ? <SwitchControl key={control.key} control={control} engine={engine} />
-          : control.kind === 'toggle'
-            ? <ToggleControl key={control.key} control={control} engine={engine} />
-            : control.kind === 'field'
-              ? <FieldControl key={control.key} control={control} engine={engine} bindings={BINDINGS} />
-              : control.kind === 'table'
-                ? <TableControl key={control.rows.map((row) => row.key).join('+')} control={control} engine={engine} bindings={BINDINGS} />
-                : <CustomControl key={control.id} control={control} engine={engine} />
-      ))}
+      {section.controls.map((control, index) => renderControl(control, engine, `c${index}`))}
     </div>
   );
 }

@@ -6,7 +6,9 @@ import type { NibGliderEngine } from '../engine/engine';
 import type { GUIManager } from '../ui/GUIManager';
 import { parseWindowXML, type WindowControl } from '../ui/windowXML';
 import settingsXML from '../ui/windows/settings.xml?raw';
+import type { ReactNode } from 'react';
 import {
+  AccordionControl,
   FieldControl,
   TableControl,
 } from './WindowFieldControls';
@@ -92,6 +94,29 @@ function ToggleControl({
   );
 }
 
+function renderControl(control: WindowControl, engine: NibGliderEngine, key: string): ReactNode {
+  switch (control.kind) {
+    case 'switch':
+      return <SwitchControl key={key} control={control} engine={engine} />;
+    case 'toggle':
+      return <ToggleControl key={key} control={control} engine={engine} />;
+    case 'field':
+      return <FieldControl key={key} control={control} engine={engine} bindings={BINDINGS} />;
+    case 'table':
+      return <TableControl key={key} control={control} engine={engine} bindings={BINDINGS} />;
+    case 'accordion':
+      return (
+        <AccordionControl
+          key={key}
+          control={control}
+          renderControl={(child, childKey) => renderControl(child, engine, `${key}-${childKey}`)}
+        />
+      );
+    default:
+      return <span key={key} className="settings-unknown">Unknown control: {control.id}</span>;
+  }
+}
+
 export default function SettingsWindow({
   engine, gui, windowId,
 }: {
@@ -122,17 +147,7 @@ export default function SettingsWindow({
           parsed.spec.sections.map((section) => (
             <div key={section.id} className="settings-section">
               <div className="settings-section-title">{section.title}</div>
-              {section.controls.map((control) => (
-                control.kind === 'switch'
-                  ? <SwitchControl key={control.key} control={control} engine={engine} />
-                  : control.kind === 'toggle'
-                    ? <ToggleControl key={control.key} control={control} engine={engine} />
-                    : control.kind === 'field'
-                      ? <FieldControl key={control.key} control={control} engine={engine} bindings={BINDINGS} />
-                      : control.kind === 'table'
-                        ? <TableControl key={control.rows.map((row) => row.key).join('+')} control={control} engine={engine} bindings={BINDINGS} />
-                        : <span key={control.id} className="settings-unknown">Unknown control: {control.id}</span>
-              ))}
+              {section.controls.map((control, index) => renderControl(control, engine, `c${index}`))}
             </div>
           ))
         )}

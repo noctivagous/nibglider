@@ -22,6 +22,11 @@
 //   rows: the row label sits in the left column, the input or toggle in
 //   the right column. align is left or right (default) and justifies the
 //   label column.
+//   <accordion (orientation)> groups <pane (title)> children into
+//   collapsible panels. orientation is vertical (default, stacked panels)
+//   or horizontal (panes side by side with vertical titlebars whose labels
+//   flow top to bottom). Panes hold the same controls a section holds,
+//   except nesting another accordion is rejected.
 //   The <tabview> container holds the window's tab-strip pages; each <tab>
 //   groups sections (and bare controls, wrapped in an anonymous section).
 //   At most one <tabview> per window. Titles and option labels fall back
@@ -76,7 +81,20 @@ export interface WindowTableControl {
   rows: WindowTableRow[];
 }
 
-export type WindowControl = WindowSwitchControl | WindowToggleControl | WindowFieldControl | WindowTableControl | WindowCustomControl;
+export type WindowAccordionOrientation = 'vertical' | 'horizontal';
+
+export interface WindowAccordionPane {
+  title: string;
+  controls: WindowControl[];
+}
+
+export interface WindowAccordionControl {
+  kind: 'accordion';
+  orientation: WindowAccordionOrientation;
+  panes: WindowAccordionPane[];
+}
+
+export type WindowControl = WindowSwitchControl | WindowToggleControl | WindowFieldControl | WindowTableControl | WindowAccordionControl | WindowCustomControl;
 
 export interface WindowSection {
   id: string;
@@ -170,6 +188,31 @@ function parseTable(node: XmlNode): WindowTableControl | string {
   return { kind: 'table', align, rows };
 }
 
+function parseAccordion(node: XmlNode): WindowAccordionControl | string {
+  const orientation = node.attrs['orientation'] ?? 'vertical';
+  if (orientation !== 'vertical' && orientation !== 'horizontal') {
+    return '<accordion> orientation must be vertical or horizontal';
+  }
+  if (node.children.length === 0) return '<accordion> needs at least one <pane> child';
+  const panes: WindowAccordionPane[] = [];
+  for (const child of node.children) {
+    if (child.tag !== 'pane') return `<accordion> only accepts <pane> children, found <${child.tag}>`;
+    const title = child.attrs['title'];
+    if (!title) return '<pane> is missing its title attribute';
+    const controls: WindowControl[] = [];
+    for (const entry of child.children) {
+      if (entry.tag === 'accordion') return '<accordion> cannot nest inside <pane>';
+      const parsed = parseControl(entry);
+      if (typeof parsed === 'string') {
+        return parsed.startsWith('<section>') ? parsed.replace('<section>', '<pane>') : parsed;
+      }
+      controls.push(parsed);
+    }
+    panes.push({ title, controls });
+  }
+  return { kind: 'accordion', orientation, panes };
+}
+
 function parseCustom(node: XmlNode): WindowCustomControl | string {
   const customId = node.attrs['id'];
   if (!customId) return '<custom> is missing its id attribute';
@@ -182,8 +225,9 @@ function parseControl(node: XmlNode): WindowControl | string {
   if (node.tag === 'toggle') return parseToggle(node);
   if (node.tag === 'field') return parseField(node);
   if (node.tag === 'table') return parseTable(node);
+  if (node.tag === 'accordion') return parseAccordion(node);
   if (node.tag === 'custom') return parseCustom(node);
-  return `<section> only accepts <switch>, <toggle>, <field>, <table>, and <custom> children, found <${node.tag}>`;
+  return `<section> only accepts <switch>, <toggle>, <field>, <table>, <accordion>, and <custom> children, found <${node.tag}>`;
 }
 
 function parseSection(node: XmlNode): WindowSection | string {
