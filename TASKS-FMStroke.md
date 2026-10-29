@@ -455,15 +455,102 @@ composite path.
 
 ## Phase 7 — Clothoid layout (spike, after Phase 5)
 
+### Model: Spiro (FontForge), not raw clothoid segments
+
+The reference system is **Spiro**, created by Raph Levien and
+integrated into FontForge (toggled by the spiral-shaped tool in
+the glyph editor): interpolating splines built from clothoid
+(Euler spiral) segments — curves whose curvature changes
+linearly with arc length. That linear curvature ramp is what
+makes straight ↔ curved transitions inherently gradual: a
+straight segment has zero curvature, and the clothoid reaches
+non-zero curvature without a jump, which is exactly the fluid
+hand-off Bézier handles make finicky (Béziers primarily enforce
+G1 tangent continuity; G2 curvature matching is manual).
+
+Properties that make Spiro fit NibGlider's two-tier model:
+
+- You edit with **only on-curve points** — no Bézier handles.
+  That matches the key-click deposit model exactly: one key
+  press, one semantic point.
+- Point types carry the continuity/character of the join:
+  - **G4 points** — gentle curves, higher-order smoothness.
+  - **G2 points** — sharper curves, curvature continuity.
+  - **Corner points** — abrupt changes of direction.
+  - **Previous/next constraint points** — the special
+    transitions that let a curve run smoothly into a straight
+    line or back out; explicit, local control over the
+    straight ↔ curved hand-off.
+- The **libspiro** solver resolves the clothoid constraints and
+  converts the result to ordinary cubic Bézier segments, so
+  outlines stay compatible with PostScript/TrueType/OpenType.
+  In NibGlider terms: Spiro points are the persisted semantic
+  truth, the solver output feeds the existing
+  derived-Bézier/Paper/SVG pipeline — same pattern as
+  `ngComposite`, no new storage format.
+
+So yes: a clothoid layout should have G4 / G2 / corner keys.
+They replace the B-spline layout's bSpline/hard/rounded trio
+with Spiro's vocabulary, plus the two constraint keys the
+B-spline layout has no equivalent for.
+
+### Suggested keys (proposal — settle in 7.1 + Phase 1 audit)
+
+Frequency layout: the four workhorse point types on the home
+row `ASDF` for fluid key-click drawing; less common keys on
+the `QWERTY` row above and `ZXCVB` row below. This layout is
+modal (clothoid spline layout only), so shadowing base-layout
+meanings while drawing is allowed, as in Phase 1.
+
+| Row | Key | Spiro point / action | Notes |
+|---|---|---|---|
+| Home | `A` | G4 point | Gentlest curve; expected most-used |
+| Home | `S` | G2 point | Sharper curve, curvature-continuous |
+| Home | `D` | Corner point | Abrupt direction change |
+| Home | `F` | Straight/line point | Zero-curvature run into/out of curves; pairs with constraint keys |
+| Top | `Q` | Previous constraint | Curve → straight hand-off (before) |
+| Top | `W` | Next constraint | Straight → curve hand-off (after) |
+| Top | `E` | (reserved) | e.g. cycle selected point type G4→G2→corner — decide in 7.1 |
+| Bottom | `Z` | Erase last point | Same action as the B-spline layout's erase-last, if Phase 4.5 lands it there too |
+| Bottom | `X`–`B` | (unassigned) | Reserve for solver/setting keys (e.g. toggle live-solve, extrema marking); do not invent bindings in 7.1 |
+
+End / close / cancel / stamp keep falling back to the base
+layout (Phase 1 overlay rule) — no clothoid-specific duplicates.
+**Exception the audit must resolve:** this table shadows base
+`A`/`S` (End aliases), `Q` (Cancel), and `W` (Stamp) while
+drawing. Esc (cancel alias) and `R` (Complete Shape) still
+fall back, but End and Stamp need explicit clothoid-layout
+bindings (candidates: `Enter`, `B`) before this table is final.
+
+Open questions for 7.1, do not pre-decide here:
+
+- Exact libspiro point-type semantics (its type set includes
+  G4, G2, corner, and left/right constraint variants) and which
+  of them map 1:1 onto the `Q`/`W` prev/next pair above.
+- Solver route: libspiro via WASM, a TypeScript port of the
+  clothoid fit, or direct Fresnel evaluation. Check libspiro's
+  license before considering bundling it.
+- Whether G4/G2/corner/constraint become new `NGPathPoint`
+  kinds, or a clothoid-specific point record under a separate
+  spline layout id — the semantic model must not force
+  B-spline kinds to pretend to be Spiro types.
+
+### Tasks
+
 - [ ] 7.1 Research note in `refs/`: clothoid (Euler spiral)
   segment definition, Fresnel-integral evaluation, fitting
-  between two points with heading/curvature continuity (G1/G2).
-- [ ] 7.2 Prototype `sampleClothoid` beside
-  `sampleBSpline` with the same `SamplingOptions` contract.
+  between two points with heading/curvature continuity
+  (G1/G2), **plus** the Spiro/libspiro point-type semantics and
+  solver-route decision from the open questions above. Confirm
+  or revise the suggested key table.
+- [ ] 7.2 Prototype the solver beside `sampleBSpline` with the
+  same `SamplingOptions` contract; output ordinary cubic
+  Bézier segments (the libspiro pattern) so `PathRenderer`
+  and export need no clothoid awareness.
 - [ ] 7.3 Second spline layout (`spline-clothoid`) reusing the
-  Phase 1 registry + Phase 4 key structure, swapping only the
-  segment solver in expansion. Same keys, different solver —
-  this is the payoff the layout system exists for.
+  Phase 1 registry + Phase 4 session structure, swapping only
+  the point vocabulary and segment solver. This is the payoff
+  the layout system exists for.
 - [ ] 7.4 Decide: ship, or record findings and stop. Do not let
   this phase block Phases 1–6.
 
