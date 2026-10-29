@@ -114,6 +114,8 @@ Defaults are proposed so work can start; flag any you want changed.
 - [ ] **D4 — New physical keys (spline layout only).** Proposed,
   chosen from currently free/unused caps so the base layout is
   untouched. FM's original macOS keycodes do not transfer.
+  Reserved everywhere: `A` = End, `Q` = Cancel (see 1.1) —
+  candidates below must avoid both.
   - `B` — hard-corner bowed line, facing A
   - `Shift+B` — hard-corner bowed line, facing B
   - **Open**: the rounded-bowed pair, arc key, switch-rounding key,
@@ -258,6 +260,14 @@ layout. Files: [keymap.ts](/Users/jpratt/Developer/nibglider/src/engine/input/ke
   today's `KEY_CAPS`/`KEY_COMMANDS` unchanged. Layouts *overlay*:
   layout commands win on their caps; unmatched caps fall back to
   base (so End/Cancel/Undo keep working while drawing).
+  Layout-wide reservation (applies to every layout, including
+  the B-spline and clothoid spline layouts): **`A` is always End
+  and `Q` is always Cancel** (plus the existing `Esc` cancel
+  alias and `R` Complete Shape). The base layout's extra End
+  aliases (`E`, `S`) are layout-local and MAY be repurposed as
+  point keys inside spline layouts — but `A` and `Q` are never
+  shadowed. Any layout proposal that puts a point key on `A` or
+  `Q` is invalid on arrival.
 - [ ] 1.2 Add `activeLayoutId` to `KeyState`; thread it through
   `KeyboardController.keyState()`, `resolveKeyVariants`,
   `resolveKeyboardLayout`, and `matchAppCommand`. Dispatch and
@@ -497,30 +507,33 @@ B-spline layout has no equivalent for.
 ### Suggested keys (proposal — settle in 7.1 + Phase 1 audit)
 
 Frequency layout: the four workhorse point types on the home
-row `ASDF` for fluid key-click drawing; less common keys on
-the `QWERTY` row above and `ZXCVB` row below. This layout is
-modal (clothoid spline layout only), so shadowing base-layout
-meanings while drawing is allowed, as in Phase 1.
+row for fluid key-click drawing; less common keys on the
+`QWERTY` row above and `ZXCVB` row below. This layout is modal
+(clothoid spline layout only), but per the layout-wide rule
+(1.1) **`A` stays End and `Q` stays Cancel in every layout** —
+they are not available as point keys, so the four workhorses
+sit on `S D F G` instead of `A S D F`.
 
 | Row | Key | Spiro point / action | Notes |
 |---|---|---|---|
-| Home | `A` | G4 point | Gentlest curve; expected most-used |
-| Home | `S` | G2 point | Sharper curve, curvature-continuous |
-| Home | `D` | Corner point | Abrupt direction change |
-| Home | `F` | Straight/line point | Zero-curvature run into/out of curves; pairs with constraint keys |
-| Top | `Q` | Previous constraint | Curve → straight hand-off (before) |
-| Top | `W` | Next constraint | Straight → curve hand-off (after) |
-| Top | `E` | (reserved) | e.g. cycle selected point type G4→G2→corner — decide in 7.1 |
-| Bottom | `Z` | Erase last point | Same action as the B-spline layout's erase-last, if Phase 4.5 lands it there too |
-| Bottom | `X`–`B` | (unassigned) | Reserve for solver/setting keys (e.g. toggle live-solve, extrema marking); do not invent bindings in 7.1 |
+| Home | `A` | **End (reserved)** | Layout-wide reservation; never a point key |
+| Home | `S` | G4 point | Gentlest curve; expected most-used (`S` is only an End *alias* in base, freed here — End stays on `A`) |
+| Home | `D` | G2 point | Sharper curve, curvature-continuous |
+| Home | `F` | Corner point | Abrupt direction change |
+| Home | `G` | Straight/line point | Zero-curvature run into/out of curves; pairs with constraint keys (remaps base `G` spline-point, which this vocabulary replaces) |
+| Top | `Q` | **Cancel (reserved)** | Layout-wide reservation; `Esc` alias also works |
+| Top | `W` | Previous constraint | Curve → straight hand-off (before) |
+| Top | `E` | Next constraint | Straight → curve hand-off (after; `E` is only an End *alias* in base, freed here — End stays on `A`) |
+| Bottom | `Z` | Erase last point | Same action as the B-spline layout's erase-last, if Phase 4.5 lands it there too (`Z` pan-lock is idle-only, so it is free while drawing) |
+| Bottom | `X`–`B` | (unassigned) | Reserve for solver/setting keys (e.g. toggle live-solve, extrema marking, cycle point type); do not invent bindings in 7.1 |
 
-End / close / cancel / stamp keep falling back to the base
-layout (Phase 1 overlay rule) — no clothoid-specific duplicates.
-**Exception the audit must resolve:** this table shadows base
-`A`/`S` (End aliases), `Q` (Cancel), and `W` (Stamp) while
-drawing. Esc (cancel alias) and `R` (Complete Shape) still
-fall back, but End and Stamp need explicit clothoid-layout
-bindings (candidates: `Enter`, `B`) before this table is final.
+End / cancel / complete (`A` / `Q`+`Esc` / `R`) are identical
+in every layout — that is the point of the reservation: the
+user's fingers never re-learn how to stop.
+**Exception the audit must still resolve:** `W` shadows base
+Stamp while drawing, so Stamp needs an explicit
+clothoid-layout binding (candidates: `Enter`, `B`) before this
+table is final.
 
 Open questions for 7.1, do not pre-decide here:
 
