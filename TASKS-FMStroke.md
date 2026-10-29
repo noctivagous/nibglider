@@ -1,0 +1,404 @@
+# TASKS — FMStroke in the spline + swappable keyboard layouts
+
+Status: **task list only — no implementation yet.** This work is extensive
+(it touches the path model, geometry, drawing session, input dispatch,
+on-screen keyboard, settings, persistence, and tests), so it is staged
+here first. Say `go` (optionally naming a phase) to start implementing.
+
+Sources this list is grounded in:
+
+- [floatingMarker-FMStroke-Info.txt](/Users/jpratt/Developer/nibglider/refs/floatingMarker-FMStroke-Info.txt)
+  — key-by-key trace of Floating Marker's FMStroke keys, `BowedInfo`
+  fields, and the live-point discipline.
+- [ngpath-fmstroke-composite-path-study.md](/Users/jpratt/Developer/nibglider/refs/ngpath-fmstroke-composite-path-study.md)
+  — the two-tier semantic-path design NibGlider already adopted.
+- `external-proj/Floating Marker/Floating Marker/FMDrawable/FMStroke.swift`
+  (`FMStrokePointType` ~line 5168, `FMStrokePoint` ~line 5180,
+  `pkStrokePointsArrayForFMStrokePoint` ~line 5313) and
+  `LineWorkInteractionEntity.swift` (key handlers ~lines 1384–1747,
+  `BowedInfo` ~line 70). Reference only — do not port Swift/PencilKit.
+
+## Why a keyboard-layout feature is required
+
+FMStroke needs more point keys than the current board can show at once:
+
+| FMStroke key | NibGlider today |
+|---|---|
+| B-spline point | Exists: `G` (`spline-point`, composite = "B-SPLINE POINT") |
+| Hard corner | Exists: `F` (`sharp-point` → `hardCorner`) |
+| Rounded corner | Exists: `H` (`rounded-point`, composite only) |
+| Hard-corner bowed line A / B | **Missing** (2 keys) |
+| Rounded-corner bowed line A / B | **Missing** (2 keys) |
+| Arc by three points | **Missing** (1 key, 3-press protocol) |
+| Switch rounded-corner type (arc → bSpline → bevel) | **Missing** (1 key) |
+| End / close shape / erase last point / cancel | Partially exist (`A`/`R` end, `Q`/Esc cancel; **no erase-last**) |
+
+That is 6 new point keys plus settings keys. Free caps on the current
+board are only `KeyB`, `Period`, `Backslash` (see `KEY_CAPS` in
+[src/engine/input/keymap.ts](/Users/jpratt/Developer/nibglider/src/engine/input/keymap.ts:716)),
+and the number row is not on the board at all. Overloading more
+modifier chords would hide the keys. So, per the existing notes
+(`TASKS.txt`: "SECONDARY MODES AND KEYBOARD LAYOUT LOADING",
+"SPLINE DRAWING MODE", "ACTION KEYBOARD LAYOUTS"), the spline gets its
+own **swappable keyboard layout**: entering spline/composite drawing
+swaps the board to the spline layout; leaving restores the base layout.
+
+## What already exists (do not rebuild)
+
+- [x] Semantic model: `NGCompositePath` / `NGPathPoint` with kinds
+  `bSpline | hardCorner | roundedCorner | line | bowedLine |
+  arcByThreeStart | arcByThreeEnd`, `NGCornerParams`
+  (`arc | bSpline | bevel` + radius), `NGSegmentParams`
+  (`inherit | line | bSpline | bowedLine | arc`, `bowOffset`,
+  `bowFacing`) — [NGPath.ts](/Users/jpratt/Developer/nibglider/src/engine/model/NGPath.ts:17)
+- [x] Expansion with FM's multiplicity trick: bSpline = 1 control,
+  rounded = 2, hard = 3 coincident controls; rounded-corner trim
+  capped at half of each adjacent leg; arc/bevel/bSpline rounding —
+  [compositeExpansion.ts](/Users/jpratt/Developer/nibglider/src/engine/geometry/compositeExpansion.ts:16)
+- [x] Cubic B-spline sampling (clamped open + periodic closed),
+  adaptive tolerance — [splineInterpolation.ts](/Users/jpratt/Developer/nibglider/src/engine/geometry/splineInterpolation.ts:38)
+- [x] Live-point discipline: trailing rubber-band point, key-click
+  retypes the previous committed point, snapshot drops a duplicate
+  trailing point — [PathDrawingSession.ts](/Users/jpratt/Developer/nibglider/src/engine/drawing/PathDrawingSession.ts:27)
+- [x] Frame-coalesced preview + tighter final sampling —
+  [PathRenderer.ts](/Users/jpratt/Developer/nibglider/src/engine/drawing/PathRenderer.ts:29)
+- [x] Deposit / stamp / cancel / endpoint-join / boolean lowering /
+  undo-redo of the retained semantic source, covered by
+  [composite-path.test.mjs](/Users/jpratt/Developer/nibglider/tests/composite-path.test.mjs)
+- [x] Path mode setting `legacy | ngComposite` (default `legacy`) with
+  key popover — [KeySettingsRegistry.ts](/Users/jpratt/Developer/nibglider/src/engine/input/KeySettingsRegistry.ts:198),
+  `engine.pathDrawingMode`
+- [x] Modifier-chord variant resolution for dispatch + board display —
+  [KeyboardLayoutResolver.ts](/Users/jpratt/Developer/nibglider/src/engine/input/KeyboardLayoutResolver.ts:10)
+  (this resolves *variants within one layout*; it is not yet a
+  swappable-layout system)
+
+## Known gaps (the actual work)
+
+1. `expandCompositePoints` **throws** `'Bowed segments and three-point
+   arcs are not implemented'` —
+   [compositeExpansion.ts:59](/Users/jpratt/Developer/nibglider/src/engine/geometry/compositeExpansion.ts:59)
+2. `CompositePointKind` is only `'bSpline' | 'hardCorner' |
+   'roundedCorner'`; the session cannot deposit bowed or arc points —
+   [PathDrawingSession.ts:8](/Users/jpratt/Developer/nibglider/src/engine/drawing/PathDrawingSession.ts:8)
+3. `NGSegmentParams` carries only `bowOffset`/`bowFacing`; FM's
+   `BowedInfo` has 9 persisted fields (see Phase 2).
+4. Serialization *validates* bowed/arc kinds but no code path can
+   produce them; arc pairing is only "adjacent start/end", which does
+   not match FM's staged P1/P2 protocol — [serialization.ts:96](/Users/jpratt/Developer/nibglider/src/engine/model/serialization.ts:96)
+5. No layout registry, layout id, layout switcher, or per-layout caps;
+   `KeyState` has `isCompositePath` but no active-layout field —
+   [keymap.ts:18](/Users/jpratt/Developer/nibglider/src/engine/input/keymap.ts:18),
+   [KeyboardController.ts:259](/Users/jpratt/Developer/nibglider/src/engine/input/KeyboardController.ts:259)
+6. No erase-last-point, no dab, no switch-rounding key anywhere.
+
+## Decisions to settle before / during Phase 1
+
+Defaults are proposed so work can start; flag any you want changed.
+
+- [ ] **D1 — Layout activation.** Default: the spline layout activates
+  automatically while a composite path session is live
+  (`PathTool.active`) and the base layout returns on finish/cancel.
+  A manual layout switcher (for future Grid Paint / Repeat layouts
+  from `TASKS.txt`) is built in Phase 5, not now.
+- [ ] **D2 — Default path mode.** FM keys only make sense in
+  `ngComposite`. Default: keep `legacy` as the global default;
+  starting a path from the spline layout implies `ngComposite`.
+  Changing the global default is a separate, explicit decision.
+- [ ] **D3 — Rounded-corner length semantics.** FM stamps
+  `roundedCornerSegmentLength` (default 25, a trim length along each
+  leg, halved when a leg is short). NibGlider stores a tangent-arc
+  `radius` (default 12) and already caps trims at half-leg. Default:
+  keep radius as the stored truth; expose FM's length only as the
+  derived trim. Do not add a second stored length.
+- [ ] **D4 — New physical keys (spline layout only).** Proposed,
+  chosen from currently free/unused caps so the base layout is
+  untouched. FM's original macOS keycodes do not transfer.
+  - `B` — hard-corner bowed line, facing A
+  - `Shift+B` — hard-corner bowed line, facing B
+  - **Open**: the rounded-bowed pair, arc key, switch-rounding key,
+    and erase-last key. Candidates are `.`, `\`, and Shift variants
+    of the bowed keys (layouts are modal, so shadowing a base key
+    is allowed only while drawing). Settle them in Phase 1, task
+    1.3's collision audit against every `KEY_COMMANDS` entry that
+    stays live while drawing (end, cancel, stamp, scale, rotate,
+    stroke width), and record the final table there.
+- [ ] **D5 — Clothoid.** FM notes clothoid only as an interest, with
+  no implementation to trace. Default: Phase 7 is a research spike
+  (Euler-spiral solver behind the same expansion interface); it does
+  not block the bSpline FMStroke layout.
+- [ ] **D6 — Brush-tip data.** FM points carry azimuth/altitude/
+  brushSize for calligraphic tips. Default: **defer** (matches the
+  composite-path study). Uniform stroke only until Phase 8.
+
+---
+
+## Phase 0 — Baseline (½ day)
+
+- [ ] 0.1 Run `npm run test` and `npm run lint` on the clean tree;
+  record the green baseline in this file.
+- [ ] 0.2 Re-read `FMStroke.swift` expansion branches for
+  `.roundedCorner` (~line 5330), `.arcByThreeP1` (~line 5585), and
+  the bowed branches; note any behavior the info file missed.
+- [ ] 0.3 Confirm no other caller constructs `NGPathPoint` kinds
+  beyond `PathDrawingSession` (search `kind:` under `src/engine/`).
+
+**Gate:** baseline green; no surprises from 0.2/0.3.
+
+## Phase 1 — Keyboard layout system (the enabling feature)
+
+Goal: one layout registry; the spline layout is the first non-base
+layout. Files: [keymap.ts](/Users/jpratt/Developer/nibglider/src/engine/input/keymap.ts),
+[KeyboardLayoutResolver.ts](/Users/jpratt/Developer/nibglider/src/engine/input/KeyboardLayoutResolver.ts),
+[KeyboardController.ts](/Users/jpratt/Developer/nibglider/src/engine/input/KeyboardController.ts),
+[KeyboardViewModel.ts](/Users/jpratt/Developer/nibglider/src/ui/KeyboardViewModel.ts),
+[OnscreenKeyboard.tsx](/Users/jpratt/Developer/nibglider/src/components/OnscreenKeyboard.tsx).
+
+- [ ] 1.1 Define `KeyboardLayoutDef { id, label, caps, commands }`
+  and a `KEYBOARD_LAYOUTS` registry in `keymap.ts`. Base layout =
+  today's `KEY_CAPS`/`KEY_COMMANDS` unchanged. Layouts *overlay*:
+  layout commands win on their caps; unmatched caps fall back to
+  base (so End/Cancel/Undo keep working while drawing).
+- [ ] 1.2 Add `activeLayoutId` to `KeyState`; thread it through
+  `KeyboardController.keyState()`, `resolveKeyVariants`,
+  `resolveKeyboardLayout`, and `matchAppCommand`. Dispatch and
+  on-screen display must resolve through the same variant list
+  (existing invariant — do not fork it).
+- [ ] 1.3 Collision audit + final key table for the spline layout
+  (settles D4). Every spline-layout key must list: physical code,
+  chord, command id, FM equivalent, and which base command it
+  shadows while drawing.
+- [ ] 1.4 Layout switching: engine-owned `activeKeyboardLayout`
+  derived from session state (D1); layout name shown on the board
+  and in the status overlay. Switching mid-draw must not cancel or
+  mutate the live session.
+- [ ] 1.5 `KEY_VARIANTS` compilation becomes per-layout (or
+  layout-tagged). Watch the startup cost: it already enumerates
+  codes × 16 chords × commands.
+- [ ] 1.6 Tests: extend [composite-path.test.mjs](/Users/jpratt/Developer/nibglider/tests/composite-path.test.mjs)
+  keymap test + add layout-resolution cases (base ↔ spline swap,
+  fallback keys, `isTypingText` still suppresses everything).
+
+**Gate:** with no spline session, board/dispatch are byte-identical
+to today; with a session, the spline caps resolve and dispatch.
+
+## Phase 2 — Model: BowedInfo + arc point kinds
+
+Files: [NGPath.ts](/Users/jpratt/Developer/nibglider/src/engine/model/NGPath.ts),
+[serialization.ts](/Users/jpratt/Developer/nibglider/src/engine/model/serialization.ts).
+
+- [ ] 2.1 Add a persisted `NGBowedParams` mirroring FM `BowedInfo`:
+  `facing: 'A' | 'B'`, `amplitude` + `amplitudeIsPercent` (default
+  10 / true), `peakLocation` (0…1, default 0.5) ×
+  `peakLocationMultiplier` (default 1), `isArc` (default false),
+  `dualDistance` (0…1, default 0), `corneredApex:
+  'none' | 'rounded' | 'hard'`.
+- [ ] 2.2 Decide representation: FM uses distinct point kinds
+  (`hardCornerBowedLine`, `roundedCornerBowedLine`). Default: keep
+  NibGlider's point kind as the corner (`hardCorner` /
+  `roundedCorner`) and put the bow on `outgoing: { kind:
+  'bowedLine', bow: NGBowedParams }` — the bow describes the
+  *following* segment in both systems. Replace the undersized
+  `bowOffset`/`bowFacing` fields (no legacy migration per repo
+  rules; update the few fixtures/tests that name them).
+- [ ] 2.3 Arc: keep `arcByThreeStart`/`arcByThreeEnd` kinds but
+  redefine validation for the staged protocol (Phase 4): a start
+  with no end yet is valid *only* in a live session snapshot, never
+  in a persisted/finalized path. Add a validation flag or a
+  session-only check so persisted documents stay strict.
+- [ ] 2.4 Update `validatePath` for the new fields (finite, clamped
+  ranges rejected-not-repaired, unknown keys still rejected).
+- [ ] 2.5 Tests in [engine-model.test.mjs](/Users/jpratt/Developer/nibglider/tests/engine-model.test.mjs):
+  round-trip every new field; reject out-of-range `peakLocation`,
+  negative amplitude, unpaired persisted arc points.
+
+**Gate:** `serializeDrawable`/`deserializeDrawable` round-trips a
+fixture using every FM point kind.
+
+## Phase 3 — Geometry: bowed segments + three-point arcs
+
+Files: [compositeExpansion.ts](/Users/jpratt/Developer/nibglider/src/engine/geometry/compositeExpansion.ts),
+[splineInterpolation.ts](/Users/jpratt/Developer/nibglider/src/engine/geometry/splineInterpolation.ts).
+Pure, Paper-free; this is where the "not implemented" throw goes away.
+
+- [ ] 3.1 Bowed segment (spline mode, `isArc: false`): from corner
+  `P0` to next vertex `P1`, peak = chord point at
+  `peakLocation × multiplier`, offset along the chord normal by
+  `amplitude` (absolute pt, or % of chord length). Facing A/B =
+  normal rotated −90° / +90°. Emit the peak as spline control(s):
+  1 peak, or 2 peaks straddling by `dualDistance / 2` when nonzero;
+  apex repeated 2×/3× for `corneredApex` rounded/hard. Degenerate
+  chord (≤ 1pt in FM; use the existing `1e-9` discipline — decide
+  and document) emits just the peak.
+- [ ] 3.2 Bowed segment (arc mode, `isArc: true`) and standalone
+  three-point arc: circle through (start, through, end)
+  (FM `makeArcFromThreePoints`), sampled as cubic(s) like the
+  existing rounded-corner arc branch. Handle collinear/coincident
+  triples by falling back to a line — never NaN, never throw
+  during live preview.
+- [ ] 3.3 Wire both into `expandCompositePoints` as new
+  `CenterlineCommand` handling without breaking the existing
+  run-splitting (line segments, corner commands, periodic seam).
+  Bowed/arc segments are segment-level: they replace the spline run
+  between their two vertices only.
+- [ ] 3.4 Closed paths: bow/arc on the seam segment (last → first)
+  works; a bowed segment into a rounded corner still gets its
+  entry/exit trims.
+- [ ] 3.5 Tests (pure, in [composite-path.test.mjs](/Users/jpratt/Developer/nibglider/tests/composite-path.test.mjs)):
+  peak side flips with facing; % vs absolute amplitude; dual-peak
+  flattening; apex kink multiplicity; arc through 3 known points
+  stays on the circle; collinear arc → line; zero-length chord;
+  output always finite + distinct (reuse the `distinct()` helper).
+
+**Gate:** the throw at `compositeExpansion.ts:59` is gone; every
+FM point kind expands to finite geometry.
+
+## Phase 4 — Drawing session: deposit the new keys
+
+Files: [PathDrawingSession.ts](/Users/jpratt/Developer/nibglider/src/engine/drawing/PathDrawingSession.ts),
+[PathTool.ts](/Users/jpratt/Developer/nibglider/src/engine/drawing/PathTool.ts),
+[DrawingHost.ts](/Users/jpratt/Developer/nibglider/src/engine/drawing/DrawingHost.ts),
+[hosts.ts](/Users/jpratt/Developer/nibglider/src/engine/hosts.ts), engine facade.
+
+- [ ] 4.1 Extend `CompositePointKind`/commit API so a commit can
+  carry `NGBowedParams` and the current corner-rounding settings
+  snapshot (FM stamps settings onto the point at deposit; later
+  settings changes must not rewrite deposited points — except the
+  existing deliberate `setCornerRadius` live-session behavior,
+  which stays).
+- [ ] 4.2 Bowed keys: retype trailing point to hard/rounded corner
+  with `outgoing.kind = 'bowedLine'` + params; append fresh
+  trailing point (FM appends the same bowed type — follow FM).
+- [ ] 4.3 Arc key state machine: 1st press deposits
+  `hardCorner + arcByThreeStart`; a press landing on a start
+  deposits `arcByThreeEnd`; after a completed end, the next arc
+  press starts a new arc with a hard-corner separator. Live
+  preview of an unfinished arc must render (straight/spline
+  placeholder) without tripping persisted-path validation.
+  Finalize/cancel with an unfinished arc: drop or complete the
+  pending start — pick one, test it.
+- [ ] 4.4 Switch-rounded-corner key: cycles the *session's*
+  `corner.rounding` `arc → bSpline → bevel` for subsequently
+  deposited rounded/bowed-rounded points (FM semantics: it changes
+  what the Rounded keys produce; it does not rewrite old points).
+- [ ] 4.5 Erase-last-point key: removes the last committed point,
+  keeping the trailing point live; no-op (not an error) at the
+  first point. FM also closes unfinished arc slots before
+  retyping — apply the same guard in 4.2–4.4.
+- [ ] 4.6 Engine entry points (`*KC` methods), `PathTool` methods,
+  host interface, scale/rotate session handling (bow amplitude in
+  % scales naturally; absolute amplitude scales with the path —
+  decide, test).
+- [ ] 4.7 Tests: session-level commit sequences per key; arc
+  3-press sequence; erase-last at boundaries; settings snapshot
+  isolation (change settings mid-draw, earlier points unchanged).
+
+**Gate:** a scripted key sequence builds a semantic path using
+every FM key, and `snapshot()` matches the expected point list.
+
+## Phase 5 — Wiring: dispatch, board, status, settings
+
+Files: [KeyboardController.ts](/Users/jpratt/Developer/nibglider/src/engine/input/KeyboardController.ts),
+[KeySettingsRegistry.ts](/Users/jpratt/Developer/nibglider/src/engine/input/KeySettingsRegistry.ts),
+[keymapSchema.ts](/Users/jpratt/Developer/nibglider/src/engine/appearance/keymapSchema.ts),
+[statusSchema.ts](/Users/jpratt/Developer/nibglider/src/engine/appearance/statusSchema.ts),
+[engineSettings.ts](/Users/jpratt/Developer/nibglider/src/engine/engineSettings.ts).
+
+- [ ] 5.1 New commands + `perform()` cases for: bowed-hard A/B,
+  bowed-rounded A/B, arc-by-three, switch-rounding, erase-last.
+  (Dab — FM code 4, stamps one brush tip — only with Phase 8;
+  list it here so the key table reserves no key for it yet.)
+- [ ] 5.2 Spline-layout caps with legends (e.g. `BOW →`,
+  `ARC 3-PT`) following the existing two-line legend style;
+  settings gear links via `KEY_SETTINGS_LINKS` pattern.
+- [ ] 5.3 Key-settings fields (path-tool schema, spline-layout
+  section): bow amplitude + %/absolute toggle, peak location,
+  arc-vs-spline bow mode, dual distance, apex cornering, corner
+  rounding type. All persisted through `engineSettings`
+  (`path.*` keys) like `path.cornerRadius`.
+- [ ] 5.4 Keymap-table + status rows for the spline layout
+  (composite branch of `buildKeymapRows`): list the new keys only
+  while the spline layout is active; show current rounding type
+  and bow amplitude in the status snapshot.
+- [ ] 5.5 Manual layout switcher UI (settles the general feature
+  from `TASKS.txt`): board header or status control listing
+  layouts; manual choice is overridden by D1 auto-activation
+  while drawing. Disabled/explanatory state when only one layout
+  is meaningful. Also register the future layout ids
+  (`grid-paint`, `repeat`) as placeholders **only if** the
+  registry needs them — no stub layouts.
+- [ ] 5.6 Tests: dispatch through `KeyboardController` (not just
+  the resolver), board legends for each chord, settings
+  read/write/validate round-trip in
+  [engine-settings.test.mjs](/Users/jpratt/Developer/nibglider/tests/engine-settings.test.mjs).
+
+**Gate:** end-to-end — physical key → semantic point → preview →
+deposit → undo/redo — for each new key, in tests.
+
+## Phase 6 — Persistence, export, and downstream consumers
+
+- [ ] 6.1 Retained-source round-trip: deposit a path using every
+  new kind, save/load the drawable, confirm identical geometry
+  after re-resolution (extend the Phase 5 engine test).
+- [ ] 6.2 SVG/export: derived Bezier output only — no FM/NibGlider
+  metadata required by external readers (per the study). Verify
+  bowed/arc paths export as ordinary path data.
+- [ ] 6.3 Downstream lowering audit: outlined-stroke spine
+  ([outlinedStroke.ts](/Users/jpratt/Developer/nibglider/src/engine/geometry/outlinedStroke.ts)),
+  interlace, boolean ops, endpoint join, direct Paper-segment
+  edits. Each must either resolve the new kinds or lower to
+  Bézier exactly as composite paths already do — no new throws.
+- [ ] 6.4 Text-on-path and shape-text (`withShapeText`) still work
+  on bowed/arc deposits.
+
+**Gate:** no code path in `src/` throws on a persisted bowed/arc
+composite path.
+
+## Phase 7 — Clothoid layout (spike, after Phase 5)
+
+- [ ] 7.1 Research note in `refs/`: clothoid (Euler spiral)
+  segment definition, Fresnel-integral evaluation, fitting
+  between two points with heading/curvature continuity (G1/G2).
+- [ ] 7.2 Prototype `sampleClothoid` beside
+  `sampleBSpline` with the same `SamplingOptions` contract.
+- [ ] 7.3 Second spline layout (`spline-clothoid`) reusing the
+  Phase 1 registry + Phase 4 key structure, swapping only the
+  segment solver in expansion. Same keys, different solver —
+  this is the payoff the layout system exists for.
+- [ ] 7.4 Decide: ship, or record findings and stop. Do not let
+  this phase block Phases 1–6.
+
+## Phase 8 — Deferred FM features (not in this effort)
+
+- [ ] Brush-tip points (azimuth/altitude/size), calligraphic and
+  ellipse tip outlines, dab key.
+- [ ] `bezierFitCurve` point kind / fitted-curve import
+  (see also the path-cleanup opportunity in
+  [floating-marker-feature-opportunities.md](/Users/jpratt/Developer/nibglider/refs/floating-marker-feature-opportunities.md)).
+- [ ] Noise on composite paths (already in `TASKS.txt` NOISE).
+
+## Validation for every phase
+
+- [ ] `npm run test` (Node test runner) — full suite green.
+- [ ] `npm run lint` (oxlint) — clean.
+- [ ] `npm run dev` manual smoke: draw one path per FM key,
+  switch layouts mid-draw, finish, undo, redo, save/reload.
+- [ ] Do **not** run `npm run build` during the session (per
+  `AGENTS.md`); leave that to the user/CI.
+
+## Risks
+
+- **Key collisions** are the top risk: the spline layout shadows
+  base keys only while drawing; Phase 1.3's audit table is the
+  contract. If a needed key has no free cap, prefer adding the
+  number row to the board over stealing a drawing-live key.
+- **Arc-in-progress validity** cuts across session, validation,
+  and preview; Phase 2.3's split (live-lenient, persisted-strict)
+  must land before Phase 4.3.
+- **Settings stamping vs live editing**: FM stamps per point;
+  NibGlider's `setCornerRadius` rewrites live rounded points.
+  Keep both, but document which operations are per-point-final.
+- **`KEY_VARIANTS` startup cost** grows per layout; measure
+  before/after Phase 1.5.
+
+
