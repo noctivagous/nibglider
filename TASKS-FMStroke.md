@@ -217,11 +217,20 @@ points correct or extend it and feed Phases 2–4:
    (LineWorkInteractionEntity.swift, `BowedInfo.init(xmlElement:)`).
    Phase 2.1 must pick one set — the Phase 2 proposal (percent
    default true) follows the settings/XML side, not point-init.
-8. **Bowed branches are duplicates**: `.hardCornerBowedLine` and
-   `.roundedCornerBowedLine` are identical except 3 vs 2 initial
-   coincident points — one parameterized implementation in
-   Phase 3, not two. Bowed-arc buildup is reversed when facing
-   B; the standalone arc uses the near-P2 heuristic in (2).
+8. **Bowed branches differ only by point multiplicity — by
+   design**: `.hardCornerBowedLine` and `.roundedCornerBowedLine`
+   are identical except 3 vs 2 initial coincident points. That
+   count is the technique, not duplication: in a B-spline
+   (Apple's PencilKit spline in FM; NibGlider's cubic B-spline
+   behaves the same way), 3 coincident control points pin the
+   curve into a hard corner while 2 only soften it into a
+   rounded one. NibGlider already relies on this —
+   `repeats: hardCorner ? 3 : roundedCorner ? 2 : 1` in
+   `compositeExpansion.ts`. So Phase 3 gets one parameterized
+   implementation, but the multiplicity must stay a deliberate,
+   named parameter (corner hardness), never "deduplicated" away.
+   Bowed-arc buildup is reversed when facing B; the standalone
+   arc uses the near-P2 heuristic in (2).
 9. A bowed point in last position emits only its corner points
    (no following segment, no bow) — matches NibGlider's
    trailing-point snapshot discipline.
