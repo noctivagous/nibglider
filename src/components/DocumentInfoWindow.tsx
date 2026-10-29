@@ -104,7 +104,7 @@ export default function DocumentInfoWindow({
               type="button"
               className="settings-option active"
               onClick={commitRename}
-              disabled={draft.trim() === savedName}
+              disabled={(draft ?? savedName).trim() === savedName}
               title={gallery.currentId ? 'Rename this document' : 'Name and save this document to the gallery'}
             >
               Rename
