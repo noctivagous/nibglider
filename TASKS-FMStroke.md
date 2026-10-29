@@ -133,17 +133,107 @@ Defaults are proposed so work can start; flag any you want changed.
 
 ---
 
-## Phase 0 — Baseline (½ day)
+## Phase 0 — Baseline (½ day) ✅ done 2026-10-28
 
-- [ ] 0.1 Run `npm run test` and `npm run lint` on the clean tree;
+- [x] 0.1 Run `npm run test` and `npm run lint` on the clean tree;
   record the green baseline in this file.
-- [ ] 0.2 Re-read `FMStroke.swift` expansion branches for
+- [x] 0.2 Re-read `FMStroke.swift` expansion branches for
   `.roundedCorner` (~line 5330), `.arcByThreeP1` (~line 5585), and
   the bowed branches; note any behavior the info file missed.
-- [ ] 0.3 Confirm no other caller constructs `NGPathPoint` kinds
+- [x] 0.3 Confirm no other caller constructs `NGPathPoint` kinds
   beyond `PathDrawingSession` (search `kind:` under `src/engine/`).
 
 **Gate:** baseline green; no surprises from 0.2/0.3.
+**Result: gate NOT met as written — baseline is known-red (see
+findings).** Later phases must not add failures beyond the 6
+recorded below; fixing them is out of scope for this effort.
+
+### Phase 0 findings (2026-10-28)
+
+**0.1 Baseline** (clean tree at `fbee3d1`):
+
+- `npm run test`: 515 tests, **509 pass, 6 fail** — all pre-existing
+  and unrelated to spline/composite code:
+  - `cursor-state.test.mjs:72` — hovering selectable content:
+    expected `'pointer'`, got snap-point cursor URL.
+  - `document-boundary.test.mjs:188` — trackpad pan/pinch dirties
+    the document (`true !== false`).
+  - `document-boundary.test.mjs:257` — engine pointer pan dirties
+    the document (`true !== false`).
+  - `tutorial-progress.test.mjs:39` — tutorial auto-show default.
+  - `tutorial-progress.test.mjs:44` — completion flag drives
+    auto-show.
+  - `tutorial-progress.test.mjs:67` — dismissing tutorial
+    suppresses auto-show.
+  - Composite-path, engine-model, and engine-settings suites all
+    pass; they are the regression floor for Phases 1–6.
+- `npm run lint`: **0 errors, 2 warnings** (unused vars at
+  `tests/snapping-grid.test.mjs:44` and `probe-replace.tmp.mjs:11`).
+
+**0.2 FMStroke.swift re-read** (`pkStrokePointsArrayForFMStrokePoint`,
+lines 5313–5819). The info file is accurate in the main; these
+points correct or extend it and feed Phases 2–4:
+
+1. **`bezierFitCurve` is dead in FM**: it has no expansion branch
+   and emits zero PK points. Confirms Phase 8 deferral — there is
+   no behavior to port.
+2. **`arcByThreeP2` emits nothing** (its body is commented out).
+   The arc is generated entirely by the `.arcByThreeP1` branch,
+   and only when `count > 2`, `0 < index < count-1`, and the next
+   point is `.arcByThreeP2`; otherwise P1 falls back to 3
+   coincident points (a hard corner). So an *unfinished* arc
+   previews as a hard corner — Phase 4.3 should mirror this
+   instead of inventing a placeholder. Reversal heuristic: the
+   buildup points are reversed when the first buildup point lands
+   within a ±2pt square of P2.
+3. **`.roundedCornerBowedLine` ignores the rounding settings in
+   expansion**: it emits 2 coincident points at the corner plus
+   the bow peak(s); `roundedCornerSegmentLength` /
+   `cornerRoundingType` are never read there (they are stamped
+   at deposit but unused). The info file's key-5 description
+   overstates this. **New sub-decision for Phase 3:** follow FM
+   literally (bow replaces the corner treatment) or improve on
+   it (apply entry/exit trims). Default until decided: FM-literal.
+4. **Rounded-corner special cases**: a first/last point, or
+   `roundedCornerSegmentLength == 1.0`, emits 2 coincident points
+   at the corner (no offsets). The short-leg fallback length is
+   `0.5 × min(leg₁, leg₂) / 2` — a quarter of the shorter leg.
+5. **FM's `.arc` rounding is not a tangent arc**: it calls
+   `appendArc(from: corner, to: location2, radius:
+   roundingSegmentLengthToUse)` — radius equals the trim length.
+   NibGlider's tangent-arc geometry (D3) already differs and
+   stays; do not "correct" it toward FM.
+6. **Bow peak position** is measured from the corner toward the
+   next point: `corner + f × (next − corner)` with
+   `f = lineInterpolationLocation × multiplier`
+   (`interpolatedPointAt`, NCTExtensions.swift:612). Dual peaks
+   sit at `f ± dualDistance/2` along the same chord. Cornered
+   apex totals: 2 copies (rounded) or 3 copies (hard) including
+   the original peak.
+7. **Conflicting FM defaults for `BowedInfo`**: point-init uses
+   `normalHeightIsPercentageOfLineLength: false`, multiplier
+   `1.0` (FMStroke.swift:5296); the XML reader defaults percent
+   to `true` and multiplier to `0.5` clamped to `≥ 1.0`
+   (LineWorkInteractionEntity.swift, `BowedInfo.init(xmlElement:)`).
+   Phase 2.1 must pick one set — the Phase 2 proposal (percent
+   default true) follows the settings/XML side, not point-init.
+8. **Bowed branches are duplicates**: `.hardCornerBowedLine` and
+   `.roundedCornerBowedLine` are identical except 3 vs 2 initial
+   coincident points — one parameterized implementation in
+   Phase 3, not two. Bowed-arc buildup is reversed when facing
+   B; the standalone arc uses the near-P2 heuristic in (2).
+9. A bowed point in last position emits only its corner points
+   (no following segment, no bow) — matches NibGlider's
+   trailing-point snapshot discipline.
+
+**0.3 Constructor audit**: in `src/`, `NGPathPoint` records are
+constructed only by `PathDrawingSession.point()`
+(PathDrawingSession.ts:72–76); its `snapshot()` deep-copies via
+`structuredClone`. `PathTool` passes kinds through, expansion and
+serialization only read/validate, and persisted points arrive via
+`deserializeDrawable`. Tests build fixtures directly
+(`tests/composite-path.test.mjs:28`). **No surprises** — Phase 4
+can extend the session without hunting other constructors.
 
 ## Phase 1 — Keyboard layout system (the enabling feature)
 
