@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { keyboardPlatform, type KeyCap } from '../engine/input/keymap';
+import { keyboardPlatform, layoutIdForState, layoutLabelForState, type KeyCap } from '../engine/input/keymap';
 import { resolveKeyboardLayout, type ResolvedKeyCap } from '../engine/input/KeyboardLayoutResolver';
 import { schemaById } from '../engine/input/KeySettingsRegistry';
 import { keycapClick } from '../ui/KeyboardViewModel';
@@ -394,7 +394,10 @@ export default function OnscreenKeyboard({
       }),
     [engine],
   );
-  const layout = resolveKeyboardLayout(modifiers, keyboardPlatform(), engine.getKeyState());
+  const keyState = engine.getKeyState();
+  const layout = resolveKeyboardLayout(modifiers, keyboardPlatform(), keyState);
+  const layoutId = layoutIdForState(keyState);
+  const layoutLabel = layoutLabelForState(keyState);
   const closeSettings = useCallback((reason: 'escape' | 'outside') => {
     setOpen((current) => {
       if (reason === 'escape' && current) {
@@ -471,7 +474,15 @@ export default function OnscreenKeyboard({
   };
   return (
     <>
-    <div id="keyboardKeysContainer">
+    <div
+      className="keyboard-layout-badge"
+      data-layout={layoutId}
+      title={`Keyboard layout: ${layoutLabel}`}
+      aria-label={`Keyboard layout: ${layoutLabel}`}
+    >
+      {layoutLabel}
+    </div>
+    <div id="keyboardKeysContainer" data-layout={layoutId}>
       {row('q').map(renderCap)}
       {row('a').map(renderCap)}
       {row('z').map(renderCap)}

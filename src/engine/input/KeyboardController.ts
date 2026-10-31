@@ -88,6 +88,8 @@ export interface KeyboardHost {
   splinePointKC(): void;
   roundedPointKC(): void;
   compositePathEnabled(): boolean;
+  /** True while a composite path session holds the live point. Drives the spline layout. */
+  isCompositeSessionActive(): boolean;
   circleKC(mode: string): void;
   radialStampKC(): void;
   quadPointKC(): void;
@@ -269,6 +271,9 @@ export class KeyboardController {
       isInDragLock: host.isInDragLock(),
       liveAdjustApplies: host.liveAdjustApplies(),
       isCompositePath: host.compositePathEnabled(),
+      // Engine-owned layout derivation (D1): the spline layout is live
+      // while a composite path session draws; the base returns on finish/cancel.
+      activeLayoutId: host.isCompositeSessionActive() ? 'spline' : 'base',
       isTransformMode: host.isTransformMode(),
     };
   }

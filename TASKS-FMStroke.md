@@ -86,21 +86,23 @@ swaps the board to the spline layout; leaving restores the base layout.
 4. Serialization *validates* bowed/arc kinds but no code path can
    produce them; arc pairing is only "adjacent start/end", which does
    not match FM's staged P1/P2 protocol — [serialization.ts:96](/Users/jpratt/Developer/nibglider/src/engine/model/serialization.ts:96)
-5. No layout registry, layout id, layout switcher, or per-layout caps;
-   `KeyState` has `isCompositePath` but no active-layout field —
-   [keymap.ts:18](/Users/jpratt/Developer/nibglider/src/engine/input/keymap.ts:18),
-   [KeyboardController.ts:259](/Users/jpratt/Developer/nibglider/src/engine/input/KeyboardController.ts:259)
+5. ~~No layout registry, layout id, layout switcher, or per-layout caps~~ —
+   done in Phase 1 (2026-10-31): `KEYBOARD_LAYOUTS` registry,
+   `KeyboardLayoutId`, per-layout sparse tables, `activeLayoutId`
+   on `KeyState`, engine-owned switching. Manual switcher UI is
+   still Phase 5.
 6. No erase-last-point, no dab, no switch-rounding key anywhere.
 
 ## Decisions to settle before / during Phase 1
 
 Defaults are proposed so work can start; flag any you want changed.
 
-- [ ] **D1 — Layout activation.** Default: the spline layout activates
-  automatically while a composite path session is live
-  (`PathTool.active`) and the base layout returns on finish/cancel.
-  A manual layout switcher (for future Grid Paint / Repeat layouts
-  from `TASKS.txt`) is built in Phase 5, not now.
+- [x] **D1 — Layout activation.** Settled as proposed and implemented
+  in Phase 1: the spline layout activates automatically while a
+  composite path session is live (`PathTool.active` via
+  `isCompositeSessionActive`) and the base layout returns on
+  finish/cancel. A manual layout switcher (for future Grid Paint /
+  Repeat layouts from `TASKS.txt`) is built in Phase 5, not now.
 - [ ] **D2 — Default path mode.** FM keys only make sense in
   `ngComposite`. Default: keep `legacy` as the global default;
   starting a path from the spline layout implies `ngComposite`.
@@ -125,6 +127,14 @@ Defaults are proposed so work can start; flag any you want changed.
     1.3's collision audit against every `KEY_COMMANDS` entry that
     stays live while drawing (end, cancel, stamp, scale, rotate,
     stroke width), and record the final table there.
+  - Phase 1 audit result (2026-10-31): `KeyB`, `Period`,
+    `Backslash` confirmed free (empty legends in `KEY_CAPS`).
+    Reservation is enforced in code: `validateLayoutTable` throws
+    if any layout binds a `POINT_COMMAND_IDS` command to plain
+    `A`/`Q`/`Escape`/`R`. Pre-existing conditional bindings on
+    those codes (`transform-rotate` on R, `clear-selection` on
+    Escape) are not point keys and stay. Final FM key table still
+    lands in Phase 5 with the new commands.
 - [ ] **D5 — Clothoid.** FM notes clothoid only as an interest, with
   no implementation to trace. Default: Phase 7 is a research spike
   (Euler-spiral solver behind the same expansion interface); it does
@@ -255,41 +265,57 @@ layout. Files: [keymap.ts](/Users/jpratt/Developer/nibglider/src/engine/input/ke
 [KeyboardViewModel.ts](/Users/jpratt/Developer/nibglider/src/ui/KeyboardViewModel.ts),
 [OnscreenKeyboard.tsx](/Users/jpratt/Developer/nibglider/src/components/OnscreenKeyboard.tsx).
 
-- [ ] 1.1 Define `KeyboardLayoutDef { id, label, caps, commands }`
+- [x] 1.1 Define `KeyboardLayoutDef { id, label, caps, commands }`
   and a `KEYBOARD_LAYOUTS` registry in `keymap.ts`. Base layout =
   today's `KEY_CAPS`/`KEY_COMMANDS` unchanged. Layouts *overlay*:
   layout commands win on their caps; unmatched caps fall back to
   base (so End/Cancel/Undo keep working while drawing).
   Layout-wide reservation (applies to every layout, including
-  the B-spline and clothoid spline layouts): **`A` is always End
-  and `Q` is always Cancel** (plus the existing `Esc` cancel
-  alias and `R` Complete Shape). The base layout's extra End
-  aliases (`E`, `S`) are layout-local and MAY be repurposed as
-  point keys inside spline layouts — but `A` and `Q` are never
-  shadowed. Any layout proposal that puts a point key on `A` or
-  `Q` is invalid on arrival.
-- [ ] 1.2 Add `activeLayoutId` to `KeyState`; thread it through
+  the B-spline and clothoid spline layouts): **no point key on
+  plain `A`/`Q`/`Escape`/`R`** (enforced by `validateLayoutTable`
+  + `POINT_COMMAND_IDS`; Phase 5 extends the list with each new
+  point command). The base layout's extra End aliases (`E`, `S`)
+  are layout-local and MAY be repurposed as point keys inside
+  spline layouts. — Done 2026-10-31 (`base` + `spline` shell;
+  `clothoid`/`grid-paint`/`repeat` reserved in
+  `FUTURE_LAYOUT_IDS` with no stub tables).
+- [x] 1.2 Add `activeLayoutId` to `KeyState`; thread it through
   `KeyboardController.keyState()`, `resolveKeyVariants`,
   `resolveKeyboardLayout`, and `matchAppCommand`. Dispatch and
   on-screen display must resolve through the same variant list
-  (existing invariant — do not fork it).
-- [ ] 1.3 Collision audit + final key table for the spline layout
+  (existing invariant — do not fork it). — Done 2026-10-31;
+  `resolveKeyVariants` keeps one shared lookup path over the
+  layout table, `matchAppCommand` keeps iterating the base table
+  (app commands are unavailable while drawing, so layout is moot).
+- [x] 1.3 Collision audit + final key table for the spline layout
   (settles D4). Every spline-layout key must list: physical code,
   chord, command id, FM equivalent, and which base command it
-  shadows while drawing.
-- [ ] 1.4 Layout switching: engine-owned `activeKeyboardLayout`
+  shadows while drawing. — Done 2026-10-31, see D4 audit result
+  above; per-key table deferred to Phase 5 since the shell adds
+  no commands.
+- [x] 1.4 Layout switching: engine-owned `activeKeyboardLayout`
   derived from session state (D1); layout name shown on the board
   and in the status overlay. Switching mid-draw must not cancel or
-  mutate the live session.
-- [ ] 1.5 `KEY_VARIANTS` compilation becomes per-layout (or
+  mutate the live session. — Done 2026-10-31
+  (`isCompositeSessionActive` from `PathTool.active`; board badge
+  + `data-layout`; status title gains `· Spline layout` while a
+  composite session draws; resolution never touches the session).
+- [x] 1.5 `KEY_VARIANTS` compilation becomes per-layout (or
   layout-tagged). Watch the startup cost: it already enumerates
-  codes × 16 chords × commands.
-- [ ] 1.6 Tests: extend [composite-path.test.mjs](/Users/jpratt/Developer/nibglider/tests/composite-path.test.mjs)
+  codes × 16 chords × commands. — Done 2026-10-31 as sparse
+  per-layout maps keyed by code+chord (FM-plist shape: 55 commands
+  → 226 bound triples, not the ~52k product space). `KEY_VARIANTS`
+  stays as the flattened base table, unchanged in content/order.
+- [x] 1.6 Tests: extend [composite-path.test.mjs](/Users/jpratt/Developer/nibglider/tests/composite-path.test.mjs)
   keymap test + add layout-resolution cases (base ↔ spline swap,
   fallback keys, `isTypingText` still suppresses everything).
+  — Done 2026-10-31 (2 new tests: swap/restore/dispatch/no-mutate;
+  sparsity + reservation + registry shape).
 
 **Gate:** with no spline session, board/dispatch are byte-identical
 to today; with a session, the spline caps resolve and dispatch.
+— Met 2026-10-31: full suite 517 tests, 511 pass, 6 fail (the 6
+pre-existing Phase 0 failures, unchanged); lint 0 errors.
 
 ## Phase 2 — Model: BowedInfo + arc point kinds
 

@@ -36,7 +36,7 @@ import {
   PointerController,
   type PointerHost,
 } from './input/PointerController';
-import { keyGroupForLabel, keyboardPlatform, scaleFactor, rotationStep } from './input/keymap';
+import { keyGroupForLabel, keyboardPlatform, layoutLabelForState, scaleFactor, rotationStep } from './input/keymap';
 import { CombinatoricsManager, type CombinatoricsHost } from './scene/CombinatoricsManager';
 import { InterlaceManager } from './scene/InterlaceManager';
 import { DropController, viewFitScale } from './document/DropController';
@@ -6509,6 +6509,7 @@ export class NibGliderEngine {
       panLock: this.isPanLocked,
       drawingPath: this.isDrawingPath,
       composite: this.compositePathTool.active,
+      layoutLabel: this.compositePathTool.active ? layoutLabelForState(this.getKeyState()) : undefined,
       cornerRadius: this.compositeCornerRadius,
       splineTension: this.splineTension,
       drawingShape: this.isDrawingShape,

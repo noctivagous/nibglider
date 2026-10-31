@@ -7,7 +7,11 @@ import { PathDrawingSession } from '../src/engine/drawing/PathDrawingSession.ts'
 import { PathTool } from '../src/engine/drawing/PathTool.ts';
 import { NibGliderEngine } from '../src/engine/engine.ts';
 import { serializeDrawable, deserializeDrawable } from '../src/engine/model/serialization.ts';
-import { resolveKeyboardLayout } from '../src/engine/input/KeyboardLayoutResolver.ts';
+import { resolveKeyboardLayout, resolveKeyVariants } from '../src/engine/input/KeyboardLayoutResolver.ts';
+import {
+  KEYBOARD_LAYOUTS, KEY_COMMANDS, KEY_VARIANTS, LAYOUT_VARIANT_TABLES, POINT_COMMAND_IDS, capsForLayout,
+  layoutIdForState, layoutLabelForState, variantsForLayout,
+} from '../src/engine/input/keymap.ts';
 import { BASE_MODIFIERS } from '../src/engine/input/ModifierStateTracker.ts';
 
 const savedRequest = globalThis.requestAnimationFrame;
@@ -384,4 +388,78 @@ test('keymap exposes rounded points only for composite mode and keeps legacy ten
     e.mousePt = new s.Point(10, 10); e.splinePointKC();
     assert.equal(e.path.data.isPathPreview, undefined);
   } finally { cleanup(); }
+});
+
+test('spline layout swaps in while a composite session is live and restores after', () => {
+  const { s, e, cleanup } = engine();
+  const press = (code, k) => ({
+    code, key: k, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false,
+    target: null, getModifierState: () => false, preventDefault: () => {},
+  });
+  try {
+    // Idle: base layout, byte-identical to today's board.
+    assert.equal(layoutIdForState(e.getKeyState()), 'base');
+    assert.equal(layoutLabelForState(e.getKeyState()), 'Base');
+    assert.deepEqual(
+      resolveKeyVariants('KeyG', BASE_MODIFIERS, e.getKeyState()).map((v) => v.commandId),
+      ['spline-point'],
+    );
+    // A live composite session swaps to the spline layout.
+    e.mousePt = new s.Point(10, 10); e.splinePointKC();
+    const live = e.getKeyState();
+    assert.equal(live.activeLayoutId, 'spline');
+    assert.equal(layoutIdForState(live), 'spline');
+    assert.equal(layoutLabelForState(live), 'Spline');
+    const caps = resolveKeyboardLayout(BASE_MODIFIERS, 'other', live);
+    assert.equal(caps.find((cap) => cap.id === 'KeyG').commandId, 'spline-point');
+    assert.equal(caps.find((cap) => cap.id === 'KeyF').commandId, 'sharp-point');
+    assert.equal(caps.find((cap) => cap.id === 'KeyH').commandId, 'rounded-point');
+    // Overlay fallback: End/Cancel keep working mid-draw.
+    assert.deepEqual(resolveKeyVariants('KeyA', BASE_MODIFIERS, live).map((v) => v.commandId), ['finish-a']);
+    assert.deepEqual(resolveKeyVariants('KeyQ', BASE_MODIFIERS, live).map((v) => v.commandId), ['cancel']);
+    // Typing suppresses every layout.
+    assert.deepEqual(resolveKeyVariants('KeyG', BASE_MODIFIERS, { ...live, isTypingText: true }), []);
+    // Physical dispatch through the controller deposits on the spline board...
+    e.mousePt = new s.Point(140, 10);
+    e.handleKeyDown(press('KeyG', 'g'));
+    assert.equal(e.getKeyState().activeLayoutId, 'spline');
+    // ...and End finishes the session, restoring the base board.
+    e.handleKeyDown(press('KeyA', 'a'));
+    assert.equal(e.isDrawingPath, false);
+    assert.equal(layoutIdForState(e.getKeyState()), 'base');
+    // The cancel path restores base too.
+    e.mousePt = new s.Point(10, 10); e.splinePointKC();
+    assert.equal(layoutIdForState(e.getKeyState()), 'spline');
+    e.handleKeyDown(press('KeyQ', 'q'));
+    assert.equal(layoutIdForState(e.getKeyState()), 'base');
+    // Resolving through the other layout never mutates a live session.
+    e.mousePt = new s.Point(10, 10); e.splinePointKC();
+    resolveKeyboardLayout(BASE_MODIFIERS, 'other', { ...e.getKeyState(), activeLayoutId: 'base' });
+    resolveKeyVariants('KeyG', BASE_MODIFIERS, { ...e.getKeyState(), activeLayoutId: 'base' });
+    assert.equal(e.isDrawingPath, true);
+    assert.equal(layoutIdForState(e.getKeyState()), 'spline');
+  } finally { cleanup(); }
+});
+
+test('layout tables stay sparse and reserved codes keep no point keys', () => {
+  // FM's plist holds 132 sparse rows; our base board must stay near that
+  // order, not near the commands x codes x 16 chord product space.
+  let keyed = 0;
+  for (const [, list] of LAYOUT_VARIANT_TABLES.base) keyed += list.length;
+  assert.equal(keyed, KEY_VARIANTS.length);
+  assert.ok(KEY_VARIANTS.length < KEY_COMMANDS.length * 10);
+  assert.equal(LAYOUT_VARIANT_TABLES.spline.size, LAYOUT_VARIANT_TABLES.base.size);
+  // Registry shape: base + spline shell, with future ids reserved but table-less.
+  assert.deepEqual(Object.keys(KEYBOARD_LAYOUTS), ['base', 'spline']);
+  assert.equal(capsForLayout('spline').length, capsForLayout('base').length);
+  assert.equal(capsForLayout('clothoid').length, capsForLayout('base').length);
+  assert.equal(variantsForLayout('repeat'), LAYOUT_VARIANT_TABLES.base);
+  // Reservation: A/End, Q/Cancel, Escape, R carry no point key in any table.
+  for (const table of Object.values(LAYOUT_VARIANT_TABLES)) {
+    for (const code of ['KeyA', 'KeyQ', 'Escape', 'KeyR']) {
+      for (const variant of table.get(`${code}|0`) ?? []) {
+        assert.ok(!POINT_COMMAND_IDS.includes(variant.commandId), `${code} binds ${variant.commandId}`);
+      }
+    }
+  }
 });

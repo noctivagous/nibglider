@@ -18,6 +18,8 @@ export interface StatusSnapshot {
   panLock: boolean;
   drawingPath: boolean;
   composite: boolean;
+  /** Active swappable-layout name, shown while drawing. Undefined keeps the legacy title. */
+  layoutLabel?: string;
   cornerRadius: number;
   splineTension: number;
   drawingShape: boolean;
@@ -91,7 +93,8 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
     }
   }
   if (snap.drawingPath) {
-    state.push(L('title', [T(snap.composite ? 'Drawing Composite Path' : 'Drawing Path')]));
+    const title = snap.composite ? 'Drawing Composite Path' : 'Drawing Path';
+    state.push(L('title', [T(snap.layoutLabel ? `${title} · ${snap.layoutLabel} layout` : title)]));
     if (snap.composite) {
       steps.push(L('hint', [T('Add sharp, spline, or rounded points to the path.')]));
       steps.push(L('hint', [T(`Rounded corners use ${snap.cornerRadius}pt. Close the shape, end the drawing, or cancel.`)]));

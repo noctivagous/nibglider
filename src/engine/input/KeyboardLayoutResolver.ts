@@ -2,30 +2,41 @@
 // Reads only the keymap, immutable modifiers, platform, and a KeyState snapshot.
 // It never mutates engine state or registers browser listeners.
 import {
-  KEY_CAPS, KEY_VARIANTS, physicalKey, type KeyCap, type KeyCommandVariant,
-  type KeyState, type KeyboardPlatform,
+  KEY_VARIANTS, capsForLayout, layoutIdForState, physicalKey, variantTableKey, variantsForLayout,
+  type KeyCap, type KeyCommandVariant, type KeyState, type KeyboardPlatform,
 } from './keymap';
 import type { ModifierSnapshot } from './ModifierStateTracker';
+
+function matchInTable(
+  table: Map<string, KeyCommandVariant[]>,
+  key: string,
+  state: KeyState,
+): KeyCommandVariant[] {
+  const variants: KeyCommandVariant[] = [];
+  for (const variant of table.get(key) ?? []) {
+    if (!variant.when(state)) continue;
+    variants.push(variant);
+    if (variant.command.exclusive) break;
+  }
+  return variants;
+}
 
 export function resolveKeyVariants(
   code: string,
   modifiers: ModifierSnapshot,
   state: KeyState,
 ): KeyCommandVariant[] {
-  const variants: KeyCommandVariant[] = [];
   // Type At Cursor owns the keyboard: physical dispatch never reaches here
   // while typing (the controller branches first), so no command resolves —
   // keeping the on-screen caps and chord rows honest.
-  if (state.isTypingText) return variants;
-  for (const variant of KEY_VARIANTS) {
-    if (variant.code !== code) continue;
-    if (variant.chord.shift !== modifiers.shift || variant.chord.alt !== modifiers.alt ||
-      variant.chord.control !== modifiers.control || variant.chord.meta !== modifiers.meta) continue;
-    if (!variant.when(state)) continue;
-    variants.push(variant);
-    if (variant.command.exclusive) break;
-  }
-  return variants;
+  if (state.isTypingText) return [];
+  // Layouts overlay: the active layout wins on its caps; unmatched caps
+  // fall back to base (End/Cancel/Undo keep working mid-draw).
+  const layout = layoutIdForState(state);
+  const key = variantTableKey(code, modifiers);
+  const own = matchInTable(variantsForLayout(layout), key, state);
+  if (own.length > 0 || layout === 'base') return own;
+  return matchInTable(variantsForLayout('base'), key, state);
 }
 
 export interface ResolvedKeyCap extends KeyCap {
@@ -72,8 +83,9 @@ export function resolveKeyCap(
 export function resolveKeyboardLayout(
   modifiers: ModifierSnapshot, platform: KeyboardPlatform, state: KeyState,
 ): ResolvedKeyCap[] {
-  return KEY_CAPS.map((cap) => resolveKeyCap(cap, modifiers, platform, state));
+  return capsForLayout(layoutIdForState(state)).map((cap) => resolveKeyCap(cap, modifiers, platform, state));
 }
+
 
 export function eventCode(event: KeyboardEvent): string {
   if (event.code) return event.code;

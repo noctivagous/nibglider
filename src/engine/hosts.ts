@@ -217,6 +217,7 @@ export function createKeyboardHost(engine: Surface): KeyboardHost {
     splinePointKC: () => engine.splinePointKC(),
     roundedPointKC: () => engine.roundedPointKC(),
     compositePathEnabled: () => engine.pathDrawingMode === 'ngComposite',
+    isCompositeSessionActive: () => engine.compositePathTool.active,
     circleKC: (mode) => engine.circleKC(mode),
     radialStampKC: () => engine.radialStampKC(),
     quadPointKC: () => engine.quadPointKC(),
