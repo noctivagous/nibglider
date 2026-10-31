@@ -2,7 +2,8 @@
 // Reads only the keymap, immutable modifiers, platform, and a KeyState snapshot.
 // It never mutates engine state or registers browser listeners.
 import {
-  KEY_VARIANTS, capsForLayout, layoutIdForState, physicalKey, variantTableKey, variantsForLayout,
+  KEYBOARD_LAYOUTS, KEY_VARIANTS, capsForLayout, isReservedLayoutKey, layoutIdForState,
+  physicalKey, variantTableKey, variantsForLayout,
   type KeyCap, type KeyCommandVariant, type KeyState, type KeyboardPlatform,
 } from './keymap';
 import type { ModifierSnapshot } from './ModifierStateTracker';
@@ -30,12 +31,15 @@ export function resolveKeyVariants(
   // while typing (the controller branches first), so no command resolves —
   // keeping the on-screen caps and chord rows honest.
   if (state.isTypingText) return [];
-  // Layouts overlay: the active layout wins on its caps; unmatched caps
-  // fall back to base (End/Cancel/Undo keep working mid-draw).
+  // Layouts overlay: the active layout wins on its caps. Partial layouts
+  // fall back to base for unmatched caps (End/Cancel/Undo keep working
+  // mid-draw); full layouts ("empty and assign") blank them, except the
+  // layout-wide reserved codes, which always resolve from base.
   const layout = layoutIdForState(state);
   const key = variantTableKey(code, modifiers);
   const own = matchInTable(variantsForLayout(layout), key, state);
   if (own.length > 0 || layout === 'base') return own;
+  if (KEYBOARD_LAYOUTS[layout].overlay === 'full' && !isReservedLayoutKey(key)) return [];
   return matchInTable(variantsForLayout('base'), key, state);
 }
 

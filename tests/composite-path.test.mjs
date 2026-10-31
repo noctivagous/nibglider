@@ -450,7 +450,7 @@ test('layout tables stay sparse and reserved codes keep no point keys', () => {
   assert.ok(KEY_VARIANTS.length < KEY_COMMANDS.length * 10);
   assert.equal(LAYOUT_VARIANT_TABLES.spline.size, LAYOUT_VARIANT_TABLES.base.size);
   // Registry shape: base + spline shell, with future ids reserved but table-less.
-  assert.deepEqual(Object.keys(KEYBOARD_LAYOUTS), ['base', 'spline']);
+  assert.deepEqual(Object.keys(KEYBOARD_LAYOUTS), ['base', 'spline', 'clothoid']);
   assert.equal(capsForLayout('spline').length, capsForLayout('base').length);
   assert.equal(capsForLayout('clothoid').length, capsForLayout('base').length);
   assert.equal(variantsForLayout('repeat'), LAYOUT_VARIANT_TABLES.base);

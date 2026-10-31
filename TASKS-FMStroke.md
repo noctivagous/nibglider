@@ -559,7 +559,9 @@ user's fingers never re-learn how to stop.
 **Exception the audit must still resolve:** `W` shadows base
 Stamp while drawing, so Stamp needs an explicit
 clothoid-layout binding (candidates: `Enter`, `B`) before this
-table is final.
+table is final. — Resolved 2026-10-31 (Slice A): `B` (`Enter`'s
+cap is hidden, so it cannot carry the binding; `B` is modal —
+base-board enter key vs in-layout Stamp — with no conflict).
 
 Open questions for 7.1, do not pre-decide here:
 
@@ -576,6 +578,17 @@ Open questions for 7.1, do not pre-decide here:
 
 ### Tasks
 
+- [x] 7.0 Layout shell — Slice A (done 2026-10-31): `overlay:
+  'partial' | 'full'` on `KeyboardLayoutDef` (clothoid ships
+  partial; full blanks non-reserved caps); manual override
+  (`engine.manualLayoutId`, transient) entered by `KeyB`
+  (`enter-clothoid-layout`) and left by Escape-when-idle; live
+  sessions override manual, finish/cancel restores it. Point
+  commands registered per the table above but unavailable until
+  the solver lands; `clothoid-stamp` (action `stamp`) works now.
+  Tests in `tests/clothoid-layout.test.mjs` (3 pass). Full suite:
+  520 tests, 514 pass, 6 fail (pre-existing Phase 0 reds);
+  lint 0 errors.
 - [ ] 7.1 Research note in `refs/`: clothoid (Euler spiral)
   segment definition, Fresnel-integral evaluation, fitting
   between two points with heading/curvature continuity
@@ -624,6 +637,8 @@ Open questions for 7.1, do not pre-decide here:
   NibGlider's `setCornerRadius` rewrites live rounded points.
   Keep both, but document which operations are per-point-final.
 - **`KEY_VARIANTS` startup cost** grows per layout; measure
-  before/after Phase 1.5.
+  before/after Phase 1.5. — Measured 2026-10-31: sparse tables hold
+  226 / 226 / ~230 bindings (base/spline/clothoid) vs the ~52k
+  product space; no action needed.
 
 

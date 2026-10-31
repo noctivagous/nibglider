@@ -36,7 +36,7 @@ import {
   PointerController,
   type PointerHost,
 } from './input/PointerController';
-import { keyGroupForLabel, keyboardPlatform, layoutLabelForState, scaleFactor, rotationStep } from './input/keymap';
+import { keyGroupForLabel, keyboardPlatform, layoutLabelForState, scaleFactor, rotationStep, type KeyboardLayoutId } from './input/keymap';
 import { CombinatoricsManager, type CombinatoricsHost } from './scene/CombinatoricsManager';
 import { InterlaceManager } from './scene/InterlaceManager';
 import { DropController, viewFitScale } from './document/DropController';
@@ -557,6 +557,12 @@ export class NibGliderEngine {
 
   // --- Drawing mode / shape state (drawingToolsAndFunctions.js) ---
   pathDrawingMode: 'legacy' | 'ngComposite' = 'legacy';
+  /**
+   * Manual layout override from a layout key (e.g. KeyB opens clothoid).
+   * Transient UI state, never persisted: a live session wins while drawing,
+   * and the base returns when neither is set.
+   */
+  manualLayoutId: KeyboardLayoutId | null = null;
   private readonly drawing = new DrawingSession();
   /** Pre-marquee selection, restored when Esc cancels the selection rectangle. */
   private selectionRectSnapshot: AnyItem[] | null = null;
@@ -4285,6 +4291,22 @@ export class NibGliderEngine {
     this.pathDrawingMode = mode;
     this.updateTextContent();
     this.notify();
+  }
+
+  setManualLayout(id: KeyboardLayoutId | null): void {
+    if (this.manualLayoutId === id) return;
+    this.manualLayoutId = id;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** Clears a manual layout override; true when one was set. */
+  clearManualLayout(): boolean {
+    if (this.manualLayoutId == null) return false;
+    this.manualLayoutId = null;
+    this.updateTextContent();
+    this.notify();
+    return true;
   }
 
   get compositeCornerRadius(): number { return this.compositePathTool.cornerRadius; }

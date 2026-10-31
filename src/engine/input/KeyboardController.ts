@@ -16,7 +16,7 @@ import {
   commandById,
   isTextEntryTarget,
   scaleFactor, rotationStep, nudgeStep,
-  type KeyState,
+  type KeyState, type KeyboardLayoutId,
 } from './keymap';
 
 import { ModifierStateTracker, modifiersOf } from './ModifierStateTracker';
@@ -90,6 +90,11 @@ export interface KeyboardHost {
   compositePathEnabled(): boolean;
   /** True while a composite path session holds the live point. Drives the spline layout. */
   isCompositeSessionActive(): boolean;
+  /** Manual layout override from a layout key; null follows session/base derivation. */
+  manualLayout(): KeyboardLayoutId | null;
+  setManualLayout(id: KeyboardLayoutId | null): void;
+  /** Clears a manual override; true when one was set. Never touches a live session. */
+  clearManualLayout(): boolean;
   circleKC(mode: string): void;
   radialStampKC(): void;
   quadPointKC(): void;
@@ -271,9 +276,10 @@ export class KeyboardController {
       isInDragLock: host.isInDragLock(),
       liveAdjustApplies: host.liveAdjustApplies(),
       isCompositePath: host.compositePathEnabled(),
-      // Engine-owned layout derivation (D1): the spline layout is live
-      // while a composite path session draws; the base returns on finish/cancel.
-      activeLayoutId: host.isCompositeSessionActive() ? 'spline' : 'base',
+      // Engine-owned layout derivation: a live session wins (spline while
+      // a composite path session draws); otherwise a manual layout key
+      // override applies; the base returns when neither is set.
+      activeLayoutId: host.isCompositeSessionActive() ? 'spline' : (host.manualLayout() ?? 'base'),
       isTransformMode: host.isTransformMode(),
     };
   }
@@ -448,7 +454,19 @@ export class KeyboardController {
         host.updateTextContent();
         return;
       }
+      case 'enter-clothoid-layout':
+        event.preventDefault();
+        host.setManualLayout('clothoid');
+        return;
       case 'cancel':
+        // Escape with no live drawing leaves a manually opened layout
+        // instead of canceling: there is nothing to cancel.
+        if (!host.isDrawingPath() && !host.isDrawingShape() && !host.isDrawingQuad() && host.clearManualLayout()) {
+          event.preventDefault();
+          host.updateTextContent();
+          host.notify();
+          return;
+        }
         host.cancelCurrentDrawingOperation();
         return;
       case 'select':
