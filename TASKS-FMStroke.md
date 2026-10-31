@@ -570,7 +570,10 @@ Open questions for 7.1, do not pre-decide here:
   of them map 1:1 onto the `Q`/`W` prev/next pair above.
 - Solver route: libspiro via WASM, a TypeScript port of the
   clothoid fit, or direct Fresnel evaluation. Check libspiro's
-  license before considering bundling it.
+  license before considering bundling it. — Settled 2026-10-31
+  (Slice B): self-contained TypeScript G1 fitter, no dependency
+  to license or bundle; libspiro/WASM stays an option only if
+  7.4 demands exact Spiro compatibility.
 - Whether G4/G2/corner/constraint become new `NGPathPoint`
   kinds, or a clothoid-specific point record under a separate
   spline layout id — the semantic model must not force
@@ -595,10 +598,18 @@ Open questions for 7.1, do not pre-decide here:
   (G1/G2), **plus** the Spiro/libspiro point-type semantics and
   solver-route decision from the open questions above. Confirm
   or revise the suggested key table.
-- [ ] 7.2 Prototype the solver beside `sampleBSpline` with the
+- [x] 7.2 Prototype the solver beside `sampleBSpline` with the
   same `SamplingOptions` contract; output ordinary cubic
   Bézier segments (the libspiro pattern) so `PathRenderer`
-  and export need no clothoid awareness.
+  and export need no clothoid awareness. — Done 2026-10-31
+  (Slice B): `src/engine/geometry/clothoidFit.ts` (`fresnel`,
+  `fitClothoidG1`, `sampleClothoid`), pure and Paper-free.
+  Proofs in `tests/clothoid-fit.test.mjs` (7 pass): Fresnel(1)
+  exact, straight exact, quarter-circle finds zero sharpness +
+  arc length with curve deviation ≤ tolerance, S-curve end
+  tangents exact, G1 across joints, seam closure, degenerate
+  fallback. Full suite: 527 tests, 521 pass, 6 pre-existing
+  reds; lint 0 errors.
 - [ ] 7.3 Second spline layout (`spline-clothoid`) reusing the
   Phase 1 registry + Phase 4 session structure, swapping only
   the point vocabulary and segment solver. This is the payoff
