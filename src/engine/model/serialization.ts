@@ -42,7 +42,11 @@ function points(value: unknown, path: string): unknown[] {
   items.forEach((point, i) => vec(point, `${path}[${i}]`));
   return items;
 }
-export function validatePath(value: unknown, path = 'path'): asserts value is NGPath {
+export function validatePath(
+  value: unknown,
+  path = 'path',
+  options: { allowStagedArc?: boolean } = {},
+): asserts value is NGPath {
   const p = record(value, path, ['id', 'mode', 'contours', 'fillRule', 'closed', 'points', 'degree', 'tension',
     'spine', 'width', 'cap', 'join', 'miterLimit', 'dashLength', 'gapLength', 'position']);
   string(p.id, `${path}.id`);
@@ -93,23 +97,44 @@ export function validatePath(value: unknown, path = 'path'): asserts value is NG
     string(q.id, `${name}.id`);
     requireValue(!ids.has(q.id as string), `${name}.id`, 'unique point ID'); ids.add(q.id as string);
     number(q.x, `${name}.x`); number(q.y, `${name}.y`);
-    choice(q.kind, `${name}.kind`, ['bSpline', 'hardCorner', 'roundedCorner', 'line', 'bowedLine', 'arcByThreeStart', 'arcByThreeEnd']);
+    choice(q.kind, `${name}.kind`, ['bSpline', 'hardCorner', 'roundedCorner', 'line', 'bowedLine', 'arcByThreeStart', 'arcByThreeEnd', 'g4', 'g2', 'clothoidCorner', 'prevConstraint', 'nextConstraint']);
     if (q.corner !== undefined) {
       requireValue(q.kind === 'roundedCorner', `${name}.corner`, 'roundedCorner point');
       const c = record(q.corner, `${name}.corner`, ['rounding', 'radius']);
       choice(c.rounding, `${name}.corner.rounding`, ['arc', 'bSpline', 'bevel']); number(c.radius, `${name}.corner.radius`, 0);
     }
     if (q.outgoing !== undefined) {
-      const o = record(q.outgoing, `${name}.outgoing`, ['kind', 'bowOffset', 'bowFacing']);
+      const o = record(q.outgoing, `${name}.outgoing`, ['kind', 'bow']);
       choice(o.kind, `${name}.outgoing.kind`, ['inherit', 'line', 'bSpline', 'bowedLine', 'arc']);
-      if (o.bowOffset !== undefined) { requireValue(o.kind === 'bowedLine', name, 'bowedLine segment for bowOffset'); number(o.bowOffset, `${name}.bowOffset`); }
-      if (o.bowFacing !== undefined) { requireValue(o.kind === 'bowedLine', name, 'bowedLine segment for bowFacing'); choice(o.bowFacing, `${name}.bowFacing`, ['left', 'right']); }
+      if (o.bow !== undefined) {
+        requireValue(o.kind === 'bowedLine', name, 'bowedLine segment for bow');
+        const b = record(o.bow, `${name}.outgoing.bow`, ['facing', 'amplitude', 'amplitudeIsPercent', 'peakLocation', 'peakLocationMultiplier', 'isArc', 'dualDistance', 'corneredApex']);
+        choice(b.facing, `${name}.outgoing.bow.facing`, ['A', 'B']);
+        number(b.amplitude, `${name}.outgoing.bow.amplitude`);
+        requireValue((b.amplitude as number) >= 0, `${name}.outgoing.bow.amplitude`, 'nonnegative amplitude');
+        bool(b.amplitudeIsPercent, `${name}.outgoing.bow.amplitudeIsPercent`);
+        number(b.peakLocation, `${name}.outgoing.bow.peakLocation`, 0, 1);
+        number(b.peakLocationMultiplier, `${name}.outgoing.bow.peakLocationMultiplier`);
+        bool(b.isArc, `${name}.outgoing.bow.isArc`);
+        number(b.dualDistance, `${name}.outgoing.bow.dualDistance`, 0, 1);
+        choice(b.corneredApex, `${name}.outgoing.bow.corneredApex`, ['none', 'rounded', 'hard']);
+      }
     }
+    // Arc pairs are adjacent; on a closed path they may wrap the seam.
+    // A live session may also hold one unfinished arc at the trailing
+    // edge (Phase 4 staged protocol); persisted paths stay strict.
+    const arcNext = p.closed === true
+      ? (semantic[(i + 1) % semantic.length] as Record<string, unknown> | undefined)?.kind
+      : (semantic[i + 1] as Record<string, unknown> | undefined)?.kind;
+    const arcPrev = p.closed === true
+      ? (semantic[(i - 1 + semantic.length) % semantic.length] as Record<string, unknown> | undefined)?.kind
+      : (semantic[i - 1] as Record<string, unknown> | undefined)?.kind;
     if (q.kind === 'arcByThreeStart') {
-      requireValue(i + 1 < semantic.length && (semantic[i + 1] as Record<string, unknown>)?.kind === 'arcByThreeEnd', name, 'paired adjacent arc end');
+      const staged = !!options.allowStagedArc && i === semantic.length - 1;
+      requireValue(staged || arcNext === 'arcByThreeEnd', name, 'paired adjacent arc end');
     }
     if (q.kind === 'arcByThreeEnd') {
-      requireValue(i > 0 && (semantic[i - 1] as Record<string, unknown>)?.kind === 'arcByThreeStart', name, 'paired adjacent arc start');
+      requireValue(arcPrev === 'arcByThreeStart', name, 'paired adjacent arc start');
     }
   });
 }

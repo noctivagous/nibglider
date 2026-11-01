@@ -113,6 +113,15 @@ export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
       rows.push(row(['sharp-point'], 'Sharp point'));
       rows.push(row(['spline-point'], 'B-spline point'));
       rows.push(row(['rounded-point'], `Rounded corner (${snap.cornerRadius}pt)`));
+      // FMStroke board: only while the spline layout is active, never in a
+      // clothoid session (different caps, different deposits).
+      if (snap.layoutLabel === 'Spline') {
+        rows.push(row(['bowed-hard-a', 'bowed-hard-b'], 'Bowed hard corner (A/B facing)'));
+        rows.push(row(['bowed-rounded-a', 'bowed-rounded-b'], 'Bowed rounded corner (A/B facing)'));
+        rows.push(row(['arc-by-three'], 'Three-point arc'));
+        rows.push(row(['switch-rounding'], 'Switch rounded-corner type'));
+        rows.push(row(['erase-last-point'], 'Erase last point'));
+      }
       rows.push(row(['finish-r'], 'Close shape'));
       rows.push(row(['finish-a'], 'End drawing'));
       rows.push(row(['cancel'], 'Cancel drawing'));

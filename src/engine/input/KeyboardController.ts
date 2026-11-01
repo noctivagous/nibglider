@@ -87,9 +87,16 @@ export interface KeyboardHost {
   polyLineKC(): void;
   splinePointKC(): void;
   roundedPointKC(): void;
+  compositeBowedKC(corner: 'hardCorner' | 'roundedCorner', facing: 'A' | 'B'): void;
+  arcPointKC(): void;
+  switchRoundingKC(): void;
+  eraseLastPointKC(): boolean;
+  clothoidPointKC(kind: 'g4' | 'g2' | 'clothoidCorner' | 'line' | 'prevConstraint' | 'nextConstraint'): void;
   compositePathEnabled(): boolean;
   /** True while a composite path session holds the live point. Drives the spline layout. */
   isCompositeSessionActive(): boolean;
+  /** True while the live composite session carries clothoid vocabulary. Drives the clothoid layout. */
+  isClothoidSessionActive(): boolean;
   /** Manual layout override from a layout key; null follows session/base derivation. */
   manualLayout(): KeyboardLayoutId | null;
   setManualLayout(id: KeyboardLayoutId | null): void;
@@ -276,10 +283,13 @@ export class KeyboardController {
       isInDragLock: host.isInDragLock(),
       liveAdjustApplies: host.liveAdjustApplies(),
       isCompositePath: host.compositePathEnabled(),
-      // Engine-owned layout derivation: a live session wins (spline while
-      // a composite path session draws); otherwise a manual layout key
-      // override applies; the base returns when neither is set.
-      activeLayoutId: host.isCompositeSessionActive() ? 'spline' : (host.manualLayout() ?? 'base'),
+      isCompositeSessionActive: host.isCompositeSessionActive(),
+      // Engine-owned layout derivation: a live session wins (clothoid while
+      // a clothoid session draws, else spline while a composite path
+      // session draws); otherwise a manual layout key override applies;
+      // the base returns when neither is set.
+      activeLayoutId: host.isClothoidSessionActive() ? 'clothoid'
+        : host.isCompositeSessionActive() ? 'spline' : (host.manualLayout() ?? 'base'),
       isTransformMode: host.isTransformMode(),
     };
   }
@@ -399,6 +409,50 @@ export class KeyboardController {
         return;
       case 'rounded-point':
         host.roundedPointKC();
+        return;
+      case 'clothoid-g4-deposit':
+        host.clothoidPointKC('g4');
+        return;
+      case 'clothoid-g2-deposit':
+        host.clothoidPointKC('g2');
+        return;
+      case 'clothoid-corner-deposit':
+        host.clothoidPointKC('clothoidCorner');
+        return;
+      case 'clothoid-line-deposit':
+        host.clothoidPointKC('line');
+        return;
+      case 'clothoid-prev-constraint-deposit':
+        host.clothoidPointKC('prevConstraint');
+        return;
+      case 'clothoid-next-constraint-deposit':
+        host.clothoidPointKC('nextConstraint');
+        return;
+      case 'bowed-hard-a':
+        host.compositeBowedKC('hardCorner', 'A');
+        return;
+      case 'bowed-hard-b':
+        host.compositeBowedKC('hardCorner', 'B');
+        return;
+      case 'bowed-rounded-a':
+        host.compositeBowedKC('roundedCorner', 'A');
+        return;
+      case 'bowed-rounded-b':
+        host.compositeBowedKC('roundedCorner', 'B');
+        return;
+      case 'arc-by-three':
+        host.arcPointKC();
+        return;
+      case 'switch-rounding':
+        host.switchRoundingKC();
+        return;
+      case 'erase-last-point':
+        host.eraseLastPointKC();
+        return;
+      case 'enter-spline-layout':
+        event.preventDefault();
+        if (host.manualLayout() === 'spline') host.clearManualLayout();
+        else host.setManualLayout('spline');
         return;
       case 'circle-diameter':
         host.circleKC('diameter');

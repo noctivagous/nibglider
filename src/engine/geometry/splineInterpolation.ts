@@ -80,3 +80,56 @@ export function sampleCubic(from: Vec2, control1: Vec2, control2: Vec2, to: Vec2
       y: u ** 3 * from.y + 3 * u * u * t * control1.y + 3 * u * t * t * control2.y + t ** 3 * to.y };
   }, [0, 1], options);
 }
+
+function norm2Pi(a: number): number {
+  return ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+}
+
+/**
+ * Sample the circular arc from `from` to `to` passing through `through`.
+ * Center comes from perpendicular bisectors (the `makeArcFromThreePoints`
+ * pattern); the sweep direction is whichever side contains `through`.
+ * Collinear or coincident triples fall back to the straight chord —
+ * never NaN, never a throw for degenerate geometry.
+ */
+export function sampleCircleThrough3(from: Vec2, through: Vec2, to: Vec2, options: SamplingOptions = {}): Vec2[] {
+  for (const p of [from, through, to]) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) throw new Error('Invalid circle point');
+  }
+  if (distance(from, to) <= 1e-9) return [{ ...from }];
+  const d = 2 * (from.x * (through.y - to.y) + through.x * (to.y - from.y) + to.x * (from.y - through.y));
+  const scale = distance(from, through) + distance(through, to) + distance(from, to);
+  if (Math.abs(d) <= 1e-9 * scale * scale) return [{ ...from }, { ...to }];
+  const ux = ((from.x ** 2 + from.y ** 2) * (through.y - to.y) + (through.x ** 2 + through.y ** 2) * (to.y - from.y) + (to.x ** 2 + to.y ** 2) * (from.y - through.y)) / d;
+  const uy = ((from.x ** 2 + from.y ** 2) * (to.x - through.x) + (through.x ** 2 + through.y ** 2) * (from.x - to.x) + (to.x ** 2 + to.y ** 2) * (through.x - from.x)) / d;
+  const center = { x: ux, y: uy };
+  const radius = distance(center, from);
+  if (!Number.isFinite(center.x) || !Number.isFinite(center.y) || !Number.isFinite(radius) || radius <= 0) {
+    return [{ ...from }, { ...to }];
+  }
+  const a0 = Math.atan2(from.y - center.y, from.x - center.x);
+  const a1 = Math.atan2(through.y - center.y, through.x - center.x);
+  const a2 = Math.atan2(to.y - center.y, to.x - center.x);
+  const ccwTotal = norm2Pi(a2 - a0);
+  const viaThrough = norm2Pi(a1 - a0) + norm2Pi(a2 - a1);
+  const total = Math.abs(viaThrough - ccwTotal) < 1e-9 ? ccwTotal : ccwTotal - 2 * Math.PI;
+  if (Math.abs(total) <= 1e-12) return [{ ...from }, { ...to }];
+  const spans = Math.max(1, Math.ceil(Math.abs(total) / (Math.PI / 2)));
+  const out: Vec2[] = [];
+  for (let k = 0; k < spans; k++) {
+    const s0 = a0 + (total * k) / spans; const s1 = a0 + (total * (k + 1)) / spans;
+    const p0 = { x: center.x + radius * Math.cos(s0), y: center.y + radius * Math.sin(s0) };
+    const p1 = { x: center.x + radius * Math.cos(s1), y: center.y + radius * Math.sin(s1) };
+    const dir = Math.sign(total);
+    const t0 = { x: -dir * Math.sin(s0), y: dir * Math.cos(s0) };
+    const t1 = { x: -dir * Math.sin(s1), y: dir * Math.cos(s1) };
+    const h = (4 / 3) * radius * Math.tan(Math.abs(s1 - s0) / 4);
+    const c1 = { x: p0.x + t0.x * h, y: p0.y + t0.y * h };
+    const c2 = { x: p1.x - t1.x * h, y: p1.y - t1.y * h };
+    // Pin exact endpoints so runs join without gaps.
+    const start = k === 0 ? { ...from } : p0;
+    const end = k === spans - 1 ? { ...to } : p1;
+    for (const p of sampleCubic(start, c1, c2, end, options)) appendDistinct(out, p);
+  }
+  return out;
+}

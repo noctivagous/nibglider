@@ -2,11 +2,13 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import paper from 'paper';
 import { sampleBSpline, distance } from '../src/engine/geometry/splineInterpolation.ts';
-import { expandCompositePoints, resolveCompositePath } from '../src/engine/geometry/compositeExpansion.ts';
+import { bowPeakPoints, expandCompositePoints, resolveCompositePath } from '../src/engine/geometry/compositeExpansion.ts';
+import { sampleCircleThrough3 } from '../src/engine/geometry/splineInterpolation.ts';
+import { DEFAULT_BOWED_PARAMS } from '../src/engine/model/NGPath.ts';
 import { PathDrawingSession } from '../src/engine/drawing/PathDrawingSession.ts';
 import { PathTool } from '../src/engine/drawing/PathTool.ts';
 import { NibGliderEngine } from '../src/engine/engine.ts';
-import { serializeDrawable, deserializeDrawable } from '../src/engine/model/serialization.ts';
+import { serializeDrawable, deserializeDrawable, validatePath } from '../src/engine/model/serialization.ts';
 import { resolveKeyboardLayout, resolveKeyVariants } from '../src/engine/input/KeyboardLayoutResolver.ts';
 import {
   KEYBOARD_LAYOUTS, KEY_COMMANDS, KEY_VARIANTS, LAYOUT_VARIANT_TABLES, POINT_COMMAND_IDS, capsForLayout,
@@ -381,7 +383,9 @@ test('keymap exposes rounded points only for composite mode and keeps legacy ten
     e.mousePt = new s.Point(10, 10); e.splinePointKC();
     e.setPathDrawingMode('legacy'); assert.equal(e.pathDrawingMode, 'ngComposite');
     layout = resolveKeyboardLayout(BASE_MODIFIERS, 'other', e.getKeyState());
-    assert.equal(layout.find((cap) => cap.id === 'KeyJ').available, false);
+    // Phase 5 repurposed the session-dead app toggles as bowed keys.
+    assert.equal(layout.find((cap) => cap.id === 'KeyJ').commandId, 'bowed-rounded-a');
+    assert.equal(layout.find((cap) => cap.id === 'KeyJ').available, true);
     e.cancelCurrentDrawingOperation(); e.setPathDrawingMode('legacy');
     layout = resolveKeyboardLayout(BASE_MODIFIERS, 'other', e.getKeyState());
     assert.equal(layout.find((cap) => cap.id === 'KeyH').available, false);
@@ -438,6 +442,468 @@ test('spline layout swaps in while a composite session is live and restores afte
     resolveKeyVariants('KeyG', BASE_MODIFIERS, { ...e.getKeyState(), activeLayoutId: 'base' });
     assert.equal(e.isDrawingPath, true);
     assert.equal(layoutIdForState(e.getKeyState()), 'spline');
+  } finally { cleanup(); }
+});
+
+const bowedPoint = (id, x, y, corner, bow) => ({
+  id, x, y, kind: corner, outgoing: { kind: 'bowedLine', bow: { ...DEFAULT_BOWED_PARAMS, ...bow } },
+});
+const arcPath = (pts, closed = false) => ({ id: 'arc-fixture', mode: 'ngComposite', points: pts, closed });
+
+test('bowed peaks offset to the facing side and flip with facing', () => {
+  const chord = [{ x: 0, y: 0 }, { x: 100, y: 0 }];
+  const peakA = bowPeakPoints(...chord, { ...DEFAULT_BOWED_PARAMS, facing: 'A' });
+  const peakB = bowPeakPoints(...chord, { ...DEFAULT_BOWED_PARAMS, facing: 'B' });
+  assert.equal(peakA.length, 1);
+  // Default 10% of a 100pt chord, A faces -90deg (below), B +90deg (above).
+  assert.deepEqual(peakA[0], { x: 50, y: -10 });
+  assert.deepEqual(peakB[0], { x: 50, y: 10 });
+  for (const facing of ['A', 'B']) {
+    const source = path([bowedPoint('p1', 0, 0, 'hardCorner', { facing }), point('p2', 100, 0)]);
+    const geometry = resolveCompositePath(source);
+    const extreme = facing === 'A'
+      ? Math.min(...geometry.segments.map((s) => s.point.y))
+      : Math.max(...geometry.segments.map((s) => s.point.y));
+    // A 3-control clamped run only reaches halfway to its peak control.
+    assert.ok(Math.abs(extreme) > 3, `facing ${facing} bows off the chord`);
+    assert.ok(Math.abs(Math.abs(extreme) - 5) < 1, `facing ${facing} peaks near 5pt`);
+    distinct(geometry);
+  }
+});
+
+test('bowed amplitude honors percent versus absolute units', () => {
+  const percent = bowPeakPoints({ x: 0, y: 0 }, { x: 200, y: 0 }, { ...DEFAULT_BOWED_PARAMS, amplitude: 10 });
+  const absolute = bowPeakPoints({ x: 0, y: 0 }, { x: 200, y: 0 }, { ...DEFAULT_BOWED_PARAMS, amplitude: 10, amplitudeIsPercent: false });
+  assert.equal(Math.abs(percent[0].y), 20);
+  assert.equal(Math.abs(absolute[0].y), 10);
+  // Peak base tracks peakLocation x multiplier along the chord.
+  const shifted = bowPeakPoints({ x: 0, y: 0 }, { x: 100, y: 0 }, { ...DEFAULT_BOWED_PARAMS, peakLocation: 0.25, peakLocationMultiplier: 2 });
+  assert.deepEqual(shifted[0], { x: 50, y: -10 });
+});
+
+test('dual peaks straddle and cornered apexes repeat the peak', () => {
+  const chord = [{ x: 0, y: 0 }, { x: 100, y: 0 }];
+  const base = { ...DEFAULT_BOWED_PARAMS, dualDistance: 0.4 };
+  assert.equal(bowPeakPoints(...chord, base).length, 2);
+  assert.equal(bowPeakPoints(...chord, { ...base, corneredApex: 'rounded' }).length, 4);
+  assert.equal(bowPeakPoints(...chord, { ...base, corneredApex: 'hard' }).length, 6);
+  assert.equal(bowPeakPoints(...chord, { ...DEFAULT_BOWED_PARAMS, corneredApex: 'hard' }).length, 3);
+  const [low, high] = bowPeakPoints(...chord, base);
+  assert.ok(low.x < 50 && high.x > 50);
+  assert.equal(low.x + high.x, 100);
+  assert.equal(low.y, high.y);
+  // Structure survives expansion: exit + peaks + entry in one command.
+  const source = path([bowedPoint('p1', 0, 0, 'hardCorner', { dualDistance: 0.4 }), point('p2', 100, 0)]);
+  const bowed = expandCompositePoints(source).find((c) => c.kind === 'bowedControls');
+  assert.ok(bowed);
+  assert.equal(bowed.points.length, 4);
+  assert.deepEqual(bowed.points[0], { x: 0, y: 0 });
+  assert.deepEqual(bowed.points.at(-1), { x: 100, y: 0 });
+});
+
+test('three-point arcs stay on their circle; collinear triples fall back to a line', () => {
+  const arc = sampleCircleThrough3({ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 0 });
+  assert.ok(arc.length > 2);
+  for (const p of arc) {
+    assert.ok(Math.abs(Math.hypot(p.x - 1, p.y) - 1) < 0.3, `off-circle: ${p.x},${p.y}`);
+  }
+  assert.deepEqual(arc[0], { x: 0, y: 0 });
+  assert.deepEqual(arc.at(-1), { x: 2, y: 0 });
+  const flat = sampleCircleThrough3({ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 100, y: 0 });
+  assert.ok(flat.every((p) => Math.abs(p.y) < 1e-6));
+  assert.ok(flat.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)));
+  // Arc pair inside a path: circle through (prev, start, end), endpoints exact.
+  // Hand-derived circle for (0,0), (100,0), (200,100): center (50,150).
+  const source = arcPath([
+    point('p1', 0, 0, 'hardCorner'),
+    { id: 'p2', x: 100, y: 0, kind: 'arcByThreeStart', outgoing: { kind: 'arc' } },
+    { id: 'p3', x: 200, y: 100, kind: 'arcByThreeEnd', outgoing: { kind: 'line' } },
+    point('p4', 300, 100, 'hardCorner', 'line'),
+  ]);
+  const commands = expandCompositePoints(source);
+  const arcCmd = commands.find((c) => c.kind === 'arc');
+  assert.ok(arcCmd);
+  assert.deepEqual(arcCmd.from, { x: 0, y: 0 });
+  assert.deepEqual(arcCmd.through, { x: 100, y: 0 });
+  const radius = Math.hypot(50, 150);
+  const geometry = resolveCompositePath(source);
+  distinct(geometry);
+  assert.deepEqual(geometry.segments[0].point, { x: 0, y: 0 });
+  // Every resolved sample sits on the hand-derived circle, so the sweep
+  // took the short side through the start point, not the long way around.
+  for (const seg of geometry.segments) {
+    if (seg.point.x <= 200) {
+      assert.ok(Math.abs(Math.hypot(seg.point.x - 50, seg.point.y - 150) - radius) < 1, `off-circle: ${seg.point.x},${seg.point.y}`);
+    }
+  }
+});
+
+test('arc-mode bows resolve onto their circle', () => {
+  const source = path([bowedPoint('p1', 0, 0, 'hardCorner', { isArc: true }), point('p2', 100, 0)]);
+  const arcCmd = expandCompositePoints(source).find((c) => c.kind === 'arc');
+  assert.ok(arcCmd);
+  assert.deepEqual(arcCmd.through, { x: 50, y: -10 });
+  // Hand-derived circle for (0,0), (50,-10), (100,0): center (50,120), R 130.
+  const radius = 130;
+  const geometry = resolveCompositePath(source);
+  distinct(geometry);
+  for (const seg of geometry.segments) {
+    assert.ok(Math.abs(Math.hypot(seg.point.x - 50, seg.point.y - 120) - radius) < 1, `off-circle: ${seg.point.x},${seg.point.y}`);
+  }
+});
+
+test('degenerate bowed chords and unfinished arcs stay finite', () => {
+  assert.deepEqual(bowPeakPoints({ x: 5, y: 5 }, { x: 5, y: 5 }, { ...DEFAULT_BOWED_PARAMS }), [{ x: 5, y: 5 }]);
+  const coincident = path([bowedPoint('p1', 5, 5, 'hardCorner', {}), point('p2', 5, 5)]);
+  assert.doesNotThrow(() => resolveCompositePath(coincident));
+  distinct(resolveCompositePath(arcPath([
+    point('p1', 0, 0, 'hardCorner'),
+    { id: 'p2', x: 60, y: 0, kind: 'arcByThreeStart', outgoing: { kind: 'arc' } },
+  ])));
+  // Unfinished arcs preview as hard corners: the start is interpolated.
+  const open = resolveCompositePath(arcPath([
+    point('p1', 0, 0, 'hardCorner'),
+    { id: 'p2', x: 60, y: 0, kind: 'arcByThreeStart', outgoing: { kind: 'arc' } },
+  ]));
+  const nearStart = Math.min(...open.segments.map((s) => distance(s.point, { x: 60, y: 0 })));
+  assert.ok(nearStart < 1e-6);
+});
+
+test('bowed and arc segments work across closed seams and keep target trims', () => {
+  // Bow on the seam segment (last -> first) into a rounded target:
+  // the segment lands on the post-trim entry.
+  const seam = arcPath([
+    { id: 'p1', x: 0, y: 0, kind: 'roundedCorner', corner: { rounding: 'arc', radius: 10 }, outgoing: { kind: 'bSpline' } },
+    point('p2', 100, 0, 'hardCorner'),
+    bowedPoint('p3', 100, 100, 'hardCorner', { facing: 'B', amplitude: 20, amplitudeIsPercent: false }),
+  ], true);
+  const bowed = expandCompositePoints(seam).find((c) => c.kind === 'bowedControls');
+  assert.ok(bowed);
+  // Target entry is the post-trim point, not the raw corner.
+  assert.ok(distance(bowed.points.at(-1), { x: 0, y: 0 }) > 1e-6);
+  assert.ok(distance(bowed.points.at(-1), { x: 0, y: 0 }) < 150);
+  const closedBow = resolveCompositePath(seam);
+  assert.equal(closedBow.closed, true);
+  distinct(closedBow);
+  // Arc across the seam: start last, end first.
+  const seamArc = arcPath([
+    { id: 'p1', x: 0, y: 100, kind: 'arcByThreeEnd', outgoing: { kind: 'line' } },
+    point('p2', 0, 0, 'hardCorner'),
+    point('p3', 100, 0, 'hardCorner'),
+    { id: 'p4', x: 100, y: 100, kind: 'arcByThreeStart', outgoing: { kind: 'arc' } },
+  ], true);
+  const arcCmd = expandCompositePoints(seamArc).find((c) => c.kind === 'arc');
+  assert.ok(arcCmd);
+  assert.deepEqual(arcCmd.to, { x: 0, y: 100 });
+  const closedArc = resolveCompositePath(seamArc);
+  assert.equal(closedArc.closed, true);
+  distinct(closedArc);
+  // Arc start landing on the seam moves the seam to the arc end.
+  const lineIntoArc = arcPath([
+    point('p1', 0, 0, 'hardCorner', 'line'),
+    { id: 'p2', x: 100, y: 0, kind: 'arcByThreeStart', outgoing: { kind: 'arc' } },
+    { id: 'p3', x: 100, y: 100, kind: 'arcByThreeEnd', outgoing: { kind: 'line' } },
+    point('p4', 0, 100),
+  ], true);
+  assert.ok(expandCompositePoints(lineIntoArc).some((c) => c.kind === 'arc'));
+  distinct(resolveCompositePath(lineIntoArc));
+});
+
+const press = (code, k) => ({
+  code, key: k, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false,
+  target: null, getModifierState: () => false, preventDefault: () => {},
+});
+const at = (e, s, x, y) => { e.mousePt = new s.Point(x, y); };
+
+test('spline layout opens from Period and Escape returns to base', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    assert.equal(layoutIdForState(e.getKeyState()), 'base');
+    at(e, s, 10, 10);
+    e.handleKeyDown(press('Period', '.'));
+    assert.equal(e.manualLayoutId, 'spline');
+    assert.equal(layoutIdForState(e.getKeyState()), 'spline');
+    assert.equal(layoutLabelForState(e.getKeyState()), 'Spline');
+    const caps = resolveKeyboardLayout(BASE_MODIFIERS, 'other', e.getKeyState());
+    assert.equal(caps.find((cap) => cap.id === 'Period').commandId, 'enter-spline-layout');
+    e.handleKeyDown(press('Escape', 'Escape'));
+    assert.equal(e.manualLayoutId, null);
+    assert.equal(layoutIdForState(e.getKeyState()), 'base');
+  } finally { cleanup(); }
+});
+
+test('spline board shadows session-dead keys and keeps End on A', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    at(e, s, 10, 10); e.splinePointKC();
+    const live = e.getKeyState();
+    assert.equal(layoutIdForState(live), 'spline');
+    const ids = (code) => resolveKeyVariants(code, BASE_MODIFIERS, live).map((v) => v.commandId);
+    assert.deepEqual(ids('KeyS'), ['bowed-hard-a']);
+    assert.deepEqual(ids('KeyD'), ['bowed-hard-b']);
+    assert.deepEqual(ids('KeyJ'), ['bowed-rounded-a']);
+    assert.deepEqual(ids('KeyK'), ['bowed-rounded-b']);
+    assert.deepEqual(ids('KeyE'), ['arc-by-three']);
+    assert.deepEqual(ids('KeyL'), ['switch-rounding']);
+    assert.deepEqual(ids('KeyZ'), ['erase-last-point']);
+    assert.deepEqual(ids('KeyF'), ['sharp-point']);
+    assert.deepEqual(ids('KeyG'), ['spline-point']);
+    assert.deepEqual(ids('KeyH'), ['rounded-point']);
+    assert.deepEqual(ids('KeyA'), ['finish-a']);
+    assert.deepEqual(ids('KeyQ'), ['cancel']);
+    const caps = resolveKeyboardLayout(BASE_MODIFIERS, 'other', live);
+    assert.equal(caps.find((cap) => cap.id === 'KeyS').commandId, 'bowed-hard-a');
+    assert.equal(caps.find((cap) => cap.id === 'KeyE').commandId, 'arc-by-three');
+    assert.equal(caps.find((cap) => cap.id === 'KeyZ').commandId, 'erase-last-point');
+  } finally { cleanup(); }
+});
+
+test('bowed keys deposit corners carrying the bow and finish end-to-end', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    at(e, s, 10, 10); e.handleKeyDown(press('KeyF', 'f'));
+    at(e, s, 40, 10); e.handleKeyDown(press('KeyS', 's'));
+    at(e, s, 70, 10); e.handleKeyDown(press('KeyD', 'd'));
+    const source = e.compositePathTool.stamp(false).source;
+    assert.deepEqual(source.points.map((p) => p.kind), ['hardCorner', 'hardCorner', 'hardCorner']);
+    assert.deepEqual(source.points.map((p) => p.outgoing.kind), ['line', 'bowedLine', 'bowedLine']);
+    assert.equal(source.points[1].outgoing.bow.facing, 'A');
+    assert.equal(source.points[2].outgoing.bow.facing, 'B');
+    assert.deepEqual(
+      source.points.map((p) => [p.x, p.y]),
+      [[10, 10], [40, 10], [70, 10]],
+    );
+    at(e, s, 70, 10); e.handleKeyDown(press('KeyA', 'a'));
+    assert.equal(e.isDrawingPath, false);
+    const placed = layer.children.find((item) => !item.data.isPathPreview);
+    assert.ok(placed);
+    assert.equal(e.canUndo(), true);
+    e.undo();
+    assert.equal(layer.children.filter((item) => !item.data.isPathPreview).length, 0);
+  } finally { cleanup(); }
+});
+
+test('arc key starts, completes, and abandons arcs', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    at(e, s, 80, 80); e.handleKeyDown(press('KeyF', 'f'));
+    at(e, s, 100, 80); e.handleKeyDown(press('KeyE', 'e'));
+    // Stamping while a start is staged is a safe no-op by design.
+    assert.equal(e.compositePathTool.stamp(false), null);
+    assert.equal(e.isDrawingPath, true);
+    at(e, s, 140, 120); e.handleKeyDown(press('KeyE', 'e'));
+    let source = e.compositePathTool.stamp(false).source;
+    const kinds = source.points.map((p) => p.kind);
+    const start = kinds.indexOf('arcByThreeStart');
+    assert.ok(start >= 0 && kinds[start + 1] === 'arcByThreeEnd');
+    assert.doesNotThrow(() => validatePath(source));
+    // A new arc starts behind the completed pair without touching it, and a
+    // sharp deposit after that lone start abandons just the staged slot.
+    at(e, s, 160, 140); e.handleKeyDown(press('KeyE', 'e'));
+    assert.equal(e.compositePathTool.stamp(false), null);
+    at(e, s, 200, 140); e.handleKeyDown(press('KeyF', 'f'));
+    source = e.compositePathTool.stamp(false).source;
+    {
+      const kinds = source.points.map((p) => p.kind);
+      const starts = kinds.map((k, i) => (k === 'arcByThreeStart' ? i : -1)).filter((i) => i >= 0);
+      assert.equal(starts.length, 1);
+      assert.equal(kinds[starts[0] + 1], 'arcByThreeEnd');
+      assert.doesNotThrow(() => validatePath(source));
+    }
+  } finally { cleanup(); }
+});
+
+test('finish drops a staged start but keeps earlier points', () => {
+  const { s, e, layer, cleanup } = engine();
+  try {
+    at(e, s, 10, 10); e.handleKeyDown(press('KeyF', 'f'));
+    at(e, s, 20, 10); e.handleKeyDown(press('KeyE', 'e'));
+    at(e, s, 20, 10); e.handleKeyDown(press('KeyA', 'a'));
+    assert.equal(e.isDrawingPath, false);
+    const placed = layer.children.find((item) => !item.data.isPathPreview);
+    assert.ok(placed);
+    const model = e.getRetainedPathDrawable(placed.data.drawableId);
+    assert.ok(!model.source.points.some((p) => p.kind === 'arcByThreeStart'));
+  } finally { cleanup(); }
+  const { s: s2, e: e2, layer: layer2, cleanup: cleanup2 } = engine();
+  try {
+    at(e2, s2, 10, 10); e2.handleKeyDown(press('KeyE', 'e'));
+    at(e2, s2, 10, 10); e2.handleKeyDown(press('KeyA', 'a'));
+    assert.equal(e2.isDrawingPath, false);
+    assert.equal(layer2.children.filter((item) => !item.data.isPathPreview).length, 0);
+  } finally { cleanup2(); }
+});
+
+test('erase-last removes points, dissolves arc ends, and no-ops at the first point', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    at(e, s, 10, 10); e.handleKeyDown(press('KeyF', 'f'));
+    at(e, s, 20, 10); e.handleKeyDown(press('KeyG', 'g'));
+    at(e, s, 30, 10); e.handleKeyDown(press('KeyH', 'h'));
+    e.handleKeyDown(press('KeyZ', 'z'));
+    let source = e.compositePathTool.stamp(false).source;
+    assert.deepEqual(source.points.map((p) => p.kind), ['bSpline', 'bSpline']);
+    assert.equal(e.isDrawingPath, true);
+    // At the first point there is nothing to erase: the G retype that turned
+    // the initial sharp deposit into a spline point is history, and the
+    // initial point itself is never removed.
+    e.handleKeyDown(press('KeyZ', 'z'));
+    assert.equal(e.isDrawingPath, true);
+    source = e.compositePathTool.stamp(false).source;
+    assert.deepEqual(source.points.map((p) => p.kind), ['bSpline', 'bSpline']);
+    // Arc pair, then erase the end: the start dissolves to a plain corner.
+    at(e, s, 80, 10); e.handleKeyDown(press('KeyE', 'e'));
+    at(e, s, 90, 10); e.handleKeyDown(press('KeyE', 'e'));
+    e.handleKeyDown(press('KeyZ', 'z'));
+    source = e.compositePathTool.stamp(false).source;
+    assert.ok(!source.points.some((p) => p.kind === 'arcByThreeStart' || p.kind === 'arcByThreeEnd'));
+    assert.doesNotThrow(() => validatePath(source));
+  } finally { cleanup(); }
+});
+
+test('switch-rounding cycles arc, spline, bevel for new deposits only', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    at(e, s, 10, 10); e.handleKeyDown(press('KeyF', 'f'));
+    at(e, s, 20, 10); e.handleKeyDown(press('KeyH', 'h'));
+    e.handleKeyDown(press('KeyL', 'l'));
+    at(e, s, 30, 10); e.handleKeyDown(press('KeyH', 'h'));
+    e.handleKeyDown(press('KeyL', 'l'));
+    at(e, s, 40, 10); e.handleKeyDown(press('KeyH', 'h'));
+    const source = e.compositePathTool.stamp(false).source;
+    const roundings = source.points.filter((p) => p.kind === 'roundedCorner').map((p) => p.corner.rounding);
+    assert.deepEqual(roundings, ['arc', 'bSpline', 'bevel']);
+    // A fresh deposit takes the current mode: the live rubber carries no
+    // rounding, so the next H stamps the switched mode.
+    e.handleKeyDown(press('KeyL', 'l'));
+    at(e, s, 50, 10); e.handleKeyDown(press('KeyH', 'h'));
+    const again = e.compositePathTool.stamp(false).source;
+    const kept = again.points.filter((p) => p.kind === 'roundedCorner').map((p) => p.corner.rounding);
+    assert.deepEqual(kept, ['arc', 'bSpline', 'bevel', 'arc']);
+  } finally { cleanup(); }
+});
+
+test('retyping a rounded point keeps its rounding while fresh deposits take the mode', () => {
+  // Session level: the keep path triggers when commit retypes an already
+  // rounded point (the initial point, or anything a previous commit typed).
+  const session = new PathDrawingSession('keep', { x: 0, y: 0 }, 'roundedCorner');
+  assert.equal(session.snapshot().points[0].corner.rounding, 'arc');
+  session.cycleRoundingMode();
+  session.commit('roundedCorner', { x: 100, y: 0 });
+  let snap = session.snapshot();
+  assert.equal(snap.points[0].corner.rounding, 'arc');
+  // A second commit retypes the neutral rubber the first commit advanced,
+  // so it stamps the switched mode instead of keeping.
+  session.commit('roundedCorner', { x: 200, y: 0 });
+  snap = session.snapshot();
+  assert.equal(snap.points[1].corner.rounding, 'bSpline');
+});
+
+test('same-family retypes keep bows; cross-family retypes clear them', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    at(e, s, 10, 10); e.handleKeyDown(press('KeyF', 'f'));
+    at(e, s, 20, 10); e.handleKeyDown(press('KeyS', 's'));
+    const bowed = e.compositePathTool.stamp(false).source.points[1];
+    assert.equal(bowed.outgoing.kind, 'bowedLine');
+    at(e, s, 30, 10); e.handleKeyDown(press('KeyF', 'f'));
+    let source = e.compositePathTool.stamp(false).source;
+    assert.equal(source.points[1].kind, 'hardCorner');
+    assert.equal(source.points[1].outgoing.kind, 'bowedLine');
+    const { s: s2, e: e2, cleanup: cleanup2 } = engine();
+    try {
+      at(e2, s2, 10, 10); e2.handleKeyDown(press('KeyF', 'f'));
+      at(e2, s2, 20, 10); e2.handleKeyDown(press('KeyS', 's'));
+      at(e2, s2, 30, 10); e2.handleKeyDown(press('KeyG', 'g'));
+      source = e2.compositePathTool.stamp(false).source;
+      assert.equal(source.points[1].kind, 'bSpline');
+      assert.equal(source.points[1].outgoing.kind, 'bSpline');
+    } finally { cleanup2(); }
+  } finally { cleanup(); }
+});
+
+test('bow amplitude scales absolutely but stays relative for percents', () => {
+  const session = new PathDrawingSession('scale', { x: 0, y: 0 }, 'hardCorner');
+  session.commitBowed('hardCorner', { ...DEFAULT_BOWED_PARAMS, amplitude: 20, amplitudeIsPercent: false }, { x: 100, y: 0 });
+  session.commitBowed('hardCorner', { ...DEFAULT_BOWED_PARAMS, amplitude: 10, amplitudeIsPercent: true }, { x: 200, y: 0 });
+  session.scale(2);
+  const snap = session.snapshot();
+  assert.equal(snap.points[1].outgoing.bow.amplitude, 40);
+  assert.equal(snap.points[2].outgoing.bow.amplitude, 10);
+  session.rotate(90);
+  assert.equal(session.snapshot().points[1].outgoing.bow.amplitude, 40);
+  assert.equal(session.snapshot().points[1].outgoing.bow.facing, 'A');
+});
+
+test('bowed deposits stamp independent param copies', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    at(e, s, 10, 10); e.handleKeyDown(press('KeyF', 'f'));
+    at(e, s, 20, 10); e.handleKeyDown(press('KeyS', 's'));
+    at(e, s, 30, 10); e.handleKeyDown(press('KeyD', 'd'));
+    const source = e.compositePathTool.stamp(false).source;
+    const bows = source.points.map((p) => p.outgoing.bow).filter(Boolean);
+    assert.equal(bows.length, 2);
+    assert.notEqual(bows[0], bows[1]);
+    assert.deepEqual(bows[0].facing, 'A');
+    assert.deepEqual(bows[1].facing, 'B');
+  } finally { cleanup(); }
+});
+
+test('every FM key builds one semantic path', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    const keys = [
+      ['KeyF', 'f', 10], ['KeyG', 'g', 20], ['KeyH', 'h', 30],
+      ['KeyS', 's', 40], ['KeyD', 'd', 50], ['KeyJ', 'j', 60], ['KeyK', 'k', 70],
+      ['KeyE', 'e', 80], ['KeyE', 'e', 90],
+    ];
+    for (const [code, key, x] of keys) { at(e, s, x, 10); e.handleKeyDown(press(code, key)); }
+    const source = e.compositePathTool.stamp(false).source;
+    // Key-click convention: a commit's kind lands on the previous cursor
+    // (the rubber lags one press behind), bowed deposits land on the cursor
+    // itself, and E starts an arc by freezing a hard separator first.
+    assert.deepEqual(source.points.map((p) => p.kind), [
+      'bSpline', 'roundedCorner', 'bSpline',
+      'hardCorner', 'hardCorner', 'roundedCorner', 'roundedCorner',
+      'hardCorner', 'arcByThreeStart', 'arcByThreeEnd',
+    ]);
+    assert.deepEqual(source.points.map((p) => p.outgoing.kind), [
+      'bSpline', 'bSpline', 'bSpline',
+      'bowedLine', 'bowedLine', 'bowedLine', 'bowedLine',
+      'line', 'arc', 'bSpline',
+    ]);
+    assert.deepEqual(source.points.map((p) => p.outgoing.bow?.facing ?? null), [
+      null, null, null, 'A', 'B', 'A', 'B', null, null, null,
+    ]);
+    assert.deepEqual(
+      source.points.map((p) => [p.x, p.y]),
+      [[10, 10], [20, 10], [30, 10], [40, 10], [50, 10], [60, 10], [70, 10], [80, 10], [80, 10], [90, 10]],
+    );
+    assert.doesNotThrow(() => validatePath(source));
+    distinct(resolveCompositePath(source));
+  } finally { cleanup(); }
+});
+
+test('erase-last works in the clothoid layout', () => {
+  const { s, e, cleanup } = engine();
+  try {
+    e.handleKeyDown(press('KeyB', 'b'));
+    assert.equal(layoutIdForState(e.getKeyState()), 'clothoid');
+    at(e, s, 10, 10); e.handleKeyDown(press('KeyS', 's'));
+    at(e, s, 20, 10); e.handleKeyDown(press('KeyD', 'd'));
+    at(e, s, 30, 10); e.handleKeyDown(press('KeyF', 'f'));
+    e.handleKeyDown(press('KeyZ', 'z'));
+    const source = e.compositePathTool.stamp(false).source;
+    // Clothoid commits share the key-click lag: D retyped the G4 deposit to
+    // G2, F's corner landed on the previous cursor, and Z removes that
+    // corner while the G2 deposit stands.
+    assert.deepEqual(source.points.map((p) => p.kind), ['g2', 'bSpline']);
+    assert.deepEqual(
+      source.points.map((p) => [p.x, p.y]),
+      [[10, 10], [30, 10]],
+    );
+    assert.doesNotThrow(() => validatePath(source));
   } finally { cleanup(); }
 });
 

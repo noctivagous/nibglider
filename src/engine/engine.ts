@@ -6046,6 +6046,16 @@ export class NibGliderEngine {
   polyLineKC(): void { this.compositePathTool.sharpKey(); }
   roundedPointKC(): void { this.compositePathTool.roundedKey(); }
   splinePointKC(): void { this.compositePathTool.splineKey(); }
+  clothoidPointKC(kind: 'g4' | 'g2' | 'clothoidCorner' | 'line' | 'prevConstraint' | 'nextConstraint'): void {
+    this.compositePathTool.clothoidKey(kind);
+  }
+  compositeBowedKC(corner: 'hardCorner' | 'roundedCorner', facing: 'A' | 'B'): void {
+    this.compositePathTool.bowedKey(corner, facing);
+  }
+  arcPointKC(): void { this.compositePathTool.arcKey(); }
+  switchRoundingKC(): void { this.compositePathTool.switchRoundingKey(); }
+  eraseLastPointKC(): boolean { return this.compositePathTool.eraseLastKey(); }
+  isClothoidSessionActive(): boolean { return this.compositePathTool.isClothoid; }
 
   completeShapeWithSpline(): void { this.compositePathTool.completeWithSpline(); }
 

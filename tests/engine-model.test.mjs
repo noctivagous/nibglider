@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import paper from 'paper';
-import { deserializeDrawable, serializeDrawable, ModelValidationError } from '../src/engine/model/serialization.ts';
+import { deserializeDrawable, serializeDrawable, ModelValidationError, validatePath } from '../src/engine/model/serialization.ts';
+import { DEFAULT_BOWED_PARAMS } from '../src/engine/model/NGPath.ts';
 import { resolveDrawableGeometry, GeometryResolutionError } from '../src/engine/geometry/pathResolver.ts';
 import { DrawableRenderer } from '../src/engine/scene/DrawableRenderer.ts';
 
@@ -202,12 +203,70 @@ test('composite validation rejects duplicate point IDs, invalid radius, and dang
     (d) => { d.source.points[2].corner.radius = -1; },
     (d) => { d.source.points[0].kind = 'arcByThreeStart'; },
     (d) => { d.source.points[0].kind = 'arcByThreeEnd'; },
-    (d) => { d.source.points[0].outgoing.bowOffset = 20; },
+    (d) => { d.source.points[0].outgoing = { kind: 'bSpline', bow: { ...DEFAULT_BOWED_PARAMS } }; },
+    (d) => { d.source.points[0].outgoing = { kind: 'bowedLine', bowOffset: 20 }; },
   ];
   for (const mutate of cases) {
     const model = fixture('composite'); mutate(model);
     assert.throws(() => serializeDrawable(model), ModelValidationError);
   }
+});
+
+test('bowed outgoing params round-trip every field and reject out-of-range values', () => {
+  const bow = {
+    facing: 'B', amplitude: 25, amplitudeIsPercent: false,
+    peakLocation: 0.3, peakLocationMultiplier: 2,
+    isArc: true, dualDistance: 0.4, corneredApex: 'hard',
+  };
+  const bowed = () => {
+    const model = fixture('composite');
+    model.source.points[1].outgoing = { kind: 'bowedLine', bow: { ...bow } };
+    return model;
+  };
+  assert.deepEqual(roundTrip(bowed()).source.points[1].outgoing, { kind: 'bowedLine', bow });
+  const bad = [
+    (b) => { b.facing = 'C'; },
+    (b) => { b.amplitude = -1; },
+    (b) => { b.amplitudeIsPercent = 'yes'; },
+    (b) => { b.peakLocation = 1.5; },
+    (b) => { b.peakLocationMultiplier = NaN; },
+    (b) => { b.isArc = 1; },
+    (b) => { b.dualDistance = 2; },
+    (b) => { b.corneredApex = 'soft'; },
+    (b) => { b.extra = 1; },
+  ];
+  for (const mutate of bad) {
+    const model = bowed(); mutate(model.source.points[1].outgoing.bow);
+    assert.throws(() => serializeDrawable(model), ModelValidationError);
+  }
+});
+
+test('every FM point kind round-trips through serialization', () => {
+  const model = fixture('composite');
+  model.source.points = [
+    { id: 'p1', x: 0, y: 0, kind: 'bSpline', outgoing: { kind: 'bSpline' } },
+    { id: 'p2', x: 60, y: 0, kind: 'hardCorner', outgoing: { kind: 'bowedLine', bow: { ...DEFAULT_BOWED_PARAMS } } },
+    { id: 'p3', x: 120, y: 0, kind: 'roundedCorner', corner: { rounding: 'arc', radius: 8 }, outgoing: { kind: 'bowedLine', bow: { ...DEFAULT_BOWED_PARAMS, facing: 'B', isArc: true } } },
+    { id: 'p4', x: 180, y: 0, kind: 'arcByThreeStart', outgoing: { kind: 'arc' } },
+    { id: 'p5', x: 210, y: 30, kind: 'arcByThreeEnd', outgoing: { kind: 'line' } },
+    { id: 'p6', x: 260, y: 0, kind: 'line', outgoing: { kind: 'line' } },
+  ];
+  assert.deepEqual(roundTrip(model).source.points, model.source.points);
+});
+
+test('a trailing unfinished arc validates only as a live session snapshot', () => {
+  const staged = {
+    id: 'composite-path-staged', mode: 'ngComposite', closed: false,
+    points: [
+      { id: 'p1', x: 0, y: 0, kind: 'hardCorner', outgoing: { kind: 'line' } },
+      { id: 'p2', x: 60, y: 0, kind: 'arcByThreeStart', outgoing: { kind: 'arc' } },
+    ],
+  };
+  assert.doesNotThrow(() => validatePath(staged, 'path', { allowStagedArc: true }));
+  assert.throws(() => validatePath(staged), ModelValidationError);
+  const mid = structuredClone(staged);
+  mid.points.push({ id: 'p3', x: 90, y: 10, kind: 'bSpline', outgoing: { kind: 'bSpline' } });
+  assert.throws(() => validatePath(mid, 'path', { allowStagedArc: true }), ModelValidationError);
 });
 
 test('supershape resolution keeps finite samples and does not change the source', () => {

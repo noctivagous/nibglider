@@ -1,3 +1,34 @@
+[ ] rect keys: Page Layout: Column Grid, Modular Grid In-Canvas Elements.
+inherit from Export Frame.  
+a. allow configuring columns, gutters
+
+[ ] Vector Mode - keyboard layout.  The cursor turns into roaming brush mode.
+  [ ] grid-based vector paint mode - activates cells of the triangle grid that are converted
+to smooth or rigid.  has subtract function in this mode.  Different brush shapes are available.
+  [ ] metaballs.
+
+[ ] In-Canvas: InteractiveSubstrate: GridPaint : Hex.
+ [ ] paint a grid (the lines or dots).
+ [ ] activate cells on the grid and determine their effect (in-canvas ctrls)
+
+
+[ ] Rect Keys: rows x cols (flex) description plus gutters and margins.
+  first column: 3 rects vertically, second column: 2 rects vertically.
+  scaling the rectangle scales the rectangles.
+
+-----
+
+Canvas Document Display Modes
+target: [web | print | none]
+1. No document - free workspace.
+2. Canvas is
+3. Canvas = document
+4. multi-page 
+  4a. publication - imposition
+  4b. multi-page division: large image divided by
+image
+
+----
 
 [ ] right-click on display text and it allows
 placing it in template sign shapes.  
@@ -24,6 +55,7 @@ since these are commonly known by users.
 or crop a portion of an image with subtract/crop, it will change the clipping mask/shape
 for that image.  A decision needs to be made whether it will clip the pixels
 or just the image and it might depend on what % of the the image was clipped.
+can have in-canvas gui controls or right-click for finalizing slice.
 
 [ ] vectorization - placed in "Images". potrace like utility that shows floating
 panel, accessed from right-click menu.

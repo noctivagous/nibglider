@@ -1,7 +1,7 @@
 // Owns polyline, spline, and composite-path sessions. Composite semantics,
 // sampling, and Paper construction stay in PathDrawingSession, the path
 // resolver, and PathRenderer. Callers place returned geometry through the host.
-import type { NGCompositePath } from '../model/NGPath';
+import { DEFAULT_BOWED_PARAMS, type NGBowedParams, type NGCompositePath } from '../model/NGPath';
 import type { Vec2 } from '../model/geometryResolution';
 import type { DrawingHost } from './DrawingHost';
 import { PathDrawingSession, type CompositePointKind } from './PathDrawingSession';
@@ -18,6 +18,7 @@ export class PathTool {
   private readonly updated: (item: paper.Path) => void;
   private readonly scheduler?: FrameScheduler;
   private radius = 12;
+  private clothoidSession = false;
 
   constructor(scope: paper.PaperScope, updated: (item: paper.Path) => void, scheduler?: FrameScheduler) {
     this.scope = scope; this.updated = updated; this.scheduler = scheduler;
@@ -26,6 +27,10 @@ export class PathTool {
   bind(host: DrawingHost): void { this.host = host; }
 
   get active(): boolean { return this.composite !== null; }
+  /** True while the live session carries (or was opened with) clothoid vocabulary. */
+  get isClothoid(): boolean {
+    return this.clothoidSession || (this.composite?.isClothoid ?? false);
+  }
   get preview(): paper.Path | null { return this.renderer?.preview ?? null; }
   get snapBase(): Vec2 | null { return this.composite?.snapBase ?? null; }
   get origin(): Vec2 | null { return this.composite?.origin ?? null; }
@@ -36,9 +41,9 @@ export class PathTool {
     this.radius = radius; this.composite?.setCornerRadius(radius); this.request();
   }
 
-  point(kind: CompositePointKind, point: Vec2): void {
+  point(kind: CompositePointKind, point: Vec2, bow?: NGBowedParams): void {
     if (!this.composite) {
-      this.composite = new PathDrawingSession(crypto.randomUUID(), point, kind, this.radius);
+      this.composite = new PathDrawingSession(crypto.randomUUID(), point, kind, this.radius, bow);
       this.renderer = new PathRenderer(this.scope, this.updated, this.scheduler);
     } else this.composite.commit(kind, point);
     this.request();
@@ -50,15 +55,25 @@ export class PathTool {
 
   stamp(closed: boolean): CompositeDeposit | null {
     if (!this.composite || !this.renderer) return null;
+    // An unfinished arc cannot bake: stamping is a safe no-op while a
+    // start is staged (the preview already shows its hard-corner stand-in).
+    if (this.composite.lastCommitted?.kind === 'arcByThreeStart') return null;
     const source = this.composite.snapshot(closed);
     if (source.points.length < (closed ? 3 : 2)) return null;
     return { source, item: this.renderer.final(source) };
   }
 
   finish(closed: boolean): CompositeDeposit | null {
+    // Finishing abandons a staged start (keeping earlier points); a lone
+    // staged arc then yields nothing and the session simply ends.
+    this.composite?.dropArcStart();
     const deposit = this.stamp(closed);
     this.cancel();
     return deposit;
+  }
+
+  private resetSessionKind(): void {
+    this.clothoidSession = false;
   }
 
   flush(): void { this.renderer?.flush(); }
@@ -68,6 +83,7 @@ export class PathTool {
     this.renderer?.dispose();
     this.renderer = null;
     this.composite = null;
+    this.resetSessionKind();
     const live = this.host?.session;
     if (!live || !live.isDrawingPath) return;
     if (live.path && live.path !== preview) {
@@ -118,6 +134,72 @@ export class PathTool {
   sharpKey(): void { this.key('hardCorner', false); }
   roundedKey(): void { this.key('roundedCorner', true); }
   splineKey(): void { this.key('bSpline', false); }
+  clothoidKey(kind: CompositePointKind): void { this.clothoidPoint(kind); }
+  /** Bowed deposit with default params (5.3 settings thread through later)
+   * plus the facing carried by the key. Always composite, like clothoid. */
+  bowedKey(corner: 'hardCorner' | 'roundedCorner', facing: 'A' | 'B'): void {
+    const host = this.host;
+    if (!host) return;
+    const session = host.session;
+    if (!session.mousePt || session.isDrawingShape || session.isDrawingQuad) return;
+    const bow = { ...DEFAULT_BOWED_PARAMS, facing };
+    if (!this.active) {
+      this.clothoidSession = false;
+      this.point(corner, session.mousePt, bow);
+    } else {
+      this.composite!.commitBowed(corner, bow, session.mousePt);
+    }
+    session.path = this.preview;
+    session.isDrawingPath = true;
+    host.updateTextContent();
+    host.notify();
+  }
+  /** Arc deposit: completes a staged start, or starts a new arc. */
+  arcKey(): void {
+    const host = this.host;
+    if (!host) return;
+    const session = host.session;
+    if (!session.mousePt || session.isDrawingShape || session.isDrawingQuad) return;
+    if (!this.active) {
+      this.clothoidSession = false;
+      this.point('hardCorner', session.mousePt);
+    }
+    this.composite!.toggleArc(session.mousePt);
+    session.path = this.preview;
+    session.isDrawingPath = true;
+    host.updateTextContent();
+    host.notify();
+  }
+  /** Cycle the session rounding for subsequently deposited rounded points. */
+  switchRoundingKey(): void {
+    if (!this.active || !this.host) return;
+    this.composite!.cycleRoundingMode();
+    this.request();
+    this.host.updateTextContent();
+    this.host.notify();
+  }
+  /** Erase the last committed point, keeping the session live. */
+  eraseLastKey(): boolean {
+    if (!this.active || !this.host) return false;
+    if (!this.composite!.eraseLast()) return false;
+    this.request();
+    this.host.updateTextContent();
+    this.host.notify();
+    return true;
+  }
+
+  private clothoidPoint(kind: CompositePointKind): void {
+    const host = this.host;
+    if (!host) return;
+    const session = host.session;
+    if (!session.mousePt || session.isDrawingShape || session.isDrawingQuad) return;
+    this.clothoidSession = true;
+    this.point(kind, session.mousePt);
+    session.path = this.preview;
+    session.isDrawingPath = true;
+    host.updateTextContent();
+    host.notify();
+  }
 
   /** Stamp the composite session and record it. Returns false when this is not the active composite tool. */
   stampComposite(closed: boolean): boolean {
@@ -214,6 +296,7 @@ export class PathTool {
     const host = this.host;
     if (!host) return;
     if (host.pathDrawingMode() === 'ngComposite') {
+      if (!this.active) this.clothoidSession = false;
       this.compositePoint(kind);
       return;
     }

@@ -322,33 +322,29 @@ pre-existing Phase 0 failures, unchanged); lint 0 errors.
 Files: [NGPath.ts](/Users/jpratt/Developer/nibglider/src/engine/model/NGPath.ts),
 [serialization.ts](/Users/jpratt/Developer/nibglider/src/engine/model/serialization.ts).
 
-- [ ] 2.1 Add a persisted `NGBowedParams` mirroring FM `BowedInfo`:
+- [x] 2.1 Add a persisted `NGBowedParams` mirroring FM `BowedInfo` (done 2026-11-01, model slice):
   `facing: 'A' | 'B'`, `amplitude` + `amplitudeIsPercent` (default
   10 / true), `peakLocation` (0…1, default 0.5) ×
   `peakLocationMultiplier` (default 1), `isArc` (default false),
   `dualDistance` (0…1, default 0), `corneredApex:
   'none' | 'rounded' | 'hard'`.
-- [ ] 2.2 Decide representation: FM uses distinct point kinds
-  (`hardCornerBowedLine`, `roundedCornerBowedLine`). Default: keep
-  NibGlider's point kind as the corner (`hardCorner` /
-  `roundedCorner`) and put the bow on `outgoing: { kind:
-  'bowedLine', bow: NGBowedParams }` — the bow describes the
-  *following* segment in both systems. Replace the undersized
-  `bowOffset`/`bowFacing` fields (no legacy migration per repo
-  rules; update the few fixtures/tests that name them).
-- [ ] 2.3 Arc: keep `arcByThreeStart`/`arcByThreeEnd` kinds but
-  redefine validation for the staged protocol (Phase 4): a start
-  with no end yet is valid *only* in a live session snapshot, never
-  in a persisted/finalized path. Add a validation flag or a
-  session-only check so persisted documents stay strict.
-- [ ] 2.4 Update `validatePath` for the new fields (finite, clamped
-  ranges rejected-not-repaired, unknown keys still rejected).
-- [ ] 2.5 Tests in [engine-model.test.mjs](/Users/jpratt/Developer/nibglider/tests/engine-model.test.mjs):
-  round-trip every new field; reject out-of-range `peakLocation`,
-  negative amplitude, unpaired persisted arc points.
+- [x] 2.2 Decide representation (done 2026-11-01, model slice):
+  point kind stays the corner, bow lives on `outgoing: { kind:
+  'bowedLine', bow: NGBowedParams }`; `bowOffset`/`bowFacing`
+  removed with no migration.
+- [x] 2.3 Arc staged validation (done 2026-11-01, model slice):
+  `validatePath(path, { allowStagedArc: true })` permits one
+  trailing unpaired start for live snapshots; persisted paths stay
+  strict.
+- [x] 2.4 `validatePath` covers the new fields (done 2026-11-01,
+  model slice): finite/clamped ranges rejected-not-repaired,
+  unknown keys still rejected.
+- [x] 2.5 Tests in [engine-model.test.mjs](/Users/jpratt/Developer/nibglider/tests/engine-model.test.mjs) (done
+  2026-11-01, model slice): bow round-trip + 9 rejections, every-FM-kind
+  fixture round-trip, staged-arc session/persisted split.
 
 **Gate:** `serializeDrawable`/`deserializeDrawable` round-trips a
-fixture using every FM point kind.
+fixture using every FM point kind. — Met 2026-11-01 (3 new tests, 16/16 pass).
 
 ## Phase 3 — Geometry: bowed segments + three-point arcs
 
@@ -356,37 +352,29 @@ Files: [compositeExpansion.ts](/Users/jpratt/Developer/nibglider/src/engine/geom
 [splineInterpolation.ts](/Users/jpratt/Developer/nibglider/src/engine/geometry/splineInterpolation.ts).
 Pure, Paper-free; this is where the "not implemented" throw goes away.
 
-- [ ] 3.1 Bowed segment (spline mode, `isArc: false`): from corner
-  `P0` to next vertex `P1`, peak = chord point at
-  `peakLocation × multiplier`, offset along the chord normal by
-  `amplitude` (absolute pt, or % of chord length). Facing A/B =
-  normal rotated −90° / +90°. Emit the peak as spline control(s):
-  1 peak, or 2 peaks straddling by `dualDistance / 2` when nonzero;
-  apex repeated 2×/3× for `corneredApex` rounded/hard. Degenerate
-  chord (≤ 1pt in FM; use the existing `1e-9` discipline — decide
-  and document) emits just the peak.
-- [ ] 3.2 Bowed segment (arc mode, `isArc: true`) and standalone
-  three-point arc: circle through (start, through, end)
-  (FM `makeArcFromThreePoints`), sampled as cubic(s) like the
-  existing rounded-corner arc branch. Handle collinear/coincident
-  triples by falling back to a line — never NaN, never throw
-  during live preview.
-- [ ] 3.3 Wire both into `expandCompositePoints` as new
-  `CenterlineCommand` handling without breaking the existing
-  run-splitting (line segments, corner commands, periodic seam).
-  Bowed/arc segments are segment-level: they replace the spline run
-  between their two vertices only.
-- [ ] 3.4 Closed paths: bow/arc on the seam segment (last → first)
-  works; a bowed segment into a rounded corner still gets its
-  entry/exit trims.
-- [ ] 3.5 Tests (pure, in [composite-path.test.mjs](/Users/jpratt/Developer/nibglider/tests/composite-path.test.mjs)):
-  peak side flips with facing; % vs absolute amplitude; dual-peak
-  flattening; apex kink multiplicity; arc through 3 known points
-  stays on the circle; collinear arc → line; zero-length chord;
-  output always finite + distinct (reuse the `distinct()` helper).
+- [x] 3.1 Bowed segment (spline mode, done 2026-11-01): `bowPeakPoints`
+  per FM math (facing = normal ±90°, %/absolute amplitude, dual
+  straddle, 2×/3× apex copies); degenerate chord (1e-9 discipline)
+  emits just the peak.
+- [x] 3.2 Arc mode + standalone arc (done 2026-11-01):
+  `sampleCircleThrough3` (perpendicular-bisector center, sweep side
+  containing `through`, kappa cubics, collinear/coincident → line
+  fallback, never NaN/throw); arc-mode bows use the single central
+  peak like FM.
+- [x] 3.3 Wired as `bowedControls`/`arc` commands (done 2026-11-01):
+  segment-level replacement; unfinished arcs preview as hard
+  corners; incoming line/bowed legs are subsumed by the arc so no
+  spike; bowed runs stay B-spline even in clothoid paths.
+- [x] 3.4 Closed paths (done 2026-11-01): bow/arc on the seam work
+  (arc-at-seam moves the seam to the arc end); rounded targets keep
+  entry/exit trims while bowed points stay FM-literal trim-free.
+- [x] 3.5 Tests (done 2026-11-01, 7 new in `composite-path.test.mjs`):
+  all listed cases plus arc-mode circle, seam/trim cases, and the
+  staged-arc preview; `distinct()` throughout.
 
 **Gate:** the throw at `compositeExpansion.ts:59` is gone; every
-FM point kind expands to finite geometry.
+FM point kind expands to finite geometry. — Met 2026-11-01 (29/29
+composite tests; full suite 532 pass, 6 pre-existing reds).
 
 ## Phase 4 — Drawing session: deposit the new keys
 
@@ -395,16 +383,16 @@ Files: [PathDrawingSession.ts](/Users/jpratt/Developer/nibglider/src/engine/draw
 [DrawingHost.ts](/Users/jpratt/Developer/nibglider/src/engine/drawing/DrawingHost.ts),
 [hosts.ts](/Users/jpratt/Developer/nibglider/src/engine/hosts.ts), engine facade.
 
-- [ ] 4.1 Extend `CompositePointKind`/commit API so a commit can
+- [x] 4.1 Extend `CompositePointKind`/commit API so a commit can
   carry `NGBowedParams` and the current corner-rounding settings
   snapshot (FM stamps settings onto the point at deposit; later
   settings changes must not rewrite deposited points — except the
   existing deliberate `setCornerRadius` live-session behavior,
   which stays).
-- [ ] 4.2 Bowed keys: retype trailing point to hard/rounded corner
+- [x] 4.2 Bowed keys: retype trailing point to hard/rounded corner
   with `outgoing.kind = 'bowedLine'` + params; append fresh
   trailing point (FM appends the same bowed type — follow FM).
-- [ ] 4.3 Arc key state machine: 1st press deposits
+- [x] 4.3 Arc key state machine: 1st press deposits
   `hardCorner + arcByThreeStart`; a press landing on a start
   deposits `arcByThreeEnd`; after a completed end, the next arc
   press starts a new arc with a hard-corner separator. Live
@@ -412,19 +400,19 @@ Files: [PathDrawingSession.ts](/Users/jpratt/Developer/nibglider/src/engine/draw
   placeholder) without tripping persisted-path validation.
   Finalize/cancel with an unfinished arc: drop or complete the
   pending start — pick one, test it.
-- [ ] 4.4 Switch-rounded-corner key: cycles the *session's*
+- [x] 4.4 Switch-rounded-corner key: cycles the *session's*
   `corner.rounding` `arc → bSpline → bevel` for subsequently
   deposited rounded/bowed-rounded points (FM semantics: it changes
   what the Rounded keys produce; it does not rewrite old points).
-- [ ] 4.5 Erase-last-point key: removes the last committed point,
+- [x] 4.5 Erase-last-point key: removes the last committed point,
   keeping the trailing point live; no-op (not an error) at the
   first point. FM also closes unfinished arc slots before
   retyping — apply the same guard in 4.2–4.4.
-- [ ] 4.6 Engine entry points (`*KC` methods), `PathTool` methods,
+- [x] 4.6 Engine entry points (`*KC` methods), `PathTool` methods,
   host interface, scale/rotate session handling (bow amplitude in
   % scales naturally; absolute amplitude scales with the path —
   decide, test).
-- [ ] 4.7 Tests: session-level commit sequences per key; arc
+- [x] 4.7 Tests: session-level commit sequences per key; arc
   3-press sequence; erase-last at boundaries; settings snapshot
   isolation (change settings mid-draw, earlier points unchanged).
 
@@ -439,11 +427,11 @@ Files: [KeyboardController.ts](/Users/jpratt/Developer/nibglider/src/engine/inpu
 [statusSchema.ts](/Users/jpratt/Developer/nibglider/src/engine/appearance/statusSchema.ts),
 [engineSettings.ts](/Users/jpratt/Developer/nibglider/src/engine/engineSettings.ts).
 
-- [ ] 5.1 New commands + `perform()` cases for: bowed-hard A/B,
+- [x] 5.1 New commands + `perform()` cases for: bowed-hard A/B,
   bowed-rounded A/B, arc-by-three, switch-rounding, erase-last.
   (Dab — FM code 4, stamps one brush tip — only with Phase 8;
   list it here so the key table reserves no key for it yet.)
-- [ ] 5.2 Spline-layout caps with legends (e.g. `BOW →`,
+- [x] 5.2 Spline-layout caps with legends (e.g. `BOW →`,
   `ARC 3-PT`) following the existing two-line legend style;
   settings gear links via `KEY_SETTINGS_LINKS` pattern.
 - [ ] 5.3 Key-settings fields (path-tool schema, spline-layout
@@ -451,7 +439,7 @@ Files: [KeyboardController.ts](/Users/jpratt/Developer/nibglider/src/engine/inpu
   arc-vs-spline bow mode, dual distance, apex cornering, corner
   rounding type. All persisted through `engineSettings`
   (`path.*` keys) like `path.cornerRadius`.
-- [ ] 5.4 Keymap-table + status rows for the spline layout
+- [x] 5.4 Keymap-table + status rows for the spline layout
   (composite branch of `buildKeymapRows`): list the new keys only
   while the spline layout is active; show current rounding type
   and bow amplitude in the status snapshot.
@@ -592,12 +580,16 @@ Open questions for 7.1, do not pre-decide here:
   Tests in `tests/clothoid-layout.test.mjs` (3 pass). Full suite:
   520 tests, 514 pass, 6 fail (pre-existing Phase 0 reds);
   lint 0 errors.
-- [ ] 7.1 Research note in `refs/`: clothoid (Euler spiral)
+- [x] 7.1 Research note in `refs/`: clothoid (Euler spiral)
   segment definition, Fresnel-integral evaluation, fitting
   between two points with heading/curvature continuity
   (G1/G2), **plus** the Spiro/libspiro point-type semantics and
   solver-route decision from the open questions above. Confirm
-  or revise the suggested key table.
+  or revise the suggested key table. — Done 2026-11-01:
+  [clothoid-spiro-71-note.md](/Users/jpratt/Developer/nibglider/refs/clothoid-spiro-71-note.md).
+  G1 across joints today, G2 not enforced; one-sided constraint
+  forcing left open; solver route settled (self-contained TS,
+  libspiro is GPLv3); key table confirmed as shipped in 7.3.
 - [x] 7.2 Prototype the solver beside `sampleBSpline` with the
   same `SamplingOptions` contract; output ordinary cubic
   Bézier segments (the libspiro pattern) so `PathRenderer`
@@ -610,10 +602,15 @@ Open questions for 7.1, do not pre-decide here:
   tangents exact, G1 across joints, seam closure, degenerate
   fallback. Full suite: 527 tests, 521 pass, 6 pre-existing
   reds; lint 0 errors.
-- [ ] 7.3 Second spline layout (`spline-clothoid`) reusing the
+- [x] 7.3 Second spline layout (`spline-clothoid`) reusing the
   Phase 1 registry + Phase 4 session structure, swapping only
   the point vocabulary and segment solver. This is the payoff
-  the layout system exists for.
+  the layout system exists for. — Done 2026-11-01 (Slice 7.3):
+  new `g4`/`g2`/`clothoidCorner`/`prevConstraint`/`nextConstraint`
+  point kinds (line reuses `line`) through `PathDrawingSession` +
+  `resolveCompositePath` via `sampleClothoid`; `B` layout caps live
+  and shadow base; live clothoid sessions hold the layout.
+  Tests in `tests/clothoid-layout.test.mjs` (4 pass).
 - [ ] 7.4 Decide: ship, or record findings and stop. Do not let
   this phase block Phases 1–6.
 

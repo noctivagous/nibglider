@@ -41,14 +41,16 @@ test('KeyB opens the clothoid overlay and Escape returns to base', () => {
     assert.equal(live.activeLayoutId, 'clothoid');
     assert.equal(layoutIdForState(live), 'clothoid');
     assert.equal(layoutLabelForState(live), 'Clothoid');
-    // Partial overlay: keys with no available clothoid binding fall
+    // Partial overlay: keys with no clothoid binding fall
     // through to base (J toggles the panel from inside the layout).
     assert.deepEqual(resolveKeyVariants('KeyJ', BASE_MODIFIERS, live).map((v) => v.commandId), ['toggle-panel']);
-    // Slice A shell: point keys are disabled until the solver lands, so the
-    // base fallthrough applies (W stamps, S toggles stroke while idle).
-    // The Spiro legends appear once Slice C flips availability on.
-    assert.deepEqual(resolveKeyVariants('KeyW', BASE_MODIFIERS, live).map((v) => v.commandId), ['stamp']);
-    assert.deepEqual(resolveKeyVariants('KeyS', BASE_MODIFIERS, live).map((v) => v.commandId), ['toggle-stroke']);
+    // Slice 7.3: Spiro point keys are live and shadow base caps.
+    assert.deepEqual(resolveKeyVariants('KeyW', BASE_MODIFIERS, live).map((v) => v.commandId), ['clothoid-prev-constraint']);
+    assert.deepEqual(resolveKeyVariants('KeyS', BASE_MODIFIERS, live).map((v) => v.commandId), ['clothoid-g4']);
+    assert.deepEqual(resolveKeyVariants('KeyD', BASE_MODIFIERS, live).map((v) => v.commandId), ['clothoid-g2']);
+    assert.deepEqual(resolveKeyVariants('KeyF', BASE_MODIFIERS, live).map((v) => v.commandId), ['clothoid-corner']);
+    assert.deepEqual(resolveKeyVariants('KeyG', BASE_MODIFIERS, live).map((v) => v.commandId), ['clothoid-line']);
+    assert.deepEqual(resolveKeyVariants('KeyE', BASE_MODIFIERS, live).map((v) => v.commandId), ['clothoid-next-constraint']);
     // B stamps inside the layout instead of reopening it.
     assert.deepEqual(resolveKeyVariants('KeyB', BASE_MODIFIERS, live).map((v) => v.commandId), ['clothoid-stamp']);
     // Escape with no live drawing leaves the manual layout, canceling nothing.
@@ -79,6 +81,44 @@ test('manual clothoid yields to a spline session and returns after', () => {
     assert.equal(e.manualLayoutId, 'clothoid');
     e.handleKeyDown(press('Escape', 'Escape'));
     assert.equal(layoutIdForState(e.getKeyState()), 'base');
+  } finally { cleanup(); }
+});
+
+test('clothoid deposits route through the clothoid solver and persist', async () => {
+  const { s, e, cleanup } = engine();
+  try {
+    const { resolveCompositePath } = await import('../src/engine/geometry/compositeExpansion.ts');
+    const { validatePath } = await import('../src/engine/model/serialization.ts');
+    e.handleKeyDown(press('KeyB', 'b'));
+    tick();
+    assert.equal(layoutIdForState(e.getKeyState()), 'clothoid');
+    e.mousePt = new s.Point(10, 10);
+    e.handleKeyDown(press('KeyS', 's'));
+    tick();
+    e.mousePt = new s.Point(120, 20);
+    e.handleKeyDown(press('KeyD', 'd'));
+    tick();
+    e.mousePt = new s.Point(200, 120);
+    e.handleKeyDown(press('KeyG', 'g'));
+    tick();
+    assert.equal(e.compositePathTool.active, true);
+    const deposit = e.compositePathTool.stamp(false);
+    assert.ok(deposit);
+    const snap = deposit.source;
+    const kinds = snap.points.map((p) => p.kind);
+    // Key-click convention retypes the previous point, so the first
+    // deposit's kind shifts; what matters is clothoid vocabulary persists.
+    assert.ok(kinds.includes('g2'));
+    assert.ok(kinds.every((k) => ['g4', 'g2', 'clothoidCorner', 'line', 'prevConstraint', 'nextConstraint', 'bSpline', 'hardCorner'].includes(k)));
+    assert.doesNotThrow(() => validatePath(snap));
+    const resolved = resolveCompositePath(snap);
+    assert.ok(resolved.segments.length > 2);
+    assert.ok(resolved.segments.every((seg) => Number.isFinite(seg.point.x) && Number.isFinite(seg.point.y)));
+    const before = e.selectedItems.length;
+    e.handleKeyDown(press('KeyA', 'a'));
+    tick();
+    assert.equal(e.compositePathTool.active, false);
+    assert.ok(e.selectedItems.length >= before);
   } finally { cleanup(); }
 });
 
