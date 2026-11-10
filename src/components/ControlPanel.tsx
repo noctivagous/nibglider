@@ -22,12 +22,20 @@ import {
   nextUntitledFrom,
   type GalleryMeta,
 } from '../ui/DocumentGallery';
+import {
+  nativeFileName,
+  serializeNativeDocument,
+  wrapSceneAsNativeDocument,
+} from '../engine/document/NativeDocument';
 import { useGallerySnapshot } from '../ui/useGallerySnapshot';
 
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import DocumentGallery, { type GalleryMode } from './DocumentGallery';
 import NewDocumentDialog, { type NewDocumentSpec } from './NewDocumentDialog';
 import PdfImportDialog from './PdfImportDialog';
+import LayersPanel from './LayersPanel';
+import SwatchesPanel from './SwatchesPanel';
+import ArrangePanel from './ArrangePanel';
 import {
   IMPORT_ACCEPT,
   renameTarget,
@@ -3095,7 +3103,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   // writes update this snapshot, so the title stays current without
   // reading IndexedDB during render.
   const gallery = useGallerySnapshot();
-  const docName = gallery.displayName;
+  const docName = engine.currentFileName ?? gallery.displayName;
   const docDirty = engine.isDocumentDirty();
   useEffect(() => {
     document.title = `${docName}${docDirty ? ' •' : ''} — NibGlider`;
@@ -3183,6 +3191,72 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     },
     [],
   );
+  // Save to File: download the native document envelope under the
+  // document's name; the file becomes the document's file home.
+  const downloadTextFile = useCallback((fileName: string, text: string, type: string) => {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const anchorEl = document.createElement('a');
+    anchorEl.href = url;
+    anchorEl.download = fileName;
+    anchorEl.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }, []);
+  const handleSaveToFile = useCallback(() => {
+    const name = engine.currentFileName ?? gallery.displayName;
+    const text = engine.exportNativeDocument(name);
+    if (!text) {
+      engine.noteImportFailure('Save to file failed: nothing to save.');
+      return;
+    }
+    downloadTextFile(nativeFileName(name), text, 'application/json');
+    engine.currentFileName = name;
+    engine.markDocumentClean();
+  }, [engine, gallery.displayName, downloadTextFile]);
+  const handleGalleryExport = useCallback(
+    (meta: GalleryMeta) => {
+      void (async () => {
+        const session = await browserGallerySession();
+        const doc = await session.get(meta.id);
+        if (!doc) return;
+        const wrapped = wrapSceneAsNativeDocument(doc.name, doc.svg, new Date(doc.updatedAt).toISOString());
+        if (wrapped) {
+          downloadTextFile(nativeFileName(doc.name), serializeNativeDocument(wrapped), 'application/json');
+        } else {
+          // Legacy SVG gallery body: the file is the SVG itself.
+          downloadTextFile(`${doc.name.replace(/[\\/:*?"<>|]+/g, '-')}.svg`, doc.svg, 'image/svg+xml');
+        }
+      })();
+    },
+    [downloadTextFile],
+  );
+  const openFileInputRef = useRef<HTMLInputElement>(null);
+  const handleOpenFilePicked = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      if (
+        engine.isDocumentDirty()
+        && !window.confirm(`Open "${file.name}"? Unsaved changes will be lost.`)
+      ) {
+        return;
+      }
+      const reader = new FileReader();
+      reader.onerror = () => {
+        engine.noteImportFailure(`Open failed: could not read ${file.name}.`);
+      };
+      reader.onload = () => {
+        const text = reader.result;
+        if (typeof text !== 'string') return;
+        if (engine.openDocumentText(text, file.name)) {
+          void browserGallerySession().then((session) => session.setCurrent(null));
+        }
+      };
+      reader.readAsText(file);
+    },
+    [engine],
+  );
   const handleNewDocumentConfirm = useCallback(
     (spec: NewDocumentSpec) => {
       if (
@@ -3227,6 +3301,12 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       case 'rename-document':
         openGallery(renameTarget({ id: gallery.currentId }));
         break;
+      case 'save-file':
+        handleSaveToFile();
+        break;
+      case 'open-file':
+        openFileInputRef.current?.click();
+        break;
       case 'import-svg':
       case 'import-pdf':
       case 'import-raster': {
@@ -3238,7 +3318,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         break;
       }
     }
-  }, [dismissSelects, gallery.currentId, gallery.currentName, openGallery, saveSceneToGallery]);
+  }, [dismissSelects, gallery.currentId, gallery.currentName, openGallery, saveSceneToGallery, handleSaveToFile]);
   // Top Operations menu entry point for the scale/rotate modal dialog.
   const openOperationDialog = useCallback((kind: 'scale' | 'rotate') => {
     if (!engine.canTransformSelection()) return;
@@ -3770,6 +3850,35 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         </header>
       </PanelSection>
       )}
+      {isRemoved('swatchesControls') ? null : (
+      <PanelSection
+        id="swatchesControls"
+        label="Swatches"
+        icon={
+          <TitleIcon>
+            <rect x="2" y="2" width="5" height="5" />
+            <rect x="9" y="2" width="5" height="5" />
+            <rect x="2" y="9" width="5" height="5" />
+            <rect x="9" y="9" width="5" height="5" />
+          </TitleIcon>
+        }
+        collapsed={!!collapsedMap['swatchesControls']}
+        {...sectionProps('swatchesControls')}
+      >
+        <header className="pane-titlebar titlebar-single">
+          <SectionTitleButton sectionId="swatchesControls" title="Swatches" menuOpen={iconMenu?.id === 'swatchesControls'} onOpen={toggleIconMenu}><span className="pane-title">
+            <TitleIcon>
+              <rect x="2" y="2" width="5" height="5" />
+              <rect x="9" y="2" width="5" height="5" />
+              <rect x="2" y="9" width="5" height="5" />
+              <rect x="9" y="9" width="5" height="5" />
+            </TitleIcon>
+            <span className="pane-title-text">Swatches</span></span>
+          </SectionTitleButton>
+        </header>
+        <SwatchesPanel engine={engine} />
+      </PanelSection>
+      )}
 
       {isRemoved('textControls') ? null : (
       <PanelSection
@@ -4128,6 +4237,58 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             showHistory={historySegs.history !== false}
           />
         </header>
+      </PanelSection>
+      )}
+      {isRemoved('layersControls') ? null : (
+      <PanelSection
+        id="layersControls"
+        label="Layers & Objects"
+        icon={
+          <TitleIcon>
+            <path d="M8 2 L14 5.5 L8 9 L2 5.5 Z" />
+            <path d="M2 8.5 L8 12 L14 8.5" />
+            <path d="M2 11.5 L8 15 L14 11.5" />
+          </TitleIcon>
+        }
+        collapsed={!!collapsedMap['layersControls']}
+        {...sectionProps('layersControls')}
+      >
+        <header className="pane-titlebar titlebar-single">
+          <SectionTitleButton sectionId="layersControls" title="Layers & Objects" menuOpen={iconMenu?.id === 'layersControls'} onOpen={toggleIconMenu}><span className="pane-title">
+            <TitleIcon>
+              <path d="M8 2 L14 5.5 L8 9 L2 5.5 Z" />
+              <path d="M2 8.5 L8 12 L14 8.5" />
+              <path d="M2 11.5 L8 15 L14 11.5" />
+            </TitleIcon>
+            <span className="pane-title-text">Layers &amp; Objects</span></span>
+          </SectionTitleButton>
+        </header>
+        <LayersPanel engine={engine} />
+      </PanelSection>
+      )}
+      {isRemoved('arrangeControls') ? null : (
+      <PanelSection
+        id="arrangeControls"
+        label="Arrange"
+        icon={
+          <TitleIcon>
+            <path d="M2 2 H7 V7 H2 Z" />
+            <path d="M9 9 H14 V14 H9 Z" />
+          </TitleIcon>
+        }
+        collapsed={!!collapsedMap['arrangeControls']}
+        {...sectionProps('arrangeControls')}
+      >
+        <header className="pane-titlebar titlebar-single">
+          <SectionTitleButton sectionId="arrangeControls" title="Arrange" menuOpen={iconMenu?.id === 'arrangeControls'} onOpen={toggleIconMenu}><span className="pane-title">
+            <TitleIcon>
+              <path d="M2 2 H7 V7 H2 Z" />
+              <path d="M9 9 H14 V14 H9 Z" />
+            </TitleIcon>
+            <span className="pane-title-text">Arrange</span></span>
+          </SectionTitleButton>
+        </header>
+        <ArrangePanel engine={engine} />
       </PanelSection>
       )}
       {isRemoved('gridControls') ? null : (
@@ -4559,6 +4720,15 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         tabIndex={-1}
         onChange={handleImportFile}
       />
+      <input
+        ref={openFileInputRef}
+        type="file"
+        accept=".json,.nibglider.json,application/json"
+        hidden
+        aria-hidden="true"
+        tabIndex={-1}
+        onChange={handleOpenFilePicked}
+      />
       {pdfImport ? (
         <PdfImportDialog
           engine={engine}
@@ -4578,6 +4748,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           onSave={handleGallerySave}
           onRename={handleGalleryRename}
           onDelete={handleGalleryDelete}
+          onExport={handleGalleryExport}
           onClose={() => setGalleryMode(null)}
         />
       ) : null}

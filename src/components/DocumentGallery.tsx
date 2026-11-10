@@ -30,6 +30,7 @@ export default function DocumentGallery({
   onSave,
   onRename,
   onDelete,
+  onExport,
   onClose,
 }: {
   mode: GalleryMode;
@@ -41,6 +42,8 @@ export default function DocumentGallery({
   onSave: (name: string) => void;
   onRename: (name: string) => void;
   onDelete: (id: string) => void;
+  /** Export this gallery document to a native file download. */
+  onExport?: (doc: GalleryMeta) => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(initialName);
@@ -134,6 +137,11 @@ export default function DocumentGallery({
               {mode === 'open' && (
                 <button type="button" className="gallery-open" onClick={() => onOpen(doc)}>
                   Open
+                </button>
+              )}
+              {mode === 'open' && onExport && (
+                <button type="button" className="gallery-quiet" onClick={() => onExport(doc)}>
+                  Export…
                 </button>
               )}
               {confirmDelete === doc.id ? (

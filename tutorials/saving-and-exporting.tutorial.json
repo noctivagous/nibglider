@@ -1,0 +1,67 @@
+{
+  "id": "saving-and-exporting",
+  "title": "Saving & Exporting",
+  "description": "Autosave to the gallery, a real file of your own, and exports other programs can use.",
+  "steps": [
+    {
+      "id": "welcome",
+      "bubble": {
+        "title": "Three different things",
+        "body": "Autosave keeps your work safe in this browser. A saved file is yours to keep anywhere. An export is a picture of the drawing for other programs.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "canvas"
+    },
+    {
+      "id": "gallery",
+      "bubble": {
+        "title": "The gallery autosaves",
+        "body": "File \u2192 Open Document shows the gallery: every document saved in this browser, with the current one autosaved as you work. Naming a document (in Document Info) is what files it properly.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "status"
+    },
+    {
+      "id": "save-file",
+      "bubble": {
+        "title": "Save to File keeps it anywhere",
+        "body": "File \u2192 Save to File downloads a NibGlider document file \u2014 the drawing in NibGlider's own format, layers and all. Keep it, back it up, send it.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "canvas"
+    },
+    {
+      "id": "open-file",
+      "bubble": {
+        "title": "Open File brings it back",
+        "body": "File \u2192 Open File, or dropping the file onto the canvas, reopens a saved document exactly as it was. Older gallery documents keep working too.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "canvas"
+    },
+    {
+      "id": "export",
+      "bubble": {
+        "title": "Export for other programs",
+        "body": "File \u2192 Export gives PNG or JPG pictures, or SVG and PDF vector files \u2014 of the whole document, the current view, or just the selection. An Export Frame pins an exact size for repeat exports.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "canvas"
+    }
+  ]
+}

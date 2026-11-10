@@ -54,6 +54,18 @@ export class TransformManager {
     this.selection.refreshCentroids();
     this.history.recordRotate(items, degrees, center);
   }
+  /** Mirror the selection around its collective centre. */
+  flip(horizontal: boolean): void {
+    const items = this.selection.topLevelSelected();
+    if (!items.length) return;
+    const center = this.selection.collectiveCenter(items);
+    items.forEach((item) => item.scale(horizontal ? -1 : 1, horizontal ? 1 : -1, center));
+    for (const item of items) {
+      remapCircleOrigins(item, scaleXYAboutMapper(center, horizontal ? -1 : 1, horizontal ? 1 : -1));
+    }
+    this.selection.refreshCentroids();
+    this.history.recordFlip(items, horizontal, center);
+  }
   scalePreview(factor: number): void {
     if (!Number.isFinite(factor) || factor <= 0) return;
     this.applyPreview(

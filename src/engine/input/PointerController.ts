@@ -68,6 +68,10 @@ export interface PointerHost {
   beginFrameResize(handle: string): void;
   resizeFrameTo(point: Item): void;
   endFrameResize(): void;
+  eyedropperDown?(point: Item): boolean;
+  pointEditDown?(point: Item, alt: boolean): boolean;
+  pointEditDrag?(point: Item): boolean;
+  pointEditUp?(): boolean;
   isTransformMode(): boolean;
   transformHandleAt(point: Item): string | null;
   isTransformResizing(): boolean;
@@ -111,6 +115,16 @@ export class PointerController {
       host.updateTypingPreview();
       host.updateTextContent();
       host.notify();
+      return;
+    }
+    // The eyedropper samples on its press and consumes it.
+    if (host.eyedropperDown?.(host.mousePt())) {
+      host.updateCanvasCursor(false, event.point);
+      return;
+    }
+    // Point-edit anchors/handles take the press while point editing.
+    if (host.pointEditDown?.(host.mousePt(), this.altModifier(event))) {
+      host.updateCanvasCursor(true, event.point);
       return;
     }
     // Export-frame resize handles take precedence over selection and pan.
@@ -248,6 +262,10 @@ export class PointerController {
     // A right-drag starts no gesture (see onMouseDown), so it moves nothing.
     if (this.isRightButton(event)) return;
     const host = this.host;
+    if (host.pointEditDrag?.(event.point)) {
+      host.updateCanvasCursor(true, event.point);
+      return;
+    }
     if (host.isFrameResizing()) {
       host.resizeFrameTo(event.point);
       host.updateCanvasCursor(true, event.point);
@@ -278,6 +296,10 @@ export class PointerController {
   }
 
   releasePointer(): void {
+    if (this.host.pointEditUp?.()) {
+      this.resetPress();
+      return;
+    }
     if (this.host.isFrameResizing()) {
       this.resetPress();
       this.host.endFrameResize();
@@ -329,6 +351,14 @@ export class PointerController {
 
   private isRightButton(event: paper.MouseEvent): boolean {
     return (event as unknown as { event?: { button?: number } }).event?.button === 2;
+  }
+
+  private altModifier(event: paper.MouseEvent): boolean {
+    const anyEvent = event as unknown as {
+      modifiers?: { alt?: boolean };
+      event?: { altKey?: boolean };
+    };
+    return Boolean(anyEvent.modifiers?.alt ?? anyEvent.event?.altKey);
   }
 
   private endPan(): void {

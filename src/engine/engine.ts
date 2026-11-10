@@ -52,13 +52,22 @@ import {
 import {
   clearTransient,
   decodeSceneItems,
+  encodeSceneDocument,
   encodeSceneItems,
   isSceneJson,
   isSvgMarkup,
+  readSceneActiveLayerId,
+  readSceneLayers,
   readSceneView,
   stripSvgClips,
   type SceneView,
 } from './document/SceneIO';
+import {
+  buildLayerListing,
+  type LayerListing,
+  type LayerRecord,
+  type ListingObjectInput,
+} from './document/layerModel';
 import {
   adoptImportedArtwork,
   artworkNodeHasVectors,
@@ -165,6 +174,32 @@ import { RepeatManager } from './repeat/RepeatManager';
 import type { RepeatAnchor, RepeatDirection } from './geometry/RepeatGeometry';
 import { clampRepeatCount, isRepeatAnchor, isRepeatDirection } from './geometry/RepeatGeometry';
 import { LayerManager } from './document/LayerManager';
+import {
+  alignDeltas as computeAlignDeltas,
+  alignToSelectionDeltas,
+  distributeDeltas as computeDistributeDeltas,
+  type AlignMode,
+  type DistributeAxis,
+} from './geometry/arrange';
+import {
+  buildNativeDocument,
+  isNativeDocumentText,
+  nativeFileName,
+  parseNativeDocument,
+  serializeNativeDocument,
+  type NativeDocumentFile,
+} from './document/NativeDocument';
+import {
+  PointEditSession,
+  applySnapshots as applyPointSnapshots,
+  snapshotItem as snapshotPointItem,
+  type ContourSnapshot,
+} from './scene/PointEditSession';
+import {
+  joinContours as joinPointContours,
+  joinEndToEnd as joinPointEndToEnd,
+  joinStartToStart as joinPointStartToStart,
+} from './geometry/pointEditing';
 import { CoordinateManager } from './document/CoordinateManager';
 import {
   drawingPageRect,
@@ -528,6 +563,10 @@ export class NibGliderEngine {
   // Last image-drop outcome, surfaced in the status overlay. Set on
   // skipped/failed files, cleared when a new drop starts.
   lastDropNote = '';
+  /** Name of the disk file this document was opened from / last
+   * saved to, or null while it lives only in the gallery. Surfaced
+   * in the panel title next to the dirty marker. */
+  currentFileName: string | null = null;
   // Persistent deposit-time combinatoric setting: with a selection
   // present, each deposited shape folds into it using this mode ('none'
   // deposits plainly, exactly as before).
@@ -566,6 +605,8 @@ export class NibGliderEngine {
     mount: (item) => this.mountGuideItem(item),
     unmount: (item) => this.unmountGuideItem(item),
   });
+  /** Point-edit session for the path being point-edited, or null. */
+  private pointEdit: PointEditSession | null = null;
   /** Active handle-resize gesture, or null while idle. The label names the
    * undo entry; export-frame and garment-area resizes share the gesture. */
   private frameResize: {
@@ -904,6 +945,7 @@ export class NibGliderEngine {
       setDropNote: (note) => { this.lastDropNote = note; },
       recordDrop: (label, item, selectedBefore) => this.history.recordDrop(label, item, selectedBefore),
       depositTextPayload: (text, at) => { this.pasteTextPayload(text, at); },
+      openDocumentText: (text, fileName) => this.openDocumentText(text, fileName),
       depositImageUrl: (url, at) => { void this.depositImageUrl(url, at); },
       updateTextContent: () => this.updateTextContent(),
       notify: () => this.notify(),
@@ -1201,8 +1243,21 @@ export class NibGliderEngine {
     return this.documentManager.subscribe(listener);
   }
   markDocumentClean(): void { this.documentManager.markClean(); }
-  /** True when the active layer holds artwork (not overlays). */
-  hasContent(): boolean { return this.contentItems().length > 0; }
+  /** True when any content layer holds artwork (not overlays). */
+  hasContent(): boolean { return this.allContentItems().length > 0; }
+
+  /** Content items across every registered content layer, in
+   * bottom-to-top layer order. Editing operations keep using the
+   * active layer (contentItems); save/open/stats use this. */
+  private allContentItems(): AnyItem[] {
+    const out: AnyItem[] = [];
+    for (const layer of this.layers.contentLayers()) {
+      for (const child of [...(layer.children ?? [])] as AnyItem[]) {
+        try { if (!this.scene.isNonContentItem(child)) out.push(child); } catch { /* Detached. */ }
+      }
+    }
+    return out;
+  }
 
   // --- Document session: gallery new/open/save support + SVG transfer ---
   // All mutators record one undo entry and refresh paint/status bridges.
@@ -1210,7 +1265,7 @@ export class NibGliderEngine {
    * Recenters on the workspace so the page opens centered. */
   newDocument(): void {
     if (this.isLiveDrawing) return;
-    const before = this.contentItems();
+    const before = this.allContentItems();
     const selectedBefore = [...this.selectedItems];
     if (before.length === 0) { this.centerOnCanvas(); return; }
     this.clearOutSelection();
@@ -1218,6 +1273,7 @@ export class NibGliderEngine {
       try { item.remove(); } catch { /* Detached already. */ }
     }
     this.scene.pruneRecords();
+    this.currentFileName = null;
     this.recordSceneCommand('New document', before, selectedBefore, []);
     this.centerOnCanvas();
     this.updateTextContent(); this.notify();
@@ -1226,12 +1282,23 @@ export class NibGliderEngine {
   /** Native gallery payload: Paper JSON of artwork items, plus the view.
    * Selection and glow are stripped for the write and restored after. */
   exportScene(): string {
-    const items = this.contentItems();
+    const items = this.allContentItems();
     const selected = this.selection.snapshot();
     this.selection.suspendGlow();
     try {
       for (const item of items) clearTransient(item);
-      return encodeSceneItems(items, this.capturedSceneView());
+      const records = this.layers.listLayers();
+      const layerIdOf = new Map<AnyItem, string>();
+      for (const record of records) {
+        const layer = this.layers.layerForId(record.id);
+        for (const child of (layer?.children ?? []) as AnyItem[]) layerIdOf.set(child, record.id);
+      }
+      return encodeSceneDocument(
+        items.map((item) => ({ item, layerId: layerIdOf.get(item) ?? records[0]?.id ?? '' })),
+        records,
+        this.capturedSceneView(),
+        this.layers.activeLayerId,
+      );
     } catch {
       return '';
     } finally {
@@ -2270,6 +2337,342 @@ export class NibGliderEngine {
     this.setTransformMode(!this.isTransformMode);
   }
 
+  // --- Arrange (Slice 4) -------------------------------------------------
+  // Align/distribute translate the top-level selection by the pure
+  // deltas from geometry/arrange.ts, committed as one labelled move
+  // entry. Flip mirrors through TransformManager (own-inverse affine).
+
+  private applyArrangeDeltas(label: string, deltas: Array<{ x: number; y: number }>): boolean {
+    const items = this.topLevelSelected();
+    if (!items.length || items.length !== deltas.length) return false;
+    const entries: Array<{ item: AnyItem; before: AnyItem; after: AnyItem }> = [];
+    items.forEach((item, i) => {
+      const delta = deltas[i];
+      if (!delta || (delta.x === 0 && delta.y === 0) || !item.position) return;
+      const before = item.position.clone();
+      item.position = item.position.add(new this.scope.Point(delta.x, delta.y));
+      shiftCircleOrigins(item, delta.x, delta.y);
+      entries.push({ item, before, after: item.position.clone() });
+    });
+    if (!entries.length) return false;
+    this.history.recordMove(entries, undefined, label);
+    this.selection.refreshCentroids();
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  alignSelection(mode: AlignMode, target: 'selection' | 'document'): boolean {
+    const items = this.topLevelSelected();
+    if (!items.length) return false;
+    const bounds = items.map((item) => ({
+      x: item.bounds.x, y: item.bounds.y, width: item.bounds.width, height: item.bounds.height,
+    }));
+    const labels: Record<AlignMode, string> = {
+      left: 'Align Left', centerX: 'Align Centre', right: 'Align Right',
+      top: 'Align Top', centerY: 'Align Middle', bottom: 'Align Bottom',
+    };
+    if (target === 'selection') {
+      return this.applyArrangeDeltas(labels[mode], alignToSelectionDeltas(bounds, mode));
+    }
+    const reference = this.pageRect() ?? this.artworkRect();
+    if (!reference) return false;
+    return this.applyArrangeDeltas(`${labels[mode]} to Document`, computeAlignDeltas(bounds, mode, reference));
+  }
+
+  distributeSelection(axis: DistributeAxis): boolean {
+    const items = this.topLevelSelected();
+    if (items.length < 3) return false;
+    const bounds = items.map((item) => ({
+      x: item.bounds.x, y: item.bounds.y, width: item.bounds.width, height: item.bounds.height,
+    }));
+    return this.applyArrangeDeltas(
+      axis === 'horizontal' ? 'Distribute Horizontally' : 'Distribute Vertically',
+      computeDistributeDeltas(bounds, axis),
+    );
+  }
+
+  flipSelection(axis: 'horizontal' | 'vertical'): void {
+    if (!this.topLevelSelected().length) return;
+    this.transforms.flip(axis === 'horizontal');
+    this.documentManager.markEdited('scene');
+    this.updateTextContent();
+    this.notify();
+  }
+
+  // --- Eyedropper --------------------------------------------------------
+  // One-shot: the next canvas press samples the topmost content item
+  // under the point — fill/stroke from its paint, or a raster's
+  // average colour around the point — into the current fill/stroke.
+
+  eyedropperActive = false;
+
+  setEyedropperActive(active: boolean): void {
+    this.eyedropperActive = active;
+    this.notify();
+  }
+
+  /** Pointer hook (PointerController): true when the press sampled. */
+  eyedropperDown(point: AnyItem): boolean {
+    if (!this.eyedropperActive || !point) return false;
+    this.eyedropperActive = false;
+    const picked = this.pickEyedropperColor({ x: point.x, y: point.y });
+    if (picked) {
+      if (picked.fill) this.setFillColor(picked.fill);
+      if (picked.stroke) this.setStrokeColor(picked.stroke);
+      this.lastDropNote = picked.stroke && picked.fill
+        ? `Eyedropper: fill ${picked.fill}, stroke ${picked.stroke}.`
+        : `Eyedropper: ${picked.fill ? `fill ${picked.fill}` : `stroke ${picked.stroke}`}.`;
+    } else {
+      this.lastDropNote = 'Eyedropper: nothing to sample there.';
+    }
+    this.updateTextContent();
+    this.notify();
+    return true;
+  }
+
+  /** Sample colours at a global point from the topmost content item. */
+  pickEyedropperColor(point: { x: number; y: number }): { fill: string | null; stroke: string | null } | null {
+    const probe = new this.scope.Point(point.x, point.y);
+    const items = this.allContentItems();
+    for (let i = items.length - 1; i >= 0; i -= 1) {
+      const item = items[i];
+      if (!item || item.visible === false || item.locked) continue;
+      let hit: AnyItem = null;
+      try {
+        hit = item.hitTest(probe, { fill: true, stroke: true, segments: false, tolerance: 2 });
+      } catch { hit = null; }
+      if (!hit && item.className !== 'Raster') continue;
+      const target = (hit?.item ?? item) as AnyItem;
+      const raster = target.className === 'Raster' ? target : (item.className === 'Raster' ? item : null);
+      if (raster) {
+        try {
+          const local = raster.globalToLocal(probe.clone());
+          const color = raster.getAverageColor(local);
+          if (color) return { fill: color.toCSS('hex'), stroke: null };
+        } catch { /* Fall through to paint. */ }
+      }
+      const fill = target.fillColor ? target.fillColor.toCSS('hex') : null;
+      const stroke = target.strokeColor ? target.strokeColor.toCSS('hex') : null;
+      if (fill || stroke) return { fill, stroke };
+    }
+    return null;
+  }
+
+  // --- Point editing (direct selection) --------------------------------
+  // One session edits one deposited path: anchors and handles show
+  // as overlays, drags and the §PATH KEYS operations each commit a
+  // single history entry, and every commit writes the geometry back
+  // to the retained source (lowered to plain Bézier) and to the
+  // catalog record when the item is a model drawable — a shape
+  // edited at point level becomes a path, per the model bridge.
+
+  get isPointEditActive(): boolean { return this.pointEdit?.active ?? false; }
+
+  /** The path item under point editing, or null. */
+  get pointEditTarget(): AnyItem { return this.pointEdit?.target ?? null; }
+
+  togglePointEdit(): boolean {
+    if (this.pointEdit?.active) {
+      this.exitPointEdit();
+      return false;
+    }
+    const target = this.topLevelSelected().find(
+      (item) => item.className === 'Path' || item.className === 'CompoundPath',
+    );
+    if (!target) return false;
+    return this.enterPointEdit(target);
+  }
+
+  enterPointEdit(item: AnyItem): boolean {
+    if (!item || (item.className !== 'Path' && item.className !== 'CompoundPath')) return false;
+    if (!this.pointEdit) {
+      this.pointEdit = new PointEditSession({
+        scope: this.scope,
+        mountOverlay: (overlay) => this.mountGuideItem(overlay),
+        removeOverlay: (overlay) => this.unmountGuideItem(overlay),
+        commit: (label, target, before, after) => this.commitPointEdit(label, target, before, after),
+        notify: () => this.notify(),
+      });
+    }
+    const ok = this.pointEdit.attach(item);
+    if (ok) this.notify();
+    return ok;
+  }
+
+  exitPointEdit(): void {
+    this.pointEdit?.detach();
+    this.notify();
+  }
+
+  private commitPointEdit(label: string, item: AnyItem, before: ContourSnapshot[], after: ContourSnapshot[]): void {
+    const apply = (snapshots: ContourSnapshot[]): void => {
+      applyPointSnapshots(this.scope, item, snapshots);
+      this.writeBackPointEdit(item);
+      this.pointEdit?.refreshOverlay();
+    };
+    this.history.push({
+      label,
+      undo: () => apply(before),
+      redo: () => apply(after),
+    });
+    this.writeBackPointEdit(item);
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** After a segment edit, the item's retained source is its current
+   * geometry as plain Bézier (semantic intent is replaced, exactly
+   * as getRetainedPathDrawable already exposes it), and a catalog
+   * drawable of kind path/shape is rewritten as a path record. An
+   * item with neither gets a retained record so the edit persists. */
+  private writeBackPointEdit(item: AnyItem): void {
+    try {
+      const id = typeof item.data?.drawableId === 'string' ? item.data.drawableId : null;
+      if (id) {
+        const retained = this.scene.records.get(id);
+        if (retained && retained.item === item) {
+          retained.source = this.scene.bezierSource(item, retained.source.id);
+          retained.geometryKey = this.scene.pathGeometryKey(item);
+        }
+        if (this.catalog.has(id)) {
+          const existing = this.catalog.get(id);
+          const pageId = this.catalog.pageOf(id);
+          if (existing && pageId && (existing.kind === 'path' || existing.kind === 'shape')) {
+            const sourceId = existing.kind === 'path' ? existing.source.id : existing.id;
+            this.catalog.upsert(pageId, {
+              ...existing,
+              kind: 'path',
+              source: this.scene.bezierSource(item, sourceId),
+            } as never);
+          }
+        }
+      } else if (item.className === 'Path' || item.className === 'CompoundPath') {
+        this.scene.retain(item);
+      }
+    } catch { /* Write-back must never break the edit itself. */ }
+    this.scene.pruneRecords();
+  }
+
+  private pointTolerance(): number {
+    try { return 8 / (this.scope.view?.zoom ?? 1); } catch { return 8; }
+  }
+
+  /** Pointer hooks (PointerController): true when the session took
+   * the press/drag. Anchor drags move the point, handle drags move
+   * the handle (Alt breaks coupling / moves the edge from an anchor). */
+  pointEditDown(point: AnyItem, alt: boolean): boolean {
+    if (!this.pointEdit?.active || !point) return false;
+    return this.pointEdit.pointerDown({ x: point.x, y: point.y }, this.pointTolerance(), alt);
+  }
+
+  pointEditDrag(point: AnyItem): boolean {
+    if (!this.pointEdit?.dragging || !point) return false;
+    return this.pointEdit.pointerDrag({ x: point.x, y: point.y });
+  }
+
+  pointEditUp(): boolean {
+    if (!this.pointEdit?.dragging) return false;
+    return this.pointEdit.pointerUp();
+  }
+
+  /** Select Point key-click: select the anchor/handle at the cursor. */
+  selectPointAtCursor(): boolean {
+    if (!this.pointEdit?.active || !this.mousePt) return false;
+    return this.pointEdit.selectAt({ x: this.mousePt.x, y: this.mousePt.y }, this.pointTolerance());
+  }
+
+  cyclePointSelection(dir: 1 | -1 = 1): boolean {
+    return this.pointEdit?.selectNext(dir) ?? false;
+  }
+
+  pointEditInsertPointAtCursor(): boolean {
+    if (!this.pointEdit?.active || !this.mousePt) return false;
+    return this.pointEdit.insertPointAt({ x: this.mousePt.x, y: this.mousePt.y });
+  }
+
+  pointEditDeleteSelectedPoint(): boolean {
+    return this.pointEdit?.deleteSelectedPoint() ?? false;
+  }
+
+  pointEditConvertSelected(to: 'corner' | 'smooth'): boolean {
+    return this.pointEdit?.convertSelected(to) ?? false;
+  }
+
+  pointEditClosePath(): boolean {
+    return this.pointEdit?.closeSelectedContour() ?? false;
+  }
+
+  /**
+   * Join: stitch the edited open path to the nearest other open
+   * path in the active layer, endpoint to endpoint, choosing the
+   * orientation (end-to-end, end-to-start, start-to-start) by the
+   * closest endpoint pair. The other path is consumed; the join is
+   * one history entry whose undo restores both paths.
+   */
+  pointEditJoin(): boolean {
+    const session = this.pointEdit;
+    if (!session?.active) return false;
+    const mine = session.target as AnyItem;
+    const myContour = session.contourSnapshot(0);
+    if (!myContour || myContour.closed || myContour.segments.length === 0) return false;
+    const first = myContour.segments[0].point;
+    const last = myContour.segments[myContour.segments.length - 1].point;
+    let best: { item: AnyItem; contour: ContourSnapshot; mode: 'ee' | 'es' | 'ss' | 'se'; dist: number } | null = null;
+    for (const other of this.contentItems()) {
+      if (other === mine || (other.className !== 'Path' && other.className !== 'CompoundPath')) continue;
+      const contour = snapshotPointItem(other)[0];
+      if (!contour || contour.closed || contour.segments.length === 0) continue;
+      const oFirst = contour.segments[0].point;
+      const oLast = contour.segments[contour.segments.length - 1].point;
+      const candidates = [
+        { mode: 'ee' as const, dist: Math.hypot(last.x - oLast.x, last.y - oLast.y) },
+        { mode: 'es' as const, dist: Math.hypot(last.x - oFirst.x, last.y - oFirst.y) },
+        { mode: 'ss' as const, dist: Math.hypot(first.x - oFirst.x, first.y - oFirst.y) },
+        { mode: 'se' as const, dist: Math.hypot(first.x - oLast.x, first.y - oLast.y) },
+      ];
+      for (const candidate of candidates) {
+        if (!best || candidate.dist < best.dist) {
+          best = { item: other, contour, mode: candidate.mode, dist: candidate.dist };
+        }
+      }
+    }
+    if (!best) return false;
+    const chosen = best;
+    const mergedSegments = chosen.mode === 'ee'
+      ? joinPointEndToEnd(myContour.segments, chosen.contour.segments)
+      : chosen.mode === 'ss'
+        ? joinPointStartToStart(myContour.segments, chosen.contour.segments)
+        : chosen.mode === 'se'
+          ? joinPointEndToEnd(chosen.contour.segments, myContour.segments)
+          : joinPointContours(myContour.segments, chosen.contour.segments);
+    const beforeMine = snapshotPointItem(mine);
+    const afterMine = [{ closed: false, segments: mergedSegments }];
+    const otherParent = chosen.item.parent as AnyItem;
+    const otherIndex = typeof chosen.item.index === 'number' ? chosen.item.index : -1;
+    const applyJoin = (): void => {
+      applyPointSnapshots(this.scope, mine, afterMine);
+      try { chosen.item.remove(); } catch { /* Detached. */ }
+      this.writeBackPointEdit(mine);
+      session.refreshOverlay();
+    };
+    const undoJoin = (): void => {
+      applyPointSnapshots(this.scope, mine, beforeMine);
+      try {
+        if (otherParent && otherIndex >= 0) otherParent.insertChild(otherIndex, chosen.item);
+        else this.layers.activeLayer.addChild(chosen.item);
+      } catch { /* Detached. */ }
+      this.writeBackPointEdit(mine);
+      session.refreshOverlay();
+    };
+    applyJoin();
+    this.history.push({ label: 'Join Paths', undo: undoJoin, redo: applyJoin });
+    this.scene.pruneRecords();
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
   private exitTransformModeIfIdle(): void {
     if (this.isTransformMode && this.topLevelSelected().length === 0) this.setTransformMode(false);
   }
@@ -2664,7 +3067,16 @@ export class NibGliderEngine {
       const ok = this.replaceWithItems(label, () => (
         decodeSceneItems(this.scope.project, blob)
       ), opts);
-      if (ok) this.restoreSceneView(view);
+      if (ok) {
+        this.pruneStaleContentLayers();
+        this.layers.syncWithProject(readSceneLayers(blob));
+        const savedActive = readSceneActiveLayerId(blob);
+        if (savedActive) {
+          const mapped = this.layers.layerIdForRecordFlag(savedActive);
+          if (mapped) this.layers.setActiveLayer(mapped);
+        }
+        this.restoreSceneView(view);
+      }
       return ok;
     }
     if (isSvgMarkup(blob)) {
@@ -2679,6 +3091,132 @@ export class NibGliderEngine {
   /** Replace all artwork with an SVG document (gallery Open). One undo entry. */
   replaceSceneWithSVG(label: string, svg: string, opts?: { history?: boolean }): boolean {
     return this.replaceScene(label, svg, opts);
+  }
+
+  // --- Native document files -------------------------------------------
+  // The .nibglider.json envelope (document/NativeDocument.ts): the NG
+  // model sections (drawables, retained paths, layers, page, view)
+  // ride on the scene payload that carries the live geometry.
+
+  /** Serialize the whole document as a native file body. */
+  exportNativeDocument(name: string): string {
+    const scene = this.exportScene();
+    if (!scene) return '';
+    const pageId = this.documentManager.currentPageId ?? 'page-1';
+    const drawables = structuredClone(this.catalog.ordered(pageId));
+    const catalogIds = new Set(drawables.map((drawable) => drawable.id));
+    const retainedPaths: NGPathDrawable[] = [];
+    for (const id of this.scene.records.keys()) {
+      if (catalogIds.has(id)) continue;
+      const retained = this.getRetainedPathDrawable(id);
+      if (retained) retainedPaths.push(retained);
+    }
+    const page = this.documentManager.pageSettings;
+    const doc: NativeDocumentFile = buildNativeDocument({
+      name,
+      savedAt: new Date().toISOString(),
+      layers: this.listLayers().map((record) => ({ id: record.id, name: record.name })),
+      activeLayerId: this.activeLayerId(),
+      drawables,
+      retainedPaths,
+      page: {
+        widthPt: page.widthPt,
+        heightPt: page.heightPt,
+        orientation: page.orientation,
+        unit: page.unit,
+      },
+      view: readSceneView(scene),
+      scene,
+    });
+    return serializeNativeDocument(doc);
+  }
+
+  /** Find a live Path/CompoundPath carrying a drawableId (searching
+   * group children), or null. */
+  private itemByDrawableId(id: string): AnyItem {
+    const visit = (item: AnyItem): AnyItem => {
+      if (!item) return null;
+      if (item.data?.drawableId === id
+        && (item.className === 'Path' || item.className === 'CompoundPath')) return item;
+      for (const child of (item.children ?? []) as AnyItem[]) {
+        const found = visit(child);
+        if (found) return found;
+      }
+      return null;
+    };
+    for (const item of this.allContentItems()) {
+      const found = visit(item);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  /**
+   * Open a native document file body. Restores the scene (layers and
+   * view included), the catalog drawables, the retained Bézier
+   * sources, the page size, the current-file name, and clears the
+   * dirty flag. Returns a UI-ready error instead of throwing.
+   */
+  openNativeDocumentText(text: string): { ok: boolean; name?: string; error?: string } {
+    const parsed = parseNativeDocument(text);
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+    const doc = parsed.doc;
+    if (!this.replaceScene(`Open ${doc.name}`, doc.scene)) {
+      return { ok: false, error: 'That document’s scene could not be loaded.' };
+    }
+    const pageId = this.documentManager.currentPageId ?? 'page-1';
+    try {
+      this.catalog.clearPage(pageId);
+      for (const drawable of doc.drawables) this.catalog.upsert(pageId, drawable);
+    } catch { /* A bad model section must not strand the artwork. */ }
+    for (const retained of doc.retainedPaths) {
+      const item = this.itemByDrawableId(retained.id);
+      if (item) {
+        this.scene.records.set(retained.id, {
+          source: structuredClone(retained.source),
+          item,
+          geometryKey: this.scene.pathGeometryKey(item),
+        });
+      }
+    }
+    if (doc.page && doc.page.widthPt !== null && doc.page.heightPt !== null) {
+      try { this.documentManager.setPageSize(doc.page.widthPt, doc.page.heightPt, 'pt'); } catch { /* Keep size. */ }
+    }
+    this.currentFileName = doc.name;
+    this.documentManager.markClean();
+    this.notify();
+    return { ok: true, name: doc.name };
+  }
+
+  /**
+   * Unified file-open entry (Open File picker + document drops):
+   * native documents open natively; legacy nibglider-scene JSON
+   * (v1/v2, including gallery bodies) opens as a scene import.
+   * Returns true when the text was taken as a document.
+   */
+  openDocumentText(text: string, fileName: string): boolean {
+    if (isNativeDocumentText(text)) {
+      const result = this.openNativeDocumentText(text);
+      if (!result.ok) this.noteImportFailure(`Open failed: ${result.error ?? 'unknown error'}`);
+      return result.ok;
+    }
+    if (isSceneJson(text)) {
+      const name = fileName.replace(/\.json$/i, '') || 'Imported Document';
+      if (this.replaceScene(`Open ${name}`, text)) {
+        this.currentFileName = name;
+        this.documentManager.markClean();
+        this.notify();
+        return true;
+      }
+      this.noteImportFailure(`Open failed: ${fileName} could not be loaded.`);
+      return false;
+    }
+    return false;
+  }
+
+  /** Download file name for a Save to File of the current document. */
+  suggestedNativeFileName(name: string): string {
+    return nativeFileName(name);
   }
 
   private ingestSvg(svg: string): AnyItem | null {
@@ -2705,7 +3243,7 @@ export class NibGliderEngine {
     opts?: { history?: boolean },
   ): boolean {
     const recordHistory = opts?.history !== false;
-    const before = this.contentItems();
+    const before = this.allContentItems();
     const selectedBefore = [...this.selectedItems];
     const retainedBefore = new Map(this.retainedPaths);
     this.clearOutSelection();
@@ -5605,6 +6143,212 @@ export class NibGliderEngine {
     this.updateTextContent(); this.notify();
   }
 
+  bringSelectionForward(): void {
+    if (this.isLiveDrawing || !this.selection.reorderStep('forward')) return;
+    this.updateTextContent(); this.notify();
+  }
+
+  sendSelectionBackward(): void {
+    if (this.isLiveDrawing || !this.selection.reorderStep('backward')) return;
+    this.updateTextContent(); this.notify();
+  }
+
+  // --- Layers & Objects (panel API) --------------------------------
+  // The panel lists registered content layers and the objects in
+  // them. Object rows are keyed by Paper item id; selecting a row
+  // activates the object's layer first, because selection and
+  // ordering operate within the active layer.
+
+  listLayers(): LayerRecord[] { return this.layers.listLayers(); }
+
+  activeLayerId(): string | null { return this.layers.activeLayerId; }
+
+  createLayer(name?: string): LayerRecord {
+    const record = this.layers.createLayer(name);
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return record;
+  }
+
+  deleteLayer(id: string): boolean {
+    const removed = this.layers.deleteLayer(id);
+    if (!removed) return false;
+    for (const item of removed) {
+      try { item.remove(); } catch { /* Already detached. */ }
+    }
+    this.scene.pruneRecords();
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  renameLayer(id: string, name: string): boolean {
+    if (!this.layers.renameLayer(id, name)) return false;
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  moveLayer(id: string, dir: 'up' | 'down'): boolean {
+    if (!this.layers.moveLayerRecord(id, dir)) return false;
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  setActiveLayer(id: string): boolean {
+    if (!this.layers.setActiveLayer(id)) return false;
+    this.notify();
+    return true;
+  }
+
+  /** Remove registered content layers that are empty and were not
+   * created by the latest scene decode (no layerRecordId flag). */
+  private pruneStaleContentLayers(): void {
+    try {
+      const projectLayers = ((this.scope.project?.layers ?? []) as AnyItem[]);
+      const anyDecoded = projectLayers.some((layer) => Boolean(layer.data?.layerRecordId));
+      const stale = this.layers.contentLayers().filter((layer) => {
+        const flagged = Boolean((layer as AnyItem).data?.layerRecordId);
+        return !flagged && (layer.children?.length ?? 0) === 0;
+      });
+      // When the decode created layers, every pre-existing empty
+      // content layer is stale. Otherwise keep at least one layer.
+      const removable = anyDecoded ? stale : stale.slice(0, Math.max(0, this.layers.contentLayers().length - 1));
+      for (const layer of removable) {
+        try { layer.remove(); } catch { /* Detached. */ }
+      }
+    } catch { /* Headless. */ }
+  }
+
+  private objectKindLabel(item: AnyItem): string {
+    try {
+      if (item.data?.shapeTextGroup || item.data?.isShapeText) return 'Shape';
+      switch (item.className) {
+        case 'Raster': return 'Image';
+        case 'PointText': return 'Text';
+        case 'Group': return item.data?.isUserGroup ? 'Group' : 'Shape';
+        case 'CompoundPath': return 'Compound Path';
+        case 'Path': return 'Path';
+        default: return 'Object';
+      }
+    } catch { return 'Object'; }
+  }
+
+  private listingInput(item: AnyItem): ListingObjectInput {
+    const children = (item.children ?? []) as AnyItem[];
+    const isGroup = item.className === 'Group';
+    return {
+      key: String(item.id),
+      name: typeof item.name === 'string' ? item.name : undefined,
+      kindLabel: this.objectKindLabel(item),
+      visible: item.visible !== false,
+      locked: Boolean(item.locked),
+      opacity: typeof item.opacity === 'number' ? item.opacity : 1,
+      children: isGroup
+        ? children.filter((child) => { try { return !this.scene.isNonContentItem(child); } catch { return false; } })
+          .map((child) => this.listingInput(child))
+        : undefined,
+    };
+  }
+
+  private objectByKey(key: string): { item: AnyItem; layerId: string } | null {
+    for (const record of this.layers.listLayers()) {
+      const layer = this.layers.layerForId(record.id);
+      if (!layer) continue;
+      const walk = (items: AnyItem[]): AnyItem | null => {
+        for (const item of items) {
+          if (String(item.id) === key) return item;
+          const found = walk((item.children ?? []) as AnyItem[]);
+          if (found) return found;
+        }
+        return null;
+      };
+      const found = walk([...(layer.children ?? [])] as AnyItem[]);
+      if (found) return { item: found, layerId: record.id };
+    }
+    return null;
+  }
+
+  objectListing(): LayerListing[] {
+    const inputs = this.layers.listLayers().map((record) => {
+      const layer = this.layers.layerForId(record.id);
+      const objects = ((layer?.children ?? []) as AnyItem[])
+        .filter((child) => { try { return !this.scene.isNonContentItem(child); } catch { return false; } })
+        .map((child) => this.listingInput(child));
+      return { record, objects };
+    });
+    return buildLayerListing(inputs);
+  }
+
+  /** Select the object behind a panel row. Locked objects can be
+   * selected here (so they can be unlocked) even though canvas
+   * hit-testing skips them. Activates the object's layer first. */
+  selectObjectByKey(key: string): boolean {
+    const found = this.objectByKey(key);
+    if (!found) return false;
+    if (found.layerId !== this.layers.activeLayerId) this.layers.setActiveLayer(found.layerId);
+    const top = this.selection.topUserGroupOf(found.item);
+    this.clearOutSelection();
+    this.addItemToSelection(top);
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  renameObjectByKey(key: string, name: string): boolean {
+    const found = this.objectByKey(key);
+    if (!found || name.trim().length === 0) return false;
+    found.item.name = name.trim();
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  setObjectVisibleByKey(key: string, visible: boolean): boolean {
+    const found = this.objectByKey(key);
+    if (!found) return false;
+    found.item.visible = visible;
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  setObjectLockedByKey(key: string, locked: boolean): boolean {
+    const found = this.objectByKey(key);
+    if (!found) return false;
+    found.item.locked = locked;
+    if (!locked) { /* Unlocking never changes the selection. */ }
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  setObjectOpacityByKey(key: string, opacity: number): boolean {
+    const found = this.objectByKey(key);
+    if (!found || !Number.isFinite(opacity)) return false;
+    found.item.opacity = Math.min(1, Math.max(0, opacity));
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  /** Apply a visibility/lock/opacity change to every object in a
+   * layer (the layer row's own toggles). */
+  setLayerObjectsFlag(id: string, patch: { visible?: boolean; locked?: boolean }): boolean {
+    const layer = this.layers.layerForId(id);
+    if (!layer) return false;
+    for (const child of [...(layer.children ?? [])] as AnyItem[]) {
+      try {
+        if (this.scene.isNonContentItem(child)) continue;
+        if (patch.visible !== undefined) child.visible = patch.visible;
+        if (patch.locked !== undefined) child.locked = patch.locked;
+      } catch { /* Detached. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
   canTransformSelection(): boolean {
     if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
       return false;
@@ -6470,6 +7214,10 @@ export class NibGliderEngine {
   }
 
   private nudgeSelection(dx: number, dy: number): void {
+    if (this.pointEdit?.active && this.pointEdit.selection) {
+      this.pointEdit.nudgeSelected({ x: dx, y: dy });
+      return;
+    }
     this.transforms.nudge(dx, dy);
     this.updateTextContent();
     this.notify();

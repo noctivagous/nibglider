@@ -373,4 +373,33 @@ export class SelectionManager {
   }
   bringToFront(): boolean { return this.reorder('front'); }
   sendToBack(): boolean { return this.reorder('back'); }
+
+  /** One-step reorder: each selected top-level item swaps with the
+   * next non-selected sibling in the given direction. Recorded as a
+   * single history entry with the full before/after child order. */
+  reorderStep(dir: 'forward' | 'backward'): boolean {
+    const layer = this.scene.layer; const targets = this.topLevelSelected();
+    if (!layer || !targets.length) return false;
+    const before = [...layer.children] as Item[];
+    const set = new Set(targets);
+    const after = [...before];
+    if (dir === 'forward') {
+      for (let i = after.length - 2; i >= 0; i -= 1) {
+        if (set.has(after[i]) && !set.has(after[i + 1])) {
+          [after[i], after[i + 1]] = [after[i + 1], after[i]];
+        }
+      }
+    } else {
+      for (let i = 1; i < after.length; i += 1) {
+        if (set.has(after[i]) && !set.has(after[i - 1])) {
+          [after[i], after[i - 1]] = [after[i - 1], after[i]];
+        }
+      }
+    }
+    if (after.every((item, i) => item === before[i])) return false;
+    for (const item of after) try { layer.addChild(item); } catch { /* Detached. */ }
+    const selected = this.snapshot();
+    this.history.recordReorder(dir, before, after, selected);
+    return true;
+  }
 }

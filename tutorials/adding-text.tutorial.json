@@ -1,0 +1,73 @@
+{
+  "id": "adding-text",
+  "title": "Adding Text",
+  "description": "Display text and body text: steer to the baseline, type, and style it from the Text section.",
+  "steps": [
+    {
+      "id": "welcome",
+      "bubble": {
+        "title": "Text is steered, then typed",
+        "body": "Choose the text kind first, steer the cursor to where the baseline starts, and type. The text follows the Text section's font settings.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "section-textControls",
+      "preconditions": {
+        "showPanel": true,
+        "expandSections": [
+          "textControls"
+        ]
+      }
+    },
+    {
+      "id": "kinds",
+      "bubble": {
+        "title": "Display or Body",
+        "body": "Display Text is a single styled line. Body Text flows inside a frame. Text can also be set on a path, following its curve.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "section-textControls"
+    },
+    {
+      "id": "type",
+      "bubble": {
+        "title": "Type on the canvas",
+        "body": "With Display Text chosen, steer to the start point and type your headline. Enter finishes the line.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "canvas"
+    },
+    {
+      "id": "style",
+      "bubble": {
+        "title": "Style it",
+        "body": "Family, size, weight and justification are in the Text section. Select existing text first to restyle it.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "section-textControls"
+    },
+    {
+      "id": "done",
+      "bubble": {
+        "title": "Text stays editable",
+        "body": "Text remains text \u2014 editable, restylable, searchable \u2014 until you deliberately convert it. It exports as text in SVG and PDF.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "canvas"
+    }
+  ]
+}

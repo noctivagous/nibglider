@@ -1,0 +1,90 @@
+{
+  "id": "grouping-and-ordering",
+  "title": "Grouping & Ordering",
+  "description": "Several objects behave as one: group them, stack them in order, and organise them in the Layers & Objects panel.",
+  "steps": [
+    {
+      "id": "welcome",
+      "bubble": {
+        "title": "Many objects, one drawing",
+        "body": "Grouping makes objects move together. Ordering decides which object paints over which. Layers organise the whole drawing.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "canvas"
+    },
+    {
+      "id": "draw-two",
+      "bubble": {
+        "title": "Draw two overlapping shapes",
+        "body": "Press I twice for one rectangle, then draw a second overlapping it. Overlap is what makes ordering visible.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "i"
+      },
+      "target": "canvas",
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "expandSections": [
+          "rectFrameControls"
+        ],
+        "cancelDrawing": true
+      }
+    },
+    {
+      "id": "order",
+      "bubble": {
+        "title": "Front and back",
+        "body": "The later shape paints over the earlier one. With a shape selected, Bring to Front and Send to Back move it across the whole stack; Bring Forward and Send Backward move it one step.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      },
+      "target": "canvas"
+    },
+    {
+      "id": "group",
+      "bubble": {
+        "title": "Group the selection",
+        "body": "Select both shapes (Shift-click adds to a selection) and run Group Selection, or press Cmd/Ctrl+G. The group now moves, scales and styles as one object.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "run-command",
+        "command": "group"
+      },
+      "target": "canvas"
+    },
+    {
+      "id": "ungroup",
+      "bubble": {
+        "title": "Ungroup when you need the parts",
+        "body": "Cmd/Ctrl+Shift+G ungroups. Grouping never merges the shapes \u2014 the parts come back exactly as they were.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "available-keys"
+    },
+    {
+      "id": "layers",
+      "bubble": {
+        "title": "Meet the Layers & Objects panel",
+        "body": "The panel lists layers and every object in them. Rename objects there, hide or lock them, set opacity, and click a row to select something that is hard to click on canvas.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "canvas"
+    }
+  ]
+}

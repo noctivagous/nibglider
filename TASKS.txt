@@ -118,7 +118,7 @@ In the File Menu redo the Export function:
 
 ---
 
-[  ] add: Move Object Up, Move Object Down to Layers and Objects menu.
+[x] add: Move Object Up, Move Object Down to Layers and Objects menu. (Tier One Slice 1: Bring Forward / Send Backward in the Layers and Objects menu, the context menu, and the Image Arrange group; Layers & Objects panel shipped in the same slice.)
   [  ] two-column layout for layer functions "bring to front", etc.
   [  ]  two-column grid layout of cards for customselect dropdowns for Rect Keys
 and Circle Keys.  a previous grid of cards layout was used in Select Dropdown
@@ -597,7 +597,7 @@ will have that as a button in the upper right of the titlebar.
 
 PATH KEYS
 Moves to Path Manip. KB Layout or shows number keys as Path manip keys:
-[ ] Pick up (point), Move Edge, Split Point, Join.  Select Point.
+[x] Pick up (point), Move Edge, Split Point, Join.  Select Point. — DONE in Tier One Slice 2: PointEditSession (anchors/handles overlay, coupled/broken handle drags, Alt+drag anchor = move edge, split/delete/convert/close, join to nearest open path; one history entry per gesture; edits write back to the retained Bézier source).
 
 
 [ ]  Currently we will snap to midpoints in segments but in the code make this a parameter so that in the future the user 

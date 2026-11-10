@@ -5,6 +5,8 @@
     <item command="new-document" icon="new" />
     <item command="save-gallery" icon="save" />
     <item command="rename-document" icon="rename" />
+    <item command="save-file" label="Save to File…" icon="save" />
+    <item command="open-file" label="Open File…" icon="open" />
     <item command="export-raster" label="Export Raster" icon="export">
       <option command="export-raster-canvas" label="Document Frame" icon="page-size" />
       <option command="export-raster-viewport" label="Current Viewport Frame" icon="reset-zoom" />
@@ -60,6 +62,8 @@
     </item>
     <group label="Arrange">
       <item command="bring-to-front" label="Bring to front" icon="bring-to-front" />
+      <item command="bring-forward" label="Bring forward" icon="bring-to-front" />
+      <item command="send-backward" label="Send backward" icon="send-to-back" />
       <item command="send-to-back" label="Send to back" icon="send-to-back" />
     </group>
   </menu>
@@ -88,6 +92,30 @@
     <group label="With dialog">
       <item command="scale-dialog" label="Scale…" icon="scale-dialog" />
       <item command="rotate-dialog" label="Rotate…" icon="rotate-dialog" />
+    </group>
+    <group label="Align">
+      <item command="align-left" label="Left" />
+      <item command="align-center-x" label="Centre" />
+      <item command="align-right" label="Right" />
+      <item command="align-top" label="Top" />
+      <item command="align-center-y" label="Middle" />
+      <item command="align-bottom" label="Bottom" />
+    </group>
+    <group label="Align to Document">
+      <item command="align-doc-left" label="Left" />
+      <item command="align-doc-center-x" label="Centre" />
+      <item command="align-doc-right" label="Right" />
+      <item command="align-doc-top" label="Top" />
+      <item command="align-doc-center-y" label="Middle" />
+      <item command="align-doc-bottom" label="Bottom" />
+    </group>
+    <group label="Distribute">
+      <item command="distribute-horizontal" label="Horizontally" />
+      <item command="distribute-vertical" label="Vertically" />
+    </group>
+    <group label="Flip">
+      <item command="flip-horizontal" label="Flip Horizontal" />
+      <item command="flip-vertical" label="Flip Vertical" />
     </group>
   </menu>
   <menu id="modes" title="Modes">
@@ -142,6 +170,8 @@
     <item command="select" label="Select" icon="select" />
     <group label="Order">
       <item command="bring-to-front" label="Bring to front" icon="bring-to-front" />
+      <item command="bring-forward" label="Bring forward" icon="bring-to-front" />
+      <item command="send-backward" label="Send backward" icon="send-to-back" />
       <item command="send-to-back" label="Send to back" icon="send-to-back" />
     </group>
     <group label="Selection">
@@ -154,10 +184,22 @@
   <menu id="context-object" title="Object">
     <group label="Order">
       <item command="bring-to-front" label="Bring to front" icon="bring-to-front" />
+      <item command="bring-forward" label="Bring forward" icon="bring-to-front" />
+      <item command="send-backward" label="Send backward" icon="send-to-back" />
       <item command="send-to-back" label="Send to back" icon="send-to-back" />
     </group>
     <group label="Transform">
       <item command="transform-mode" label="Transform controls" shortcut="Opt+T" />
+    </group>
+    <group label="Point Edit">
+      <item command="point-edit" label="Point edit mode" />
+      <item command="point-select" label="Select point at cursor" />
+      <item command="point-split" label="Split point (add on segment)" />
+      <item command="point-delete" label="Delete selected point" />
+      <item command="point-smooth" label="Convert point to smooth" />
+      <item command="point-corner" label="Convert point to corner" />
+      <item command="point-close" label="Close path" />
+      <item command="point-join" label="Join to nearest open path" />
     </group>
     <group label="Interlace">
       <item command="interlace" label="Interlace: Op" />
@@ -169,6 +211,14 @@
   </menu>
   <menu id="help" title="Help">
     <item command="tutorial" icon="tutorial" />
+    <item command="tutorial-demo-rectangle" label="Tutorial: Watch a Rectangle Draw" icon="tutorial" />
+    <item command="tutorial-fix-a-shape" label="Tutorial: Fix a Shape" icon="tutorial" />
+    <item command="tutorial-fill-and-stroke" label="Tutorial: Fill &amp; Stroke" icon="tutorial" />
+    <item command="tutorial-adding-text" label="Tutorial: Adding Text" icon="tutorial" />
+    <item command="tutorial-grouping-and-ordering" label="Tutorial: Grouping &amp; Ordering" icon="tutorial" />
+    <item command="tutorial-saving-and-exporting" label="Tutorial: Saving &amp; Exporting" icon="tutorial" />
+    <item command="help-getting-started" label="Getting Started" icon="tutorial" />
+    <item command="help-keys-reference" label="Keys Reference" icon="tutorial" />
   </menu>
   <menu id="debug" title="Debug">
     <item command="reset-settings" label="Reset all settings" icon="reset-settings" />

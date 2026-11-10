@@ -66,7 +66,8 @@ import {
   markTutorialDismissed,
   shouldAutoShowTutorial,
 } from './tutorial/tutorialProgress';
-import helloTutorialRaw from '../tutorials/hello-rectangle.tutorial.json?raw';
+import { tutorialByCommand, tutorialById } from './tutorial/tutorialCatalog';
+import HelpWindow, { type HelpDocId } from './components/HelpWindow';
 
 // Section title labels in the panel are hidden; icons, keys, and hover
 // tooltips still identify each section.
@@ -78,13 +79,20 @@ const MENU_COMMANDS: Set<string> = new Set([
   ...IMPORT_COMMANDS,
   ...EXPORT_COMMANDS,
   'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
+  'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-fill-and-stroke',
+  'tutorial-adding-text', 'tutorial-grouping-and-ordering', 'tutorial-saving-and-exporting',
+  'help-getting-started', 'help-keys-reference',
   'printify-settings',
   'undo', 'redo',
   'cut', 'copy', 'paste', 'select-all',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
-  'bring-to-front', 'send-to-back', 'duplicate-selection',
+  'bring-to-front', 'send-to-back', 'bring-forward', 'send-backward', 'duplicate-selection',
   'group', 'ungroup-selection', 'delete-selection', 'transform-mode',
+  'point-edit', 'point-select', 'point-split', 'point-delete', 'point-smooth', 'point-corner', 'point-close', 'point-join',
+  'align-left', 'align-center-x', 'align-right', 'align-top', 'align-center-y', 'align-bottom',
+  'align-doc-left', 'align-doc-center-x', 'align-doc-right', 'align-doc-top', 'align-doc-center-y', 'align-doc-bottom',
+  'distribute-horizontal', 'distribute-vertical', 'flip-horizontal', 'flip-vertical',
   'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-crop', 'combinatorics-cut', 'combinatorics-interlace',
   'interlace', 'interlace-group', 'remove-from-interlace',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
@@ -309,8 +317,11 @@ export default function App() {
     tutorialSnap.status === 'active' &&
     demoSnap.stepId === tutorialRunner.currentStep?.id;
 
-  const startTutorial = useCallback(() => {
-    const loaded = parseTutorialText(helloTutorialRaw);
+  const [helpDoc, setHelpDoc] = useState<HelpDocId | null>(null);
+  const startTutorial = useCallback((tutorialId = 'hello-rectangle') => {
+    const entry = tutorialById(tutorialId);
+    if (!entry) return;
+    const loaded = parseTutorialText(entry.raw);
     if (!loaded.ok || !loaded.tutorial) return;
     tutorialRunner.load(loaded.tutorial);
     tutorialRunner.start();
@@ -417,6 +428,9 @@ export default function App() {
     else if (commandId === 'document-settings') gui.openWindow('document-settings');
     else if (commandId === 'canvas-size') gui.openWindow('document-size');
     else if (commandId === 'tutorial') startTutorial();
+    else if (tutorialByCommand(commandId)) startTutorial(tutorialByCommand(commandId)!.id);
+    else if (commandId === 'help-getting-started') setHelpDoc('getting-started');
+    else if (commandId === 'help-keys-reference') setHelpDoc('keys-reference');
     else if (commandId === 'undo') engine.undo();
     else if (commandId === 'redo') engine.redo();
     else if (commandId === 'cut') engine.cutSelection();
@@ -436,12 +450,38 @@ export default function App() {
     else if (commandId === 'length-unit-inch') engine.setLengthUnit('inch');
     else if (commandId === 'length-unit-cm') engine.setLengthUnit('cm');
     else if (commandId === 'bring-to-front') engine.bringSelectionToFront();
+    else if (commandId === 'bring-forward') engine.bringSelectionForward();
+    else if (commandId === 'send-backward') engine.sendSelectionBackward();
     else if (commandId === 'send-to-back') engine.sendSelectionToBack();
     else if (commandId === 'duplicate-selection') engine.duplicateSelection();
     else if (commandId === 'group') engine.groupSelection();
     else if (commandId === 'ungroup-selection') engine.ungroupSelected();
     else if (commandId === 'delete-selection') engine.removeAllSelectedItemsAndReset();
     else if (commandId === 'transform-mode') engine.toggleTransformMode();
+    else if (commandId === 'point-edit') engine.togglePointEdit();
+    else if (commandId === 'point-select') engine.selectPointAtCursor();
+    else if (commandId === 'point-split') engine.pointEditInsertPointAtCursor();
+    else if (commandId === 'point-delete') engine.pointEditDeleteSelectedPoint();
+    else if (commandId === 'point-smooth') engine.pointEditConvertSelected('smooth');
+    else if (commandId === 'point-corner') engine.pointEditConvertSelected('corner');
+    else if (commandId === 'point-close') engine.pointEditClosePath();
+    else if (commandId === 'point-join') engine.pointEditJoin();
+    else if (commandId === 'align-left') engine.alignSelection('left', 'selection');
+    else if (commandId === 'align-center-x') engine.alignSelection('centerX', 'selection');
+    else if (commandId === 'align-right') engine.alignSelection('right', 'selection');
+    else if (commandId === 'align-top') engine.alignSelection('top', 'selection');
+    else if (commandId === 'align-center-y') engine.alignSelection('centerY', 'selection');
+    else if (commandId === 'align-bottom') engine.alignSelection('bottom', 'selection');
+    else if (commandId === 'align-doc-left') engine.alignSelection('left', 'document');
+    else if (commandId === 'align-doc-center-x') engine.alignSelection('centerX', 'document');
+    else if (commandId === 'align-doc-right') engine.alignSelection('right', 'document');
+    else if (commandId === 'align-doc-top') engine.alignSelection('top', 'document');
+    else if (commandId === 'align-doc-center-y') engine.alignSelection('centerY', 'document');
+    else if (commandId === 'align-doc-bottom') engine.alignSelection('bottom', 'document');
+    else if (commandId === 'distribute-horizontal') engine.distributeSelection('horizontal');
+    else if (commandId === 'distribute-vertical') engine.distributeSelection('vertical');
+    else if (commandId === 'flip-horizontal') engine.flipSelection('horizontal');
+    else if (commandId === 'flip-vertical') engine.flipSelection('vertical');
     else if (commandId === 'interlace') engine.interlaceSelection();
     else if (commandId === 'interlace-group') engine.interlaceGroupSelection();
     else if (commandId === 'remove-from-interlace') engine.removeFromInterlace();
@@ -835,7 +875,7 @@ export default function App() {
     : contextMenuDef;
   const contextEnabled = engine.selectedItems.length > 0
     ? MENU_COMMANDS
-    : new Set([...MENU_COMMANDS].filter((id) => id !== 'bring-to-front' && id !== 'send-to-back' && id !== 'transform-mode' && id !== 'interlace' && id !== 'interlace-group'));
+    : new Set([...MENU_COMMANDS].filter((id) => id !== 'bring-to-front' && id !== 'send-to-back' && id !== 'bring-forward' && id !== 'send-backward' && id !== 'transform-mode' && id !== 'interlace' && id !== 'interlace-group'));
 
   return (
     <div id="mainLayout">
@@ -983,6 +1023,7 @@ export default function App() {
           onClose={() => setContextMenuAt(null)}
         />
       )}
+      {helpDoc && <HelpWindow doc={helpDoc} onClose={() => setHelpDoc(null)} />}
       {tutorialSnap.status === 'active' && tutorialRunner.currentStep && tutorialSnap.tutorial && (
         <TutorialOverlay
           tutorialTitle={tutorialSnap.tutorial.title}

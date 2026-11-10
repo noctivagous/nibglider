@@ -10,18 +10,25 @@ const MENUS_URL = new URL('../src/ui/menus/menus.xml', import.meta.url);
 // the XML renders disabled until it is wired. Keep both lists explicit so a
 // typo, a missing handler, or a dead handler fails here instead of silently.
 const WIRED_COMMANDS = [
-  'open-gallery', 'new-document', 'save-gallery', 'rename-document',
+  'open-gallery', 'new-document', 'save-gallery', 'rename-document', 'save-file', 'open-file',
   'export-raster-canvas', 'export-raster-viewport', 'export-raster-selection',
   'export-vector-canvas', 'export-vector-viewport', 'export-vector-selection',
   'import-svg', 'import-pdf', 'import-raster',
   'scale-dialog', 'rotate-dialog',
+  'align-left', 'align-center-x', 'align-right', 'align-top', 'align-center-y', 'align-bottom',
+  'align-doc-left', 'align-doc-center-x', 'align-doc-right', 'align-doc-top', 'align-doc-center-y', 'align-doc-bottom',
+  'distribute-horizontal', 'distribute-vertical', 'flip-horizontal', 'flip-vertical',
   'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
+  'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-fill-and-stroke',
+  'tutorial-adding-text', 'tutorial-grouping-and-ordering', 'tutorial-saving-and-exporting',
+  'help-getting-started', 'help-keys-reference',
   'printify-settings',
   'undo', 'redo',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
-  'bring-to-front', 'send-to-back', 'duplicate-selection',
+  'bring-to-front', 'send-to-back', 'bring-forward', 'send-backward', 'duplicate-selection',
   'group', 'ungroup-selection', 'delete-selection', 'transform-mode',
+  'point-edit', 'point-select', 'point-split', 'point-delete', 'point-smooth', 'point-corner', 'point-close', 'point-join',
   'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-crop', 'combinatorics-cut', 'combinatorics-interlace',
   'interlace', 'interlace-group', 'remove-from-interlace',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
@@ -80,8 +87,8 @@ test('groups emit ordered headers and Primary shortcuts resolve per platform', (
   const menus = loadMenus();
   const byMenu = Object.fromEntries(menus.map((menu) => [menu.id, menu]));
   const layers = byMenu.layers.items;
-  assert.deepEqual(layers.map((item) => item.commandId).slice(0, 4), [
-    'select', 'hdr-layers-1', 'bring-to-front', 'send-to-back',
+  assert.deepEqual(layers.map((item) => item.commandId).slice(0, 6), [
+    'select', 'hdr-layers-1', 'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
   ]);
   // Primary resolves through the keymap for the host platform (⌘ on macOS).
   const layerById = Object.fromEntries(layers.map((item) => [item.commandId, item]));
@@ -126,10 +133,14 @@ test('operations holds repeat and dialogs, modes holds the mode parents; layers 
   assert.deepEqual(byId.operations.items.map((item) => item.commandId), [
     'hdr-operations-1', 'repeat-grid', 'repeat-circle',
     'hdr-operations-2', 'scale-dialog', 'rotate-dialog',
+    'hdr-operations-3', 'align-left', 'align-center-x', 'align-right', 'align-top', 'align-center-y', 'align-bottom',
+    'hdr-operations-4', 'align-doc-left', 'align-doc-center-x', 'align-doc-right', 'align-doc-top', 'align-doc-center-y', 'align-doc-bottom',
+    'hdr-operations-5', 'distribute-horizontal', 'distribute-vertical',
+    'hdr-operations-6', 'flip-horizontal', 'flip-vertical',
   ]);
   assert.deepEqual(
     byId.operations.items.filter((item) => item.header).map((item) => item.label),
-    ['Repeat', 'With dialog'],
+    ['Repeat', 'With dialog', 'Align', 'Align to Document', 'Distribute', 'Flip'],
   );
   assert.deepEqual(byId.modes.items.map((item) => item.commandId), [
     'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
@@ -140,7 +151,7 @@ test('operations holds repeat and dialogs, modes holds the mode parents; layers 
   assert.equal(opsText.includes('fill'), false);
   assert.deepEqual(byId.layers.items.map((item) => item.commandId), [
     'select',
-    'hdr-layers-1', 'bring-to-front', 'send-to-back',
+    'hdr-layers-1', 'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
     'hdr-layers-2', 'group', 'ungroup-selection', 'duplicate-selection', 'delete-selection',
   ]);
 });
@@ -172,10 +183,14 @@ test('every submenu option carries its panel icon, and every icon key has an App
   }
 });
 
-test('help holds the tutorial, and shape parents use the short Keys labels', () => {
+test('help holds the tutorials and docs, and shape parents use the short Keys labels', () => {
   const menus = loadMenus();
   const byId = Object.fromEntries(menus.map((menu) => [menu.id, menu]));
-  assert.deepEqual(byId.help.items.map((item) => item.commandId), ['tutorial']);
+  assert.deepEqual(byId.help.items.map((item) => item.commandId), [
+    'tutorial', 'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-fill-and-stroke',
+    'tutorial-adding-text', 'tutorial-grouping-and-ordering', 'tutorial-saving-and-exporting',
+    'help-getting-started', 'help-keys-reference',
+  ]);
   assert.ok(!byId.file.items.some((item) => item.commandId === 'tutorial'));
   const modesById = Object.fromEntries(byId.modes.items.map((item) => [item.commandId, item]));
   assert.equal(modesById['rect-shape'].label, 'Rect Keys');
@@ -263,7 +278,7 @@ test('image menu groups place/selection/arrange around transform and raster subm
     'hdr-image-1', 'image-place', 'image-replace',
     'hdr-image-2', 'image-info',
     'image-transform', 'image-raster',
-    'hdr-image-3', 'bring-to-front', 'send-to-back',
+    'hdr-image-3', 'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
   ]);
   assert.deepEqual(
     image.items.filter((item) => item.header).map((item) => item.label),

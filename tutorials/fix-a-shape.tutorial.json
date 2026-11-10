@@ -1,0 +1,100 @@
+{
+  "id": "fix-a-shape",
+  "title": "Fix a Shape",
+  "description": "Draw a rectangle, then fix it instead of redrawing it: select it, nudge it, and undo cleanly. Point-level editing of paths is covered at the end.",
+  "steps": [
+    {
+      "id": "welcome",
+      "bubble": {
+        "title": "Mistakes are fixable",
+        "body": "Every deposit can be moved, restyled, point-edited or undone. Nothing you draw is permanent until you export it.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "draw",
+      "bubble": {
+        "title": "Draw anything",
+        "body": "Press I, steer to the opposite corner, and press I again to deposit a rectangle. Any wobble is fine \u2014 you are about to fix it.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "i"
+      },
+      "target": "canvas",
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "expandSections": [
+          "rectFrameControls"
+        ],
+        "cancelDrawing": true
+      }
+    },
+    {
+      "id": "drawn",
+      "bubble": {
+        "title": "Deposited",
+        "body": "The rectangle is on the canvas.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      },
+      "target": "canvas"
+    },
+    {
+      "id": "select",
+      "bubble": {
+        "title": "Select it",
+        "body": "Click the rectangle (mouse buttons still select and drag \u2014 keys are for drawing). Selecting is what tells the panel and the operations which object you mean.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "selection-changed"
+      },
+      "target": "canvas"
+    },
+    {
+      "id": "nudge",
+      "bubble": {
+        "title": "Nudge it straight",
+        "body": "With the rectangle selected, the arrow keys nudge it. Shift makes the step bigger, Alt/Opt smaller. Steer, snap and nudge are how placement gets exact.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "status"
+    },
+    {
+      "id": "undo",
+      "bubble": {
+        "title": "Undo is one step per action",
+        "body": "Press Cmd/Ctrl+Z to undo the last action and Cmd/Ctrl+Shift+Z to redo it. Every deposit, move and restyle is a single undo step.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "available-keys"
+    },
+    {
+      "id": "points",
+      "bubble": {
+        "title": "Fix the points themselves",
+        "body": "A selected path can be point-edited: its anchors and curve handles can be picked up and moved, points added or deleted, and corners converted to smooth points \u2014 see the Keys Reference under Help for the point-edit keys. Redrawing is the last resort, not the first.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "target": "canvas"
+    }
+  ]
+}

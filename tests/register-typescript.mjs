@@ -21,7 +21,7 @@ registerHooks({
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {
-    if (url.startsWith(sourceRoot) && url.endsWith('?raw')) {
+    if (url.endsWith('?raw')) {
       const text = readFileSync(fileURLToPath(new URL(url.slice(0, -'?raw'.length))), 'utf8');
       return { format: 'module', source: `export default ${JSON.stringify(text)};`, shortCircuit: true };
     }

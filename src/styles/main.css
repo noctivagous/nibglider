@@ -5864,3 +5864,39 @@ kbd,
     transition: background 120ms ease;
   }
 }
+
+/* Layers & Objects panel (Slice 1) */
+.layers-panel { display: flex; flex-direction: column; gap: 6px; padding: 6px; }
+.layers-panel-actions { display: flex; justify-content: flex-end; }
+.layers-layer { border: 1px solid var(--panel-border, #b8b8b8); border-radius: 3px; }
+.layers-layer-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 6px; font-weight: 600; cursor: pointer; background: rgba(0,0,0,0.05); }
+.layers-layer-row.is-active { background: rgba(40,100,200,0.18); }
+.layers-layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layers-layer-buttons { display: flex; gap: 2px; }
+.layers-object-row { display: flex; align-items: center; gap: 6px; padding: 2px 6px 2px 8px; cursor: pointer; }
+.layers-object-row.is-selected { background: rgba(40,100,200,0.22); }
+.layers-object-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layers-object-controls { display: flex; align-items: center; gap: 2px; }
+.layers-object-controls input[type="number"] { width: 44px; }
+.layers-empty { padding: 2px 8px; opacity: 0.6; font-style: italic; }
+.help-window { max-width: 720px; }
+.help-window-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 8px; }
+.help-window-body { max-height: 60vh; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+
+/* Swatches (Slice 4) */
+.swatches-panel { padding: 6px 8px; }
+.swatches-row { display: flex; gap: 6px; margin-bottom: 6px; }
+.swatches-tool { flex: 1; }
+.swatches-tool.active { background: #2b6cb0; color: #fff; }
+.swatches-label { font-size: 11px; font-weight: 600; margin: 6px 0 3px; }
+.swatches-empty { font-size: 11px; opacity: 0.7; padding: 2px 0 4px; }
+.swatch-grid { display: flex; flex-wrap: wrap; gap: 3px; }
+.swatch { width: 18px; height: 18px; padding: 0; border: 1px solid rgba(0,0,0,0.35); border-radius: 2px; cursor: pointer; }
+.swatch:hover { outline: 2px solid #2b6cb0; outline-offset: 0; }
+
+/* Arrange (Slice 4) */
+.arrange-panel { padding: 6px 8px; }
+.arrange-label { font-size: 11px; font-weight: 600; margin: 4px 0 3px; }
+.arrange-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.arrange-btn { flex: 1 1 auto; }
+.arrange-empty { font-size: 11px; opacity: 0.7; }

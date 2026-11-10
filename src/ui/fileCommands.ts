@@ -1,5 +1,5 @@
 // Top File menu command layer. The File entries in menus.xml (open, new,
-// save, rename, export, import) route through here so the menu bar and any
+// save, rename, save/open file, export, import) route through here so the menu bar and any
 // future caller share one dispatch: App enables these commands and forwards
 // them to the panel, which owns the gallery/new-document dialogs.
 // Settings and Tutorial keep their existing App handlers.
@@ -10,6 +10,8 @@ export const FILE_COMMANDS = [
   'new-document',
   'save-gallery',
   'rename-document',
+  'save-file',
+  'open-file',
 ] as const;
 
 export type FileCommand = (typeof FILE_COMMANDS)[number];
