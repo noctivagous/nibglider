@@ -1,0 +1,122 @@
+{
+  "id": "pages-and-guides",
+  "title": "Pages & Guides",
+  "description": "Add pages to a document, pull guides onto a page, and open Page Setup — paper, margins, and print range.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-pagesControls",
+      "bubble": {
+        "title": "Pages & Guides",
+        "body": "A document is a stack of pages, each with its own artwork and its own ruler guides. This section adds pages and guides, and opens Page Setup.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-pages",
+      "target": "section-pagesControls",
+      "bubble": {
+        "title": "Watch: the shape of a document",
+        "body": "The demo points at the moving parts: the page list, the guide row, and Page Setup. Adding pages and guides is a button press and a drag — yours, in the next steps.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "showPanel": true,
+        "expandSections": [
+          "pagesControls"
+        ]
+      },
+      "demo": [
+        {
+          "kind": "point-at",
+          "target": "section-pagesControls",
+          "label": "Pages & Guides"
+        },
+        {
+          "kind": "narrate",
+          "title": "Pages across the top",
+          "body": "Each page is a separate sheet with its own layers and guides. The page list switches between them."
+        },
+        {
+          "kind": "wait",
+          "ms": 500
+        },
+        {
+          "kind": "narrate",
+          "title": "Guides below",
+          "body": "Guides are ruler lines that live on one page: pull them from the rulers, or add one by number in this section."
+        },
+        {
+          "kind": "wait",
+          "ms": 500
+        }
+      ]
+    },
+    {
+      "id": "do-add-page",
+      "target": "section-pagesControls",
+      "bubble": {
+        "title": "Add a page",
+        "body": "Click Add Page in the Pages & Guides section. A fresh page appears in the list and becomes the page you are looking at — the first page keeps its artwork.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-guide-panel",
+      "target": "section-pagesControls",
+      "bubble": {
+        "title": "Add a guide by number",
+        "body": "In the section's guide row, pick an axis and a position and add the guide. It lands at exactly that position on this page.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-guide-ruler",
+      "target": "canvas",
+      "bubble": {
+        "title": "Drag a guide from the ruler",
+        "body": "Guides also come straight off the rulers: press on the top ruler and drag down onto the canvas; a horizontal guide follows your cursor and drops where you release. Dragging it later moves it.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-page-setup",
+      "target": "section-pagesControls",
+      "bubble": {
+        "title": "Open Page Setup",
+        "body": "Click Page Setup… in this section. Paper size, margins, and the print range live there — they describe how this document prints, not how it draws. Close it when you have seen it.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-pagesControls",
+      "bubble": {
+        "title": "Pages are documents within the document",
+        "body": "Each page keeps its own artwork, layers, and guides, and the file saves them all. Saving & Exporting covers getting pages out of the program.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

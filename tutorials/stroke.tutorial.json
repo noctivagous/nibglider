@@ -1,0 +1,191 @@
+{
+  "id": "stroke",
+  "title": "Stroke",
+  "description": "Set the outline shapes are drawn with — width, colour, dashes — and repaint a selection's outline with the same section.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-strokeControls",
+      "bubble": {
+        "title": "The Stroke section",
+        "body": "The Stroke section sets the outline every shape is drawn with — its width, colour, and dashes. It also repaints the outline of whatever is selected. Both jobs live here.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-stroke",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: draw with a set stroke",
+        "body": "Press Watch demo: the program sets a wide, dashed stroke, then draws a rectangle so you can see it.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-i"
+        ]
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "strokeControls",
+          "rectFrameControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "Clearing the selection",
+          "body": "Escape first, so the settings land on the next shape drawn, not on a selection."
+        },
+        {
+          "kind": "press-key",
+          "key": "Escape",
+          "holdMs": 120
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "stroke",
+          "field": "width",
+          "value": 10
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "stroke",
+          "field": "dashLength",
+          "value": 10
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "stroke",
+          "field": "gapLength",
+          "value": 5
+        },
+        {
+          "kind": "narrate",
+          "title": "Drawing with it",
+          "body": "Width 10, dashed. Now drawing a rectangle with I — watch its outline."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.38,
+          "y": 0.4,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.62,
+          "y": 0.6,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "wait",
+          "ms": 400
+        },
+        {
+          "kind": "narrate",
+          "title": "Done",
+          "body": "The rectangle wears the stroke that was set before it was drawn."
+        }
+      ]
+    },
+    {
+      "id": "do-width",
+      "target": "section-strokeControls",
+      "bubble": {
+        "title": "Set the width yourself",
+        "body": "The demo's rectangle is still selected. Press Escape to deselect — then set the stroke Width to 12 in the Stroke section.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "stroke",
+        "field": "width",
+        "value": 12
+      }
+    },
+    {
+      "id": "do-dash",
+      "target": "section-strokeControls",
+      "bubble": {
+        "title": "Set the dash",
+        "body": "Set Dash to 8 in the Stroke section. The next shapes you draw will have a dashed outline. (Gap is still 5 from the demo.)",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "stroke",
+        "field": "dashLength",
+        "value": 8
+      }
+    },
+    {
+      "id": "draw-press",
+      "target": "key-i",
+      "bubble": {
+        "title": "Draw with your stroke",
+        "body": "Steer to a corner and press I to start a rectangle.",
+        "placement": "above"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "i"
+      }
+    },
+    {
+      "id": "draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Finish the rectangle",
+        "body": "Steer to the opposite corner and press I again. Your rectangle lands at width 12, dashed by 8.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-repaint",
+      "target": "section-strokeControls",
+      "bubble": {
+        "title": "Repaint the selection",
+        "body": "Your rectangle is still selected. Change the stroke Colour in the Stroke section — the selected shape repaints at once. With a selection, this section edits the selection; with none, it sets the next shape's stroke.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-strokeControls",
+      "bubble": {
+        "title": "One section, two jobs",
+        "body": "Set the stroke before you draw, or repaint a selection with it afterwards. The Fill tutorial covers the same two jobs for insides.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

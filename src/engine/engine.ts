@@ -1415,6 +1415,10 @@ export class NibGliderEngine {
   /** True when any content layer holds artwork (not overlays). */
   hasContent(): boolean { return this.allContentItems().length > 0; }
 
+  /** Number of top-level content objects on the active page, across all
+   * content layers. Read by the tutorial bridge's object-count predicate. */
+  contentObjectCount(): number { return this.allContentItems().length; }
+
   /** Content items across every registered content layer, in
    * bottom-to-top layer order. Editing operations keep using the
    * active layer (contentItems); save/open/stats use this. */

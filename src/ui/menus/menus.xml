@@ -275,10 +275,22 @@
       <option command="tutorial" label="Interactive Tutorial" icon="tutorial" />
       <option command="tutorial-demo-rectangle" label="Tutorial: Watch a Rectangle Draw" icon="tutorial" />
       <option command="tutorial-fix-a-shape" label="Tutorial: Fix a Shape" icon="tutorial" />
-      <option command="tutorial-fill-and-stroke" label="Tutorial: Fill &amp; Stroke" icon="tutorial" />
+      <option command="tutorial-hello-circle" label="Tutorial: Hello Circle" icon="tutorial" />
+      <option command="tutorial-stroke" label="Tutorial: Stroke" icon="tutorial" />
+      <option command="tutorial-fill" label="Tutorial: Fill" icon="tutorial" />
+      <option command="tutorial-swatches" label="Tutorial: Swatches" icon="tutorial" />
       <option command="tutorial-adding-text" label="Tutorial: Adding Text" icon="tutorial" />
+      <option command="tutorial-combinatorics" label="Tutorial: Combinatorics" icon="tutorial" />
+      <option command="tutorial-history" label="Tutorial: History" icon="tutorial" />
+      <option command="tutorial-layers-and-objects" label="Tutorial: Layers &amp; Objects" icon="tutorial" />
       <option command="tutorial-grouping-and-ordering" label="Tutorial: Grouping &amp; Ordering" icon="tutorial" />
+      <option command="tutorial-pages-and-guides" label="Tutorial: Pages &amp; Guides" icon="tutorial" />
       <option command="tutorial-saving-and-exporting" label="Tutorial: Saving &amp; Exporting" icon="tutorial" />
+      <option command="tutorial-arrange" label="Tutorial: Arrange" icon="tutorial" />
+      <option command="tutorial-grid" label="Tutorial: Grid" icon="tutorial" />
+      <option command="tutorial-repeat" label="Tutorial: Repeat" icon="tutorial" />
+      <option command="tutorial-snapping" label="Tutorial: Snapping" icon="tutorial" />
+      <option command="tutorial-path-operations" label="Tutorial: Path Operations" icon="tutorial" />
     </item>
     <item command="help-getting-started" label="Getting Started" icon="tutorial" />
     <item command="help-keys-reference" label="Keys Reference" icon="tutorial" />

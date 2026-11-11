@@ -1,0 +1,162 @@
+{
+  "id": "layers-and-objects",
+  "title": "Layers & Objects",
+  "description": "Stack work on layers, and find, hide, lock, and reorder every object on the page from one list.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-layersControls",
+      "bubble": {
+        "title": "Layers & Objects",
+        "body": "Layers stack groups of objects — draw on one without touching another. The list under the layers is every object on the page, in stacking order.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-layers",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: a shape joins the list",
+        "body": "Press Watch demo: the program draws a rectangle and points at the list. Adding a layer is a button press — that part is yours, next.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-i"
+        ]
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "layersControls",
+          "rectFrameControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "Drawing on the active layer",
+          "body": "A rectangle, drawn with I. It lands on whichever layer is active."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.4,
+          "y": 0.42,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.6,
+          "y": 0.58,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "point-at",
+          "target": "section-layersControls",
+          "label": "Layers & Objects"
+        },
+        {
+          "kind": "narrate",
+          "title": "It is in the list",
+          "body": "The new rectangle appears in the object list under its layer — named, in stacking order, with its own eye and lock."
+        },
+        {
+          "kind": "wait",
+          "ms": 600
+        }
+      ]
+    },
+    {
+      "id": "do-add-layer",
+      "target": "section-layersControls",
+      "bubble": {
+        "title": "Add a layer",
+        "body": "Click + Add Layer in the Layers & Objects section. A second layer appears and becomes the active one — new drawing lands there.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-draw-press",
+      "target": "key-i",
+      "bubble": {
+        "title": "Draw on the new layer",
+        "body": "Steer to a corner and press I to start a rectangle.",
+        "placement": "above"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "i"
+      }
+    },
+    {
+      "id": "do-draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Finish it",
+        "body": "Steer to the opposite corner and press I again. This rectangle is on the new layer — hide the first layer later and it stays.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-visibility",
+      "target": "section-layersControls",
+      "bubble": {
+        "title": "Hide an object",
+        "body": "In the object list, click the eye next to one of your rectangles. The object stays in the document, just invisible. Click the eye again to bring it back.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-opacity",
+      "target": "section-layersControls",
+      "bubble": {
+        "title": "Fade a whole layer",
+        "body": "Select the first layer in the list, then lower its Opacity. Everything on that layer fades together — layers have their own transparency.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-layersControls",
+      "bubble": {
+        "title": "Two lists, one page",
+        "body": "Layers group objects; the list under them is every object on the page — hide, lock, and reorder from there. Stacking objects within a layer is the Grouping & Ordering tutorial's job.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

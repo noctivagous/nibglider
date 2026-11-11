@@ -1,0 +1,138 @@
+{
+  "id": "path-operations",
+  "title": "Path Operations",
+  "description": "Reshape paths after drawing: noise, simplify, fit, hull, and stroke-to-outline.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-pathOpsControls",
+      "bubble": {
+        "title": "Path Operations",
+        "body": "Five operations that reshape a path after it is drawn: Noise, Simplify, Fit, Hull, and Stroke to Outline. They act on the selected path — draw first, operate second.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-noise",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: noise roughens a path",
+        "body": "Press Watch demo: the program draws a rectangle and points at the section. The Noise button itself is a panel press — the do-steps below put it in your hands.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-i"
+        ]
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "pathOpsControls",
+          "rectFrameControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "A smooth path",
+          "body": "Drawing a rectangle — straight edges, four corners."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.38,
+          "y": 0.4,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.62,
+          "y": 0.6,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "point-at",
+          "target": "section-pathOpsControls",
+          "label": "Path Operations"
+        },
+        {
+          "kind": "narrate",
+          "title": "Noise lives here",
+          "body": "Noise would displace this outline's points by a seeded random amount — same seed, same roughness, every time. The section holds the button and its amount."
+        },
+        {
+          "kind": "wait",
+          "ms": 500
+        }
+      ]
+    },
+    {
+      "id": "do-draw-press",
+      "target": "key-m",
+      "bubble": {
+        "title": "Draw a point-rich path",
+        "body": "Steer to one end of a diameter and press M to start a circle. Circles carry many points — exactly what Simplify needs.",
+        "placement": "above"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "m"
+      }
+    },
+    {
+      "id": "do-draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Deposit it",
+        "body": "Steer to the other end of the diameter and press M again. Leave the circle selected — the operations need a selection.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-simplify",
+      "target": "section-pathOpsControls",
+      "bubble": {
+        "title": "Apply Simplify",
+        "body": "In the Path Operations section, click Simplify. The circle's redundant points are removed — the outline barely moves, but the path underneath gets much simpler.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-pathOpsControls",
+      "bubble": {
+        "title": "The five operations",
+        "body": "Noise displaces points with seeded randomness. Simplify removes points. Fit re-fits a smooth curve through a path. Hull wraps the points in a concave hull. Stroke to Outline turns a stroked path into the outline shape itself. Each keeps its settings in this section.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

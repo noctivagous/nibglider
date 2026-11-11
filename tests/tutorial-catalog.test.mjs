@@ -4,9 +4,16 @@ import { TUTORIAL_CATALOG, tutorialByCommand, tutorialById } from '../src/tutori
 import { parseTutorialText } from '../src/tutorial/tutorialLoader.ts';
 
 test('catalog covers the roadmap tutorial topics in order', () => {
+  // FLAGGED EDIT (Tier Five, Slices 25–28): fill-and-stroke was split
+  // into stroke + fill, and the catalog grew to one tutorial per panel
+  // section; the pin enumerates the full intended catalog — intro first,
+  // then panel order (Slice 28 finalised the order).
   assert.deepEqual(TUTORIAL_CATALOG.map((e) => e.id), [
-    'hello-rectangle', 'demo-rectangle', 'fix-a-shape', 'fill-and-stroke',
-    'adding-text', 'grouping-and-ordering', 'saving-and-exporting',
+    'hello-rectangle', 'demo-rectangle', 'fix-a-shape', 'hello-circle',
+    'stroke', 'fill', 'swatches', 'adding-text',
+    'combinatorics', 'history', 'layers-and-objects', 'grouping-and-ordering',
+    'pages-and-guides', 'saving-and-exporting',
+    'arrange', 'grid', 'repeat', 'snapping', 'path-operations',
   ]);
 });
 

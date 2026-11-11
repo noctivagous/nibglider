@@ -24,18 +24,37 @@ import DemoOverlay, { type DemoCursor, type DemoPointAt } from './DemoOverlay';
 const BUBBLE_WIDTH = 320;
 const GAP = 10;
 
+function countRangeHint(what: string, min: number | undefined, max: number | undefined): string {
+  if (min !== undefined && max !== undefined) {
+    return min === max
+      ? `Waiting until ${what} is exactly ${min}.`
+      : `Waiting until ${what} is between ${min} and ${max}.`;
+  }
+  if (min !== undefined) return `Waiting until ${what} reaches ${min}.`;
+  if (max !== undefined) return `Waiting until ${what} is at most ${max}.`;
+  return `Waiting for ${what} to change.`;
+}
+
 function waitingHint(step: TutorialStep): string | null {
   const expect = step.expect;
   if (!expect || expect.kind === 'none') return null;
   switch (expect.kind) {
     case 'press-key':
-      return `Waiting for you to press ${expect.key.toUpperCase()}.`;
+      return expect.count && expect.count > 1
+        ? `Waiting for you to press ${expect.key.toUpperCase()} ${expect.count} times.`
+        : `Waiting for you to press ${expect.key.toUpperCase()}.`;
     case 'run-command':
       return 'Waiting for you to run the described action.';
     case 'selection-changed':
       return 'Waiting for the selection to change.';
     case 'scene-changed':
       return 'Waiting for a change on the canvas.';
+    case 'selection-count':
+      return countRangeHint('the selection', expect.min, expect.max);
+    case 'object-count':
+      return countRangeHint('the object count', expect.min, expect.max);
+    case 'setting-is':
+      return 'Waiting for the setting described above.';
   }
 }
 

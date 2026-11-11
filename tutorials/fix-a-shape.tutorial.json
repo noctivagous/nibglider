@@ -1,7 +1,7 @@
 {
   "id": "fix-a-shape",
   "title": "Fix a Shape",
-  "description": "Draw a rectangle, then fix it instead of redrawing it: select it, nudge it, and undo cleanly. Point-level editing of paths is covered at the end.",
+  "description": "Draw a rectangle, then fix it instead of redrawing it: select it, nudge it, edit its points, and undo cleanly.",
   "steps": [
     {
       "id": "welcome",
@@ -15,86 +15,217 @@
       }
     },
     {
-      "id": "draw",
+      "id": "watch-points",
+      "target": "canvas",
       "bubble": {
-        "title": "Draw anything",
-        "body": "Press I, steer to the opposite corner, and press I again to deposit a rectangle. Any wobble is fine \u2014 you are about to fix it.",
-        "placement": "center"
+        "title": "Watch: point editing",
+        "body": "Press Watch demo: the program draws a rectangle, opens Point edit mode, picks the top-left corner point, and nudges it with an arrow key.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-i"
+        ]
       },
       "expect": {
-        "kind": "press-key",
-        "key": "i"
+        "kind": "none"
       },
-      "target": "canvas",
       "preconditions": {
         "normalZoom": true,
         "showKeyboard": true,
         "showPanel": true,
+        "showStatus": true,
         "expandSections": [
           "rectFrameControls"
         ],
         "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "set-param",
+          "settingsId": "rect",
+          "field": "innerShape",
+          "value": "rectangle"
+        },
+        {
+          "kind": "narrate",
+          "title": "A plain rectangle",
+          "body": "Drawing a rectangle to fix."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.35,
+          "y": 0.4,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.65,
+          "y": 0.6,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "Point edit mode",
+          "body": "Opening Point edit mode (Object ▸ Point Edit). The shape's anchor points appear."
+        },
+        {
+          "kind": "run-command",
+          "command": "point-edit"
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.35,
+          "y": 0.4,
+          "durationMs": 800
+        },
+        {
+          "kind": "narrate",
+          "title": "Picking the corner point",
+          "body": "Selecting the point at the cursor."
+        },
+        {
+          "kind": "run-command",
+          "command": "point-select"
+        },
+        {
+          "kind": "narrate",
+          "title": "Nudging the point",
+          "body": "Arrow keys move the selected point — the shape bends, it does not move."
+        },
+        {
+          "kind": "press-key",
+          "key": "ArrowRight",
+          "holdMs": 120
+        },
+        {
+          "kind": "press-key",
+          "key": "ArrowRight",
+          "holdMs": 120
+        },
+        {
+          "kind": "wait",
+          "ms": 400
+        },
+        {
+          "kind": "narrate",
+          "title": "Done",
+          "body": "One corner pulled out of line — fixed shapes rarely need redrawing."
+        },
+        {
+          "kind": "run-command",
+          "command": "point-edit"
+        }
+      ]
+    },
+    {
+      "id": "draw-press",
+      "target": "key-i",
+      "bubble": {
+        "title": "Draw anything",
+        "body": "Steer to a corner and press I to start a rectangle. Any wobble is fine — you are about to fix it.",
+        "placement": "above"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "i"
       }
     },
     {
-      "id": "drawn",
+      "id": "draw",
+      "target": "canvas",
       "bubble": {
         "title": "Deposited",
-        "body": "The rectangle is on the canvas.",
+        "body": "Steer to the opposite corner and press I again to deposit the rectangle.",
         "placement": "center"
       },
       "expect": {
         "kind": "scene-changed"
-      },
-      "target": "canvas"
+      }
     },
     {
-      "id": "select",
+      "id": "do-deselect",
+      "target": "canvas",
       "bubble": {
-        "title": "Select it",
-        "body": "Click the rectangle (mouse buttons still select and drag \u2014 keys are for drawing). Selecting is what tells the panel and the operations which object you mean.",
+        "title": "Deselect it",
+        "body": "The new rectangle starts out selected. Press Escape — the selection clears, so the next step is a real selection.",
         "placement": "center"
       },
       "expect": {
-        "kind": "selection-changed"
+        "kind": "selection-count",
+        "max": 0
+      }
+    },
+    {
+      "id": "do-select",
+      "target": "canvas",
+      "bubble": {
+        "title": "Select it",
+        "body": "Click the rectangle (mouse buttons still select and drag — keys are for drawing). Selecting is what tells the panel and the operations which object you mean.",
+        "placement": "center"
       },
-      "target": "canvas"
+      "expect": {
+        "kind": "selection-count",
+        "min": 1
+      }
     },
     {
       "id": "nudge",
+      "target": "status",
       "bubble": {
         "title": "Nudge it straight",
-        "body": "With the rectangle selected, the arrow keys nudge it. Shift makes the step bigger, Alt/Opt smaller. Steer, snap and nudge are how placement gets exact.",
+        "body": "With the rectangle selected, press an arrow key to nudge it. Shift makes the step bigger, Alt/Opt smaller. Steer, snap and nudge are how placement gets exact.",
         "placement": "right"
       },
       "expect": {
-        "kind": "none"
-      },
-      "target": "status"
+        "kind": "scene-changed"
+      }
     },
     {
-      "id": "undo",
+      "id": "points-enter",
+      "target": "menu-object",
       "bubble": {
-        "title": "Undo is one step per action",
-        "body": "Press Cmd/Ctrl+Z to undo the last action and Cmd/Ctrl+Shift+Z to redo it. Every deposit, move and restyle is a single undo step.",
-        "placement": "right"
+        "title": "Open point editing",
+        "body": "Choose Object ▸ Point Edit ▸ Point edit mode. The rectangle's anchor points appear — the shape is now editable point by point.",
+        "placement": "below"
       },
       "expect": {
-        "kind": "none"
-      },
-      "target": "available-keys"
+        "kind": "run-command",
+        "command": "point-edit"
+      }
     },
     {
-      "id": "points",
+      "id": "points-move",
+      "target": "canvas",
       "bubble": {
-        "title": "Fix the points themselves",
-        "body": "A selected path can be point-edited: its anchors and curve handles can be picked up and moved, points added or deleted, and corners converted to smooth points \u2014 see the Keys Reference under Help for the point-edit keys. Redrawing is the last resort, not the first.",
+        "title": "Move one point",
+        "body": "Click a corner point to select it, then press an arrow key. The point moves and the shape bends — the rest of the rectangle stays put. Choose Point edit mode again when you are done.",
         "placement": "center"
       },
       "expect": {
-        "kind": "none"
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "done",
+      "target": "available-keys",
+      "bubble": {
+        "title": "Undo, and the point keys",
+        "body": "Cmd/Ctrl+Z undoes one action at a time, point moves included. The Keys Reference under Help lists every point-edit key — add, delete, smooth, corner. Redrawing is the last resort, not the first.",
+        "placement": "right"
       },
-      "target": "canvas"
+      "expect": {
+        "kind": "none"
+      }
     }
   ]
 }

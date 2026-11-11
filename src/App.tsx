@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type CSSProperties } from 'react';
 import paper from 'paper';
 import {
   NibGliderEngine,
@@ -54,17 +54,18 @@ import { writePreviewPaths } from './ui/PreviewBoxPresenter';
 import { TutorialRunner } from './tutorial/TutorialRunner';
 import { DemonstrationPlayer, type DemoHooks, type DemoWorkspace } from './tutorial/demonstrationPlayer';
 import { getTutorialTargetRect } from './tutorial/TargetResolver';
-import { schemaById } from './engine/input/KeySettingsRegistry';
-import { settingsView } from './engine/input/KeySettingsViewModel';
+import { readParam, writeParam } from './engine/input/ParamAddress';
 import {
   attachTutorialKeyListener,
   bridgeEngineToRunner,
   emitTutorialCommand,
+  readTutorialState,
+  type TutorialEngineSource,
 } from './tutorial/completionDetectors';
 import { parseTutorialText } from './tutorial/tutorialLoader';
 import {
-  markTutorialCompleted,
-  markTutorialDismissed,
+  getTutorialProgress,
+  recordTutorialProgress,
   shouldAutoShowTutorial,
 } from './tutorial/tutorialProgress';
 import { tutorialByCommand, tutorialById } from './tutorial/tutorialCatalog';
@@ -86,8 +87,12 @@ const MENU_COMMANDS: Set<string> = new Set([
   'settings', 'document-settings', 'canvas-size', 'pages-guides', 'tutorial', 'empty-canvas',
   'about', 'tutorials',
   'print', 'print-selection', 'page-setup',
-  'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-fill-and-stroke',
-  'tutorial-adding-text', 'tutorial-grouping-and-ordering', 'tutorial-saving-and-exporting',
+  'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-hello-circle',
+  'tutorial-stroke', 'tutorial-fill', 'tutorial-swatches', 'tutorial-adding-text',
+  'tutorial-combinatorics', 'tutorial-history', 'tutorial-layers-and-objects',
+  'tutorial-grouping-and-ordering', 'tutorial-pages-and-guides', 'tutorial-saving-and-exporting',
+  'tutorial-arrange', 'tutorial-grid', 'tutorial-repeat', 'tutorial-snapping',
+  'tutorial-path-operations',
   'help-getting-started', 'help-keys-reference',
   'undo', 'redo',
   'cut', 'copy', 'paste', 'paste-in-place', 'select-all', 'select-none',
@@ -165,9 +170,27 @@ export default function App() {
     setDemoCursor(pos);
   }, []);
 
-  // Tutorial completion: physical keys and engine mutations feed the runner.
-  useEffect(() => bridgeEngineToRunner(engine, tutorialRunner), [engine, tutorialRunner]);
+  // Tutorial completion: the bridge observes precise engine signals —
+  // selected-id diffs, document changes, and fresh state reads for the
+  // predicate expects — and physical keys feed the runner directly.
+  const tutorialSource = useMemo<TutorialEngineSource>(() => ({
+    subscribe: engine.subscribe,
+    subscribeDocumentChanges: (fn) => engine.subscribeDocumentChanges(fn),
+    selectionIds: () => engine.selectedItems.map((item) => item.id),
+    objectCount: () => engine.contentObjectCount(),
+    settingValue: (settingsId, field) => readParam(engine, settingsId, field),
+  }), [engine]);
+  useEffect(() => bridgeEngineToRunner(tutorialSource, tutorialRunner), [tutorialSource, tutorialRunner]);
   useEffect(() => attachTutorialKeyListener(tutorialRunner), [tutorialRunner]);
+
+  // A state-predicate step whose condition is already true when the step
+  // becomes current completes immediately: re-evaluate on every step
+  // change (the bridge also re-evaluates on every engine event).
+  useEffect(() => {
+    if (tutorialSnap.status !== 'active') return;
+    const state = readTutorialState(tutorialSource);
+    if (state) tutorialRunner.notifyState(state);
+  }, [tutorialSnap.status, tutorialSnap.stepIndex, tutorialSource, tutorialRunner]);
 
   const canvasClientPoint = useCallback((fx: number, fy: number): { x: number; y: number } | null => {
     const canvas = canvasRef.current;
@@ -206,6 +229,11 @@ export default function App() {
     },
     [demoPlayer, setGhost],
   );
+
+  // The demo hooks dispatch menu commands through handleMenuCommand,
+  // which is defined further down; the ref bridges the definition order
+  // and is refreshed by an effect below.
+  const menuCommandRef = useRef<(commandId: string) => void>(() => {});
 
   const demoWorkspace = useCallback(
     (): DemoWorkspace => ({
@@ -268,11 +296,15 @@ export default function App() {
         setDemoPointAt(target ? { target, label } : null);
       },
       setParam: (settingsId, field, value) => {
-        const schema = schemaById(settingsId);
-        if (!schema) return;
-        const control = settingsView(schema, engine).controls.find((entry) => entry.id === field);
-        if (!control) return;
-        (control as unknown as { commit: (v: unknown) => void }).commit(value);
+        // One addressing scheme (ParamAddress): per-key popover schemas
+        // and panel params alike. An unresolvable address is a no-op,
+        // matching the previous behaviour for unknown schemas.
+        writeParam(engine, settingsId, field, value);
+      },
+      runCommand: (commandId) => {
+        // Dispatch through the same handler the menus use (held in a
+        // ref because the hooks are defined before the handler).
+        menuCommandRef.current(commandId);
       },
       closePopover: () => {
         setDemoSettingsKey(null);
@@ -332,8 +364,14 @@ export default function App() {
     if (!entry) return;
     const loaded = parseTutorialText(entry.raw);
     if (!loaded.ok || !loaded.tutorial) return;
+    // Per-tutorial progress: an in-progress record resumes at its saved
+    // step (the resumed step's own bubble shows first); a completed or
+    // dismissed tutorial, or a first run, restarts at the beginning.
+    const record = getTutorialProgress(browserStore(), entry.id);
+    const resumeAt = record?.status === 'in-progress' ? record.stepIndex : 0;
     tutorialRunner.load(loaded.tutorial);
-    tutorialRunner.start();
+    tutorialRunner.start(resumeAt);
+    recordTutorialProgress(browserStore(), entry.id, 'in-progress', tutorialRunner.getSnapshot().stepIndex);
   }, [tutorialRunner]);
 
   const controlPanelRef = useRef<ControlPanelHandle>(null);
@@ -435,6 +473,9 @@ export default function App() {
   }, [downloadBlob, engine, exportFileStem, rasterFormat]);
 
   const handleMenuCommand = useCallback((commandId: string) => {
+    // Every dispatched menu/context/panel command is also a tutorial
+    // command event, so run-command expects complete from real menu use.
+    emitTutorialCommand(commandId);
     if ((FILE_COMMANDS as readonly string[]).includes(commandId)
       || (IMPORT_COMMANDS as readonly string[]).includes(commandId)) {
       controlPanelRef.current?.dispatchFileCommand(commandId as FileCommand | ImportCommand);
@@ -586,6 +627,11 @@ export default function App() {
     else if (commandId === 'image-convert-jpeg') engine.convertSelectedRaster('jpeg');
     else if (commandId === 'image-filters') gui.toggleFilters();
   }, [engine, gui, runRasterExport, runVectorExport, startTutorial]);
+
+  // Keep the demo system's command dispatch pointed at the live handler.
+  useEffect(() => {
+    menuCommandRef.current = handleMenuCommand;
+  }, [handleMenuCommand]);
 
   // Re-render on engine changes so menu checkmarks (length unit) stay fresh.
   // Visibility toggles arrive through the gui snapshot above.
@@ -745,16 +791,30 @@ export default function App() {
   }, [startTutorial]);
 
   const endTutorial = useCallback(() => {
-    markTutorialDismissed(browserStore());
+    // Ending early records dismissal (distinct from completion) for the
+    // tutorial that is actually running, at the step it ended on.
+    const snap = tutorialRunner.getSnapshot();
+    if (snap.tutorial) {
+      recordTutorialProgress(browserStore(), snap.tutorial.id, 'dismissed', snap.stepIndex);
+    }
     tutorialRunner.abort();
   }, [tutorialRunner]);
 
-  // Finishing the last step records completion so it won't auto-show again.
-  // Ending early records dismissal (distinct from completion) so the
-  // tutorial stays closed on the next load.
+  // Position is saved on every step change, so leaving mid-tutorial
+  // (closing the tab included) resumes at the same step next time.
   useEffect(() => {
-    if (tutorialSnap.status === 'done') markTutorialCompleted(browserStore());
-  }, [tutorialSnap.status]);
+    if (tutorialSnap.status === 'active' && tutorialSnap.tutorial) {
+      recordTutorialProgress(browserStore(), tutorialSnap.tutorial.id, 'in-progress', tutorialSnap.stepIndex);
+    }
+  }, [tutorialSnap.status, tutorialSnap.tutorial, tutorialSnap.stepIndex]);
+
+  // Finishing the last step records completion for that tutorial, so the
+  // intro won't auto-show again.
+  useEffect(() => {
+    if (tutorialSnap.status === 'done' && tutorialSnap.tutorial) {
+      recordTutorialProgress(browserStore(), tutorialSnap.tutorial.id, 'completed', tutorialSnap.stepIndex);
+    }
+  }, [tutorialSnap.status, tutorialSnap.tutorial, tutorialSnap.stepIndex]);
 
   // Restores the open gallery document when the scene is empty. attach()
   // keeps the Paper project across StrictMode remounts, so a second pass

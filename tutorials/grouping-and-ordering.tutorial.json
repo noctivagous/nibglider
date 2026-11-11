@@ -1,90 +1,132 @@
 {
   "id": "grouping-and-ordering",
   "title": "Grouping & Ordering",
-  "description": "Several objects behave as one: group them, stack them in order, and organise them in the Layers & Objects panel.",
+  "description": "Stack overlapping shapes in order, group them so they move as one, and ungroup them again.",
   "steps": [
     {
       "id": "welcome",
       "bubble": {
-        "title": "Many objects, one drawing",
-        "body": "Grouping makes objects move together. Ordering decides which object paints over which. Layers organise the whole drawing.",
+        "title": "Groups and stacking order",
+        "body": "Where shapes overlap, one is in front. Grouping ties shapes together so they move, scale, and copy as one object. Both are decisions about the selection.",
         "placement": "center"
       },
       "expect": {
         "kind": "none"
-      },
-      "target": "canvas"
+      }
     },
     {
-      "id": "draw-two",
+      "id": "draw-press",
+      "target": "key-i",
       "bubble": {
-        "title": "Draw two overlapping shapes",
-        "body": "Press I twice for one rectangle, then draw a second overlapping it. Overlap is what makes ordering visible.",
-        "placement": "center"
+        "title": "Draw two shapes",
+        "body": "Steer to a corner and press I to start the first of two overlapping shapes.",
+        "placement": "above"
       },
       "expect": {
         "kind": "press-key",
         "key": "i"
-      },
-      "target": "canvas",
-      "preconditions": {
-        "normalZoom": true,
-        "showKeyboard": true,
-        "showPanel": true,
-        "expandSections": [
-          "rectFrameControls"
-        ],
-        "cancelDrawing": true
       }
     },
     {
-      "id": "order",
+      "id": "draw",
+      "target": "canvas",
       "bubble": {
-        "title": "Front and back",
-        "body": "The later shape paints over the earlier one. With a shape selected, Bring to Front and Send to Back move it across the whole stack; Bring Forward and Send Backward move it one step.",
+        "title": "First shape down",
+        "body": "Steer to the opposite corner and press I again to deposit it.",
         "placement": "center"
       },
       "expect": {
         "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "draw-press-2",
+      "target": "key-i",
+      "bubble": {
+        "title": "Second shape",
+        "body": "Press I again to start a second shape, overlapping the first.",
+        "placement": "above"
       },
-      "target": "canvas"
+      "expect": {
+        "kind": "press-key",
+        "key": "i"
+      }
+    },
+    {
+      "id": "draw-2",
+      "target": "canvas",
+      "bubble": {
+        "title": "Second shape down",
+        "body": "Steer and press I again. Where they overlap, the newer shape sits in front.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "order",
+      "target": "menu-object",
+      "bubble": {
+        "title": "Restack them",
+        "body": "The second shape is still selected, and it sits in front where they overlap. Choose Object ▸ Order ▸ Send to Back — it drops behind the first shape. Order lives in the Object menu and the Arrange section.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "run-command",
+        "command": "send-to-back"
+      }
+    },
+    {
+      "id": "select-both",
+      "target": "canvas",
+      "bubble": {
+        "title": "Select both",
+        "body": "Click the first shape, then Shift+click the second, so both are selected. Grouping needs at least two.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "selection-count",
+        "min": 2
+      }
     },
     {
       "id": "group",
+      "target": "menu-object",
       "bubble": {
-        "title": "Group the selection",
-        "body": "Select both shapes (Shift-click adds to a selection) and run Group Selection, or press Cmd/Ctrl+G. The group now moves, scales and styles as one object.",
-        "placement": "center"
+        "title": "Group them",
+        "body": "Choose Object ▸ Group ▸ Group (Ctrl/Cmd+G). The two shapes become one object: select it, drag it, and they travel together.",
+        "placement": "below"
       },
       "expect": {
         "kind": "run-command",
         "command": "group"
-      },
-      "target": "canvas"
+      }
     },
     {
       "id": "ungroup",
+      "target": "menu-object",
       "bubble": {
-        "title": "Ungroup when you need the parts",
-        "body": "Cmd/Ctrl+Shift+G ungroups. Grouping never merges the shapes \u2014 the parts come back exactly as they were.",
+        "title": "Ungroup them",
+        "body": "Choose Object ▸ Group ▸ Ungroup. The group dissolves back into its two shapes — grouping is a wrapper, never a merge. (Merging shapes for real is Combinatorics.)",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "run-command",
+        "command": "ungroup-selection"
+      }
+    },
+    {
+      "id": "layers",
+      "target": "section-layersControls",
+      "bubble": {
+        "title": "The list view of all this",
+        "body": "The Layers & Objects section lists every object in stacking order — the same front-to-back story, as a list you can click, hide, and reorder.",
         "placement": "right"
       },
       "expect": {
         "kind": "none"
-      },
-      "target": "available-keys"
-    },
-    {
-      "id": "layers",
-      "bubble": {
-        "title": "Meet the Layers & Objects panel",
-        "body": "The panel lists layers and every object in them. Rename objects there, hide or lock them, set opacity, and click a row to select something that is hard to click on canvas.",
-        "placement": "center"
-      },
-      "expect": {
-        "kind": "none"
-      },
-      "target": "canvas"
+      }
     }
   ]
 }

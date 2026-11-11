@@ -1,67 +1,67 @@
 {
   "id": "saving-and-exporting",
   "title": "Saving & Exporting",
-  "description": "Autosave to the gallery, a real file of your own, and exports other programs can use.",
+  "description": "Three different keepers: the browser gallery that autosaves, a NibGlider file of your own, and exports for other programs.",
   "steps": [
     {
       "id": "welcome",
+      "target": "menu-file",
       "bubble": {
         "title": "Three different things",
-        "body": "Autosave keeps your work safe in this browser. A saved file is yours to keep anywhere. An export is a picture of the drawing for other programs.",
+        "body": "The gallery autosaves your work in this browser. A saved file is yours to keep anywhere. An export is a picture or vector file for other programs. They are not interchangeable.",
         "placement": "center"
       },
       "expect": {
         "kind": "none"
-      },
-      "target": "canvas"
+      }
     },
     {
       "id": "gallery",
+      "target": "menu-file",
       "bubble": {
         "title": "The gallery autosaves",
-        "body": "File \u2192 Open Document shows the gallery: every document saved in this browser, with the current one autosaved as you work. Naming a document (in Document Info) is what files it properly.",
-        "placement": "right"
+        "body": "File ▸ Open Gallery shows the gallery: every document kept in this browser. The current one is autosaved as you work, so closing the tab loses nothing — but the gallery lives and dies with this browser.",
+        "placement": "below"
       },
       "expect": {
         "kind": "none"
-      },
-      "target": "status"
+      }
     },
     {
       "id": "save-file",
+      "target": "menu-file",
       "bubble": {
         "title": "Save to File keeps it anywhere",
-        "body": "File \u2192 Save to File downloads a NibGlider document file \u2014 the drawing in NibGlider's own format, layers and all. Keep it, back it up, send it.",
-        "placement": "center"
+        "body": "File ▸ Save to File… downloads a NibGlider document file — the drawing in NibGlider's own format, layers, pages, and repeat records included. File ▸ Save Gallery instead keeps a named copy inside the browser gallery.",
+        "placement": "below"
       },
       "expect": {
         "kind": "none"
-      },
-      "target": "canvas"
+      }
     },
     {
       "id": "open-file",
+      "target": "menu-file",
       "bubble": {
         "title": "Open File brings it back",
-        "body": "File \u2192 Open File, or dropping the file onto the canvas, reopens a saved document exactly as it was. Older gallery documents keep working too.",
-        "placement": "center"
+        "body": "File ▸ Open File…, or dropping the file onto the canvas, reopens a saved document exactly as it was. Older gallery-format files still open too.",
+        "placement": "below"
       },
       "expect": {
         "kind": "none"
-      },
-      "target": "canvas"
+      }
     },
     {
       "id": "export",
+      "target": "menu-file",
       "bubble": {
         "title": "Export for other programs",
-        "body": "File \u2192 Export gives PNG or JPG pictures, or SVG and PDF vector files \u2014 of the whole document, the current view, or just the selection. An Export Frame pins an exact size for repeat exports.",
-        "placement": "center"
+        "body": "File ▸ Export Raster makes pictures (PNG, JPG, WebP); File ▸ Export Vector makes SVG and PDF. Each offers three scopes: the Document Frame, the Current Viewport Frame, or the Selected Objects. An Export Frame shape in the drawing pins an exact export size.",
+        "placement": "below"
       },
       "expect": {
         "kind": "none"
-      },
-      "target": "canvas"
+      }
     }
   ]
 }

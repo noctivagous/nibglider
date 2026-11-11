@@ -26,8 +26,12 @@ const WIRED_COMMANDS = [
   'export-printify-area', 'export-printify-product',
   'repeat-grid', 'repeat-circle',
   'tool-line', 'tool-ellipse', 'tool-arc', 'tool-freehand',
-  'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-fill-and-stroke',
-  'tutorial-adding-text', 'tutorial-grouping-and-ordering', 'tutorial-saving-and-exporting',
+  'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-hello-circle',
+  'tutorial-stroke', 'tutorial-fill', 'tutorial-swatches', 'tutorial-adding-text',
+  'tutorial-combinatorics', 'tutorial-history', 'tutorial-layers-and-objects',
+  'tutorial-grouping-and-ordering', 'tutorial-pages-and-guides', 'tutorial-saving-and-exporting',
+  'tutorial-arrange', 'tutorial-grid', 'tutorial-repeat', 'tutorial-snapping',
+  'tutorial-path-operations',
   'help-getting-started', 'help-keys-reference',
   'undo', 'redo', 'find-replace',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
@@ -204,9 +208,16 @@ test('help holds the tutorials and docs, and shape parents use the short Keys la
     'tutorials', 'help-getting-started', 'help-keys-reference', 'about',
   ]);
   const tutorials = byId.help.items.find((item) => item.commandId === 'tutorials');
+  // FLAGGED EDIT (Tier Five, Slices 25–28): the Tutorials submenu pin
+  // follows the fill-and-stroke split and the one-per-section catalog —
+  // intro first, then panel order.
   assert.deepEqual(tutorials.children.map((child) => child.commandId), [
-    'tutorial', 'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-fill-and-stroke',
-    'tutorial-adding-text', 'tutorial-grouping-and-ordering', 'tutorial-saving-and-exporting',
+    'tutorial', 'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-hello-circle',
+    'tutorial-stroke', 'tutorial-fill', 'tutorial-swatches', 'tutorial-adding-text',
+    'tutorial-combinatorics', 'tutorial-history', 'tutorial-layers-and-objects',
+    'tutorial-grouping-and-ordering', 'tutorial-pages-and-guides', 'tutorial-saving-and-exporting',
+    'tutorial-arrange', 'tutorial-grid', 'tutorial-repeat', 'tutorial-snapping',
+    'tutorial-path-operations',
   ]);
   assert.ok(!byId.file.items.some((item) => item.commandId === 'tutorial'));
   const modesById = Object.fromEntries(byId.modes.items.map((item) => [item.commandId, item]));

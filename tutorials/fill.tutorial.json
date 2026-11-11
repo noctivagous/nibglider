@@ -1,0 +1,185 @@
+{
+  "id": "fill",
+  "title": "Fill",
+  "description": "Paint insides: switch fill on, choose a solid colour or a two-colour gradient, and repaint a selection's fill.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-fillControls",
+      "bubble": {
+        "title": "The Fill section",
+        "body": "The Fill section paints insides: one flat colour, or a gradient that blends two colours. Like Stroke, it sets the next shape's fill and repaints a selection's.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-fill",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: draw with a gradient",
+        "body": "Press Watch demo: the program switches fill on, sets a linear gradient, and draws a rectangle wearing it.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-i"
+        ]
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "fillControls",
+          "rectFrameControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "Clearing the selection",
+          "body": "Escape first, so the fill settings land on the next shape drawn."
+        },
+        {
+          "kind": "press-key",
+          "key": "Escape",
+          "holdMs": 120
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "fill",
+          "field": "enabled",
+          "value": true
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "fill",
+          "field": "type",
+          "value": "linear"
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "fill",
+          "field": "color",
+          "value": "#2e86c1"
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "fill",
+          "field": "endColor",
+          "value": "#f39c12"
+        },
+        {
+          "kind": "narrate",
+          "title": "Drawing with it",
+          "body": "Fill on: a blue-to-orange linear gradient. Drawing a rectangle with I."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.38,
+          "y": 0.4,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.62,
+          "y": 0.6,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "wait",
+          "ms": 400
+        },
+        {
+          "kind": "narrate",
+          "title": "Done",
+          "body": "The rectangle lands wearing the gradient."
+        }
+      ]
+    },
+    {
+      "id": "do-solid",
+      "target": "section-fillControls",
+      "bubble": {
+        "title": "Switch to solid",
+        "body": "Press Escape to deselect the demo's rectangle. Then switch the Fill Type to Solid — with nothing selected, the section sets the fill the next shape will wear.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "fill",
+        "field": "type",
+        "value": "solid"
+      }
+    },
+    {
+      "id": "draw-press",
+      "target": "key-i",
+      "bubble": {
+        "title": "Draw with your fill",
+        "body": "Steer to a corner and press I to start a rectangle. Fill is on, and solid.",
+        "placement": "above"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "i"
+      }
+    },
+    {
+      "id": "draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Finish the rectangle",
+        "body": "Steer to the opposite corner and press I again. This rectangle lands with a flat, solid fill.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-gradient",
+      "target": "section-fillControls",
+      "bubble": {
+        "title": "Repaint it as a gradient",
+        "body": "Your rectangle is still selected. Switch its Type to Linear gradient — only the selection repaints. The next shape you draw would still land solid.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "fill",
+        "field": "type",
+        "value": "linear"
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-fillControls",
+      "bubble": {
+        "title": "Solid or gradient",
+        "body": "Set the fill before you draw, or repaint a selection afterwards. Type picks solid or gradient; the two colours are a gradient's ends.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

@@ -1,0 +1,208 @@
+{
+  "id": "arrange",
+  "title": "Arrange",
+  "description": "Line the selection up, flip it, and restack it — exactly, without dragging.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-arrangeControls",
+      "bubble": {
+        "title": "Arrange: placement without dragging",
+        "body": "Arrange lines shapes up, flips them, and stacks them in order. Everything in this section acts on the selection — no dragging, no eyeballing.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-arrange",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: align and flip",
+        "body": "Press Watch demo: the program draws two offset rectangles, selects both, aligns their left edges, and flips the pair.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-i"
+        ]
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "arrangeControls",
+          "rectFrameControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "Two offset rectangles",
+          "body": "Drawing two rectangles that line up neither by edge nor by centre."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.34,
+          "y": 0.38,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.52,
+          "y": 0.54,
+          "durationMs": 1000
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.56,
+          "y": 0.48,
+          "durationMs": 800
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.74,
+          "y": 0.64,
+          "durationMs": 1000
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "Select all",
+          "body": "Selecting every shape, so Arrange has something to act on."
+        },
+        {
+          "kind": "run-command",
+          "command": "select-all"
+        },
+        {
+          "kind": "narrate",
+          "title": "Align left",
+          "body": "Aligning the left edges. The second rectangle slides to meet the first."
+        },
+        {
+          "kind": "run-command",
+          "command": "align-left"
+        },
+        {
+          "kind": "narrate",
+          "title": "Flip horizontal",
+          "body": "Flipping the pair sideways — they swap places around their shared centre."
+        },
+        {
+          "kind": "run-command",
+          "command": "flip-horizontal"
+        },
+        {
+          "kind": "wait",
+          "ms": 400
+        },
+        {
+          "kind": "narrate",
+          "title": "Done",
+          "body": "Aligned and flipped, without a single drag."
+        }
+      ]
+    },
+    {
+      "id": "do-select-both",
+      "target": "canvas",
+      "bubble": {
+        "title": "Select both shapes",
+        "body": "The demo's two rectangles are on the canvas. Click one, then Shift+click the other, so both are selected.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "selection-count",
+        "min": 2
+      }
+    },
+    {
+      "id": "do-align",
+      "target": "section-arrangeControls",
+      "bubble": {
+        "title": "Align their bottoms",
+        "body": "With both selected, click Align Bottom in the Arrange section (or Object ▸ Align ▸ Align Bottom). The lower shape pulls the other down to its edge.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-flip",
+      "target": "section-arrangeControls",
+      "bubble": {
+        "title": "Flip them",
+        "body": "Both are still selected. Click Flip Vertical in the Arrange section (or Object ▸ Flip ▸ Flip Vertical) — the pair swaps places around their shared centre.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-select-one",
+      "target": "canvas",
+      "bubble": {
+        "title": "Now just one",
+        "body": "Click a single shape, without Shift, so only it is selected. Stacking order is a one-shape-at-a-time decision.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "selection-count",
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "do-order",
+      "target": "menu-object",
+      "bubble": {
+        "title": "Send it to the back",
+        "body": "Choose Object ▸ Order ▸ Send to Back. Where shapes overlap, the other one now shows in front.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-arrangeControls",
+      "bubble": {
+        "title": "Selection in, placement out",
+        "body": "Arrange acts on the selection: align it, flip it, stack it. The status box always names what is selected, so you know what will move before you commit.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

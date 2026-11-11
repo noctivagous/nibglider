@@ -1,19 +1,19 @@
 {
   "id": "adding-text",
   "title": "Adding Text",
-  "description": "Display text and body text: steer to the baseline, type, and style it from the Text section.",
+  "description": "Type text at the cursor, style it from the Text section, and apply a saved style preset.",
   "steps": [
     {
       "id": "welcome",
+      "target": "section-textControls",
       "bubble": {
-        "title": "Text is steered, then typed",
-        "body": "Choose the text kind first, steer the cursor to where the baseline starts, and type. The text follows the Text section's font settings.",
-        "placement": "right"
+        "title": "Text, typed at the cursor",
+        "body": "Text here is typed at the cursor, like everything else is drawn — no text boxes to drag first. The Text section holds its font, size, weight, spacing, and saved styles.",
+        "placement": "center"
       },
       "expect": {
         "kind": "none"
       },
-      "target": "section-textControls",
       "preconditions": {
         "showPanel": true,
         "expandSections": [
@@ -23,51 +23,183 @@
     },
     {
       "id": "kinds",
+      "target": "section-textControls",
       "bubble": {
-        "title": "Display or Body",
-        "body": "Display Text is a single styled line. Body Text flows inside a frame. Text can also be set on a path, following its curve.",
-        "placement": "right"
+        "title": "Three kinds of text",
+        "body": "Display text is a single line at the cursor. Body text flows inside a frame you draw. And text can ride along a path. This tutorial uses Display; the others start from the same section.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-text",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: type and style",
+        "body": "Press Watch demo: the program steers to a spot, presses P, types a word, places it with Enter, then makes it bold with wider tracking.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-p"
+        ]
       },
       "expect": {
         "kind": "none"
       },
-      "target": "section-textControls"
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "textControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "Typing at the cursor",
+          "body": "Steering to a spot. P is the Type At Cursor key."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.38,
+          "y": 0.42,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "p",
+          "holdMs": 150
+        },
+        {
+          "kind": "press-key",
+          "key": "h",
+          "holdMs": 90
+        },
+        {
+          "kind": "press-key",
+          "key": "e",
+          "holdMs": 90
+        },
+        {
+          "kind": "press-key",
+          "key": "l",
+          "holdMs": 90
+        },
+        {
+          "kind": "press-key",
+          "key": "l",
+          "holdMs": 90
+        },
+        {
+          "kind": "press-key",
+          "key": "o",
+          "holdMs": 90
+        },
+        {
+          "kind": "narrate",
+          "title": "Placing it",
+          "body": "Enter places the line. The text is now an object on the page — and still text."
+        },
+        {
+          "kind": "press-key",
+          "key": "Enter",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "Styling it",
+          "body": "Bold, with tracking opened up — set in the Text section while the text is selected."
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "text",
+          "field": "weight",
+          "value": "bold"
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "text",
+          "field": "letterSpacing",
+          "value": 2
+        },
+        {
+          "kind": "narrate",
+          "title": "Done",
+          "body": "Typed and styled. It stays editable: double-click it later and type again."
+        }
+      ]
     },
     {
-      "id": "type",
+      "id": "do-type-press",
+      "target": "key-p",
       "bubble": {
-        "title": "Type on the canvas",
-        "body": "With Display Text chosen, steer to the start point and type your headline. Enter finishes the line.",
+        "title": "Your turn: press P",
+        "body": "Steer where your text should start, then press P — Type At Cursor.",
+        "placement": "above"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "p"
+      }
+    },
+    {
+      "id": "do-type",
+      "target": "canvas",
+      "bubble": {
+        "title": "Type your headline",
+        "body": "Type a word or two, then press Enter to place the line on the page.",
         "placement": "center"
       },
       "expect": {
-        "kind": "none"
-      },
-      "target": "canvas"
+        "kind": "scene-changed"
+      }
     },
     {
-      "id": "style",
+      "id": "do-weight",
+      "target": "section-textControls",
       "bubble": {
-        "title": "Style it",
-        "body": "Family, size, weight and justification are in the Text section. Select existing text first to restyle it.",
+        "title": "Make it bold",
+        "body": "Your text is still selected, so the Text section is showing its style. Set Weight to Bold — the selected text repaints bolder.",
         "placement": "right"
       },
       "expect": {
-        "kind": "none"
+        "kind": "setting-is",
+        "settingsId": "text",
+        "field": "weight",
+        "value": "bold"
+      }
+    },
+    {
+      "id": "do-style",
+      "target": "section-textControls",
+      "bubble": {
+        "title": "Apply a style preset",
+        "body": "Press Escape to deselect. In the Text section's Style preset, choose Headline and click Apply. With nothing selected, the preset becomes the creation style — the next text you type starts at 48pt, bold.",
+        "placement": "right"
       },
-      "target": "section-textControls"
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "text",
+        "field": "size",
+        "value": 48
+      }
     },
     {
       "id": "done",
+      "target": "section-textControls",
       "bubble": {
-        "title": "Text stays editable",
-        "body": "Text remains text \u2014 editable, restylable, searchable \u2014 until you deliberately convert it. It exports as text in SVG and PDF.",
-        "placement": "center"
+        "title": "Text stays text",
+        "body": "Text remains text — editable, restylable, searchable — until you deliberately convert it with Object ▸ Convert Text to Outlines. Styles you invent can be saved next to the built-in ones in the same preset row.",
+        "placement": "below"
       },
       "expect": {
         "kind": "none"
-      },
-      "target": "canvas"
+      }
     }
   ]
 }

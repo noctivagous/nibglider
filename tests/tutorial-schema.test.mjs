@@ -143,10 +143,16 @@ test('intro tutorial follows the demo-then-try structure with the welcome slide 
   assert.equal(loaded.ok, true);
   assert.ok(loaded.tutorial);
   const steps = loaded.tutorial.steps;
+  // FLAGGED EDIT (Slice 24): the intro gained the key-click concept steps
+  // and a closing step, per the Tier Five brief; the pinned list follows
+  // the new intended structure. The welcome slide assertion below is
+  // unchanged.
   assert.deepEqual(
     steps.map((s) => s.id),
     [
       'welcome',
+      'key-click',
+      'key-palette',
       'watch-diagonal',
       'try-diagonal-press',
       'try-diagonal-draw',
@@ -156,6 +162,7 @@ test('intro tutorial follows the demo-then-try structure with the welcome slide 
       'shape-selector',
       'status-box',
       'available-keys',
+      'closing',
     ],
   );
   // First slide is unchanged.
@@ -180,4 +187,50 @@ test('intro tutorial follows the demo-then-try structure with the welcome slide 
   assert.equal(byId['shape-selector'].target, 'rect-shape-select');
   assert.equal(byId['status-box'].target, 'status');
   assert.equal(byId['available-keys'].target, 'available-keys');
+  // Slice 24: the key-click demo places one corner with I and cancels
+  // with Q; the shape selector is a precise setting-is do-step; the
+  // closing step points at the Help menu.
+  const keyClick = byId['key-click'];
+  assert.ok(keyClick.demo?.some((a) => a.kind === 'press-key' && a.key === 'i'));
+  assert.ok(keyClick.demo?.some((a) => a.kind === 'press-key' && a.key === 'q'));
+  assert.ok(keyClick.preconditions);
+  assert.deepEqual(byId['shape-selector'].expect, {
+    kind: 'setting-is',
+    settingsId: 'rect',
+    field: 'innerShape',
+    value: 'polygon',
+  });
+  assert.equal(byId['closing'].target, 'menu-help');
+});
+
+test('validator accepts the v2 expect kinds and press-key count', () => {
+  const checked = validateTutorial({
+    id: 'x',
+    title: 'X',
+    steps: [
+      { id: 'a', bubble: { title: 'T', body: 'B' }, expect: { kind: 'press-key', key: 'i', count: 2 } },
+      { id: 'b', bubble: { title: 'T', body: 'B' }, expect: { kind: 'selection-count', min: 2 } },
+      { id: 'c', bubble: { title: 'T', body: 'B' }, expect: { kind: 'object-count', min: 1, max: 3 } },
+      { id: 'd', bubble: { title: 'T', body: 'B' }, expect: { kind: 'setting-is', settingsId: 'grid', field: 'enabled', value: true } },
+    ],
+  });
+  assert.equal(checked.ok, true);
+  assert.equal(checked.tutorial.steps[0].expect.count, 2);
+  assert.equal(checked.tutorial.steps[3].expect.value, true);
+});
+
+test('validator rejects malformed v2 expects', () => {
+  const bad = (expect) => validateTutorial({
+    id: 'x',
+    title: 'X',
+    steps: [{ id: 's', bubble: { title: 'T', body: 'B' }, expect }],
+  }).ok;
+  assert.equal(bad({ kind: 'press-key', key: 'i', count: 0 }), false);
+  assert.equal(bad({ kind: 'press-key', key: 'i', count: 1.5 }), false);
+  assert.equal(bad({ kind: 'selection-count' }), false);
+  assert.equal(bad({ kind: 'object-count', min: -1 }), false);
+  assert.equal(bad({ kind: 'object-count', min: 3, max: 2 }), false);
+  assert.equal(bad({ kind: 'setting-is', settingsId: 'grid', field: 'enabled' }), false);
+  assert.equal(bad({ kind: 'setting-is', settingsId: '', field: 'enabled', value: true }), false);
+  assert.equal(bad({ kind: 'setting-is', settingsId: 'grid', field: 'enabled', value: { on: true } }), false);
 });

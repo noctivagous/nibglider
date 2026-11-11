@@ -4499,6 +4499,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           </SectionTitleButton>
         <CustomSelect
           id="circleInnerShapeSelect"
+          tutorialId="circle-shape-select"
           ariaLabel="Circle Keys shape"
           value={engine.circleInnerShapeType}
           options={CIRCLE_OPTION_TREE}

@@ -1,0 +1,94 @@
+{
+  "id": "history",
+  "title": "History",
+  "description": "Every action is one History entry: undo steps back, redo steps forward, and clicking an entry jumps straight to it.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-historyControls",
+      "bubble": {
+        "title": "History: every action, listed",
+        "body": "Every action you take is one entry in the History list in this section. Undo steps back through the list, redo steps forward — and the list itself is clickable.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "do-draw-press",
+      "target": "key-i",
+      "bubble": {
+        "title": "Make an entry",
+        "body": "Steer to a corner and press I to start a rectangle.",
+        "placement": "above"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "i"
+      }
+    },
+    {
+      "id": "do-draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch the list",
+        "body": "Steer to the opposite corner and press I again. A new entry appears at the bottom of the History list — one entry per action.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-undo",
+      "target": "menu-edit",
+      "bubble": {
+        "title": "Undo it",
+        "body": "Choose Edit ▸ Undo. The rectangle disappears, and the History position steps back one entry.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "run-command",
+        "command": "undo"
+      }
+    },
+    {
+      "id": "do-redo",
+      "target": "menu-edit",
+      "bubble": {
+        "title": "Redo it",
+        "body": "Choose Edit ▸ Redo. The rectangle returns, and the position steps forward again.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "run-command",
+        "command": "redo"
+      }
+    },
+    {
+      "id": "jump",
+      "target": "section-historyControls",
+      "bubble": {
+        "title": "Click to jump",
+        "body": "Click any entry in this History list to jump straight to that point: the document becomes what it was then. Click the newest entry to return to the present. Jumping is not undoing — no entries are lost.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-historyControls",
+      "bubble": {
+        "title": "Nothing is lost",
+        "body": "Undo is one step per action (Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, day to day), and the list makes every step reachable by name. Work boldly — you can always step back.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

@@ -11,3 +11,11 @@ export const TUTORIAL_COMPLETED_KEY = 'nibglider.tutorialCompleted';
 
 /** Browser-storage key recording that the user closed the tutorial early. */
 export const TUTORIAL_DISMISSED_KEY = 'nibglider.tutorialDismissed';
+
+/**
+ * Browser-storage key for the per-tutorial progress map (Slice 23):
+ * tutorial id → { status, stepIndex, updatedAt }. The two legacy keys
+ * above are read once to seed the map's hello-rectangle record and are
+ * never written again.
+ */
+export const TUTORIAL_PROGRESS_KEY = 'nibglider.tutorialProgress.v1';
