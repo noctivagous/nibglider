@@ -1409,8 +1409,12 @@ textarea,
   /* Bound the grid to the viewport instead of full screen height: extra
      rows scroll inside the overlay so the canvas and keyboard stay
      visible. Menus and popovers portal to document.body, so the scroll
-     container never clips them. */
-  max-height: calc(100vh - 220px);
+     container never clips them. The cap is a coverage budget, not just
+     a viewport bound: the sections get about half the window height at
+     most, and always leave room for the on-screen keyboard (~185px)
+     plus a working strip of canvas below the overlay — a bare
+     100vh-minus-a-little cap still buried three quarters of the app. */
+  max-height: calc(min(54vh, 100vh - 400px));
   overflow-y: auto;
   /* Reserve the floating rail's width so sections never slide under it. */
   margin-left: var(--rail-width);
