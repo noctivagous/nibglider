@@ -1398,7 +1398,9 @@ textarea,
   display: flex;
   flex-direction: row;
   align-content: flex-start;
-  align-items: stretch;
+  /* Cards hug their own content instead of stretching to the tallest
+     card in the row (a collapsed section stays a thin title bar). */
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 6px;
   flex: 1 1 auto;

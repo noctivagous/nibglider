@@ -19,6 +19,9 @@ test('panel sections stay bounded instead of full screen height', () => {
   const sections = block('#controlPanel \\.panel-sections');
   assert.match(sections, /max-height\s*:\s*calc\(/);
   assert.match(sections, /overflow-y\s*:\s*auto/);
+  // Cards hug their own content instead of stretching to the tallest
+  // card in the row (collapsed sections stay thin title bars).
+  assert.match(sections, /align-items\s*:\s*flex-start/);
 
   // The overlay stack keeps its viewport bound, and section menus keep
   // portaling to document.body so the scroll container never clips them.
