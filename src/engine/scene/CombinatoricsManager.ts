@@ -32,6 +32,11 @@ export interface CombinatoricsHost {
   layerChildren(): Item[];
   capture(): Snap;
   commit(label: string, snap: Snap, placed: Item[]): void;
+  /** Slice 8: when the selection pairs a placed image with a shape,
+   * the combine rewrites the image's mask instead of boolean-ing
+   * pixels. Returns true when it handled the operation (including
+   * its own history recording). */
+  imageCombine?(mode: CombineMode, items: Item[]): boolean;
   retain(item: Item): void;
   updateTextContent(): void;
   notify(): void;
@@ -43,6 +48,7 @@ const LABELS: Record<CombineMode, string> = {
   union: 'Union',
   subtract: 'Subtract',
   intersect: 'Intersect',
+  exclude: 'Exclude',
   crop: 'Crop',
   cut: 'Cut',
   interlace: 'Interlace',
@@ -60,11 +66,19 @@ export class CombinatoricsManager {
     return !!base && !!tool
       && typeof base.unite === 'function'
       && typeof base.subtract === 'function'
-      && typeof base.intersect === 'function';
+      && typeof base.intersect === 'function'
+      && typeof base.exclude === 'function';
   }
 
   combineSelection(mode: CombineMode): void {
     const host = this.host;
+    // Booleans against a placed image adjust its mask, never its
+    // pixels (Slice 8 decided rule) — the host routes those pairs.
+    if (host.imageCombine && host.imageCombine(mode, host.selectedItems())) {
+      host.updateTextContent();
+      host.notify();
+      return;
+    }
     if (!this.canCombineSelection()) {
       host.setCombineNote(SELECT_NOTE);
       host.updateTextContent();
@@ -184,7 +198,15 @@ export class CombinatoricsManager {
         return null;
       }
       let acc: Item = depositGeo;
-      if (mode === 'intersect') {
+      if (mode === 'exclude') {
+        // Symmetric difference against each touched target in turn.
+        for (const { geo } of targets) {
+          const next = this.excludeItems(acc, geo, false);
+          if (!next) throw new Error('empty exclude');
+          if (acc !== depositGeo) this.removeDetached(acc);
+          acc = next;
+        }
+      } else if (mode === 'intersect') {
         let union: Item = targets[0].geo;
         for (const { geo } of targets.slice(1)) {
           union = union.unite(geo, { insert: false });
@@ -208,18 +230,55 @@ export class CombinatoricsManager {
     }
   }
 
+  /** Symmetric difference (Exclude / XOR) composed from subtract +
+   * unite: Paper's raw exclude() returns a compound whose signed
+   * child areas cancel, which the area gates read as empty. The two
+   * difference pieces are disjoint, so their union is the XOR. */
+  private excludeItems(a: Item, b: Item, insert: boolean): Item | null {
+    let ab: Item = null;
+    let ba: Item = null;
+    try { ab = a.subtract(b, { insert: false }); } catch { ab = null; }
+    try { ba = b.subtract(a, { insert: false }); } catch { ba = null; }
+    const pieces = [ab, ba].filter((piece) => !!piece && hasBooleanArea(piece.area));
+    for (const piece of [ab, ba]) {
+      if (piece && !pieces.includes(piece)) this.removeDetached(piece);
+    }
+    if (pieces.length === 0) return null;
+    let joined: Item = null;
+    if (pieces.length === 1) {
+      joined = pieces[0];
+    } else {
+      try { joined = pieces[0].unite(pieces[1], { insert: false }); } catch { joined = null; }
+      if (joined) {
+        this.removeDetached(pieces[0]);
+        this.removeDetached(pieces[1]);
+      }
+    }
+    // Results are computed detached; callers that asked for an
+    // inserted result get it placed where the base operand sits.
+    if (joined && insert && a.parent) {
+      const index = Math.min(a.index ?? a.parent.children.length, a.parent.children.length);
+      a.parent.insertChild(index, joined);
+    }
+    return joined;
+  }
+
   private combinePair(mode: CombineMode): Item | null {
     const host = this.host;
     const base = host.selectedItems()[0];
     const tool = host.selectedItems()[1];
     if (!base || !tool) return null;
-    const op = mode === 'union' ? base.unite : base[mode];
-    if (typeof op !== 'function') return null;
     let result: Item = null;
-    try {
-      result = op.call(base, tool, { insert: true });
-    } catch {
-      result = null;
+    if (mode === 'exclude') {
+      result = this.excludeItems(base, tool, true);
+    } else {
+      const op = mode === 'union' ? base.unite : base[mode];
+      if (typeof op !== 'function') return null;
+      try {
+        result = op.call(base, tool, { insert: true });
+      } catch {
+        result = null;
+      }
     }
     if (!hasBooleanArea(result?.area)) {
       this.removeDetached(result);

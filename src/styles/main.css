@@ -129,7 +129,7 @@ article {
   font-family: Monospace, monospace;
   font-size: 12px;
   color: #e8edf3;
-  padding: 5px 10px 5px 24px;
+  padding: 5px 10px;
   text-align: left;
   white-space: normal;
   overflow: visible;
@@ -556,16 +556,7 @@ article {
 #controlPanel .panel-side #keymapWidget {
   position: relative;
   width: 100%;
-  padding-left: 24px;
   pointer-events: none;
-}
-
-#controlPanel .panel-side #keymapWidget .widget-handle {
-  position: absolute;
-  left: 5px;
-  top: 4px;
-  bottom: 4px;
-  pointer-events: auto;
 }
 
 #keymapWidget .keymap-table {
@@ -1063,14 +1054,6 @@ article {
   transition: transform 0.32s ease, opacity 0.32s ease;
 }
 
-#canvasContainer #topOverlayStack #statusOverlay .widget-handle {
-  position: absolute;
-  left: 5px;
-  top: 4px;
-  bottom: 4px;
-  pointer-events: auto;
-}
-
 #canvasContainer #topOverlayStack #statusOverlay.status-hidden {
   opacity: 0;
   transform: translateY(-8px);
@@ -1421,10 +1404,15 @@ textarea,
   flex: 1 1 auto;
   order: 1;
   min-width: 0;
+  /* Bound the grid to the viewport instead of full screen height: extra
+     rows scroll inside the overlay so the canvas and keyboard stay
+     visible. Menus and popovers portal to document.body, so the scroll
+     container never clips them. */
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
   /* Reserve the floating rail's width so sections never slide under it. */
   margin-left: var(--rail-width);
-  /* Lane for the widget move handle at the box's left edge. */
-  padding: 0 0 0 22px;
+  padding: 0;
   border: none;
   border-radius: 0;
   background: none;
@@ -3511,6 +3499,7 @@ body {
   padding: 4px 8px;
 }
 
+.shape-params-flyout textarea.flyout-text-input { resize: vertical; min-height: 3.2em; font: inherit; }
 .shape-params-flyout .flyout-text-input:focus-visible {
   outline: 2px solid var(--dp-accent);
   outline-offset: 1px;
@@ -4309,57 +4298,6 @@ kbd,
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.65);
 }
 
-/* Widget move handles: slim grip strips at the left of each widget box
-   (menus rail, keymap table, status overlay, panel sections, on-screen
-   keyboard). Foundation for draggable widgets via data-widget hooks; no
-   dragging yet. */
-.widget-handle {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  color: var(--dp-text-3);
-  cursor: grab;
-  border-radius: 4px;
-}
-
-.widget-handle:hover,
-.widget-handle:focus-visible {
-  color: var(--dp-text-1);
-}
-
-.widget-handle:focus-visible {
-  outline: 2px solid #4f8ff7;
-  outline-offset: 1px;
-}
-
-#controlPanel .panel-rail .widget-handle {
-  position: absolute;
-  left: 5px;
-  top: 4px;
-  bottom: 4px;
-}
-
-#controlPanel .panel-sections .widget-handle {
-  position: absolute;
-  left: 4px;
-  top: 4px;
-  bottom: 4px;
-}
-
-#keyboardContainer > .widget-handle {
-  position: absolute;
-  left: -26px;
-  top: 0;
-  bottom: 0;
-  width: 18px;
-  background: linear-gradient(to bottom, #0d1218, #141b24);
-  border: 1px solid #0b0e12;
-  border-radius: 5px;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.65);
-}
-
 #controlPanel .rail-box {
   min-width: 7.5rem;
 }
@@ -4892,6 +4830,52 @@ kbd,
   font-size: 0.6875rem;
   color: var(--dp-text-2);
   white-space: nowrap;
+}
+
+/* Clickable history entry list under the History titlebar. */
+#controlPanel .history-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 6px 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+#controlPanel .history-list-empty {
+  font-size: 0.75rem;
+  color: var(--dp-text-3);
+}
+
+#controlPanel .history-list-entry {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  color: var(--dp-text-1);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#controlPanel .history-list-entry:hover {
+  background: var(--dp-surface-2);
+}
+
+#controlPanel .history-list-entry.is-undone {
+  color: var(--dp-text-3);
+}
+
+#controlPanel .history-list-entry.is-current {
+  background: var(--dp-surface-2);
+  font-weight: 600;
 }
 
 /* Tutorial spotlight + bubble overlay. Plain panel styling. */
@@ -5748,7 +5732,13 @@ kbd,
 .pruler-track-v {
   position: absolute;
   background: rgba(13, 17, 22, 0.72);
+  /* Tracks accept pointer input: dragging out of a ruler creates a
+     guide (Tier Two, Slice 5); the rest of the overlay falls through. */
+  pointer-events: auto;
 }
+
+.pruler-track-h { cursor: ew-resize; }
+.pruler-track-v { cursor: ns-resize; }
 
 .pruler-track-h {
   left: 22px;
@@ -5848,6 +5838,27 @@ kbd,
   height: 1px;
 }
 
+/* Cursor-position markers riding each ruler track. */
+.pruler-cursor-h,
+.pruler-cursor-v {
+  position: absolute;
+  background: #e2712f;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pruler-cursor-h {
+  width: 2px;
+  height: 22px;
+  margin-left: -1px;
+}
+
+.pruler-cursor-v {
+  width: 22px;
+  height: 2px;
+  margin-top: -1px;
+}
+
 .pruler-track-h .pruler-label {
   bottom: 12px;
   left: 2px;
@@ -5864,3 +5875,45 @@ kbd,
     transition: background 120ms ease;
   }
 }
+
+/* Grid section body (Slice 17): subdivisions, style, colour, opacity. */
+.grid-body { display: flex; flex-direction: column; gap: 6px; padding: 6px; }
+.grid-body-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* Layers & Objects panel (Slice 1) */
+.layers-panel { display: flex; flex-direction: column; gap: 6px; padding: 6px; }
+.layers-panel-actions { display: flex; justify-content: flex-end; }
+.layers-layer { border: 1px solid var(--panel-border, #b8b8b8); border-radius: 3px; }
+.layers-layer-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 6px; font-weight: 600; cursor: pointer; background: rgba(0,0,0,0.05); }
+.layers-layer-row.is-active { background: rgba(40,100,200,0.18); }
+.layers-layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layers-layer-buttons { display: flex; gap: 2px; }
+.layers-object-row { display: flex; align-items: center; gap: 6px; padding: 2px 6px 2px 8px; cursor: pointer; }
+.layers-object-row.is-selected { background: rgba(40,100,200,0.22); }
+.layers-object-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layers-object-controls { display: flex; align-items: center; gap: 2px; }
+.layers-object-controls input[type="number"] { width: 44px; }
+.layers-empty { padding: 2px 8px; opacity: 0.6; font-style: italic; }
+.help-window { max-width: 720px; }
+.help-window-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 8px; }
+.help-window-body { max-height: 60vh; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+
+/* Swatches (Slice 4) */
+.swatches-panel { padding: 6px 8px; }
+.swatches-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+.swatches-hex { flex: 0 1 90px; min-width: 0; }
+.swatches-hex-error { font-size: 0.75rem; color: var(--dp-danger, #c0392b); }
+.swatches-tool { flex: 1; }
+.swatches-tool.active { background: #2b6cb0; color: #fff; }
+.swatches-label { font-size: 11px; font-weight: 600; margin: 6px 0 3px; }
+.swatches-empty { font-size: 11px; opacity: 0.7; padding: 2px 0 4px; }
+.swatch-grid { display: flex; flex-wrap: wrap; gap: 3px; }
+.swatch { width: 18px; height: 18px; padding: 0; border: 1px solid rgba(0,0,0,0.35); border-radius: 2px; cursor: pointer; }
+.swatch:hover { outline: 2px solid #2b6cb0; outline-offset: 0; }
+
+/* Arrange (Slice 4) */
+.arrange-panel { padding: 6px 8px; }
+.arrange-label { font-size: 11px; font-weight: 600; margin: 4px 0 3px; }
+.arrange-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.arrange-btn { flex: 1 1 auto; }
+.arrange-empty { font-size: 11px; opacity: 0.7; }

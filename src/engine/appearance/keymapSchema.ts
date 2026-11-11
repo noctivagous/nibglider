@@ -113,13 +113,21 @@ export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
       rows.push(row(['sharp-point'], 'Sharp point'));
       rows.push(row(['spline-point'], 'B-spline point'));
       rows.push(row(['rounded-point'], `Rounded corner (${snap.cornerRadius}pt)`));
-      // FMStroke board: only while the spline layout is active, never in a
-      // clothoid session (different caps, different deposits).
-      if (snap.layoutLabel === 'Spline') {
-        rows.push(row(['bowed-hard-a', 'bowed-hard-b'], 'Bowed hard corner (A/B facing)'));
-        rows.push(row(['bowed-rounded-a', 'bowed-rounded-b'], 'Bowed rounded corner (A/B facing)'));
-        rows.push(row(['arc-by-three'], 'Three-point arc'));
-        rows.push(row(['switch-rounding'], 'Switch rounded-corner type'));
+      // Spline-layout rows (Slice 14): shown only while the spline
+      // layout is active, i.e. while a composite path is drawing.
+      // A clothoid session shows its own deposits instead (different
+      // caps, different deposits).
+      if (snap.layoutLabel === 'Clothoid') {
+        rows.push(row(['clothoid-g4'], 'G4 point: gentle curve'));
+        rows.push(row(['clothoid-g2'], 'G2 point: curvature-continuous curve'));
+        rows.push(row(['clothoid-corner'], 'Corner point: abrupt direction change'));
+        rows.push(row(['clothoid-line'], 'Line point: zero-curvature run'));
+        rows.push(row(['clothoid-prev-constraint', 'clothoid-next-constraint'], 'Straight/curve constraints'));
+        rows.push(row(['erase-last-point'], 'Erase last point'));
+      } else {
+        rows.push(row(['bowed-point', 'bowed-point-flip'], 'Bowed line point (Shift flips the facing)'));
+        rows.push(row(['arc-three-point'], 'Arc by three points'));
+        rows.push(row(['switch-rounding'], `Switch rounding (now: ${snap.roundingMode ?? 'arc'})`));
         rows.push(row(['erase-last-point'], 'Erase last point'));
       }
       rows.push(row(['finish-r'], 'Close shape'));

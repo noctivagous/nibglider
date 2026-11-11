@@ -1,0 +1,202 @@
+{
+  "id": "swatches",
+  "title": "Swatches",
+  "description": "Keep the colours you use in the document's own palette, then paint fills and strokes from it with a click.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-swatchesControls",
+      "bubble": {
+        "title": "Swatches: colours you keep",
+        "body": "Swatches are the colours you keep. Keep the fill or stroke colour you are using and it stays in this section, saved inside the document itself — it travels with the file.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-keep",
+      "target": "section-swatchesControls",
+      "bubble": {
+        "title": "Watch: a colour ready to keep",
+        "body": "The program sets the fill colour to a brick red — the colour you are about to keep.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "showPanel": true,
+        "expandSections": [
+          "swatchesControls",
+          "fillControls"
+        ]
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "The current fill",
+          "body": "Setting the fill colour to a brick red — the colour you are about to keep."
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "fill",
+          "field": "color",
+          "value": "#c0392b"
+        },
+        {
+          "kind": "point-at",
+          "target": "section-swatchesControls",
+          "label": "Swatches"
+        },
+        {
+          "kind": "narrate",
+          "title": "Keeping it",
+          "body": "The + Keep fill button in this section saves the current fill colour into the palette below. The demo cannot press panel buttons, so the next step is yours — the red is already set."
+        },
+        {
+          "kind": "wait",
+          "ms": 600
+        }
+      ]
+    },
+    {
+      "id": "do-keep",
+      "target": "section-swatchesControls",
+      "bubble": {
+        "title": "Keep the fill colour",
+        "body": "Click + Keep fill in the Swatches section. The brick-red fill is added to the palette in this section.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-apply",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: a different colour",
+        "body": "The program changes the fill to blue and draws a rectangle with it, so you can repaint it from the palette.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-i"
+        ]
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "swatchesControls",
+          "rectFrameControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "A different colour",
+          "body": "Fill on, solid blue this time. Drawing a rectangle with I."
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "fill",
+          "field": "enabled",
+          "value": true
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "fill",
+          "field": "type",
+          "value": "solid"
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "fill",
+          "field": "color",
+          "value": "#2471a3"
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.4,
+          "y": 0.42,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.6,
+          "y": 0.58,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "wait",
+          "ms": 400
+        },
+        {
+          "kind": "narrate",
+          "title": "Blue for now",
+          "body": "The rectangle lands blue and stays selected. The kept red is waiting in the palette."
+        }
+      ]
+    },
+    {
+      "id": "do-apply-fill",
+      "target": "section-swatchesControls",
+      "bubble": {
+        "title": "Paint the fill from the palette",
+        "body": "The blue rectangle is selected. In the Swatches section, click the brick-red swatch you kept — its fill repaints to the kept colour.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "fill",
+        "field": "color",
+        "value": "#c0392b"
+      }
+    },
+    {
+      "id": "do-apply-stroke",
+      "target": "section-swatchesControls",
+      "bubble": {
+        "title": "Paint the stroke from the palette",
+        "body": "Shift+click the same brick-red swatch. Shift sends the colour to the stroke instead — the rectangle's outline turns red.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "stroke",
+        "field": "color",
+        "value": "#c0392b"
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-swatchesControls",
+      "bubble": {
+        "title": "The whole section",
+        "body": "Click a swatch to paint the fill, Shift+click for the stroke, + Keep to save the colour you are using, Alt+click to remove a kept swatch. The eyedropper button samples a colour from any shape on the canvas.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

@@ -6,6 +6,7 @@
 import { clampStrokeWidth } from '../input/KeySettingsRegistry';
 import type { FillSpec, FillType, StrokeCap, StrokeJoin, StrokePosition } from '../types';
 import { displayedStrokePosition, setStrokePosition } from './strokePosition';
+import { isArrowheadStyle, type ArrowheadStyle } from './arrowheads';
 
 type Item = any;
 
@@ -20,6 +21,8 @@ export interface StyleState {
   globalFillInner: number;
   globalStrokeCap: StrokeCap;
   globalStrokeJoin: StrokeJoin;
+  globalArrowStart: ArrowheadStyle;
+  globalArrowEnd: ArrowheadStyle;
   globalStrokePosition: StrokePosition;
   globalMiterLimit: number;
   globalDashLength: number;
@@ -34,6 +37,8 @@ export interface SelectionPaint {
   strokeWidth: number;
   strokeCap: StrokeCap;
   strokeJoin: StrokeJoin;
+  arrowStart: ArrowheadStyle;
+  arrowEnd: ArrowheadStyle;
   strokePosition: StrokePosition;
   miterLimit: number;
   dashLength: number;
@@ -394,6 +399,8 @@ export class StyleManager {
       strokeJoin: join,
       strokePosition: displayedStrokePosition(item),
       miterLimit: Number.isFinite(m) && m >= 1 ? m : state.globalMiterLimit,
+      arrowStart: isArrowheadStyle(item.data?.arrowStart) ? item.data.arrowStart : state.globalArrowStart,
+      arrowEnd: isArrowheadStyle(item.data?.arrowEnd) ? item.data.arrowEnd : state.globalArrowEnd,
       dashLength,
       gapLength,
       fillOn: fc !== null,

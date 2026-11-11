@@ -10,7 +10,7 @@
 // Plain system styling: no gradients, glows, or icon decoration.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getTutorialTargetRect, type TutorialTargetRect } from '../tutorial/TargetResolver';
+import { getTutorialTargetRect, resolveTutorialTarget, type TutorialTargetRect } from '../tutorial/TargetResolver';
 import {
   BUBBLE_DEFAULT_WIDTH,
   BUBBLE_ESTIMATED_HEIGHT,
@@ -24,18 +24,37 @@ import DemoOverlay, { type DemoCursor, type DemoPointAt } from './DemoOverlay';
 const BUBBLE_WIDTH = 320;
 const GAP = 10;
 
+function countRangeHint(what: string, min: number | undefined, max: number | undefined): string {
+  if (min !== undefined && max !== undefined) {
+    return min === max
+      ? `Waiting until ${what} is exactly ${min}.`
+      : `Waiting until ${what} is between ${min} and ${max}.`;
+  }
+  if (min !== undefined) return `Waiting until ${what} reaches ${min}.`;
+  if (max !== undefined) return `Waiting until ${what} is at most ${max}.`;
+  return `Waiting for ${what} to change.`;
+}
+
 function waitingHint(step: TutorialStep): string | null {
   const expect = step.expect;
   if (!expect || expect.kind === 'none') return null;
   switch (expect.kind) {
     case 'press-key':
-      return `Waiting for you to press ${expect.key.toUpperCase()}.`;
+      return expect.count && expect.count > 1
+        ? `Waiting for you to press ${expect.key.toUpperCase()} ${expect.count} times.`
+        : `Waiting for you to press ${expect.key.toUpperCase()}.`;
     case 'run-command':
       return 'Waiting for you to run the described action.';
     case 'selection-changed':
       return 'Waiting for the selection to change.';
     case 'scene-changed':
       return 'Waiting for a change on the canvas.';
+    case 'selection-count':
+      return countRangeHint('the selection', expect.min, expect.max);
+    case 'object-count':
+      return countRangeHint('the object count', expect.min, expect.max);
+    case 'setting-is':
+      return 'Waiting for the setting described above.';
   }
 }
 
@@ -113,32 +132,44 @@ function measure(step: TutorialStep): ParkLayout {
 function bubbleStyle(
   rect: TutorialTargetRect | null,
   placement: TutorialStep['bubble']['placement'],
+  bubbleH: number,
 ): { left?: number; top?: number; right?: number; bottom?: number; centered: boolean } {
   if (!rect || placement === 'center') return { centered: true };
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const midY = Math.min(Math.max(rect.y + rect.height / 2 - 80, GAP), Math.max(vh - 220, GAP));
-  if (placement === 'above') {
-    if (rect.y > 220) return { left: Math.min(Math.max(rect.x, GAP), Math.max(vw - BUBBLE_WIDTH - GAP, GAP)), bottom: vh - rect.y + GAP, centered: false };
-    return { left: Math.min(Math.max(rect.x, GAP), Math.max(vw - BUBBLE_WIDTH - GAP, GAP)), top: rect.y + rect.height + GAP, centered: false };
-  }
-  if (placement === 'below') {
-    if (rect.y + rect.height + 220 <= vh) {
-      return { left: Math.min(Math.max(rect.x, GAP), Math.max(vw - BUBBLE_WIDTH - GAP, GAP)), top: rect.y + rect.height + GAP, centered: false };
+  const midY = Math.min(Math.max(rect.y + rect.height / 2 - 80, GAP), Math.max(vh - bubbleH, GAP));
+  const raw: { left?: number; top?: number; right?: number; bottom?: number } = (() => {
+    if (placement === 'above') {
+      if (rect.y > bubbleH + GAP) return { left: rect.x, bottom: vh - rect.y + GAP };
+      return { left: rect.x, top: rect.y + rect.height + GAP };
     }
-    return { left: Math.min(Math.max(rect.x, GAP), Math.max(vw - BUBBLE_WIDTH - GAP, GAP)), bottom: vh - rect.y + GAP, centered: false };
-  }
-  if (placement === 'left') {
-    if (rect.x > BUBBLE_WIDTH + GAP * 2) {
-      return { right: vw - rect.x + GAP, top: midY, centered: false };
+    if (placement === 'below') {
+      if (rect.y + rect.height + bubbleH + GAP <= vh) {
+        return { left: rect.x, top: rect.y + rect.height + GAP };
+      }
+      return { left: rect.x, bottom: vh - rect.y + GAP };
     }
-    return { left: rect.x + rect.width + GAP, top: midY, centered: false };
-  }
-  // 'right' or unset: prefer right, flip to left when there is no room.
-  if (rect.x + rect.width + BUBBLE_WIDTH + GAP * 2 <= vw) {
-    return { left: rect.x + rect.width + GAP, top: midY, centered: false };
-  }
-  return { right: vw - rect.x + GAP, top: midY, centered: false };
+    if (placement === 'left') {
+      if (rect.x > BUBBLE_WIDTH + GAP * 2) {
+        return { right: vw - rect.x + GAP, top: midY };
+      }
+      return { left: rect.x + rect.width + GAP, top: midY };
+    }
+    // 'right' or unset: prefer right, flip to left when there is no room.
+    if (rect.x + rect.width + BUBBLE_WIDTH + GAP * 2 <= vw) {
+      return { left: rect.x + rect.width + GAP, top: midY };
+    }
+    return { right: vw - rect.x + GAP, top: midY };
+  })();
+  // Normalize to left/top and clamp the whole bubble on screen: a target
+  // near or past a viewport edge must never push the bubble off with it.
+  const rawLeft = raw.left ?? (raw.right !== undefined ? vw - raw.right - BUBBLE_WIDTH : GAP);
+  const rawTop = raw.top ?? (raw.bottom !== undefined ? vh - raw.bottom - bubbleH : GAP);
+  return {
+    left: Math.min(Math.max(rawLeft, GAP), Math.max(vw - BUBBLE_WIDTH - GAP, GAP)),
+    top: Math.min(Math.max(rawTop, GAP), Math.max(vh - bubbleH - GAP, GAP)),
+    centered: false,
+  };
 }
 
 export default function TutorialOverlay({
@@ -215,6 +246,31 @@ export default function TutorialOverlay({
     return () => observer.disconnect();
   }, []);
 
+  // A step that points at something mostly off screen (a panel section
+  // below the fold, say) scrolls it into view once, when the step becomes
+  // current. The capture-phase scroll listener above re-measures the
+  // layout, so the spotlight lands on the target where it settles.
+  const stepTargetId = step.target;
+  useEffect(() => {
+    if (!stepTargetId || stepTargetId === 'canvas') return;
+    const timer = window.setTimeout(() => {
+      // The resolver's element type is a minimal structural interface;
+      // the overlay only ever runs against the real document.
+      const el = resolveTutorialTarget(stepTargetId) as unknown as Element | null;
+      if (!el || typeof el.scrollIntoView !== 'function') return;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const visW = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+      const visH = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+      if ((visW * visH) / (r.width * r.height) < 0.5) {
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    }, 90);
+    return () => window.clearTimeout(timer);
+  }, [stepIndex, stepTargetId]);
+
   const parked = needsParking(step);
   const parkPos = useMemo(() => {
     if (!parked) return null;
@@ -235,7 +291,7 @@ export default function TutorialOverlay({
   const rect = layout.target;
   const pos = parked
     ? { centered: false as const, left: parkPos?.left ?? GAP, top: parkPos?.top ?? GAP }
-    : bubbleStyle(rect, step.bubble.placement);
+    : bubbleStyle(rect, step.bubble.placement, bubbleH);
   const hint = waitingHint(step);
   const isLast = stepIndex + 1 >= stepCount;
 

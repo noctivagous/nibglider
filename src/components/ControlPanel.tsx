@@ -22,12 +22,22 @@ import {
   nextUntitledFrom,
   type GalleryMeta,
 } from '../ui/DocumentGallery';
+import {
+  nativeFileName,
+  serializeNativeDocument,
+  wrapSceneAsNativeDocument,
+} from '../engine/document/NativeDocument';
 import { useGallerySnapshot } from '../ui/useGallerySnapshot';
 
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import DocumentGallery, { type GalleryMode } from './DocumentGallery';
 import NewDocumentDialog, { type NewDocumentSpec } from './NewDocumentDialog';
+import FindReplaceDialog from './FindReplaceDialog';
 import PdfImportDialog from './PdfImportDialog';
+import LayersPanel from './LayersPanel';
+import PagesPanel from './PagesPanel';
+import SwatchesPanel from './SwatchesPanel';
+import ArrangePanel from './ArrangePanel';
 import {
   IMPORT_ACCEPT,
   renameTarget,
@@ -42,9 +52,21 @@ import {
   unitLabel,
 } from '../engine/document/MeasurementUnits';
 import type { RepeatAnchor, RepeatDirection } from '../engine/geometry/RepeatGeometry';
+import {
+  FRIEZE_GROUP_IDS,
+  FRIEZE_GROUPS,
+  FRIEZE_ORBIFOLD,
+  REPEAT_OUTCOMES,
+  WALLPAPER_GROUP_IDS,
+  WALLPAPER_GROUPS,
+  WALLPAPER_ORBIFOLD,
+  type FriezeGroupId,
+  type Progression,
+  type RepeatFamilyName,
+  type WallpaperGroupId,
+} from '../engine/repeat/symmetry';
 import KeymapWidget from './KeymapWidget';
 import ConfigSummaryBox from './ConfigSummaryBox';
-import WidgetHandle from './WidgetHandle';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
 import NumericStepper from './NumericStepper';
 import type {
@@ -64,6 +86,7 @@ import type {
   TypeCursorAnchor,
   TypeCursorBottomEdge,
 } from '../engine/engine';
+import type { ArrowheadStyle } from '../engine/appearance/arrowheads';
 
 const ASPECT_RATIO_PRESETS = ['1:1', '3:4', '2:3', '16:9'];
 
@@ -408,8 +431,7 @@ const SNAP_DEFAULTS: Record<string, boolean> = {
 
 const HISTORY_SEG_DEFAULTS: Record<string, boolean> = {
   undoRedo: true,
-  grouping: true,
-  history: false,
+  history: true,
 };
 
 function loadBoolRecord(
@@ -956,6 +978,170 @@ function OrientationSeg({
   );
 }
 
+// Path Operations (Slice 20): the reshape operations that used to
+// live inside the Stroke flyout. The Stroke section keeps paint
+// only; these buttons disable when the selection cannot take them.
+function PathOpsParams({ engine }: { engine: NibGliderEngine }) {
+  const ops = engine.pathOpAvailability();
+  return (
+    <div className="panelParameters">
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label>Outline</label>
+          <button
+            type="button"
+            disabled={!ops.strokeOutline}
+            onClick={() => engine.strokeToOutlineSelection()}
+            title="Convert the selected stroked paths to their outlined filled form"
+          >
+            Stroke to Outline
+          </button>
+        </span>
+      </div>
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label htmlFor="noiseAmplitudeInput">Noise size</label>
+          <NumericStepper
+            id="noiseAmplitudeInput"
+            value={engine.noiseAmplitude}
+            min={0}
+            max={200}
+            step={1}
+            ariaLabel="Noise size"
+            title="How far the noise pushes the path sideways"
+            onCommit={(n) => engine.setNoiseAmplitude(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label htmlFor="noiseScaleInput">Noise scale</label>
+          <NumericStepper
+            id="noiseScaleInput"
+            value={engine.noiseScale}
+            min={5}
+            max={1000}
+            step={5}
+            ariaLabel="Noise scale"
+            title="How quickly the noise changes along the path — smaller is rougher"
+            onCommit={(n) => engine.setNoiseScale(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label htmlFor="noiseSeedInput">Noise seed</label>
+          <NumericStepper
+            id="noiseSeedInput"
+            value={engine.noiseSeed}
+            min={0}
+            max={999999}
+            step={1}
+            ariaLabel="Noise seed"
+            title="The same seed and path always give the same result"
+            onCommit={(n) => engine.setNoiseSeed(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={engine.noisePreviewOn}
+              onChange={(e) => engine.setNoisePreview(e.target.checked)}
+            />
+            Preview
+          </label>
+          <button
+            type="button"
+            disabled={!ops.noise}
+            onClick={() => engine.applyNoiseDisplacement()}
+            title="Push the selected paths sideways with seeded noise (one undo step)"
+          >
+            Apply noise
+          </button>
+        </span>
+      </div>
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label htmlFor="simplifyToleranceInput">Simplify within</label>
+          <NumericStepper
+            id="simplifyToleranceInput"
+            value={engine.simplifyTolerance}
+            min={0.05}
+            max={100}
+            step={0.5}
+            ariaLabel="Simplify tolerance"
+            title="Points that stay within this distance of the simplified path are dropped"
+            onCommit={(n) => engine.setSimplifyTolerance(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label>Simplify</label>
+          <button
+            type="button"
+            disabled={!ops.simplify}
+            onClick={() => engine.simplifySelectionPaths()}
+            title="Reduce the selected paths to fewer points (one undo step)"
+          >
+            Simplify path
+          </button>
+        </span>
+        <span className="param-item">
+          <label htmlFor="fitToleranceInput">Fit within</label>
+          <NumericStepper
+            id="fitToleranceInput"
+            value={engine.fitTolerance}
+            min={0.05}
+            max={100}
+            step={0.25}
+            ariaLabel="Fit tolerance"
+            title="Largest error you accept between the fitted curves and the path"
+            onCommit={(n) => engine.setFitTolerance(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label>Fit</label>
+          <button
+            type="button"
+            disabled={!ops.fit}
+            onClick={() => engine.fitBeziersSelection()}
+            title="Convert the selected paths to editable Bézier curves (one undo step)"
+          >
+            Fit curves
+          </button>
+        </span>
+      </div>
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label htmlFor="hullConcavenessInput">Hull tightness</label>
+          <NumericStepper
+            id="hullConcavenessInput"
+            value={engine.hullConcaveness}
+            min={0}
+            max={1}
+            step={0.05}
+            ariaLabel="Hull tightness"
+            title="How closely the hull follows gaps and bays in the selected points — 1 follows them closely, 0 stays near the convex hull"
+            onCommit={(n) => engine.setHullConcaveness(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label>Hull</label>
+          <button
+            type="button"
+            disabled={!ops.hull}
+            onClick={() => engine.concaveHullSelection()}
+            title="Draw a new closed path around the selected items' anchor points (one undo step)"
+          >
+            Concave hull
+          </button>
+        </span>
+      </div>
+      {engine.pathOpFeedback ? (
+        <div className="flyout-trio-row">
+          <span className="param-item">{engine.pathOpFeedback}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function CircleShapeParams({ engine }: { engine: NibGliderEngine }) {
   const type = engine.circleInnerShapeType;
   const params = engine.circleInnerShapeParams;
@@ -1259,6 +1445,13 @@ const SUPERSHAPE_SLIDERS: Array<{
   { key: 'a2', label: 'A2', min: 0.1, max: 1.7, step: 0.1 },
 ];
 
+const ARROWHEAD_OPTIONS: Array<{ value: ArrowheadStyle; label: string }> = [
+  { value: 'none', label: 'None' },
+  { value: 'triangle', label: 'Triangle' },
+  { value: 'barb', label: 'Barb' },
+  { value: 'dot', label: 'Dot' },
+];
+
 const CAP_OPTIONS: Array<{ value: StrokeCap; label: string; icon: string }> = [
   { value: 'butt', label: 'Butt', icon: 'M3 7 H13 M13 4 V10' },
   { value: 'round', label: 'Round', icon: 'M3 7 H10 A3.5 3.5 0 0 1 10 7' },
@@ -1512,6 +1705,32 @@ function StrokeParams({
         />
       </span>
       </div>
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label htmlFor="arrowStartSelect">Start arrow</label>
+          <select
+            id="arrowStartSelect"
+            value={engine.selectionPaint()?.arrowStart ?? engine.globalArrowStart}
+            onChange={(e) => engine.setArrowStart(e.target.value as ArrowheadStyle)}
+          >
+            {ARROWHEAD_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </span>
+        <span className="param-item">
+          <label htmlFor="arrowEndSelect">End arrow</label>
+          <select
+            id="arrowEndSelect"
+            value={engine.selectionPaint()?.arrowEnd ?? engine.globalArrowEnd}
+            onChange={(e) => engine.setArrowEnd(e.target.value as ArrowheadStyle)}
+          >
+            {ARROWHEAD_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </span>
+      </div>
       </div>
     </div>
   );
@@ -1750,15 +1969,25 @@ const TEXT_FONT_GROUPS: FontFamilyGroup[] = [
   },
 ];
 
-const TEXT_WEIGHT_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'normal', label: 'Regular' },
-  { value: 'bold', label: 'Bold' },
-];
+/** The fontWeight string the panel's numeric weight select shows:
+ * legacy 'normal'/'bold' map to 400/700. */
+function panelWeightValue(fontWeight: string): string {
+  if (fontWeight === 'bold') return '700';
+  if (fontWeight === 'normal') return '400';
+  return fontWeight;
+}
 
 const TEXT_JUSTIFY_OPTIONS: Array<{ value: TextJustification; label: string; icon: string }> = [
   { value: 'left', label: 'Left', icon: 'M2 3 H14 M2 7 H10 M2 11 H14' },
   { value: 'center', label: 'Center', icon: 'M2 3 H14 M4 7 H12 M2 11 H14' },
   { value: 'right', label: 'Right', icon: 'M2 3 H14 M6 7 H14 M2 11 H14' },
+];
+
+/** Body Align group adds Justify; display/on-edge keeps the three
+ * above (Justify behaves as Left there). */
+const BODY_JUSTIFY_OPTIONS: Array<{ value: TextJustification; label: string; icon: string }> = [
+  ...TEXT_JUSTIFY_OPTIONS,
+  { value: 'justify', label: 'Justify', icon: 'M2 3 H14 M2 7 H14 M2 11 H14' },
 ];
 
 function TextPreviewBox({ spec, large }: { spec: TextSpec; large?: boolean }) {
@@ -1888,10 +2117,12 @@ function TextParams({
   engine,
   spec,
   kind,
+  onFindReplace,
 }: {
   engine: NibGliderEngine;
   spec: TextSpec;
   kind: 'display' | 'body' | null;
+  onFindReplace?: () => void;
 }) {
   // Editing an existing object: creation-only controls (Kind, Flow,
   // Orientation, Spline, rings, Line 2) hide, and mode-dependent rows follow
@@ -1902,6 +2133,38 @@ function TextParams({
   const glyphOrientation = engine.glyphOrientation;
   const splineTextPlacement = engine.splineTextPlacement;
   const [tab, setTab] = useState<'style' | 'type'>('style');
+  const [styleName, setStyleName] = useState('Body');
+  const [newStyleName, setNewStyleName] = useState('');
+  const textStyleList = engine.textStyles();
+  const selectedStyle = textStyleList.find((s) => s.name === styleName) ?? textStyleList[0];
+  const userFonts = engine.userFonts();
+  const fontGroups: FontFamilyGroup[] = userFonts.length > 0
+    ? [...TEXT_FONT_GROUPS, {
+      label: 'Your fonts',
+      fonts: userFonts.map((f) => ({
+        value: f.family,
+        label: f.loaded ? f.family : `${f.family} (re-add file to use)`,
+        family: f.family,
+      })),
+    }]
+    : TEXT_FONT_GROUPS;
+  const fontFileRef = useRef<HTMLInputElement>(null);
+  const [fontUrl, setFontUrl] = useState('');
+  const [fontNote, setFontNote] = useState<string | null>(null);
+  const addFontFile = async (file: File | undefined): Promise<void> => {
+    if (!file) return;
+    const family = await engine.addUserFontFromBytes(await file.arrayBuffer(), 'file');
+    setFontNote(family
+      ? `Added ${family}. The file itself is kept for this session only; its name is remembered in settings.`
+      : 'That file could not be read as a font.');
+  };
+  const addFontUrl = async (): Promise<void> => {
+    const url = fontUrl.trim();
+    if (!url) return;
+    const family = await engine.addUserFontFromUrl(url);
+    setFontNote(family ? `Added ${family} from URL.` : 'That URL did not return a readable font.');
+    if (family) setFontUrl('');
+  };
   return (
     <div className="panelParameters">
       <div className="seg-ctrl seg-text" role="tablist" aria-label="Text settings">
@@ -2108,14 +2371,25 @@ function TextParams({
       ) : null}
       <span className="param-item">
         <label htmlFor="textContentInput">Text</label>
-        <input
-          type="text"
-          id="textContentInput"
-          className="flyout-text-input"
-          value={spec.content}
-          aria-label="Text content"
-          onChange={(e) => engine.setTextContent(e.target.value)}
-        />
+        {mode === 'body' ? (
+          <textarea
+            id="textContentInput"
+            className="flyout-text-input"
+            rows={4}
+            value={spec.content}
+            aria-label="Text content"
+            onChange={(e) => engine.setTextContent(e.target.value)}
+          />
+        ) : (
+          <input
+            type="text"
+            id="textContentInput"
+            className="flyout-text-input"
+            value={spec.content}
+            aria-label="Text content"
+            onChange={(e) => engine.setTextContent(e.target.value)}
+          />
+        )}
       </span>
       {editingObject ? null : (
       <span className="param-item">
@@ -2136,10 +2410,34 @@ function TextParams({
           id="textFontSelect"
           ariaLabel="Typeface"
           value={spec.fontFamily}
-          groups={TEXT_FONT_GROUPS}
+          groups={fontGroups}
           onChange={(v) => engine.setTextFontFamily(v)}
         />
       </div>
+      <div className="flyout-inline-row param-item">
+        <label>Add font</label>
+        <span>
+          <input
+            ref={fontFileRef}
+            type="file"
+            accept=".ttf,.otf,font/ttf,font/otf"
+            style={{ display: 'none' }}
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(e) => { void addFontFile(e.target.files?.[0]); e.target.value = ''; }}
+          />
+          <button type="button" onClick={() => fontFileRef.current?.click()}>Font file…</button>
+          <input
+            type="url"
+            placeholder="https://…/font.ttf"
+            aria-label="Font URL"
+            value={fontUrl}
+            onChange={(e) => setFontUrl(e.target.value)}
+          />
+          <button type="button" onClick={() => void addFontUrl()}>Load URL</button>
+        </span>
+      </div>
+      {fontNote && <div className="param-item" role="status">{fontNote}</div>}
       <ParamSlider
         id="textSizeSlider"
         label="Size"
@@ -2153,22 +2451,17 @@ function TextParams({
       />
       <div className="flyout-trio-row">
         <span className="param-item">
-          <label>Weight</label>
-          <div className="seg-ctrl seg-text" role="group" aria-label="Font weight">
-            {TEXT_WEIGHT_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                title={opt.label}
-                className={spec.fontWeight === opt.value ? 'active' : undefined}
-                onClick={() => engine.setTextFontWeight(opt.value)}
-              >
-                <span style={{ fontWeight: opt.value === 'bold' ? 700 : 400 }}>
-                  {opt.label}
-                </span>
-              </button>
+          <label htmlFor="textWeightSelect">Weight</label>
+          <select
+            id="textWeightSelect"
+            aria-label="Font weight"
+            value={panelWeightValue(spec.fontWeight)}
+            onChange={(e) => engine.setTextFontWeight(e.target.value)}
+          >
+            {engine.textWeightOptions(spec.fontFamily).map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
-          </div>
+          </select>
         </span>
         <span className="param-item">
           <label>Style</label>
@@ -2181,18 +2474,115 @@ function TextParams({
             >
               <span style={{ fontStyle: 'italic' }}>Italic</span>
             </button>
+            <button
+              type="button"
+              title="Underline"
+              className={spec.underline ? 'active' : undefined}
+              onClick={() => engine.setTextUnderline(!spec.underline)}
+            >
+              <span style={{ textDecoration: 'underline' }}>Underline</span>
+            </button>
+            <button
+              type="button"
+              title="Strikethrough"
+              className={spec.strikethrough ? 'active' : undefined}
+              onClick={() => engine.setTextStrikethrough(!spec.strikethrough)}
+            >
+              <span style={{ textDecoration: 'line-through' }}>Strike</span>
+            </button>
           </div>
         </span>
       </div>
+      <span className="param-item">
+        <label>Case</label>
+        <div className="seg-ctrl seg-text" role="group" aria-label="Case transform">
+          {(
+            [
+              { value: 'none', label: 'As typed', title: 'Keep the text as typed' },
+              { value: 'upper', label: 'UPPER', title: 'Lay the text out in capitals' },
+              { value: 'smallCaps', label: 'Small caps', title: 'Lowercase letters as smaller capitals; whole-line text falls back to UPPER' },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              title={opt.title}
+              className={spec.caseTransform === opt.value ? 'active' : undefined}
+              onClick={() => engine.setTextCaseTransform(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </span>
+      <span className="param-item">
+        <label>Style preset</label>
+        <span>
+          <select
+            aria-label="Text style"
+            value={selectedStyle?.name ?? ''}
+            onChange={(e) => setStyleName(e.target.value)}
+          >
+            {textStyleList.map((s) => (
+              <option key={s.name} value={s.name}>{s.builtIn ? s.name : `${s.name} (yours)`}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={!selectedStyle}
+            title="Restyle the selected text (one undo step); with no selection, set the creation style"
+            onClick={() => { if (selectedStyle) engine.applyTextStyle(selectedStyle.name); }}
+          >
+            Apply
+          </button>
+          <button
+            type="button"
+            disabled={!selectedStyle || selectedStyle.builtIn}
+            title={selectedStyle?.builtIn ? 'Built-in styles cannot be deleted' : 'Delete this style'}
+            onClick={() => { if (selectedStyle) engine.deleteTextStyle(selectedStyle.name); }}
+          >
+            Delete
+          </button>
+        </span>
+        <span>
+          <input
+            type="text"
+            placeholder="New style name"
+            aria-label="New style name"
+            value={newStyleName}
+            onChange={(e) => setNewStyleName(e.target.value)}
+          />
+          <button
+            type="button"
+            disabled={!newStyleName.trim()}
+            title="Save the current text settings as a style (kept in app settings, shared by all documents)"
+            onClick={() => {
+              if (engine.saveCurrentTextStyle(newStyleName)) {
+                setStyleName(newStyleName.trim());
+                setNewStyleName('');
+              }
+            }}
+          >
+            Save current as style
+          </button>
+        </span>
+      </span>
+      <span className="param-item">
+        <button type="button" onClick={() => onFindReplace?.()}>
+          Find &amp; Replace…
+        </button>
+      </span>
       {mode === 'body' ? (
         <span className="param-item">
           <label>Align</label>
           <div className="seg-ctrl" role="group" aria-label="Text alignment">
-            {TEXT_JUSTIFY_OPTIONS.map((opt) => (
+            {BODY_JUSTIFY_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
-                title={opt.label}
+                title={opt.value === 'justify'
+                  ? 'Justify: body lines spread to the full measure (the last line of each paragraph stays left). On display text, Justify behaves as Left.'
+                  : opt.label}
                 aria-label={opt.label}
                 className={spec.justification === opt.value ? 'active' : undefined}
                 onClick={() => engine.setTextJustification(opt.value)}
@@ -2222,6 +2612,65 @@ function TextParams({
         formatValue={(v) => v.toFixed(2)}
         onChange={(n) => engine.setTextLeading(n)}
       />
+      <ParamSlider
+        id="textTrackingSlider"
+        label="Tracking"
+        value={spec.letterSpacing}
+        min={-2}
+        max={20}
+        step={0.1}
+        decimals={1}
+        unit="pt"
+        formatValue={(v) => v.toFixed(1)}
+        onChange={(n) => engine.setTextLetterSpacing(n)}
+      />
+      <ParamSlider
+        id="textWordSpacingSlider"
+        label="Word space"
+        value={spec.wordSpacing}
+        min={0}
+        max={20}
+        step={0.5}
+        decimals={1}
+        unit="pt"
+        formatValue={(v) => v.toFixed(1)}
+        onChange={(n) => engine.setTextWordSpacing(n)}
+      />
+      <ParamSlider
+        id="textBaselineShiftSlider"
+        label="Baseline shift"
+        value={spec.baselineShift}
+        min={-20}
+        max={40}
+        step={1}
+        unit="pt"
+        formatValue={(v) => String(Math.round(v))}
+        onChange={(n) => engine.setTextBaselineShift(n)}
+      />
+      {mode === 'body' ? (
+        <ParamSlider
+          id="textParagraphSlider"
+          label="Paragraph space"
+          value={spec.paragraphSpacing}
+          min={0}
+          max={72}
+          step={1}
+          unit="pt"
+          formatValue={(v) => String(Math.round(v))}
+          onChange={(n) => engine.setTextParagraphSpacing(n)}
+        />
+      ) : null}
+      {editingObject ? (
+        <span className="param-item">
+          <button
+            type="button"
+            onClick={() => engine.convertSelectedTextToOutlines()}
+            title="Replace the selected live text with its glyph outlines (one undo step). Families without a parsed font stay live."
+          >
+            Convert to Outlines
+          </button>
+        </span>
+      ) : null}
       </>
       ) : (
         <TypeCursorAnchorBox engine={engine} />
@@ -2263,6 +2712,17 @@ const COMBINE_OPTIONS: Array<{
     label: 'Intersect',
     tip: 'Intersect: keep the overlap of base + tool',
     icon: <path d="M6 3.4 A3.6 3.6 0 0 1 6 10.6 A3.6 3.6 0 0 1 6 3.4 Z M10 3.4 A3.6 3.6 0 0 0 10 10.6 A3.6 3.6 0 0 0 10 3.4 Z" />,
+  },
+  {
+    value: 'exclude',
+    label: 'Exclude',
+    tip: 'Exclude: keep the parts of base + tool that do not overlap (XOR)',
+    icon: (
+      <>
+        <path d="M6 3.4 A3.6 3.6 0 1 0 6 10.6 A3.6 3.6 0 0 0 10 6.99 A3.6 3.6 0 1 0 6 3.4 Z" />
+        <path d="M10 3.4 A3.6 3.6 0 1 1 10 10.6 A3.6 3.6 0 0 1 6 7.01 A3.6 3.6 0 1 1 10 3.4 Z" />
+      </>
+    ),
   },
   {
     value: 'crop',
@@ -2320,6 +2780,76 @@ function activeCombineLabel(
   return COMBINE_OPTIONS.find((opt) => opt.value === active)?.label ?? 'Combinatorics';
 }
 
+/** One progression editor (Amendment C): a target named in words,
+ * a kind, and Start / Difference-or-Ratio fields. Checking the box
+ * turns the progression on with editable defaults; every field
+ * edit goes straight back to the engine, so the live preview and
+ * the next deposit follow at once. */
+function ProgressionFields(props: {
+  idPrefix: string;
+  label: string;
+  value: Progression | null;
+  onChange: (v: { kind: 'arithmetic' | 'geometric'; start: number; step: number } | null) => void;
+}) {
+  const { idPrefix, label, value, onChange } = props;
+  const current = value ?? { kind: 'arithmetic' as const, start: 0, step: 1 };
+  return (
+    <>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={!!value}
+          onChange={(e) => onChange(e.target.checked ? { ...current } : null)}
+        />
+        {label}
+      </label>
+      {value ? (
+        <>
+          <span className="param-item">
+            <label htmlFor={`${idPrefix}KindSelect`}>Sequence</label>
+            <select
+              id={`${idPrefix}KindSelect`}
+              value={value.kind}
+              onChange={(e) => onChange({ ...value, kind: e.target.value as 'arithmetic' | 'geometric' })}
+            >
+              <option value="arithmetic">Arithmetic (add each time)</option>
+              <option value="geometric">Geometric (multiply each time)</option>
+            </select>
+          </span>
+          <span className="param-item">
+            <label htmlFor={`${idPrefix}StartStepper`}>Start</label>
+            <NumericStepper
+              id={`${idPrefix}StartStepper`}
+              size="compact"
+              value={value.start}
+              min={-1000}
+              max={1000}
+              step={1}
+              ariaLabel={`${label} start`}
+              title={`${label} start`}
+              onCommit={(n) => onChange({ ...value, start: n })}
+            />
+          </span>
+          <span className="param-item">
+            <label htmlFor={`${idPrefix}StepStepper`}>{value.kind === 'arithmetic' ? 'Difference' : 'Ratio'}</label>
+            <NumericStepper
+              id={`${idPrefix}StepStepper`}
+              size="compact"
+              value={value.step}
+              min={-100}
+              max={100}
+              step={value.kind === 'arithmetic' ? 1 : 0.05}
+              ariaLabel={value.kind === 'arithmetic' ? `${label} difference` : `${label} ratio`}
+              title={value.kind === 'arithmetic' ? `${label} difference` : `${label} ratio`}
+              onCommit={(n) => onChange({ ...value, step: n })}
+            />
+          </span>
+        </>
+      ) : null}
+    </>
+  );
+}
+
 function RepeatPreview() {
   return (
     <svg className="combine-preview" viewBox="0 0 64 32" aria-hidden="true">
@@ -2374,6 +2904,14 @@ function CombinePreview({
     );
   } else if (mode === 'intersect') {
     body = <path d="M26 8 A8 8 0 0 1 26 24 A8 8 0 0 1 26 8 Z M38 8 A8 8 0 0 0 38 24 A8 8 0 0 0 38 8 Z" />;
+  } else if (mode === 'exclude') {
+    // Two crescents: everything except the shared lens.
+    body = (
+      <>
+        <path d="M26 8 A8 8 0 1 0 26 24 A8 8 0 0 0 38 16 A8 8 0 1 0 26 8 Z" />
+        <path d="M38 8 A8 8 0 1 1 38 24 A8 8 0 0 1 26 16 A8 8 0 1 1 38 8 Z" />
+      </>
+    );
   } else if (mode === 'crop') {
     body = (
       <>
@@ -2406,12 +2944,10 @@ function CombinePreview({
 function HistoryButtons({
   engine,
   showUndoRedo = true,
-  showGrouping = true,
   showHistory = true,
 }: {
   engine: NibGliderEngine;
   showUndoRedo?: boolean;
-  showGrouping?: boolean;
   showHistory?: boolean;
 }) {
   const undoTitle = engine.canUndo()
@@ -2420,12 +2956,6 @@ function HistoryButtons({
   const redoTitle = engine.canRedo()
     ? `Redo ${engine.redoLabel() ?? ''} (${primaryShortcut('Z', true)})`
     : 'Nothing to redo';
-  const groupTitle = engine.canGroupSelection()
-    ? `Group selection (${primaryShortcut('G')})`
-    : 'Select 2+ shapes to group';
-  const ungroupTitle = engine.canUngroupSelection()
-    ? `Ungroup selection (${primaryShortcut('G', true)})`
-    : 'Select a group to ungroup';
   const historyReadout = showHistory ? (
     <span className="history-readout" role="status" title="Latest undo and redo entries">
       {engine.canUndo()
@@ -2486,56 +3016,44 @@ function HistoryButtons({
         </button>
       </div>
       ) : null}
-      {showGrouping ? (
-      <div className="seg-ctrl" role="group" aria-label="Group and ungroup">
-        <button
-          type="button"
-          title={groupTitle}
-          aria-label="Group selection"
-          disabled={!engine.canGroupSelection()}
-          onClick={() => engine.groupSelection()}
-        >
-          <svg
-            viewBox="0 0 16 14"
-            width="18"
-            height="16"
-            aria-hidden="true"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="2" y="4.5" width="6" height="6" />
-            <rect x="8" y="3.5" width="6" height="6" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          title={ungroupTitle}
-          aria-label="Ungroup selection"
-          disabled={!engine.canUngroupSelection()}
-          onClick={() => engine.ungroupSelected()}
-        >
-          <svg
-            viewBox="0 0 16 14"
-            width="18"
-            height="16"
-            aria-hidden="true"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="1.5" y="4.5" width="5" height="6" />
-            <rect x="9.5" y="4.5" width="5" height="6" />
-          </svg>
-        </button>
-      </div>
-      ) : null}
       {historyReadout}
     </>
+  );
+}
+
+// The History section's entry list (Slice 20): every undoable step
+// in order, entries past the current position dimmed (they are the
+// redo future). Clicking an entry walks undo/redo to that point as
+// one user action.
+function HistoryList({ engine }: { engine: NibGliderEngine }) {
+  const { labels, position } = engine.historyEntries();
+  if (labels.length === 0) {
+    return (
+      <div className="history-list">
+        <span className="history-list-empty">Nothing yet — your edits will appear here.</span>
+      </div>
+    );
+  }
+  return (
+    <ol className="history-list">
+      {labels.map((label, i) => {
+        const undone = i >= position;
+        const current = i === position - 1;
+        return (
+          <li key={i}>
+            <button
+              type="button"
+              className={`history-list-entry${undone ? ' is-undone' : ''}${current ? ' is-current' : ''}`}
+              aria-current={current || undefined}
+              title={undone ? `Redo to here: ${label}` : `Undo back to here: ${label}`}
+              onClick={() => engine.jumpToHistoryPosition(i + 1)}
+            >
+              {label}
+            </button>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -2738,6 +3256,11 @@ const GRID_TYPE_OPTIONS: CustomSelectOption[] = [
   { value: 'diamond', label: 'Diamond', image: <GridThumb kind="diamond" /> },
 ];
 
+const GRID_STYLE_OPTIONS: CustomSelectOption[] = [
+  { value: 'dots', label: 'Dots' },
+  { value: 'lines', label: 'Lines' },
+];
+
 const REPEAT_ANCHOR_OPTIONS: CustomSelectOption[] = [
   { value: 'cell-center', label: 'Cell centers' },
   { value: 'intersection', label: 'Intersections' },
@@ -2796,6 +3319,10 @@ const RECT_OPTION_TREE: CustomSelectOption[] = [
 export interface ControlPanelHandle {
   dispatchFileCommand: (command: FileCommand | ImportCommand) => void;
   openOperationDialog: (kind: 'scale' | 'rotate') => void;
+  openFindReplace: () => void;
+  /** Restore + expand a panel section and scroll it into view
+   * (the Document menu's Pages & Guides item). */
+  focusSection: (id: string) => void;
 }
 
 const ControlPanel = forwardRef<ControlPanelHandle, {
@@ -2807,10 +3334,13 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   /** Opens the Document Settings window. App wires this to the window
    * registry; the summary box document menu calls it from Settings. */
   onOpenDocumentSettings?: () => void;
+  /** Opens the Page Setup dialog (Pages & Guides section button). */
+  onOpenPageSetup?: () => void;
 }>(function ControlPanel({
   engine,
   panels: panelsProp,
   onOpenDocumentSettings,
+  onOpenPageSetup,
 }, ref) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
@@ -3095,7 +3625,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   // writes update this snapshot, so the title stays current without
   // reading IndexedDB during render.
   const gallery = useGallerySnapshot();
-  const docName = gallery.displayName;
+  const docName = engine.currentFileName ?? gallery.displayName;
   const docDirty = engine.isDocumentDirty();
   useEffect(() => {
     document.title = `${docName}${docDirty ? ' •' : ''} — NibGlider`;
@@ -3106,6 +3636,8 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   // New Document dialog: opened from File > New, applies the chosen canvas
   // size on confirm (dirty guard included) instead of wiping immediately.
   const [newDocOpen, setNewDocOpen] = useState(false);
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+  const openFindReplace = useCallback(() => setFindReplaceOpen(true), []);
   const importInputRef = useRef<HTMLInputElement>(null);
   const importKindRef = useRef<ImportCommand>('import-svg');
   const [pdfImport, setPdfImport] = useState<{ name: string; bytes: Uint8Array } | null>(null);
@@ -3183,6 +3715,72 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     },
     [],
   );
+  // Save to File: download the native document envelope under the
+  // document's name; the file becomes the document's file home.
+  const downloadTextFile = useCallback((fileName: string, text: string, type: string) => {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const anchorEl = document.createElement('a');
+    anchorEl.href = url;
+    anchorEl.download = fileName;
+    anchorEl.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }, []);
+  const handleSaveToFile = useCallback(() => {
+    const name = engine.currentFileName ?? gallery.displayName;
+    const text = engine.exportNativeDocument(name);
+    if (!text) {
+      engine.noteImportFailure('Save to file failed: nothing to save.');
+      return;
+    }
+    downloadTextFile(nativeFileName(name), text, 'application/json');
+    engine.currentFileName = name;
+    engine.markDocumentClean();
+  }, [engine, gallery.displayName, downloadTextFile]);
+  const handleGalleryExport = useCallback(
+    (meta: GalleryMeta) => {
+      void (async () => {
+        const session = await browserGallerySession();
+        const doc = await session.get(meta.id);
+        if (!doc) return;
+        const wrapped = wrapSceneAsNativeDocument(doc.name, doc.svg, new Date(doc.updatedAt).toISOString());
+        if (wrapped) {
+          downloadTextFile(nativeFileName(doc.name), serializeNativeDocument(wrapped), 'application/json');
+        } else {
+          // Legacy SVG gallery body: the file is the SVG itself.
+          downloadTextFile(`${doc.name.replace(/[\\/:*?"<>|]+/g, '-')}.svg`, doc.svg, 'image/svg+xml');
+        }
+      })();
+    },
+    [downloadTextFile],
+  );
+  const openFileInputRef = useRef<HTMLInputElement>(null);
+  const handleOpenFilePicked = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      if (
+        engine.isDocumentDirty()
+        && !window.confirm(`Open "${file.name}"? Unsaved changes will be lost.`)
+      ) {
+        return;
+      }
+      const reader = new FileReader();
+      reader.onerror = () => {
+        engine.noteImportFailure(`Open failed: could not read ${file.name}.`);
+      };
+      reader.onload = () => {
+        const text = reader.result;
+        if (typeof text !== 'string') return;
+        if (engine.openDocumentText(text, file.name)) {
+          void browserGallerySession().then((session) => session.setCurrent(null));
+        }
+      };
+      reader.readAsText(file);
+    },
+    [engine],
+  );
   const handleNewDocumentConfirm = useCallback(
     (spec: NewDocumentSpec) => {
       if (
@@ -3227,6 +3825,18 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       case 'rename-document':
         openGallery(renameTarget({ id: gallery.currentId }));
         break;
+      case 'save-file':
+        handleSaveToFile();
+        break;
+      case 'open-file':
+        openFileInputRef.current?.click();
+        break;
+      case 'print':
+        engine.printDocument('page');
+        break;
+      case 'print-selection':
+        engine.printDocument('selection');
+        break;
       case 'import-svg':
       case 'import-pdf':
       case 'import-raster': {
@@ -3238,7 +3848,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         break;
       }
     }
-  }, [dismissSelects, gallery.currentId, gallery.currentName, openGallery, saveSceneToGallery]);
+  }, [dismissSelects, engine, gallery.currentId, gallery.currentName, openGallery, saveSceneToGallery, handleSaveToFile]);
   // Top Operations menu entry point for the scale/rotate modal dialog.
   const openOperationDialog = useCallback((kind: 'scale' | 'rotate') => {
     if (!engine.canTransformSelection()) return;
@@ -3250,10 +3860,17 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     }
     setOpDialog({ kind, draft: 0, applied: 0 });
   }, [engine, dismissSelects]);
+  const focusSection = useCallback((id: string) => {
+    panels.restoreSection(id);
+    if (panels.collapsed[id]) panels.toggleCollapse(id);
+    requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'nearest' });
+    });
+  }, [panels]);
   useImperativeHandle(
     ref,
-    () => ({ dispatchFileCommand, openOperationDialog }),
-    [dispatchFileCommand, openOperationDialog],
+    () => ({ dispatchFileCommand, openOperationDialog, openFindReplace, focusSection }),
+    [dispatchFileCommand, openOperationDialog, openFindReplace, focusSection],
   );
   const handleImportFile = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
@@ -3302,7 +3919,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     },
     [engine],
   );
-  // Document and Settings menu: document controls only. Section restore
+  // Document menu: document controls only. Section restore
   // and settings reset live in the Sections and Debug menus below.
   // Selection state: when items are selected the Stroke/Fill panels
   // reflect the selection (first selected item) instead of the globals.
@@ -3399,8 +4016,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           {(
             [
               { key: 'undoRedo', label: 'Undo/Redo' },
-              { key: 'grouping', label: 'Grouping' },
-              { key: 'history', label: 'History' },
+              { key: 'history', label: 'History list' },
             ] as const
           ).map((item) => (
             <button
@@ -3546,7 +4162,6 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           endDrag();
         }}
       >
-      <WidgetHandle widget="sections" label="Panel sections" />
       {rowBreakNodes}
       {dragPlaceholderNode}
       {isRemoved('strokeControls') ? null : (
@@ -3770,6 +4385,35 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         </header>
       </PanelSection>
       )}
+      {isRemoved('swatchesControls') ? null : (
+      <PanelSection
+        id="swatchesControls"
+        label="Swatches"
+        icon={
+          <TitleIcon>
+            <rect x="2" y="2" width="5" height="5" />
+            <rect x="9" y="2" width="5" height="5" />
+            <rect x="2" y="9" width="5" height="5" />
+            <rect x="9" y="9" width="5" height="5" />
+          </TitleIcon>
+        }
+        collapsed={!!collapsedMap['swatchesControls']}
+        {...sectionProps('swatchesControls')}
+      >
+        <header className="pane-titlebar titlebar-single">
+          <SectionTitleButton sectionId="swatchesControls" title="Swatches" menuOpen={iconMenu?.id === 'swatchesControls'} onOpen={toggleIconMenu}><span className="pane-title">
+            <TitleIcon>
+              <rect x="2" y="2" width="5" height="5" />
+              <rect x="9" y="2" width="5" height="5" />
+              <rect x="2" y="9" width="5" height="5" />
+              <rect x="9" y="9" width="5" height="5" />
+            </TitleIcon>
+            <span className="pane-title-text">Swatches</span></span>
+          </SectionTitleButton>
+        </header>
+        <SwatchesPanel engine={engine} />
+      </PanelSection>
+      )}
 
       {isRemoved('textControls') ? null : (
       <PanelSection
@@ -3828,7 +4472,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             onMenuMouseEnter={cancelHoverClose}
             onMenuMouseLeave={scheduleHoverClose}
           >
-            <TextParams engine={engine} spec={textSpec} kind={editableKind} />
+            <TextParams engine={engine} spec={textSpec} kind={editableKind} onFindReplace={openFindReplace} />
           </ShapeParamsFlyout>
         </header>
       </PanelSection>
@@ -3855,6 +4499,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           </SectionTitleButton>
         <CustomSelect
           id="circleInnerShapeSelect"
+          tutorialId="circle-shape-select"
           ariaLabel="Circle Keys shape"
           value={engine.circleInnerShapeType}
           options={CIRCLE_OPTION_TREE}
@@ -4124,10 +4769,114 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           <HistoryButtons
             engine={engine}
             showUndoRedo={historySegs.undoRedo !== false}
-            showGrouping={historySegs.grouping !== false}
             showHistory={historySegs.history !== false}
           />
         </header>
+        {historySegs.history !== false ? <HistoryList engine={engine} /> : null}
+      </PanelSection>
+      )}
+      {isRemoved('layersControls') ? null : (
+      <PanelSection
+        id="layersControls"
+        label="Layers & Objects"
+        icon={
+          <TitleIcon>
+            <path d="M8 2 L14 5.5 L8 9 L2 5.5 Z" />
+            <path d="M2 8.5 L8 12 L14 8.5" />
+            <path d="M2 11.5 L8 15 L14 11.5" />
+          </TitleIcon>
+        }
+        collapsed={!!collapsedMap['layersControls']}
+        {...sectionProps('layersControls')}
+      >
+        <header className="pane-titlebar titlebar-single">
+          <SectionTitleButton sectionId="layersControls" title="Layers & Objects" menuOpen={iconMenu?.id === 'layersControls'} onOpen={toggleIconMenu}><span className="pane-title">
+            <TitleIcon>
+              <path d="M8 2 L14 5.5 L8 9 L2 5.5 Z" />
+              <path d="M2 8.5 L8 12 L14 8.5" />
+              <path d="M2 11.5 L8 15 L14 11.5" />
+            </TitleIcon>
+            <span className="pane-title-text">Layers &amp; Objects</span></span>
+          </SectionTitleButton>
+        </header>
+        <LayersPanel engine={engine} />
+      </PanelSection>
+      )}
+      {isRemoved('pagesControls') ? null : (
+      <PanelSection
+        id="pagesControls"
+        label="Pages & Guides"
+        icon={
+          <TitleIcon>
+            <path d="M3 2 H11 V14 H3 Z" />
+            <path d="M6 5 H13 V14 H6 Z" />
+          </TitleIcon>
+        }
+        collapsed={!!collapsedMap['pagesControls']}
+        {...sectionProps('pagesControls')}
+      >
+        <header className="pane-titlebar titlebar-single">
+          <SectionTitleButton sectionId="pagesControls" title="Pages & Guides" menuOpen={iconMenu?.id === 'pagesControls'} onOpen={toggleIconMenu}><span className="pane-title">
+            <TitleIcon>
+              <path d="M3 2 H11 V14 H3 Z" />
+              <path d="M6 5 H13 V14 H6 Z" />
+            </TitleIcon>
+            <span className="pane-title-text">Pages &amp; Guides</span></span>
+          </SectionTitleButton>
+        </header>
+        <PagesPanel engine={engine} onPageSetup={onOpenPageSetup} />
+      </PanelSection>
+      )}
+      {isRemoved('arrangeControls') ? null : (
+      <PanelSection
+        id="arrangeControls"
+        label="Arrange"
+        icon={
+          <TitleIcon>
+            <path d="M2 2 H7 V7 H2 Z" />
+            <path d="M9 9 H14 V14 H9 Z" />
+          </TitleIcon>
+        }
+        collapsed={!!collapsedMap['arrangeControls']}
+        {...sectionProps('arrangeControls')}
+      >
+        <header className="pane-titlebar titlebar-single">
+          <SectionTitleButton sectionId="arrangeControls" title="Arrange" menuOpen={iconMenu?.id === 'arrangeControls'} onOpen={toggleIconMenu}><span className="pane-title">
+            <TitleIcon>
+              <path d="M2 2 H7 V7 H2 Z" />
+              <path d="M9 9 H14 V14 H9 Z" />
+            </TitleIcon>
+            <span className="pane-title-text">Arrange</span></span>
+          </SectionTitleButton>
+        </header>
+        <ArrangePanel engine={engine} />
+      </PanelSection>
+      )}
+      {isRemoved('pathOpsControls') ? null : (
+      <PanelSection
+        id="pathOpsControls"
+        label="Path Operations"
+        icon={
+          <TitleIcon>
+            <path d="M2.5 11.5 C5 5, 8 12, 10.5 5.5 L13.5 9" />
+            <circle cx="2.5" cy="11.5" r="1.1" />
+            <circle cx="13.5" cy="9" r="1.1" />
+          </TitleIcon>
+        }
+        collapsed={!!collapsedMap['pathOpsControls']}
+        {...sectionProps('pathOpsControls')}
+      >
+        <header className="pane-titlebar titlebar-single">
+          <SectionTitleButton sectionId="pathOpsControls" title="Path Operations" menuOpen={iconMenu?.id === 'pathOpsControls'} onOpen={toggleIconMenu}><span className="pane-title">
+            <TitleIcon>
+              <path d="M2.5 11.5 C5 5, 8 12, 10.5 5.5 L13.5 9" />
+              <circle cx="2.5" cy="11.5" r="1.1" />
+              <circle cx="13.5" cy="9" r="1.1" />
+            </TitleIcon>
+            <span className="pane-title-text">Path Operations</span></span>
+          </SectionTitleButton>
+        </header>
+        <PathOpsParams engine={engine} />
       </PanelSection>
       )}
       {isRemoved('gridControls') ? null : (
@@ -4200,6 +4949,61 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             onCommit={(n) => engine.setGridSpacing(n)}
           />
         </header>
+        <div className="grid-body">
+          <div className="grid-body-row">
+            <label htmlFor="gridSubdivisionsStepper">Subdivisions</label>
+            <NumericStepper
+              id="gridSubdivisionsStepper"
+              size="compact"
+              value={engine.gridSubdivisions}
+              min={1}
+              max={10}
+              step={1}
+              ariaLabel="Grid subdivisions"
+              title="Minor dots at the spacing divided by this number (1 = off)"
+              onCommit={(n) => engine.setGridSubdivisions(n)}
+            />
+          </div>
+          <div className="grid-body-row">
+            <label htmlFor="gridStyleSelect">Style</label>
+            <CustomSelect
+              id="gridStyleSelect"
+              ariaLabel="Grid style"
+              value={engine.gridStyle}
+              options={GRID_STYLE_OPTIONS}
+              onChange={(v) => engine.setGridStyle(v as 'dots' | 'lines')}
+              openOnHover
+              onHoverOpen={handleSelectHoverOpen}
+              forceCloseKey={selectCloseKey}
+            />
+          </div>
+          <div className="grid-body-row">
+            <label htmlFor="gridColorWell">Colour</label>
+            <input
+              type="color"
+              id="gridColorWell"
+              className="titlebar-well"
+              value={engine.gridColor}
+              title="Grid colour"
+              onChange={(e) => engine.setGridColor(e.target.value)}
+            />
+          </div>
+          <div className="grid-body-row">
+            <label htmlFor="gridOpacityStepper">Opacity</label>
+            <NumericStepper
+              id="gridOpacityStepper"
+              size="compact"
+              value={Math.round(engine.gridOpacity * 100)}
+              min={0}
+              max={100}
+              step={5}
+              unit="%"
+              ariaLabel="Grid opacity in percent"
+              title="Grid opacity"
+              onCommit={(n) => engine.setGridOpacity(n / 100)}
+            />
+          </div>
+        </div>
       </PanelSection>
       )}
       {isRemoved('repeatControls') ? null : (
@@ -4320,6 +5124,299 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
                 forceCloseKey={selectCloseKey}
               />
             </span>
+          </div>
+          <div className="flyout-seg">
+            <div className="flyout-title">Symmetry repeat</div>
+            <span className="param-item">
+              <label htmlFor="repeatFamilySelect">Family</label>
+              <select
+                id="repeatFamilySelect"
+                value={engine.repeatFamily}
+                onChange={(e) => engine.setRepeatFamily(e.target.value as RepeatFamilyName)}
+              >
+                <option value="wallpaper">Wallpaper</option>
+                <option value="polar">Polar</option>
+                <option value="frieze">Frieze</option>
+                <option value="alongStroke">Along stroke</option>
+                <option value="normals">Normals reflector</option>
+              </select>
+            </span>
+            {engine.repeatFamily === 'wallpaper' ? (
+              <span className="param-item">
+                <label htmlFor="repeatWallpaperGroupSelect">Group</label>
+                <select
+                  id="repeatWallpaperGroupSelect"
+                  value={engine.repeatWallpaperGroup}
+                  onChange={(e) => engine.setRepeatWallpaperGroup(e.target.value as WallpaperGroupId)}
+                >
+                  {WALLPAPER_GROUP_IDS.map((id) => (
+                    <option key={id} value={id} title={WALLPAPER_GROUPS[id].label}>{WALLPAPER_ORBIFOLD[id]}</option>
+                  ))}
+                </select>
+              </span>
+            ) : null}
+            {engine.repeatFamily === 'frieze' ? (
+              <span className="param-item">
+                <label htmlFor="repeatFriezeGroupSelect">Group</label>
+                <select
+                  id="repeatFriezeGroupSelect"
+                  value={engine.repeatFriezeGroup}
+                  onChange={(e) => engine.setRepeatFriezeGroup(e.target.value as FriezeGroupId)}
+                >
+                  {FRIEZE_GROUP_IDS.map((id) => (
+                    <option key={id} value={id} title={FRIEZE_GROUPS[id].label}>{FRIEZE_ORBIFOLD[id]}</option>
+                  ))}
+                </select>
+              </span>
+            ) : null}
+            {engine.repeatFamily !== 'wallpaper' ? (
+              <span className="param-item">
+                <label htmlFor="repeatSymmetryCountStepper">Count</label>
+                <NumericStepper
+                  id="repeatSymmetryCountStepper"
+                  size="compact"
+                  value={engine.repeatSymmetryCount}
+                  min={1}
+                  max={64}
+                  step={1}
+                  ariaLabel="Repeat count"
+                  title="Repeat count"
+                  onCommit={(n) => engine.setRepeatSymmetryCount(n)}
+                />
+              </span>
+            ) : (
+              <span className="param-item">Wallpaper uses Rows / Columns above.</span>
+            )}
+            {engine.repeatFamily === 'wallpaper' || engine.repeatFamily === 'frieze' || engine.repeatFamily === 'polar' ? (
+              <span className="param-item">
+                <label htmlFor="repeatMotifOffsetStepper">Turn motif by (°)</label>
+                <NumericStepper
+                  id="repeatMotifOffsetStepper"
+                  size="compact"
+                  value={engine.repeatMotifOffsetDeg}
+                  min={-360}
+                  max={360}
+                  step={5}
+                  ariaLabel="Motif orientation offset in degrees"
+                  title="Rotate the motif inside its cell before the group steps apply"
+                  onCommit={(n) => engine.setRepeatMotifOffsetDeg(n)}
+                />
+              </span>
+            ) : null}
+            {engine.repeatFamily === 'polar' ? (
+              <>
+                <span className="param-item">
+                  <label htmlFor="repeatPolarModeSelect">Arrange copies</label>
+                  <select
+                    id="repeatPolarModeSelect"
+                    value={engine.repeatPolarMode}
+                    onChange={(e) => engine.setRepeatPolarMode(e.target.value as 'division' | 'degrees')}
+                  >
+                    <option value="division">By division</option>
+                    <option value="degrees">By degrees</option>
+                  </select>
+                </span>
+                {engine.repeatPolarMode === 'degrees' ? (
+                  <span className="param-item">
+                    <label htmlFor="repeatPolarStepStepper">Step (°)</label>
+                    <NumericStepper
+                      id="repeatPolarStepStepper"
+                      size="compact"
+                      value={engine.repeatPolarStepDeg}
+                      min={1}
+                      max={360}
+                      step={1}
+                      ariaLabel="Step angle in degrees"
+                      title="Angle between copies; it does not have to divide the circle"
+                      onCommit={(n) => engine.setRepeatPolarStepDeg(n)}
+                    />
+                  </span>
+                ) : null}
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={engine.repeatPolarReflect}
+                    onChange={(e) => engine.setRepeatPolarReflect(e.target.checked)}
+                  />
+                  Reflect (dihedral)
+                </label>
+              </>
+            ) : null}
+            {engine.repeatFamily === 'alongStroke' ? (
+              <>
+                <span className="param-item">
+                  <label htmlFor="repeatStationModeSelect">Place copies</label>
+                  <select
+                    id="repeatStationModeSelect"
+                    value={engine.repeatStationMode}
+                    onChange={(e) => engine.setRepeatStationMode(e.target.value as 'division' | 'spacing' | 'progression')}
+                  >
+                    <option value="division">By division</option>
+                    <option value="spacing">By spacing</option>
+                    <option value="progression">By progression</option>
+                  </select>
+                </span>
+                {engine.repeatStationMode === 'spacing' ? (
+                  <span className="param-item">
+                    <label htmlFor="repeatAlongSpacingStepper">Spacing</label>
+                    <NumericStepper
+                      id="repeatAlongSpacingStepper"
+                      size="compact"
+                      value={engine.repeatAlongSpacing}
+                      min={1}
+                      max={2000}
+                      step={5}
+                      ariaLabel="Spacing along the path"
+                      title="Distance between copies along the path"
+                      onCommit={(n) => engine.setRepeatAlongSpacing(n)}
+                    />
+                  </span>
+                ) : null}
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={engine.repeatAlongAlign}
+                    onChange={(e) => engine.setRepeatAlongAlign(e.target.checked)}
+                  />
+                  Turn copies with the path
+                </label>
+                <span className="param-item">
+                  <label htmlFor="repeatAlongOrientationStepper">Turn copies by (°)</label>
+                  <NumericStepper
+                    id="repeatAlongOrientationStepper"
+                    size="compact"
+                    value={engine.repeatAlongOrientationDeg}
+                    min={-360}
+                    max={360}
+                    step={5}
+                    ariaLabel="Copy orientation offset in degrees"
+                    title="Extra turn for each copy, on top of the path direction"
+                    onCommit={(n) => engine.setRepeatAlongOrientationDeg(n)}
+                  />
+                </span>
+              </>
+            ) : null}
+            {(engine.repeatFamily === 'alongStroke' || engine.repeatFamily === 'normals') ? (
+              <span className="param-item">Pick a path in the selection to repeat along; the last picked path is the guide.</span>
+            ) : null}
+            <span className="param-item">
+              <button
+                type="button"
+                onClick={() => engine.applySymmetryRepeat()}
+                title="Clone the selection under the symmetry family's transforms (one undo step)"
+              >
+                Apply repeat to selection
+              </button>
+            </span>
+            {engine.selectionReplication() ? (
+              <span className="param-item">
+                <button
+                  type="button"
+                  onClick={() => engine.regenerateReplication()}
+                  title="Rebuild the copies of the selected repeat from its stored settings (one undo step)"
+                >
+                  Regenerate repeat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => engine.expandReplication()}
+                  title="Keep the copies as ordinary items and detach the stored repeat settings"
+                >
+                  Expand repeat
+                </button>
+              </span>
+            ) : null}
+          </div>
+          <div className="flyout-seg">
+            <div className="flyout-title">Live repeat</div>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={engine.liveSymmetryArmed}
+                onChange={(e) => engine.setLiveSymmetryArmed(e.target.checked)}
+              />
+              Repeat live while drawing
+            </label>
+            {(engine.repeatFamily === 'alongStroke' || engine.repeatFamily === 'normals') ? (
+              <>
+                <span className="param-item">
+                  {engine.liveGuidePathChosen()
+                    ? 'Copies follow the guide path you picked.'
+                    : 'Select a path first — your drawing is then placed along or across it.'}
+                </span>
+                <span className="param-item">
+                  <button
+                    type="button"
+                    onClick={() => engine.captureLiveGuideFromSelection()}
+                    title="Use the selected path as the guide for live repeats"
+                  >
+                    Use selected path as guide
+                  </button>
+                  {engine.liveGuidePathChosen() ? (
+                    <button
+                      type="button"
+                      onClick={() => engine.clearLiveGuidePath()}
+                      title="Stop following a guide path"
+                    >
+                      Clear guide
+                    </button>
+                  ) : null}
+                </span>
+              </>
+            ) : (
+              <span className="param-item">While you draw, the shape above repeats with the family settings. Finishing the shape keeps the copies.</span>
+            )}
+          </div>
+          <div className="flyout-seg">
+            <div className="flyout-title">Progressions</div>
+            {engine.repeatFamily === 'wallpaper' || engine.repeatFamily === 'frieze' ? (
+              <span className="param-item">Progressions do not apply to wallpaper and frieze repeats — changing copies one by one would break the symmetry group.</span>
+            ) : null}
+            {engine.repeatFamily === 'polar' ? (
+              <>
+                <span className="param-item">
+                  <label>Start from</label>
+                  {REPEAT_OUTCOMES.map((outcome) => (
+                    <button
+                      key={outcome.id}
+                      type="button"
+                      onClick={() => engine.applyRepeatOutcome(outcome.id)}
+                      title={`Fill the polar and progression fields for a ${outcome.label.toLowerCase()}`}
+                    >
+                      {outcome.label}
+                    </button>
+                  ))}
+                </span>
+                <span className="param-item">
+                  {engine.repeatOutcomeName
+                    ? `You are using the ${REPEAT_OUTCOMES.find((o) => o.id === engine.repeatOutcomeName)?.label ?? ''} settings. Change any field to make it your own.`
+                    : 'Pick Whorl or Phyllotaxis, or set the fields yourself.'}
+                </span>
+                <ProgressionFields
+                  idPrefix="repeatRadiusProgression"
+                  label="Distance from centre"
+                  value={engine.polarRadiusProgression}
+                  onChange={(v) => engine.setPolarRadiusProgression(v)}
+                />
+                <ProgressionFields
+                  idPrefix="repeatScaleProgression"
+                  label="Size"
+                  value={engine.polarScaleProgression}
+                  onChange={(v) => engine.setPolarScaleProgression(v)}
+                />
+              </>
+            ) : null}
+            {engine.repeatFamily === 'alongStroke' ? (
+              <ProgressionFields
+                idPrefix="repeatGapProgression"
+                label="Spacing"
+                value={engine.alongGapProgression}
+                onChange={(v) => engine.setAlongGapProgression(v)}
+              />
+            ) : null}
+            {engine.repeatFamily === 'normals' ? (
+              <span className="param-item">Progressions do not apply to the normals reflector — every copy is a mirror of the same size.</span>
+            ) : null}
           </div>
           <div className="flyout-seg">
             <div className="flyout-title">Paths</div>
@@ -4559,6 +5656,15 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         tabIndex={-1}
         onChange={handleImportFile}
       />
+      <input
+        ref={openFileInputRef}
+        type="file"
+        accept=".nibglider,.nibglider.json,.json,application/json"
+        hidden
+        aria-hidden="true"
+        tabIndex={-1}
+        onChange={handleOpenFilePicked}
+      />
       {pdfImport ? (
         <PdfImportDialog
           engine={engine}
@@ -4578,6 +5684,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           onSave={handleGallerySave}
           onRename={handleGalleryRename}
           onDelete={handleGalleryDelete}
+          onExport={handleGalleryExport}
           onClose={() => setGalleryMode(null)}
         />
       ) : null}
@@ -4586,6 +5693,12 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           defaultName={nextUntitledFrom(gallery.docs)}
           onConfirm={handleNewDocumentConfirm}
           onClose={() => setNewDocOpen(false)}
+        />
+      ) : null}
+      {findReplaceOpen ? (
+        <FindReplaceDialog
+          engine={engine}
+          onClose={() => setFindReplaceOpen(false)}
         />
       ) : null}
     </div>

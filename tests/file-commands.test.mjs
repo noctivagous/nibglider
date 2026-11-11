@@ -7,6 +7,7 @@ import {
   FILE_COMMANDS,
   IMPORT_ACCEPT,
   IMPORT_COMMANDS,
+  PRINTIFY_COMMANDS,
   exportScopeOf,
   renameTarget,
   saveTarget,
@@ -22,7 +23,7 @@ test('file commands cover every top File menu entry', () => {
   // Settings and Tutorial already have App handlers; the Export submenu
   // parents only expand; everything else in the File menu must route
   // through the shared file-command layer so no entry renders disabled.
-  const covered = new Set([...FILE_COMMANDS, 'export-raster', 'export-vector', 'import', 'settings', 'tutorial']);
+  const covered = new Set([...FILE_COMMANDS, 'export-raster', 'export-vector', 'export-printify', 'import', 'settings', 'tutorial', 'empty-canvas', 'page-setup']);
   for (const id of ids) {
     assert.ok(covered.has(id), `File menu entry ${id} has no command handler`);
   }
@@ -44,6 +45,9 @@ test('export leaves cover both Export submenus and resolve scopes', () => {
     assert.ok(exportScopeOf(command), `export command ${command} resolves no scope`);
   }
   assert.equal(exportLeaves.length, EXPORT_COMMANDS.length);
+  const printifyItem = file.items.find((item) => item.commandId === 'export-printify');
+  assert.ok(printifyItem);
+  assert.deepEqual((printifyItem.children ?? []).map((child) => child.commandId), [...PRINTIFY_COMMANDS]);
   const importItem = file.items.find((item) => item.commandId === 'import');
   assert.ok(importItem);
   assert.deepEqual((importItem.children ?? []).map((child) => child.commandId), [...IMPORT_COMMANDS]);

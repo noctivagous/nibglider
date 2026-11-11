@@ -30,6 +30,7 @@ export class HistoryManager {
   canUndo(): boolean { return this.stack.canUndo(); }
   canRedo(): boolean { return this.stack.canRedo(); }
   undoLabel(): string | null { return this.stack.undoLabel(); }
+  entries(): { labels: string[]; position: number } { return this.stack.entries(); }
   redoLabel(): string | null { return this.stack.redoLabel(); }
   undo(): void { this.cancelMoveGesture(); this.stack.undo(); this.refreshCentroids(); }
   redo(): void { this.cancelMoveGesture(); this.stack.redo(); this.refreshCentroids(); }
@@ -121,10 +122,10 @@ export class HistoryManager {
     }
     this.recordMove(entries, coalesceKey);
   }
-  recordMove(entries: MoveEntry[], coalesceKey?: string): void {
+  recordMove(entries: MoveEntry[], coalesceKey?: string, label?: string): void {
     if (!entries.length) return;
     const cmd: MoveCommand = {
-      label: entries.length > 1 ? `Move ${entries.length} items` : 'Move', entries,
+      label: label ?? (entries.length > 1 ? `Move ${entries.length} items` : 'Move'), entries,
       undo: () => this.restoreMove(entries, 'before'),
       redo: () => this.restoreMove(entries, 'after'),
     };
@@ -167,6 +168,13 @@ export class HistoryManager {
     this.recordAffine('Rotate', items,
       () => this.applyAffine(items, (item) => item.rotate(-degrees, center), rotateAboutMapper(center, -degrees)),
       () => this.applyAffine(items, (item) => item.rotate(degrees, center), rotateAboutMapper(center, degrees)));
+  }
+  recordFlip(items: Item[], horizontal: boolean, center: paper.Point): void {
+    // A flip is its own inverse: undo and redo apply the same mirror.
+    const flip = (): void => this.applyAffine(items,
+      (item) => item.scale(horizontal ? -1 : 1, horizontal ? 1 : -1, center),
+      scaleXYAboutMapper(center, horizontal ? -1 : 1, horizontal ? 1 : -1));
+    this.recordAffine(horizontal ? 'Flip Horizontal' : 'Flip Vertical', items, flip, flip);
   }
   recordScaleXY(items: Item[], fx: number, fy: number, center: paper.Point): void {
     if (!Number.isFinite(fx) || !Number.isFinite(fy)) return;
@@ -279,13 +287,14 @@ export class HistoryManager {
     });
   }
 
-  recordReorder(place: 'front' | 'back', before: Item[], after: Item[], selected: Item[]): void {
+  recordReorder(place: 'front' | 'back' | 'forward' | 'backward', before: Item[], after: Item[], selected: Item[]): void {
     const layer = this.scene.layer;
     if (!layer) return;
     const apply = (order: Item[]) => {
       for (const item of order) try { layer.addChild(item); } catch { /* Detached. */ }
     };
-    this.push({ label: place === 'front' ? 'Bring to Front' : 'Send to Back',
+    const labels = { front: 'Bring to Front', back: 'Send to Back', forward: 'Bring Forward', backward: 'Send Backward' } as const;
+    this.push({ label: labels[place],
       undo: () => { apply(before.filter((item) => this.scene.isInScene(item))); this.selection().restore(selected); },
       redo: () => { apply(after.filter((item) => this.scene.isInScene(item))); this.selection().restore(selected); },
     });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { keyboardPlatform, layoutIdForState, layoutLabelForState, type KeyCap } from '../engine/input/keymap';
+import { keyboardLayoutById, keyboardPlatform, type KeyCap } from '../engine/input/keymap';
 import { resolveKeyboardLayout, type ResolvedKeyCap } from '../engine/input/KeyboardLayoutResolver';
 import { schemaById } from '../engine/input/KeySettingsRegistry';
 import { keycapClick } from '../ui/KeyboardViewModel';
@@ -396,8 +396,8 @@ export default function OnscreenKeyboard({
   );
   const keyState = engine.getKeyState();
   const layout = resolveKeyboardLayout(modifiers, keyboardPlatform(), keyState);
-  const layoutId = layoutIdForState(keyState);
-  const layoutLabel = layoutLabelForState(keyState);
+  const layoutId = keyState.activeLayoutId ?? 'base';
+  const layoutLabel = keyboardLayoutById(keyState.activeLayoutId).label;
   const closeSettings = useCallback((reason: 'escape' | 'outside') => {
     setOpen((current) => {
       if (reason === 'escape' && current) {

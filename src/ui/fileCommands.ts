@@ -1,5 +1,5 @@
 // Top File menu command layer. The File entries in menus.xml (open, new,
-// save, rename, export, import) route through here so the menu bar and any
+// save, rename, save/open file, export, import) route through here so the menu bar and any
 // future caller share one dispatch: App enables these commands and forwards
 // them to the panel, which owns the gallery/new-document dialogs.
 // Settings and Tutorial keep their existing App handlers.
@@ -10,6 +10,10 @@ export const FILE_COMMANDS = [
   'new-document',
   'save-gallery',
   'rename-document',
+  'save-file',
+  'open-file',
+  'print',
+  'print-selection',
 ] as const;
 
 export type FileCommand = (typeof FILE_COMMANDS)[number];
@@ -55,14 +59,15 @@ export const PRINTIFY_COMMANDS = [
 
 export type PrintifyCommand = (typeof PRINTIFY_COMMANDS)[number];
 
-/** Raster formats offered by the Export Raster segmented control. Only
- * PNG and JPG export today; WEBP stays visible but disabled. */
+/** Raster formats offered by the Export Raster segmented control:
+ * PNG, JPG, and WebP (Slice 9c) all export. */
 export const RASTER_FORMATS = ['png', 'jpg', 'webp'] as const;
 
 export type RasterFormat = (typeof RASTER_FORMATS)[number];
 
 /** Vector formats offered by the Export Vector segmented control. SVG is
- * the default and PDF exports through jsPDF. DXF stays visible but disabled. */
+ * the default, PDF exports through jsPDF, and DXF through the minimal
+ * ASCII writer (Slice 9c). */
 export const VECTOR_FORMATS = ['svg', 'pdf', 'dxf'] as const;
 
 export type VectorFormat = (typeof VECTOR_FORMATS)[number];

@@ -2,6 +2,7 @@
 // Selection maps through id; bounds, geometry, and Paper items are derived.
 // No independent manager state, browser objects, or cached geometry live here.
 import type { AffineTransform } from './geometryResolution';
+import type { ReplicationRecord } from '../repeat/replication';
 import type { NGPath } from './NGPath';
 import type { NGShape } from './NGShape';
 import type { NGText } from './NGText';
@@ -17,6 +18,10 @@ export interface NGDrawableBase {
   locked: boolean;
   name?: string;
   styleId?: string;
+  /** Retained live-replication record (Slice 10): set on a source
+   * item deposited under live Polar/Mirror repeat so its copies can
+   * be regenerated later. Copies are ordinary drawables. */
+  replication?: ReplicationRecord;
 }
 export interface NGPathDrawable extends NGDrawableBase { kind: 'path'; source: NGPath }
 export interface NGShapeDrawable extends NGDrawableBase { kind: 'shape'; source: NGShape }

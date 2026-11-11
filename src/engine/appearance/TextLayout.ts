@@ -6,6 +6,7 @@
 // Font measurement stays in FontMetrics.
 // Tested from tests/text-layout.test.mjs and tests/display-text-layout.test.mjs.
 import type { FontMetrics } from '../fontMetrics';
+import { SMALL_CAPS_SCALE } from '../text/textOutline';
 import type {
   DisplayFlow,
   GlyphOrientation,
@@ -34,6 +35,26 @@ export interface TextLayoutConfig {
 interface StraightBoundaryEdge {
   start: number;
   length: number;
+}
+
+/** One character after the spec's case treatment: the string to
+ * render and the size scale to render it at (small-caps lowercase
+ * becomes a capital at SMALL_CAPS_SCALE; 'upper' is applied to
+ * whole strings before this is consulted). */
+export function displayCharOf(spec: TextSpec, ch: string): { text: string; scale: number } {
+  if (spec.caseTransform === 'smallCaps' && ch.toLowerCase() === ch && ch.toUpperCase() !== ch) {
+    return { text: ch.toUpperCase(), scale: SMALL_CAPS_SCALE };
+  }
+  return { text: ch, scale: 1 };
+}
+
+/** Whole-string case treatment for whole-line contexts: 'upper'
+ * uppercases; 'smallCaps' falls back to 'upper' there (per-glyph
+ * layout is what renders true small caps). */
+export function caseTransformString(spec: TextSpec, s: string): string {
+  return spec.caseTransform === 'upper' || spec.caseTransform === 'smallCaps'
+    ? s.toUpperCase()
+    : s;
 }
 
 export class TextLayout {
@@ -135,23 +156,57 @@ export class TextLayout {
   }
 
   layoutBodyLines(spec: TextSpec, maxWidth: number, content?: string): string[] {
-    const words = (content ?? spec.content).split(/\s+/).filter(Boolean);
-    const size = Math.max(4, spec.fontSize);
-    const widthOf = (s: string): number => this.metrics.advance(s, spec.fontFamily, size, spec.fontWeight);
-    const lines: string[] = [];
-    let cur = '';
-    for (const w of words) {
-      const trial = cur ? `${cur} ${w}` : w;
-      if (cur && widthOf(trial) > maxWidth) {
-        lines.push(cur);
-        cur = w;
-      } else {
-        cur = trial;
+    return this.layoutBodyParagraphs(spec, maxWidth, content).flat();
+  }
+
+  /** Width of a body line under the spec: tracked advance, word
+   * spacing after each space, and per-glyph small-caps advances.
+   * The single measure shared by wrapping and line rendering so
+   * justified lines stretch against the width they were wrapped to. */
+  measureBodyText(spec: TextSpec, s: string, size: number): number {
+    const tracking = spec.letterSpacing ?? 0;
+    const wordSpacing = spec.wordSpacing ?? 0;
+    const spaces = (s.match(/ /g) ?? []).length;
+    if (spec.caseTransform === 'smallCaps') {
+      let w = 0;
+      for (const ch of s) {
+        const dc = displayCharOf(spec, ch);
+        w += this.metrics.advance(dc.text, spec.fontFamily, size * dc.scale, spec.fontWeight);
       }
+      return w + tracking * Math.max(0, s.length - 1) + wordSpacing * spaces;
     }
-    if (cur) lines.push(cur);
-    if (lines.length === 0) lines.push(' ');
-    return lines;
+    return this.metrics.advance(caseTransformString(spec, s), spec.fontFamily, size, spec.fontWeight, tracking)
+      + wordSpacing * spaces;
+  }
+
+  /** Wrap content paragraph by paragraph. Paragraphs split on line
+   * breaks; each wraps independently with tracked advance widths, so
+   * paragraph spacing in createBodyTextFor lands between real
+   * paragraphs instead of flattening them away. */
+  layoutBodyParagraphs(spec: TextSpec, maxWidth: number, content?: string): string[][] {
+    const size = Math.max(4, spec.fontSize);
+    const widthOf = (s: string): number => this.measureBodyText(spec, s, size);
+    const paragraphs = (content ?? spec.content).split(/\n+/);
+    const wrapped: string[][] = [];
+    for (const paragraph of paragraphs) {
+      const words = paragraph.split(/\s+/).filter(Boolean);
+      const lines: string[] = [];
+      let cur = '';
+      for (const w of words) {
+        const trial = cur ? `${cur} ${w}` : w;
+        if (cur && widthOf(trial) > maxWidth) {
+          lines.push(cur);
+          cur = w;
+        } else {
+          cur = trial;
+        }
+      }
+      if (cur) lines.push(cur);
+      if (lines.length === 0) lines.push(' ');
+      wrapped.push(lines);
+    }
+    if (wrapped.length === 0) wrapped.push([' ']);
+    return wrapped;
   }
 
   createBodyTextFor(boundary: Item, content?: string): Item | null {
@@ -160,16 +215,44 @@ export class TextLayout {
     const bounds = boundary.bounds;
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
     const size = Math.max(4, spec.fontSize);
-    const lines = this.layoutBodyLines(spec, Math.max(8, bounds.width * 0.75), content);
+    const wrapWidth = Math.max(8, bounds.width * 0.75);
+    const paragraphs = this.layoutBodyParagraphs(spec, wrapWidth, content);
     const leading = Math.max(0.8, spec.leading || 1.2) * size;
+    const paragraphSpacing = Math.max(0, spec.paragraphSpacing ?? 0);
+    const shift = spec.baselineShift ?? 0;
+    const lineCount = paragraphs.reduce((sum, p) => sum + p.length, 0);
+    const totalHeight = (lineCount - 1) * leading + (paragraphs.length - 1) * paragraphSpacing;
     const group: Item = new scope.Group();
-    const startY = bounds.center.y - ((lines.length - 1) * leading) / 2;
-    lines.forEach((line, i) => {
-      const pt: Item = new scope.PointText(new scope.Point(bounds.center.x, startY + i * leading));
-      pt.content = line;
-      this.styleTextItem(pt, spec);
-      pt.data.textKind = 'body';
-      group.addChild(pt);
+    let y = bounds.center.y - totalHeight / 2;
+    paragraphs.forEach((lines, pi) => {
+      lines.forEach((line, li) => {
+        const lastOfParagraph = li === lines.length - 1;
+        const perGlyph = (spec.letterSpacing ?? 0) !== 0
+          || (spec.wordSpacing ?? 0) !== 0
+          || spec.caseTransform === 'smallCaps'
+          || (spec.justification === 'justify' && !lastOfParagraph);
+        if (perGlyph) {
+          this.addPerGlyphBodyLine(group, line, bounds.center.x, y, spec, size, wrapWidth, lastOfParagraph);
+        } else {
+          const justify = spec.justification === 'justify';
+          const pt: Item = new scope.PointText(new scope.Point(
+            justify ? bounds.center.x - wrapWidth / 2 : bounds.center.x,
+            y - shift,
+          ));
+          pt.content = caseTransformString(spec, line);
+          this.styleTextItem(pt, spec);
+          if (justify) pt.justification = 'left';
+          pt.data.textKind = 'body';
+          group.addChild(pt);
+          const w = this.metrics.advance(caseTransformString(spec, line), spec.fontFamily, size, spec.fontWeight);
+          const x0 = justify || spec.justification === 'left'
+            ? pt.point.x
+            : spec.justification === 'right' ? bounds.center.x - w : bounds.center.x - w / 2;
+          this.addBodyDecorations(group, x0, x0 + w, y - shift, spec, size);
+        }
+        y += leading;
+      });
+      if (pi < paragraphs.length - 1) y += paragraphSpacing;
     });
     if (boundary.closed !== false) {
       const mask: Item = boundary.clone();
@@ -181,6 +264,107 @@ export class TextLayout {
     return group;
   }
 
+  /** One body line as per-glyph PointText items: Paper has no
+   * letter-spacing, so tracked lines place each glyph at its tracked
+   * advance. The same path renders word spacing, small caps, and
+   * justification: a justified line (never a paragraph's last line)
+   * starts at the wrap box's left edge and distributes the slack
+   * evenly across its word spaces so it spans the full measure.
+   * The anchor mirrors the whole-line path — the line's Paper point
+   * is bounds-center x, aligned per justification. */
+  private addPerGlyphBodyLine(
+    group: Item, line: string, anchorX: number, y: number, spec: TextSpec, size: number,
+    wrapWidth: number, lastOfParagraph: boolean,
+  ): void {
+    const scope = this.scope;
+    const tracking = spec.letterSpacing ?? 0;
+    const wordSpacing = spec.wordSpacing ?? 0;
+    const shift = spec.baselineShift ?? 0;
+    const natural = this.measureBodyText(spec, line, size);
+    const justify = spec.justification === 'justify';
+    const gaps = (line.match(/ /g) ?? []).length;
+    const stretch = justify && !lastOfParagraph && gaps > 0
+      ? Math.max(0, wrapWidth - natural) / gaps
+      : 0;
+    let x = justify
+      ? anchorX - wrapWidth / 2
+      : spec.justification === 'center'
+        ? anchorX - natural / 2
+        : spec.justification === 'right' ? anchorX - natural : anchorX;
+    const startX = x;
+    for (const ch of line) {
+      const dc = displayCharOf(spec, ch);
+      const w = this.metrics.advance(dc.text, spec.fontFamily, size * dc.scale, spec.fontWeight);
+      if (ch !== ' ') {
+        const pt: Item = new scope.PointText(new scope.Point(x, y - shift));
+        pt.content = dc.text;
+        this.styleTextItem(pt, spec);
+        pt.fontSize = Math.max(4, size * dc.scale);
+        pt.justification = 'left';
+        pt.data.textKind = 'body';
+        group.addChild(pt);
+      }
+      x += w + tracking + (ch === ' ' ? wordSpacing + stretch : 0);
+    }
+    const endX = stretch > 0 ? startX + wrapWidth : startX + natural;
+    this.addBodyDecorations(group, startX, endX, y - shift, spec, size);
+  }
+
+  /** Underline / strikethrough for one body line: plain segments in
+   * the text group, spanning the line's laid-out width at the
+   * shifted baseline. Paper has no text decoration, so the strokes
+   * are drawn geometry (data-tagged so tests and filters find them). */
+  private addBodyDecorations(
+    group: Item, x0: number, x1: number, baselineY: number, spec: TextSpec, size: number,
+  ): void {
+    if (!(x1 > x0)) return;
+    if (spec.underline) {
+      this.addDecorationSegment(group, x0, baselineY + size * 0.22, x1, baselineY + size * 0.22, size, 'body', 'underline');
+    }
+    if (spec.strikethrough) {
+      this.addDecorationSegment(group, x0, baselineY - size * 0.3, x1, baselineY - size * 0.3, size, 'body', 'strikethrough');
+    }
+  }
+
+  private addDecorationSegment(
+    group: Item, x0: number, y0: number, x1: number, y1: number,
+    size: number, kind: 'body' | 'display',
+    decoration: 'underline' | 'strikethrough',
+  ): void {
+    const cfg = this.config();
+    const seg: Item = new this.scope.Path({
+      segments: [new this.scope.Point(x0, y0), new this.scope.Point(x1, y1)],
+      insert: false,
+    });
+    seg.strokeColor = cfg.fillEnabled ? cfg.fillColor : cfg.strokeColor;
+    seg.fillColor = null;
+    seg.strokeWidth = Math.max(0.75, size * 0.055);
+    seg.data.isShapeText = true;
+    seg.data.textKind = kind;
+    seg.data.textDecoration = decoration;
+    group.addChild(seg);
+  }
+
+  /** Per-glyph display decorations: a segment under (or through)
+   * one glyph, following its rotation. `at` is the glyph's final
+   * anchor, `angleDeg` its rotation, `w` its advance. */
+  private addGlyphDecoration(
+    group: Item, at: Item, angleDeg: number, w: number, size: number,
+    decoration: 'underline' | 'strikethrough',
+  ): void {
+    const rad = (angleDeg * Math.PI) / 180;
+    const read = new this.scope.Point(Math.cos(rad), Math.sin(rad));
+    const down = new this.scope.Point(-Math.sin(rad), Math.cos(rad));
+    const lift = decoration === 'underline' ? size * 0.22 : -size * 0.3;
+    const center = at.add(down.multiply(lift));
+    this.addDecorationSegment(
+      group,
+      center.x - (read.x * w) / 2, center.y - (read.y * w) / 2,
+      center.x + (read.x * w) / 2, center.y + (read.y * w) / 2,
+      size, 'display', decoration,
+    );
+  }
+
   createBoundaryText(boundary: Item, content?: string, line2?: string): Item | null {
     const scope = this.scope;
     const cfg = this.config();
@@ -188,7 +372,12 @@ export class TextLayout {
     const size = Math.max(4, spec.fontSize);
     const length = boundary.length;
     if (!(length > 0)) return null;
-    const lines = [content ?? spec.content, line2 ?? spec.line2].filter((s) => s && s.length > 0);
+    const rawLines = [content ?? spec.content, line2 ?? spec.line2].filter((s) => s && s.length > 0);
+    // 'upper' transforms the laid-out string; 'smallCaps' is handled
+    // per glyph below (displayCharOf). Display justification keeps
+    // its existing semantics: 'justify' behaves as left on edges and
+    // rings (alignOffset falls through to 0, ring start unchanged).
+    const lines = spec.caseTransform === 'upper' ? rawLines.map((s) => s.toUpperCase()) : rawLines;
     if (lines.length === 0) return null;
     const offset = Math.max(0, cfg.displayOffset);
     const start = ((((-cfg.circumferenceAngleOffset % 360) + 360) % 360) / 360) * length;
@@ -221,8 +410,9 @@ export class TextLayout {
       let d = start;
       let lastTan: number | null = null;
       for (const ch of text) {
-        const w = ch === ' ' ? size * 0.4 : this.metrics.advance(ch, spec.fontFamily, size, spec.fontWeight);
-        const step = w + cfg.circumferenceGap;
+        const dc = displayCharOf(spec, ch);
+        const w = ch === ' ' ? size * 0.4 : this.metrics.advance(dc.text, spec.fontFamily, size * dc.scale, spec.fontWeight);
+        const step = w + cfg.circumferenceGap + (spec.letterSpacing ?? 0) + (ch === ' ' ? (spec.wordSpacing ?? 0) : 0);
         if (d + step > start + length) break;
         if (ch === ' ') { d += step; continue; }
         const mid = d + w / 2;
@@ -237,16 +427,23 @@ export class TextLayout {
           nor = new scope.Point(Math.cos(ra), Math.sin(ra));
         } else nor = nor.normalize();
         const pt: Item = new scope.PointText(new scope.Point(0, 0));
-        pt.content = ch;
+        pt.content = dc.text;
         this.styleTextItem(pt, spec);
+        pt.fontSize = Math.max(4, size * dc.scale);
         pt.justification = 'center';
-        const at = pos.add(nor.multiply(side * ring));
-        pt.position = at;
         const facing = cfg.glyphOrientation === 'outward' ? -interiorSign : interiorSign;
-        pt.rotate(facing !== 0 ? nor.multiply(facing).angle + 90 : lastTan, at);
+        const angle = facing !== 0 ? nor.multiply(facing).angle + 90 : lastTan;
+        // Baseline shift moves the glyph along its own down axis.
+        const rad = (angle * Math.PI) / 180;
+        const down = new scope.Point(-Math.sin(rad), Math.cos(rad));
+        const at = pos.add(nor.multiply(side * ring)).add(down.multiply(-(spec.baselineShift ?? 0)));
+        pt.position = at;
+        pt.rotate(angle, at);
         if (boundary.closed === false) this.anchorSplineGlyph(pt, at, spec, size);
         pt.data.textKind = 'display';
         group.addChild(pt);
+        if (spec.underline) this.addGlyphDecoration(group, pt.position, angle, w, size, 'underline');
+        if (spec.strikethrough) this.addGlyphDecoration(group, pt.position, angle, w, size, 'strikethrough');
         d += step;
       }
     });
@@ -267,7 +464,9 @@ export class TextLayout {
     item.fontWeight = spec.fontWeight;
     item.fillColor = cfg.fillEnabled ? cfg.fillColor : cfg.strokeColor;
     item.strokeColor = null;
-    item.justification = spec.justification;
+    // 'justify' is a layout-level value (TextLayout distributes the
+    // slack); Paper items themselves never carry it.
+    item.justification = spec.justification === 'justify' ? 'left' : spec.justification;
     item.leading = Math.max(0.8, spec.leading || 1.2) * Math.max(4, spec.fontSize);
     item.data.isShapeText = true;
   }
@@ -341,8 +540,10 @@ export class TextLayout {
   }
 
   private displayGlyphStep(ch: string, spec: TextSpec, size: number): number {
-    const width = ch === ' ' ? size * 0.4 : this.metrics.advance(ch, spec.fontFamily, size, spec.fontWeight);
-    return width + this.config().circumferenceGap;
+    const dc = displayCharOf(spec, ch);
+    const width = ch === ' ' ? size * 0.4 : this.metrics.advance(dc.text, spec.fontFamily, size * dc.scale, spec.fontWeight);
+    return width + this.config().circumferenceGap + (spec.letterSpacing ?? 0)
+      + (ch === ' ' ? (spec.wordSpacing ?? 0) : 0);
   }
 
   private addDisplayGlyphs(
@@ -355,6 +556,8 @@ export class TextLayout {
     for (const ch of text) {
       const step = this.displayGlyphStep(ch, spec, size);
       if (ch === ' ') { d += step; continue; }
+      const dc = displayCharOf(spec, ch);
+      const glyphWidth = this.metrics.advance(dc.text, spec.fontFamily, size * dc.scale, spec.fontWeight);
       const mid = d + (step - this.config().circumferenceGap) / 2;
       const pos = boundary.getPointAt(mid);
       if (!pos) break;
@@ -367,15 +570,21 @@ export class TextLayout {
         nor = new scope.Point(Math.cos(ra), Math.sin(ra));
       } else nor = nor.normalize();
       const pt: Item = new scope.PointText(new scope.Point(0, 0));
-      pt.content = ch;
+      pt.content = dc.text;
       this.styleTextItem(pt, spec);
+      pt.fontSize = Math.max(4, size * dc.scale);
       pt.justification = 'center';
-      const at = pos.add(nor.multiply(side * ring));
-      pt.position = at;
       const facing = this.config().glyphOrientation === 'outward' ? -interiorSign : interiorSign;
-      pt.rotate(facing !== 0 ? nor.multiply(facing).angle + 90 : lastTan, at);
+      const angle = facing !== 0 ? nor.multiply(facing).angle + 90 : lastTan;
+      const rad = (angle * Math.PI) / 180;
+      const down = new scope.Point(-Math.sin(rad), Math.cos(rad));
+      const at = pos.add(nor.multiply(side * ring)).add(down.multiply(-(spec.baselineShift ?? 0)));
+      pt.position = at;
+      pt.rotate(angle, at);
       pt.data.textKind = 'display';
       group.addChild(pt);
+      if (spec.underline) this.addGlyphDecoration(group, pt.position, angle, glyphWidth, size, 'underline');
+      if (spec.strikethrough) this.addGlyphDecoration(group, pt.position, angle, glyphWidth, size, 'strikethrough');
       d += step;
     }
   }

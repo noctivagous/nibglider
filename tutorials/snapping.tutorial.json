@@ -1,0 +1,73 @@
+{
+  "id": "snapping",
+  "title": "Snapping",
+  "description": "Make placement exact: snap angles, lengths, points, and paths — each with its own switch.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-snappingControls",
+      "bubble": {
+        "title": "Snapping: placement that lands exactly",
+        "body": "Snapping pulls the points you place onto exact angles, lengths, and existing geometry. Each kind has its own switch in this section — use one, or all.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "do-angle",
+      "target": "section-snappingControls",
+      "bubble": {
+        "title": "Angle snapping",
+        "body": "Switch on Angle snapping. Lines and drags now rest at 15° steps instead of almost-right angles.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "snapping",
+        "field": "angle",
+        "value": true
+      }
+    },
+    {
+      "id": "draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Draw with it",
+        "body": "Draw a rectangle with I: press at one corner, steer — the preview prefers exact angles — and press at the other corner to deposit.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-length",
+      "target": "section-snappingControls",
+      "bubble": {
+        "title": "Length snapping",
+        "body": "Switch on Length snapping. Distances you draw now round to the length step shown beside it (10 points to start).",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "snapping",
+        "field": "length",
+        "value": true
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-snappingControls",
+      "bubble": {
+        "title": "Guides snap too",
+        "body": "Guides are snap targets on their own switch in this section — and hidden guides still snap, so a tidy page can keep its measurements. Path and point snapping pull new points onto existing shapes.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

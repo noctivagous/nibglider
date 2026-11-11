@@ -4,7 +4,25 @@
 // services; the PaperScope is injected instead of paper.install(window).
 // NB: `paper.*` below refers to the global namespace from paper's bundled
 // declarations (type positions only); the runtime value is never imported here.
-import { FontMetrics } from './fontMetrics';
+import { FontMetrics, weightsForFamily } from './fontMetrics';
+import { outlineText } from './text/textOutline';
+import {
+  BUILT_IN_TEXT_STYLES,
+  sanitizeTextStyle,
+  stylePatch,
+  type TextStyleEntry,
+} from './text/textStyles';
+import { traceBitmap as traceBitmapPixels, type BitmapInput, type TraceOptions } from './image/tracer';
+import {
+  isImageMaskGroup,
+  imageContentOf,
+  setImageCrop,
+  setImageMask,
+  clearImageMask,
+  booleanImageMask,
+  type ImageCropRect,
+} from './image/imageMask';
+import opentype from 'opentype.js';
 import { StyleManager, type StyleState } from './appearance/StyleManager';
 import { installStrokePositionRenderer } from './appearance/strokePosition';
 import { TextLayout, type TextLayoutConfig } from './appearance/TextLayout';
@@ -19,7 +37,16 @@ import {
   type QuadMapping,
   type RectFrameInput,
 } from './geometry/RectangleGeometry';
-import { supershapeRadius as supershapeRadiusValue } from './geometry/pathResolver';
+import { resolvePath, supershapeRadius as supershapeRadiusValue } from './geometry/pathResolver';
+import { arcSegments, arcThroughPoints, ellipseSegments } from './geometry/simpleGeometry';
+import {
+  arrowheadGeometry,
+  isArrowheadStyle,
+  type ArrowheadStyle,
+} from './appearance/arrowheads';
+import { displayedStrokePosition } from './appearance/strokePosition';
+import type { BezierSegment, ResolvedVectorGeometry, Vec2 } from './model/geometryResolution';
+import type { NGOutlinedStrokePath, NGSmoothedPolyline } from './model/NGPath';
 import { remapCircleOrigins, scaleAboutMapper, shiftCircleOrigins } from './geometry/shapeCenters';
 import {
   loadEngineSettings,
@@ -36,7 +63,7 @@ import {
   PointerController,
   type PointerHost,
 } from './input/PointerController';
-import { keyGroupForLabel, keyboardPlatform, layoutLabelForState, scaleFactor, rotationStep, type KeyboardLayoutId } from './input/keymap';
+import { keyGroupForLabel, keyboardLayoutById, keyboardPlatform, scaleFactor, rotationStep, type KeyboardLayoutId } from './input/keymap';
 import { CombinatoricsManager, type CombinatoricsHost } from './scene/CombinatoricsManager';
 import { InterlaceManager } from './scene/InterlaceManager';
 import { DropController, viewFitScale } from './document/DropController';
@@ -52,13 +79,45 @@ import {
 import {
   clearTransient,
   decodeSceneItems,
+  encodeSceneDocument,
   encodeSceneItems,
   isSceneJson,
   isSvgMarkup,
+  readSceneActiveLayerId,
+  readSceneGuides,
+  readSceneLayers,
+  readScenePrintSetup,
   readSceneView,
   stripSvgClips,
   type SceneView,
 } from './document/SceneIO';
+import {
+  createGuide,
+  guideAtPoint,
+  moveGuide as moveGuideRecord,
+  removeGuide as removeGuideRecord,
+  setGuideLocked as setGuideLockedRecord,
+  snapToGuides,
+  type GuideRecord,
+} from './document/guides';
+import {
+  cropMarkSegments,
+  defaultPrintSetup,
+  printableRect,
+  readPrintSetup,
+  resolvePrintItemIds,
+  type PrintScope,
+  type PrintSetup,
+} from './document/printSetup';
+import {
+  buildLayerListing,
+  layerLocked,
+  layerOpacity,
+  layerVisible,
+  type LayerListing,
+  type LayerRecord,
+  type ListingObjectInput,
+} from './document/layerModel';
 import {
   adoptImportedArtwork,
   artworkNodeHasVectors,
@@ -90,6 +149,10 @@ import {
 import { EngineContext } from './EngineContext';
 import { createDrawingHost, createKeyboardHost, createPointerHost } from './hosts';
 import { modifiersOf } from './input/ModifierStateTracker';
+import { fbm1 } from './geometry/noise';
+import { fitPolylineWithError, reducePolyline } from './geometry/polylineFit';
+import { douglasPeucker, douglasPeuckerClosed } from './geometry/douglasPeucker';
+import { concaveHull } from './geometry/concaveHull';
 import { PathTool } from './drawing/PathTool';
 import { CircleTool } from './drawing/CircleTool';
 import { RectangleTool } from './drawing/RectangleTool';
@@ -110,6 +173,7 @@ import {
   rasterizeSvgToPng,
   readExportFrame,
 } from './scene/exportFrames';
+import { dxfDocument, toDxfSpace, type DxfPolyline } from './scene/dxfExport';
 import {
   createExportFrame,
   exportPngSize,
@@ -162,15 +226,64 @@ import { TransformManager } from './history/TransformManager';
 import { GridRenderer } from './snapping/GridRenderer';
 import { SnappingManager } from './snapping/SnappingManager';
 import { RepeatManager } from './repeat/RepeatManager';
+import {
+  basisForWallpaper,
+  copyTransforms,
+  FRIEZE_GROUPS,
+  repeatOutcome,
+  WALLPAPER_GROUPS,
+  type Affine,
+  type FriezeGroupId,
+  type RepeatFamilyName,
+  type SymmetryRepeatSpec,
+  type WallpaperGroupId,
+} from './repeat/symmetry';
+import {
+  isReplicationRecord,
+  type ReplicationRecord,
+} from './repeat/replication';
+import type { Progression } from './repeat/symmetry';
+import type { LiveFrame } from './repeat/RepeatManager';
 import type { RepeatAnchor, RepeatDirection } from './geometry/RepeatGeometry';
 import { clampRepeatCount, isRepeatAnchor, isRepeatDirection } from './geometry/RepeatGeometry';
 import { LayerManager } from './document/LayerManager';
+import {
+  alignDeltas as computeAlignDeltas,
+  alignToSelectionDeltas,
+  distributeDeltas as computeDistributeDeltas,
+  type AlignMode,
+  type DistributeAxis,
+} from './geometry/arrange';
+import {
+  buildNativeDocument,
+  isNativeDocumentText,
+  nativeFileName,
+  parseNativeDocument,
+  readPalette,
+  serializeNativeDocument,
+  type NativeDisplaySettings,
+  type NativeDocumentFile,
+  type NativeLayerRecord,
+  type NativePageRecord,
+} from './document/NativeDocument';
+import {
+  PointEditSession,
+  applySnapshots as applyPointSnapshots,
+  snapshotItem as snapshotPointItem,
+  type ContourSnapshot,
+} from './scene/PointEditSession';
+import {
+  joinContours as joinPointContours,
+  joinEndToEnd as joinPointEndToEnd,
+  joinStartToStart as joinPointStartToStart,
+} from './geometry/pointEditing';
 import { CoordinateManager } from './document/CoordinateManager';
 import {
   drawingPageRect,
   pageCornerBrackets,
   pageEdgeTicks,
   snapPageToGrid,
+  createDrawingPage,
   type DrawingPage,
   type DrawingPageRect,
 } from './document/DrawingPage';
@@ -186,6 +299,7 @@ import {
   clampShapeAngle as clampShapeAngleValue,
   clampSplineTension,
   clampSupershapeParam,
+  cssHex,
   snapShapeAngle as snapShapeAngleValue,
 } from './input/KeySettingsRegistry';
 import type {
@@ -212,6 +326,7 @@ import type {
   StrokeCap,
   StrokeJoin,
   StrokePosition,
+  TextCaseTransform,
   TextJustification,
   TextMode,
   TextPasteLocation,
@@ -249,6 +364,7 @@ export type {
   StrokeCap,
   StrokeJoin,
   StrokePosition,
+  TextCaseTransform,
   TextJustification,
   TextMode,
   TextPasteLocation,
@@ -278,9 +394,10 @@ export type ExportScope = 'canvas' | 'viewport' | 'selection';
 /** View snapshot for the canvas scrollbars and rulers: center and size
  * in project coordinates, plus the page sheet and the artwork bounds
  * (each null when absent). Null while no view exists. */
-/** Ruler placement: viewer edges (fixed to the canvas container) or the
- * DrawingPage frame (travels with the page). A Document Settings option. */
-export type RulerPlacement = 'viewer' | 'page';
+/** Ruler placement: viewer edges (fixed to the canvas container), the
+ * DrawingPage frame (travels with the page), or off (no rulers). A
+ * Document Settings option, also in the View menu. */
+export type RulerPlacement = 'viewer' | 'page' | 'off';
 
 export interface ViewState {
   centerX: number;
@@ -346,6 +463,8 @@ export class NibGliderEngine {
     globalFillInner: 0,
     globalStrokeCap: 'butt',
     globalStrokeJoin: 'miter',
+    globalArrowStart: 'none',
+    globalArrowEnd: 'none',
     globalStrokePosition: 'center',
     globalMiterLimit: 10,
     globalDashLength: 0,
@@ -373,6 +492,10 @@ export class NibGliderEngine {
   set globalStrokeCap(v: StrokeCap) { this.paint.globalStrokeCap = v; }
   get globalStrokeJoin(): StrokeJoin { return this.paint.globalStrokeJoin; }
   set globalStrokeJoin(v: StrokeJoin) { this.paint.globalStrokeJoin = v; }
+  get globalArrowStart(): ArrowheadStyle { return this.paint.globalArrowStart; }
+  set globalArrowStart(v: ArrowheadStyle) { this.paint.globalArrowStart = v; }
+  get globalArrowEnd(): ArrowheadStyle { return this.paint.globalArrowEnd; }
+  set globalArrowEnd(v: ArrowheadStyle) { this.paint.globalArrowEnd = v; }
   get globalStrokePosition(): StrokePosition { return this.paint.globalStrokePosition; }
   set globalStrokePosition(v: StrokePosition) { this.paint.globalStrokePosition = v; }
   get globalMiterLimit(): number { return this.paint.globalMiterLimit; }
@@ -402,9 +525,20 @@ export class NibGliderEngine {
   /** Hide undo/redo/copy/paste rows from the keys table. On by default. */
   hideCommonKeymapRows = true;
   // --- Grid / cursors ---
+  // Grid and page-display state is per-document from Tier Four
+  // (Slice 17): it serializes into the .nibglider file (format v5),
+  // and a document's values win on open. The field defaults below —
+  // seeded once from any legacy global settings — are what a new
+  // document starts from.
   isGridEnabled = false;
   gridType: GridType = 'square';
   gridSpacing = 20;
+  /** Minor dots at gridSpacing / gridSubdivisions (1 = off, 1..10). */
+  gridSubdivisions = 1;
+  /** Major lattice rendering: dots, or full lines at spacing. */
+  gridStyle: 'dots' | 'lines' = 'dots';
+  gridColor = '#8c9eb8';
+  gridOpacity = 0.55;
   gridLayer: AnyItem = null;
   // Snap indicators live here, not on the artwork layer. See ensureGuideLayer.
   guideLayer: AnyItem = null;
@@ -428,6 +562,35 @@ export class NibGliderEngine {
   repeatRectKeys = true;
   repeatCircleKeys = true;
   repeatPaths = true;
+  // Symmetry repeat (Slice 9a): the selection-level repeat model.
+  repeatFamily: RepeatFamilyName = 'wallpaper';
+  repeatWallpaperGroup: WallpaperGroupId = 'p1';
+  repeatFriezeGroup: FriezeGroupId = 'p11g';
+  repeatSymmetryCount = 6;
+  repeatPolarReflect = false;
+  // Live symmetry (Slice 10, revised): the Repeat panel's
+  // descriptor can be armed to preview and deposit while drawing.
+  liveSymmetryArmed = false;
+  repeatPolarMode: 'division' | 'degrees' = 'division';
+  repeatPolarStepDeg = 50;
+  repeatMotifOffsetDeg = 0;
+  repeatStationMode: 'division' | 'spacing' | 'progression' = 'division';
+  repeatAlongSpacing = 40;
+  repeatAlongOrientationDeg = 0;
+  /** Name of the Progressions outcome the polar fields were last
+   * filled from ('whorl' | 'phyllotaxis'); display only — editing
+   * any underlying field clears it (the configuration is custom). */
+  repeatOutcomeName: string | null = null;
+  polarRadiusProgression: Progression | null = null;
+  polarScaleProgression: Progression | null = null;
+  alongGapProgression: Progression | null = null;
+  /** Reference path for live path-relative families. */
+  private liveGuide: { points: Vec2[]; closed: boolean } | null = null;
+  private pendingLiveSpec: SymmetryRepeatSpec | null = null;
+  // Path-following repeat parameter (Slice 10).
+  repeatAlongAlign = true;
+  /** Live symmetry transforms captured for a composite deposit. */
+  private pendingLiveTransforms: Affine[] | null = null;
   private repeatManager!: RepeatManager;
 
   // --- Snapping flags ---
@@ -494,9 +657,19 @@ export class NibGliderEngine {
     fontSize: 24,
     fontWeight: 'normal',
     italic: false,
+    underline: false,
+    strikethrough: false,
+    caseTransform: 'none',
+    baselineShift: 0,
+    wordSpacing: 0,
     justification: 'center',
     leading: 1.2,
+    letterSpacing: 0,
+    paragraphSpacing: 0,
   };
+  /** User-saved text styles (Slice 19), persisted in app settings
+   * alongside the built-ins from textStyles.ts. */
+  private userTextStyles: TextStyleEntry[] = [];
   // Text Mode: when on, every shape key draws its geometric shape plus
   // text derived from it (Display flows around the boundary, Body fills
   // the interior) instead of the bare shape.
@@ -528,6 +701,24 @@ export class NibGliderEngine {
   // Last image-drop outcome, surfaced in the status overlay. Set on
   // skipped/failed files, cleared when a new drop starts.
   lastDropNote = '';
+  /** Name of the disk file this document was opened from / last
+   * saved to, or null while it lives only in the gallery. Surfaced
+   * in the panel title next to the dirty marker. */
+  currentFileName: string | null = null;
+  // --- Tier Two: pages, guides, print setup -------------------------
+  /** Snapshots of the pages that are not currently loaded. The
+   * active page's record is always the live scene; switching pages
+   * snapshots it here and loads the target's record. */
+  private pageSnapshots = new Map<string, NativePageRecord>();
+  /** Ruler guides of the active page. */
+  private pageGuides: GuideRecord[] = [];
+  private guideSeq = 0;
+  private guideDrag: { id: string; creating: boolean } | null = null;
+  /** Printer page setup, kept separate from Document Size. */
+  private printSetupState: PrintSetup = defaultPrintSetup();
+  /** Items hidden for the in-flight print, restored by finishPrint. */
+  private printHiddenItems: AnyItem[] = [];
+  private printMarkItems: AnyItem[] = [];
   // Persistent deposit-time combinatoric setting: with a selection
   // present, each deposited shape folds into it using this mode ('none'
   // deposits plainly, exactly as before).
@@ -572,6 +763,8 @@ export class NibGliderEngine {
     mount: (item) => this.mountGuideItem(item),
     unmount: (item) => this.unmountGuideItem(item),
   });
+  /** Point-edit session for the path being point-edited, or null. */
+  private pointEdit: PointEditSession | null = null;
   /** Active handle-resize gesture, or null while idle. The label names the
    * undo entry; export-frame and garment-area resizes share the gesture. */
   private frameResize: {
@@ -867,6 +1060,7 @@ export class NibGliderEngine {
       commit: (label, snap, placed) => {
         this.recordSceneCommand(label, snap.before, snap.selected, placed, snap.retained);
       },
+      imageCombine: (mode, items) => this.combineImageMask(mode, items),
       retain: (item) => {
         if (item instanceof scope.Path || item instanceof scope.CompoundPath) this.scene.retain(item);
       },
@@ -910,6 +1104,7 @@ export class NibGliderEngine {
       setDropNote: (note) => { this.lastDropNote = note; },
       recordDrop: (label, item, selectedBefore) => this.history.recordDrop(label, item, selectedBefore),
       depositTextPayload: (text, at) => { this.pasteTextPayload(text, at); },
+      openDocumentText: (text, fileName) => this.openDocumentText(text, fileName),
       depositImageUrl: (url, at) => { void this.depositImageUrl(url, at); },
       updateTextContent: () => this.updateTextContent(),
       notify: () => this.notify(),
@@ -927,7 +1122,9 @@ export class NibGliderEngine {
         rectKeys: this.repeatRectKeys,
         circleKeys: this.repeatCircleKeys,
         paths: this.repeatPaths,
+        symmetryArmed: this.liveSymmetryArmed,
       }),
+      liveDescriptor: (frame) => this.liveDescriptorForFrame(frame),
       addToActive: (item) => this.layers.addToActive(item),
       place: (item) => this.placeDeposited(item, { front: true }),
       setRows: (rows) => this.setRepeatRows(rows),
@@ -1167,7 +1364,7 @@ export class NibGliderEngine {
   rulerPlacement: RulerPlacement = 'viewer';
 
   setRulerPlacement(v: RulerPlacement): void {
-    if (v !== 'viewer' && v !== 'page') return;
+    if (v !== 'viewer' && v !== 'page' && v !== 'off') return;
     if (v === this.rulerPlacement) return;
     this.rulerPlacement = v;
     this.updateTextContent(); this.notify();
@@ -1193,6 +1390,20 @@ export class NibGliderEngine {
     this.updateTextContent(); this.notify();
   }
 
+  /** Page fill colour (the Fill toggle paints the sheet with it).
+   * Per-document from Slice 17; the default is the long-standing
+   * slate. Edited in Document Settings' Page tab. */
+  pageFillColor = '#29303d';
+
+  setPageFillColor(v: string): void {
+    const checked = cssHex(v, '');
+    if (checked == null) return;
+    if (checked === this.pageFillColor) return;
+    this.pageFillColor = checked;
+    this.drawPage();
+    this.updateTextContent(); this.notify();
+  }
+
   /** Ruler ticks along the four page edges. Off by default. */
   pageSideTicks = false;
 
@@ -1207,8 +1418,25 @@ export class NibGliderEngine {
     return this.documentManager.subscribe(listener);
   }
   markDocumentClean(): void { this.documentManager.markClean(); }
-  /** True when the active layer holds artwork (not overlays). */
-  hasContent(): boolean { return this.contentItems().length > 0; }
+  /** True when any content layer holds artwork (not overlays). */
+  hasContent(): boolean { return this.allContentItems().length > 0; }
+
+  /** Number of top-level content objects on the active page, across all
+   * content layers. Read by the tutorial bridge's object-count predicate. */
+  contentObjectCount(): number { return this.allContentItems().length; }
+
+  /** Content items across every registered content layer, in
+   * bottom-to-top layer order. Editing operations keep using the
+   * active layer (contentItems); save/open/stats use this. */
+  private allContentItems(): AnyItem[] {
+    const out: AnyItem[] = [];
+    for (const layer of this.layers.contentLayers()) {
+      for (const child of [...(layer.children ?? [])] as AnyItem[]) {
+        try { if (!this.scene.isNonContentItem(child)) out.push(child); } catch { /* Detached. */ }
+      }
+    }
+    return out;
+  }
 
   // --- Document session: gallery new/open/save support + SVG transfer ---
   // All mutators record one undo entry and refresh paint/status bridges.
@@ -1216,7 +1444,8 @@ export class NibGliderEngine {
    * Recenters on the workspace so the page opens centered. */
   newDocument(): void {
     if (this.isLiveDrawing) return;
-    const before = this.contentItems();
+    this.adoptDocumentPalette(null);
+    const before = this.allContentItems();
     const selectedBefore = [...this.selectedItems];
     if (before.length === 0) { this.centerOnCanvas(); return; }
     this.clearOutSelection();
@@ -1224,6 +1453,7 @@ export class NibGliderEngine {
       try { item.remove(); } catch { /* Detached already. */ }
     }
     this.scene.pruneRecords();
+    this.currentFileName = null;
     this.recordSceneCommand('New document', before, selectedBefore, []);
     this.centerOnCanvas();
     this.updateTextContent(); this.notify();
@@ -1232,12 +1462,29 @@ export class NibGliderEngine {
   /** Native gallery payload: Paper JSON of artwork items, plus the view.
    * Selection and glow are stripped for the write and restored after. */
   exportScene(): string {
-    const items = this.contentItems();
+    const items = this.allContentItems();
     const selected = this.selection.snapshot();
     this.selection.suspendGlow();
     try {
       for (const item of items) clearTransient(item);
-      return encodeSceneItems(items, this.capturedSceneView());
+      const records = this.layers.listLayers();
+      const layerIdOf = new Map<AnyItem, string>();
+      for (const record of records) {
+        const layer = this.layers.layerForId(record.id);
+        for (const child of (layer?.children ?? []) as AnyItem[]) layerIdOf.set(child, record.id);
+      }
+      return encodeSceneDocument(
+        items.map((item) => ({ item, layerId: layerIdOf.get(item) ?? records[0]?.id ?? '' })),
+        records,
+        this.capturedSceneView(),
+        this.layers.activeLayerId,
+        {
+          guides: this.pageGuides,
+          printSetup: JSON.stringify(this.printSetupState) === JSON.stringify(defaultPrintSetup())
+            ? null
+            : this.printSetupState,
+        },
+      );
     } catch {
       return '';
     } finally {
@@ -1408,6 +1655,82 @@ export class NibGliderEngine {
       quality,
       background: opts.background ?? '#ffffff',
     }).then((blob) => (blob ? { box, blob } : null));
+  }
+
+  /** WebP export for a File > Export scope (Slice 9c). WebP keeps
+   * alpha, so the background defaults to transparent. */
+  exportScopeWEBP(
+    scope: ExportScope,
+    opts: { quality: number; scale: number; background: string | null },
+  ): Promise<{ box: ExportFrameBox; blob: Blob } | null> {
+    const box = this.scopeExportBox(scope);
+    if (!box) return Promise.resolve(null);
+    const svg = this.exportBoxSVG(box);
+    if (!svg) return Promise.resolve(null);
+    const scale = Number.isFinite(opts.scale) && opts.scale > 0 ? opts.scale : 1;
+    const quality = Number.isFinite(opts.quality)
+      ? Math.min(100, Math.max(1, opts.quality)) / 100
+      : 0.92;
+    return rasterizeSvg(svg, exportPngSize(box, scale), {
+      mime: 'image/webp',
+      quality,
+      background: opts.background ?? null,
+    }).then((blob) => (blob ? { box, blob } : null));
+  }
+
+  /** DXF export for a File > Export scope (Slice 9c): the scope's
+   * vector geometry as LWPOLYLINE contours (curves flattened by
+   * sampling). Text and rasters are not represented. */
+  exportScopeDXF(scope: ExportScope): { box: ExportFrameBox; dxf: string } | null {
+    const box = this.scopeExportBox(scope);
+    if (!box) return null;
+    const hidden = this.hideExportOverlays();
+    try {
+      const polylines: DxfPolyline[] = [];
+      const boxRect = new this.scope.Rectangle(box.x, box.y, box.width, box.height);
+      const samplePath = (path: AnyItem): void => {
+        const points: Array<{ x: number; y: number }> = [];
+        for (const curve of (path.curves ?? []) as AnyItem[]) {
+          const steps = Math.max(1, Math.min(48, Math.ceil((curve.length ?? 0) / 4)));
+          for (let s = 0; s <= steps; s++) {
+            const local = curve.getPointAt(s / steps);
+            if (!local) continue;
+            const global = path.localToGlobal(local);
+            const prev = points[points.length - 1];
+            if (!prev || Math.hypot(global.x - prev.x, global.y - prev.y) > 1e-6) {
+              points.push({ x: global.x, y: global.y });
+            }
+          }
+        }
+        const closed = !!path.closed;
+        if (closed && points.length > 1) {
+          const first = points[0];
+          const last = points[points.length - 1];
+          if (Math.hypot(first.x - last.x, first.y - last.y) <= 1e-6) points.pop();
+        }
+        if (points.length >= 2) polylines.push({ points, closed });
+      };
+      const visit = (item: AnyItem): void => {
+        if (!item || item.guide) return;
+        if (item.className === 'CompoundPath') {
+          for (const child of (item.children ?? []) as AnyItem[]) samplePath(child);
+          return;
+        }
+        if (item.className === 'Path') { samplePath(item); return; }
+        for (const child of (item.children ?? []) as AnyItem[]) visit(child);
+      };
+      for (const item of this.contentItems()) {
+        try {
+          if (item?.bounds && !item.bounds.intersects(boxRect)) continue;
+        } catch { /* bounds can throw on detached items */ }
+        visit(item);
+      }
+      return { box, dxf: dxfDocument(toDxfSpace(polylines, box)) };
+    } catch {
+      return null;
+    } finally {
+      this.restoreExportOverlays(hidden);
+    }
   }
 
   // --- Export frames (Rect Keys > In-Canvas Elements > EXPORT FRAME) ---
@@ -1868,6 +2191,71 @@ export class NibGliderEngine {
     return outline ? this.liveGarmentRecord(outline) : null;
   }
 
+  /** The one selected Printify area, for File > Export > Printify.
+   * Returns null unless exactly one area item is selected. */
+  selectedPrintifyArea(): { garmentId: string; position: string } | null {
+    const areas = this.selectedItems.filter(isPrintifyAreaItem);
+    if (areas.length !== 1) return null;
+    try {
+      const garmentId = areas[0].data?.[PRINTIFY_AREA_GARMENT_KEY];
+      const position = areas[0].data?.[PRINTIFY_AREA_POSITION_KEY];
+      if (typeof garmentId !== 'string' || typeof position !== 'string') return null;
+      return { garmentId, position };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Upload the selected garment area to Printify. Progress and failures
+   * are reported through the status overlay note. */
+  async uploadSelectedPrintifyAreaToPrintify(): Promise<boolean> {
+    const selected = this.selectedPrintifyArea();
+    if (!selected) {
+      this.lastDropNote = 'Printify: select one garment area to upload.';
+      this.notify();
+      return false;
+    }
+    try {
+      this.lastDropNote = `Printify: uploading the ${selected.position} area…`;
+      this.notify();
+      await this.uploadPrintifyArea(selected.garmentId, selected.position);
+      this.lastDropNote = `Printify: uploaded the ${selected.position} area.`;
+      this.notify();
+      return true;
+    } catch (err) {
+      this.lastDropNote = `Printify upload failed: ${err instanceof Error ? err.message : String(err)}`;
+      this.notify();
+      return false;
+    }
+  }
+
+  /** Upload every area of the selected garment, then create its product
+   * using the existing Printify shop setting and the garment name. */
+  async createSelectedPrintifyProductOnPrintify(): Promise<boolean> {
+    const record = this.selectedPrintifyGarment();
+    if (!record) {
+      this.lastDropNote = 'Printify: select a garment or one of its areas to create a product.';
+      this.notify();
+      return false;
+    }
+    try {
+      this.lastDropNote = `Printify: uploading ${record.areas.length} garment areas…`;
+      this.notify();
+      const uploads: Record<string, string> = {};
+      for (const area of record.areas) {
+        uploads[area.position] = await this.uploadPrintifyArea(record.id, area.position);
+      }
+      await this.createPrintifyProduct(record.id, uploads, { title: record.name });
+      this.lastDropNote = `Printify: created a product for ${record.name}.`;
+      this.notify();
+      return true;
+    } catch (err) {
+      this.lastDropNote = `Printify product failed: ${err instanceof Error ? err.message : String(err)}`;
+      this.notify();
+      return false;
+    }
+  }
+
   updatePrintifyGarment(id: string, patch: { name: string }): boolean {
     const outline = this.garmentOutlineById(id);
     if (!outline) return false;
@@ -2276,6 +2664,342 @@ export class NibGliderEngine {
     this.setTransformMode(!this.isTransformMode);
   }
 
+  // --- Arrange (Slice 4) -------------------------------------------------
+  // Align/distribute translate the top-level selection by the pure
+  // deltas from geometry/arrange.ts, committed as one labelled move
+  // entry. Flip mirrors through TransformManager (own-inverse affine).
+
+  private applyArrangeDeltas(label: string, deltas: Array<{ x: number; y: number }>): boolean {
+    const items = this.topLevelSelected();
+    if (!items.length || items.length !== deltas.length) return false;
+    const entries: Array<{ item: AnyItem; before: AnyItem; after: AnyItem }> = [];
+    items.forEach((item, i) => {
+      const delta = deltas[i];
+      if (!delta || (delta.x === 0 && delta.y === 0) || !item.position) return;
+      const before = item.position.clone();
+      item.position = item.position.add(new this.scope.Point(delta.x, delta.y));
+      shiftCircleOrigins(item, delta.x, delta.y);
+      entries.push({ item, before, after: item.position.clone() });
+    });
+    if (!entries.length) return false;
+    this.history.recordMove(entries, undefined, label);
+    this.selection.refreshCentroids();
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  alignSelection(mode: AlignMode, target: 'selection' | 'document'): boolean {
+    const items = this.topLevelSelected();
+    if (!items.length) return false;
+    const bounds = items.map((item) => ({
+      x: item.bounds.x, y: item.bounds.y, width: item.bounds.width, height: item.bounds.height,
+    }));
+    const labels: Record<AlignMode, string> = {
+      left: 'Align Left', centerX: 'Align Centre', right: 'Align Right',
+      top: 'Align Top', centerY: 'Align Middle', bottom: 'Align Bottom',
+    };
+    if (target === 'selection') {
+      return this.applyArrangeDeltas(labels[mode], alignToSelectionDeltas(bounds, mode));
+    }
+    const reference = this.pageRect() ?? this.artworkRect();
+    if (!reference) return false;
+    return this.applyArrangeDeltas(`${labels[mode]} to Document`, computeAlignDeltas(bounds, mode, reference));
+  }
+
+  distributeSelection(axis: DistributeAxis): boolean {
+    const items = this.topLevelSelected();
+    if (items.length < 3) return false;
+    const bounds = items.map((item) => ({
+      x: item.bounds.x, y: item.bounds.y, width: item.bounds.width, height: item.bounds.height,
+    }));
+    return this.applyArrangeDeltas(
+      axis === 'horizontal' ? 'Distribute Horizontally' : 'Distribute Vertically',
+      computeDistributeDeltas(bounds, axis),
+    );
+  }
+
+  flipSelection(axis: 'horizontal' | 'vertical'): void {
+    if (!this.topLevelSelected().length) return;
+    this.transforms.flip(axis === 'horizontal');
+    this.documentManager.markEdited('scene');
+    this.updateTextContent();
+    this.notify();
+  }
+
+  // --- Eyedropper --------------------------------------------------------
+  // One-shot: the next canvas press samples the topmost content item
+  // under the point — fill/stroke from its paint, or a raster's
+  // average colour around the point — into the current fill/stroke.
+
+  eyedropperActive = false;
+
+  setEyedropperActive(active: boolean): void {
+    this.eyedropperActive = active;
+    this.notify();
+  }
+
+  /** Pointer hook (PointerController): true when the press sampled. */
+  eyedropperDown(point: AnyItem): boolean {
+    if (!this.eyedropperActive || !point) return false;
+    this.eyedropperActive = false;
+    const picked = this.pickEyedropperColor({ x: point.x, y: point.y });
+    if (picked) {
+      if (picked.fill) this.setFillColor(picked.fill);
+      if (picked.stroke) this.setStrokeColor(picked.stroke);
+      this.lastDropNote = picked.stroke && picked.fill
+        ? `Eyedropper: fill ${picked.fill}, stroke ${picked.stroke}.`
+        : `Eyedropper: ${picked.fill ? `fill ${picked.fill}` : `stroke ${picked.stroke}`}.`;
+    } else {
+      this.lastDropNote = 'Eyedropper: nothing to sample there.';
+    }
+    this.updateTextContent();
+    this.notify();
+    return true;
+  }
+
+  /** Sample colours at a global point from the topmost content item. */
+  pickEyedropperColor(point: { x: number; y: number }): { fill: string | null; stroke: string | null } | null {
+    const probe = new this.scope.Point(point.x, point.y);
+    const items = this.allContentItems();
+    for (let i = items.length - 1; i >= 0; i -= 1) {
+      const item = items[i];
+      if (!item || item.visible === false || item.locked) continue;
+      let hit: AnyItem = null;
+      try {
+        hit = item.hitTest(probe, { fill: true, stroke: true, segments: false, tolerance: 2 });
+      } catch { hit = null; }
+      if (!hit && item.className !== 'Raster') continue;
+      const target = (hit?.item ?? item) as AnyItem;
+      const raster = target.className === 'Raster' ? target : (item.className === 'Raster' ? item : null);
+      if (raster) {
+        try {
+          const local = raster.globalToLocal(probe.clone());
+          const color = raster.getAverageColor(local);
+          if (color) return { fill: color.toCSS('hex'), stroke: null };
+        } catch { /* Fall through to paint. */ }
+      }
+      const fill = target.fillColor ? target.fillColor.toCSS('hex') : null;
+      const stroke = target.strokeColor ? target.strokeColor.toCSS('hex') : null;
+      if (fill || stroke) return { fill, stroke };
+    }
+    return null;
+  }
+
+  // --- Point editing (direct selection) --------------------------------
+  // One session edits one deposited path: anchors and handles show
+  // as overlays, drags and the §PATH KEYS operations each commit a
+  // single history entry, and every commit writes the geometry back
+  // to the retained source (lowered to plain Bézier) and to the
+  // catalog record when the item is a model drawable — a shape
+  // edited at point level becomes a path, per the model bridge.
+
+  get isPointEditActive(): boolean { return this.pointEdit?.active ?? false; }
+
+  /** The path item under point editing, or null. */
+  get pointEditTarget(): AnyItem { return this.pointEdit?.target ?? null; }
+
+  togglePointEdit(): boolean {
+    if (this.pointEdit?.active) {
+      this.exitPointEdit();
+      return false;
+    }
+    const target = this.topLevelSelected().find(
+      (item) => item.className === 'Path' || item.className === 'CompoundPath',
+    );
+    if (!target) return false;
+    return this.enterPointEdit(target);
+  }
+
+  enterPointEdit(item: AnyItem): boolean {
+    if (!item || (item.className !== 'Path' && item.className !== 'CompoundPath')) return false;
+    if (!this.pointEdit) {
+      this.pointEdit = new PointEditSession({
+        scope: this.scope,
+        mountOverlay: (overlay) => this.mountGuideItem(overlay),
+        removeOverlay: (overlay) => this.unmountGuideItem(overlay),
+        commit: (label, target, before, after) => this.commitPointEdit(label, target, before, after),
+        notify: () => this.notify(),
+      });
+    }
+    const ok = this.pointEdit.attach(item);
+    if (ok) this.notify();
+    return ok;
+  }
+
+  exitPointEdit(): void {
+    this.pointEdit?.detach();
+    this.notify();
+  }
+
+  private commitPointEdit(label: string, item: AnyItem, before: ContourSnapshot[], after: ContourSnapshot[]): void {
+    const apply = (snapshots: ContourSnapshot[]): void => {
+      applyPointSnapshots(this.scope, item, snapshots);
+      this.writeBackPointEdit(item);
+      this.pointEdit?.refreshOverlay();
+    };
+    this.history.push({
+      label,
+      undo: () => apply(before),
+      redo: () => apply(after),
+    });
+    this.writeBackPointEdit(item);
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** After a segment edit, the item's retained source is its current
+   * geometry as plain Bézier (semantic intent is replaced, exactly
+   * as getRetainedPathDrawable already exposes it), and a catalog
+   * drawable of kind path/shape is rewritten as a path record. An
+   * item with neither gets a retained record so the edit persists. */
+  private writeBackPointEdit(item: AnyItem): void {
+    try {
+      const id = typeof item.data?.drawableId === 'string' ? item.data.drawableId : null;
+      if (id) {
+        const retained = this.scene.records.get(id);
+        if (retained && retained.item === item) {
+          retained.source = this.scene.bezierSource(item, retained.source.id);
+          retained.geometryKey = this.scene.pathGeometryKey(item);
+        }
+        if (this.catalog.has(id)) {
+          const existing = this.catalog.get(id);
+          const pageId = this.catalog.pageOf(id);
+          if (existing && pageId && (existing.kind === 'path' || existing.kind === 'shape')) {
+            const sourceId = existing.kind === 'path' ? existing.source.id : existing.id;
+            this.catalog.upsert(pageId, {
+              ...existing,
+              kind: 'path',
+              source: this.scene.bezierSource(item, sourceId),
+            } as never);
+          }
+        }
+      } else if (item.className === 'Path' || item.className === 'CompoundPath') {
+        this.scene.retain(item);
+      }
+    } catch { /* Write-back must never break the edit itself. */ }
+    this.scene.pruneRecords();
+  }
+
+  private pointTolerance(): number {
+    try { return 8 / (this.scope.view?.zoom ?? 1); } catch { return 8; }
+  }
+
+  /** Pointer hooks (PointerController): true when the session took
+   * the press/drag. Anchor drags move the point, handle drags move
+   * the handle (Alt breaks coupling / moves the edge from an anchor). */
+  pointEditDown(point: AnyItem, alt: boolean): boolean {
+    if (!this.pointEdit?.active || !point) return false;
+    return this.pointEdit.pointerDown({ x: point.x, y: point.y }, this.pointTolerance(), alt);
+  }
+
+  pointEditDrag(point: AnyItem): boolean {
+    if (!this.pointEdit?.dragging || !point) return false;
+    return this.pointEdit.pointerDrag({ x: point.x, y: point.y });
+  }
+
+  pointEditUp(): boolean {
+    if (!this.pointEdit?.dragging) return false;
+    return this.pointEdit.pointerUp();
+  }
+
+  /** Select Point key-click: select the anchor/handle at the cursor. */
+  selectPointAtCursor(): boolean {
+    if (!this.pointEdit?.active || !this.mousePt) return false;
+    return this.pointEdit.selectAt({ x: this.mousePt.x, y: this.mousePt.y }, this.pointTolerance());
+  }
+
+  cyclePointSelection(dir: 1 | -1 = 1): boolean {
+    return this.pointEdit?.selectNext(dir) ?? false;
+  }
+
+  pointEditInsertPointAtCursor(): boolean {
+    if (!this.pointEdit?.active || !this.mousePt) return false;
+    return this.pointEdit.insertPointAt({ x: this.mousePt.x, y: this.mousePt.y });
+  }
+
+  pointEditDeleteSelectedPoint(): boolean {
+    return this.pointEdit?.deleteSelectedPoint() ?? false;
+  }
+
+  pointEditConvertSelected(to: 'corner' | 'smooth'): boolean {
+    return this.pointEdit?.convertSelected(to) ?? false;
+  }
+
+  pointEditClosePath(): boolean {
+    return this.pointEdit?.closeSelectedContour() ?? false;
+  }
+
+  /**
+   * Join: stitch the edited open path to the nearest other open
+   * path in the active layer, endpoint to endpoint, choosing the
+   * orientation (end-to-end, end-to-start, start-to-start) by the
+   * closest endpoint pair. The other path is consumed; the join is
+   * one history entry whose undo restores both paths.
+   */
+  pointEditJoin(): boolean {
+    const session = this.pointEdit;
+    if (!session?.active) return false;
+    const mine = session.target as AnyItem;
+    const myContour = session.contourSnapshot(0);
+    if (!myContour || myContour.closed || myContour.segments.length === 0) return false;
+    const first = myContour.segments[0].point;
+    const last = myContour.segments[myContour.segments.length - 1].point;
+    let best: { item: AnyItem; contour: ContourSnapshot; mode: 'ee' | 'es' | 'ss' | 'se'; dist: number } | null = null;
+    for (const other of this.contentItems()) {
+      if (other === mine || (other.className !== 'Path' && other.className !== 'CompoundPath')) continue;
+      const contour = snapshotPointItem(other)[0];
+      if (!contour || contour.closed || contour.segments.length === 0) continue;
+      const oFirst = contour.segments[0].point;
+      const oLast = contour.segments[contour.segments.length - 1].point;
+      const candidates = [
+        { mode: 'ee' as const, dist: Math.hypot(last.x - oLast.x, last.y - oLast.y) },
+        { mode: 'es' as const, dist: Math.hypot(last.x - oFirst.x, last.y - oFirst.y) },
+        { mode: 'ss' as const, dist: Math.hypot(first.x - oFirst.x, first.y - oFirst.y) },
+        { mode: 'se' as const, dist: Math.hypot(first.x - oLast.x, first.y - oLast.y) },
+      ];
+      for (const candidate of candidates) {
+        if (!best || candidate.dist < best.dist) {
+          best = { item: other, contour, mode: candidate.mode, dist: candidate.dist };
+        }
+      }
+    }
+    if (!best) return false;
+    const chosen = best;
+    const mergedSegments = chosen.mode === 'ee'
+      ? joinPointEndToEnd(myContour.segments, chosen.contour.segments)
+      : chosen.mode === 'ss'
+        ? joinPointStartToStart(myContour.segments, chosen.contour.segments)
+        : chosen.mode === 'se'
+          ? joinPointEndToEnd(chosen.contour.segments, myContour.segments)
+          : joinPointContours(myContour.segments, chosen.contour.segments);
+    const beforeMine = snapshotPointItem(mine);
+    const afterMine = [{ closed: false, segments: mergedSegments }];
+    const otherParent = chosen.item.parent as AnyItem;
+    const otherIndex = typeof chosen.item.index === 'number' ? chosen.item.index : -1;
+    const applyJoin = (): void => {
+      applyPointSnapshots(this.scope, mine, afterMine);
+      try { chosen.item.remove(); } catch { /* Detached. */ }
+      this.writeBackPointEdit(mine);
+      session.refreshOverlay();
+    };
+    const undoJoin = (): void => {
+      applyPointSnapshots(this.scope, mine, beforeMine);
+      try {
+        if (otherParent && otherIndex >= 0) otherParent.insertChild(otherIndex, chosen.item);
+        else this.layers.activeLayer.addChild(chosen.item);
+      } catch { /* Detached. */ }
+      this.writeBackPointEdit(mine);
+      session.refreshOverlay();
+    };
+    applyJoin();
+    this.history.push({ label: 'Join Paths', undo: undoJoin, redo: applyJoin });
+    this.scene.pruneRecords();
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
   private exitTransformModeIfIdle(): void {
     if (this.isTransformMode && this.topLevelSelected().length === 0) this.setTransformMode(false);
   }
@@ -2670,7 +3394,20 @@ export class NibGliderEngine {
       const ok = this.replaceWithItems(label, () => (
         decodeSceneItems(this.scope.project, blob)
       ), opts);
-      if (ok) this.restoreSceneView(view);
+      if (ok) {
+        this.pruneStaleContentLayers();
+        this.layers.syncWithProject(readSceneLayers(blob));
+        const savedActive = readSceneActiveLayerId(blob);
+        if (savedActive) {
+          const mapped = this.layers.layerIdForRecordFlag(savedActive);
+          if (mapped) this.layers.setActiveLayer(mapped);
+        }
+        this.restoreSceneView(view);
+        this.pageGuides = readSceneGuides(blob);
+        const storedSetup = readScenePrintSetup(blob);
+        if (storedSetup) this.printSetupState = storedSetup;
+        this.renderGuides();
+      }
       return ok;
     }
     if (isSvgMarkup(blob)) {
@@ -2685,6 +3422,770 @@ export class NibGliderEngine {
   /** Replace all artwork with an SVG document (gallery Open). One undo entry. */
   replaceSceneWithSVG(label: string, svg: string, opts?: { history?: boolean }): boolean {
     return this.replaceScene(label, svg, opts);
+  }
+
+  // --- Pages (Tier Two) ------------------------------------------------
+  // Each page is a distinct scene: its own layers, items and guides,
+  // sharing the document's settings. Only the active page is loaded
+  // into the Paper project; the others live as native page records
+  // in pageSnapshots. Switching snapshots the live page and loads
+  // the target record through the same restore path as Open.
+
+  /** Page ids in document order. A document whose single page was
+   * never dimensioned still reports its implicit page. */
+  private documentPageIds(): string[] {
+    const listed = this.documentManager.pageList.map((page) => page.id);
+    if (listed.length > 0) return listed;
+    return [this.documentManager.currentPageId ?? 'page-1'];
+  }
+
+  listPages(): Array<{
+    id: string; name: string; active: boolean;
+    widthPt: number | null; heightPt: number | null;
+  }> {
+    const activeId = this.documentManager.currentPageId ?? 'page-1';
+    return this.documentPageIds().map((id) => {
+      const listed = this.documentManager.pageList.find((page) => page.id === id);
+      const snapshot = this.pageSnapshots.get(id);
+      return {
+        id,
+        name: this.documentManager.pageList.length > 0
+          ? this.documentManager.pageName(id)
+          : (snapshot?.name ?? 'Page 1'),
+        active: id === activeId,
+        widthPt: listed?.widthPt ?? snapshot?.page?.widthPt ?? null,
+        heightPt: listed?.heightPt ?? snapshot?.page?.heightPt ?? null,
+      };
+    });
+  }
+
+  /** Snapshot the live (active) page as a native page record. */
+  private snapshotActivePage(): NativePageRecord | null {
+    const scene = this.exportScene();
+    if (!scene) return null;
+    const pageId = this.documentManager.currentPageId ?? 'page-1';
+    const drawables = structuredClone(this.catalog.ordered(pageId));
+    const catalogIds = new Set(drawables.map((drawable) => drawable.id));
+    const retainedPaths: NGPathDrawable[] = [];
+    for (const id of this.scene.records.keys()) {
+      if (catalogIds.has(id)) continue;
+      const retained = this.getRetainedPathDrawable(id);
+      if (retained) retainedPaths.push(retained);
+    }
+    const page = this.documentManager.pageSettings;
+    return {
+      id: pageId,
+      name: this.listPages().find((entry) => entry.id === pageId)?.name ?? 'Page',
+      page: {
+        widthPt: page.widthPt,
+        heightPt: page.heightPt,
+        orientation: page.orientation,
+        unit: page.unit,
+      },
+      layers: this.listLayers().map((record): NativeLayerRecord => {
+        const out: NativeLayerRecord = { id: record.id, name: record.name };
+        if (typeof record.visible === 'boolean') out.visible = record.visible;
+        if (typeof record.locked === 'boolean') out.locked = record.locked;
+        if (typeof record.opacity === 'number') out.opacity = record.opacity;
+        return out;
+      }),
+      activeLayerId: this.activeLayerId(),
+      drawables,
+      retainedPaths,
+      scene,
+      guides: structuredClone(this.pageGuides),
+    };
+  }
+
+  /** Load a page record as the active page. The record's scene goes
+   * through replaceScene (layers + view restored), then its catalog
+   * drawables, retained sources and guides land. */
+  private loadPageRecord(record: NativePageRecord, label: string): boolean {
+    if (!this.replaceScene(label, record.scene, { history: false })) return false;
+    try {
+      this.catalog.clearPage(record.id);
+      for (const drawable of record.drawables) this.catalog.upsert(record.id, structuredClone(drawable));
+    } catch { /* A bad model section must not strand the artwork. */ }
+    for (const retained of record.retainedPaths) {
+      const item = this.itemByDrawableId(retained.id);
+      if (item) {
+        this.scene.records.set(retained.id, {
+          source: structuredClone(retained.source),
+          item,
+          geometryKey: this.scene.pathGeometryKey(item),
+        });
+      }
+    }
+    this.pageGuides = structuredClone(record.guides ?? []);
+    // Layer presentation state rides the page record (v6): the scene
+    // restore rebuilt the registry in record order, so apply each
+    // record's state to the registry entry at the same position.
+    const registry = this.layers.listLayers();
+    record.layers.forEach((layer, i) => {
+      const target = registry[i];
+      if (!target) return;
+      if (typeof layer.visible === 'boolean') this.layers.setLayerVisible(target.id, layer.visible);
+      if (typeof layer.locked === 'boolean') this.layers.setLayerLocked(target.id, layer.locked);
+      if (typeof layer.opacity === 'number') this.layers.setLayerOpacity(target.id, layer.opacity);
+    });
+    this.documentManager.setActivePage(record.id);
+    this.renderGuides();
+    this.updateTextContent();
+    return true;
+  }
+
+  /** Switch the active page, snapshotting the page being left. */
+  switchPage(id: string): boolean {
+    const activeId = this.documentManager.currentPageId ?? 'page-1';
+    if (id === activeId) return true;
+    if (!this.documentPageIds().includes(id)) return false;
+    const target = this.pageSnapshots.get(id);
+    if (!target) return false;
+    const current = this.snapshotActivePage();
+    if (!current) return false;
+    this.pageSnapshots.set(activeId, current);
+    this.pageSnapshots.delete(id);
+    if (!this.loadPageRecord(target, `Page ${target.name}`)) {
+      this.pageSnapshots.set(id, target);
+      return false;
+    }
+    this.notify();
+    return true;
+  }
+
+  /** Add a blank page (same size as the active page, or US Letter)
+   * and switch to it. Returns the new page id. */
+  addPage(): string {
+    const activeId = this.documentManager.currentPageId ?? 'page-1';
+    const settings = this.documentManager.pageSettings;
+    const widthPt = settings.widthPt ?? 612;
+    const heightPt = settings.heightPt ?? 792;
+    const unit = settings.unit ?? 'pt';
+    // Register the implicit first page so the new page gets a fresh id.
+    if (this.documentManager.pageList.length === 0) {
+      this.documentManager.ensurePage(activeId, widthPt, heightPt, unit);
+      if (settings.widthPt === null) {
+        // The implicit page was unbounded; keep it unbounded in the
+        // record by restoring the no-size state is not representable
+        // in DrawingPage, so the registered size stands (harmless:
+        // it matches the fallback the rulers already used).
+      }
+    }
+    const current = this.snapshotActivePage();
+    if (current) this.pageSnapshots.set(activeId, current);
+    const created = this.documentManager.addPage(widthPt, heightPt, unit);
+    const blankScene = encodeSceneDocument(
+      [],
+      [{ id: `paper-layer-${created.id}`, name: 'Layer 1' }],
+      null,
+      `paper-layer-${created.id}`,
+      {},
+    );
+    const record: NativePageRecord = {
+      id: created.id,
+      name: this.documentManager.pageName(created.id),
+      page: { widthPt, heightPt, orientation: created.orientation, unit },
+      layers: [{ id: `paper-layer-${created.id}`, name: 'Layer 1' }],
+      activeLayerId: `paper-layer-${created.id}`,
+      drawables: [],
+      retainedPaths: [],
+      scene: blankScene,
+      guides: [],
+    };
+    this.loadPageRecord(record, `Page ${record.name}`);
+    this.documentManager.markEdited('page');
+    this.notify();
+    return created.id;
+  }
+
+  /** Duplicate a page (content included) and switch to the copy. */
+  duplicatePage(id: string): string | null {
+    const activeId = this.documentManager.currentPageId ?? 'page-1';
+    let source: NativePageRecord | null = null;
+    if (id === activeId) {
+      source = this.snapshotActivePage();
+      if (source) this.pageSnapshots.set(id, source);
+    } else {
+      source = this.pageSnapshots.get(id) ?? null;
+    }
+    if (!source) return null;
+    if (this.documentManager.pageList.length === 0) {
+      const settings = this.documentManager.pageSettings;
+      this.documentManager.ensurePage(id, settings.widthPt ?? 612, settings.heightPt ?? 792, settings.unit ?? 'pt');
+    }
+    const created = this.documentManager.duplicatePage(id);
+    if (!created) return null;
+    const copy: NativePageRecord = {
+      ...structuredClone(source),
+      id: created.id,
+      name: this.documentManager.pageName(created.id),
+      page: { widthPt: created.widthPt, heightPt: created.heightPt, orientation: created.orientation, unit: created.unit },
+    };
+    this.pageSnapshots.set(created.id, copy);
+    this.switchPage(created.id);
+    this.notify();
+    return created.id;
+  }
+
+  /** Delete a page and its content. The last page cannot go. */
+  deletePage(id: string): boolean {
+    if (this.documentPageIds().length <= 1) return false;
+    const activeId = this.documentManager.currentPageId ?? 'page-1';
+    this.pageSnapshots.delete(id);
+    if (!this.documentManager.removePage(id)) {
+      // The page may only exist as an implicit/snapshot page.
+      if (id !== activeId) return true;
+      return false;
+    }
+    if (id === activeId) {
+      const nextId = this.documentManager.currentPageId;
+      if (!nextId) return false;
+      const target = this.pageSnapshots.get(nextId);
+      if (target) {
+        this.pageSnapshots.delete(nextId);
+        this.loadPageRecord(target, `Page ${target.name}`);
+      } else {
+        this.pageGuides = [];
+        this.renderGuides();
+      }
+    }
+    this.documentManager.markEdited('page');
+    this.notify();
+    return true;
+  }
+
+  renamePage(id: string, name: string): boolean {
+    const snapshot = this.pageSnapshots.get(id);
+    if (snapshot && name.trim()) snapshot.name = name.trim();
+    const ok = this.documentManager.pageList.length > 0
+      ? this.documentManager.renamePage(id, name)
+      : !!snapshot;
+    if (ok) this.notify();
+    return ok;
+  }
+
+  movePage(id: string, dir: 'up' | 'down'): boolean {
+    const ok = this.documentManager.movePage(id, dir);
+    if (ok) this.notify();
+    return ok;
+  }
+
+  // --- Guides (Tier Two) ----------------------------------------------
+  // Guides live on the active page, render onto the guide layer, act
+  // as snap targets alongside points and paths, and persist in the
+  // scene payload and the native file.
+
+  listGuides(): GuideRecord[] { return this.pageGuides.map((guide) => ({ ...guide })); }
+
+  /** Guide visibility: hidden guides still exist on the page and are
+   * still listed in the panel; only their canvas lines (and direct
+   * canvas grabs) turn off. Independent of guide snapping. */
+  guidesVisible = true;
+
+  setGuidesVisible(v: boolean): void {
+    const on = !!v;
+    if (on === this.guidesVisible) return;
+    this.guidesVisible = on;
+    this.renderGuides();
+    this.notify();
+  }
+
+  /** Guide snapping: when off, the guide-snap path never moves a point.
+   * Independent of guide visibility — visible guides need not snap, and
+   * hidden guides still snap while this stays on. */
+  guideSnapping = true;
+
+  setGuideSnapping(v: boolean): void {
+    const on = !!v;
+    if (on === this.guideSnapping) return;
+    this.guideSnapping = on;
+    this.notify();
+  }
+
+  private nextGuideId(): string {
+    let id = '';
+    do {
+      this.guideSeq += 1;
+      id = `guide-${this.guideSeq}`;
+    } while (this.pageGuides.some((guide) => guide.id === id));
+    return id;
+  }
+
+  addGuide(axis: 'x' | 'y', position: number): GuideRecord {
+    const guide = createGuide(this.nextGuideId(), axis, position);
+    this.pageGuides = [...this.pageGuides, guide];
+    this.documentManager.markEdited('scene');
+    this.renderGuides();
+    this.notify();
+    return { ...guide };
+  }
+
+  moveGuide(id: string, position: number): boolean {
+    const guide = this.pageGuides.find((entry) => entry.id === id);
+    if (!guide) return false;
+    const moved = moveGuideRecord(guide, position);
+    if (moved === guide) return false;
+    this.pageGuides = this.pageGuides.map((entry) => (entry.id === id ? moved : entry));
+    this.documentManager.markEdited('scene');
+    this.renderGuides();
+    this.notify();
+    return true;
+  }
+
+  removeGuide(id: string): boolean {
+    const next = removeGuideRecord(this.pageGuides, id);
+    if (next.length === this.pageGuides.length) return false;
+    this.pageGuides = next;
+    this.documentManager.markEdited('scene');
+    this.renderGuides();
+    this.notify();
+    return true;
+  }
+
+  setGuideLocked(id: string, locked: boolean): boolean {
+    const guide = this.pageGuides.find((entry) => entry.id === id);
+    if (!guide) return false;
+    this.pageGuides = this.pageGuides.map((entry) => (entry.id === id ? setGuideLockedRecord(entry, locked) : entry));
+    this.renderGuides();
+    this.notify();
+    return true;
+  }
+
+  clearGuides(): void {
+    if (this.pageGuides.length === 0) return;
+    this.pageGuides = [];
+    this.documentManager.markEdited('scene');
+    this.renderGuides();
+    this.notify();
+  }
+
+  /** Snap threshold for guides, in document points (~8 screen px). */
+  private guideSnapThreshold(): number {
+    const zoom = this.zoomLevel;
+    return Number.isFinite(zoom) && zoom > 0 ? 8 / zoom : 8;
+  }
+
+  private snapPointToGuides(point: AnyItem): AnyItem {
+    if (!point || !this.guideSnapping || this.pageGuides.length === 0) return point;
+    const result = snapToGuides({ x: point.x, y: point.y }, this.pageGuides, this.guideSnapThreshold());
+    if (!result.snappedX && !result.snappedY) return point;
+    return new this.scope.Point(result.point.x, result.point.y);
+  }
+
+  /** Begin dragging a new guide out of a ruler. The guide is created
+   * at the press position and follows dragGuideTo until endGuideDrag. */
+  beginGuideDragFromRuler(axis: 'x' | 'y', point: AnyItem): boolean {
+    if (!point || !Number.isFinite(axis === 'x' ? point.x : point.y)) return false;
+    // Dragging a new guide out of a ruler is a request to see it.
+    if (!this.guidesVisible) this.setGuidesVisible(true);
+    const guide = this.addGuide(axis, axis === 'x' ? point.x : point.y);
+    this.guideDrag = { id: guide.id, creating: true };
+    return true;
+  }
+
+  /** Coordinate form of beginGuideDragFromRuler for DOM callers
+   * (the ruler overlay works in client pixels, not Paper points). */
+  beginGuideDragFromRulerAt(axis: 'x' | 'y', x: number, y: number): boolean {
+    return this.beginGuideDragFromRuler(axis, new this.scope.Point(x, y));
+  }
+
+  /** Coordinate form of dragGuideTo for DOM callers. */
+  dragGuideToCoords(x: number, y: number): void {
+    this.dragGuideTo(new this.scope.Point(x, y));
+  }
+
+  /** Begin dragging the existing guide nearest a canvas press.
+   * Returns true when a guide was grabbed (the press is consumed). */
+  beginGuideDragAt(point: AnyItem): boolean {
+    if (!point || !this.guidesVisible || this.pageGuides.length === 0) return false;
+    const guide = guideAtPoint({ x: point.x, y: point.y }, this.pageGuides, this.guideSnapThreshold());
+    if (!guide) return false;
+    this.guideDrag = { id: guide.id, creating: false };
+    return true;
+  }
+
+  dragGuideTo(point: AnyItem): void {
+    if (!this.guideDrag || !point) return;
+    const guide = this.pageGuides.find((entry) => entry.id === this.guideDrag?.id);
+    if (!guide) return;
+    const moved = moveGuideRecord(guide, guide.axis === 'x' ? point.x : point.y);
+    if (moved === guide) return;
+    this.pageGuides = this.pageGuides.map((entry) => (entry.id === guide.id ? moved : entry));
+    this.renderGuides();
+  }
+
+  endGuideDrag(): void {
+    if (!this.guideDrag) return;
+    this.guideDrag = null;
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  get isGuideDragging(): boolean { return this.guideDrag !== null; }
+
+  /** Draw the active page's guides (and the print-setup preview
+   * overlay when enabled) onto the guide layer. Lines span the page
+   * rect, or the artwork/view when unbounded, padded generously. */
+  renderGuides(): void {
+    try {
+      const layer = this.ensureGuideLayer();
+      for (const child of [...(layer.children ?? [])] as AnyItem[]) {
+        if (child?.data?.guideId || child?.data?.printSetupOverlay) {
+          try { child.remove(); } catch { /* Detached already. */ }
+        }
+      }
+      const page = this.pageRect();
+      const art = this.artworkRect();
+      const cx = page ? page.x + page.width / 2 : art ? art.x + art.width / 2 : 0;
+      const cy = page ? page.y + page.height / 2 : art ? art.y + art.height / 2 : 0;
+      const span = Math.max(page?.width ?? 0, page?.height ?? 0, art?.width ?? 0, art?.height ?? 0, 1000) + 1000;
+      const drawLine = (x1: number, y1: number, x2: number, y2: number, tag: Record<string, unknown>, color: string, dash?: number[]): AnyItem => {
+        const line = new this.scope.Path({
+          segments: [new this.scope.Point(x1, y1), new this.scope.Point(x2, y2)],
+          strokeColor: color,
+          strokeWidth: 1,
+          insert: false,
+        });
+        if (dash) line.dashArray = dash;
+        (line as AnyItem).guide = true;
+        line.locked = true;
+        if (!line.data) line.data = {};
+        Object.assign(line.data, tag);
+        layer.addChild(line);
+        return line;
+      };
+      for (const guide of this.guidesVisible ? this.pageGuides : []) {
+        if (guide.axis === 'x') {
+          drawLine(guide.position, cy - span, guide.position, cy + span, { guideId: guide.id }, guide.locked ? '#8a8f98' : '#2f9be8');
+        } else {
+          drawLine(cx - span, guide.position, cx + span, guide.position, { guideId: guide.id }, guide.locked ? '#8a8f98' : '#2f9be8');
+        }
+      }
+      if (this.printSetupState.preview) {
+        // The dashed rect and the crop marks describe the same sheet:
+        // the document page. (Before Slice 17 the rect was the printer
+        // paper's printable area while the marks framed the page.)
+        // Without a dimensioned page, fall back to the printable area,
+        // which the marks' paper fallback then matches.
+        const printable = page ?? printableRect(this.printSetupState);
+        const rect = new this.scope.Path.Rectangle({
+          point: [printable.x, printable.y],
+          size: [printable.width, printable.height],
+          strokeColor: '#e2712f',
+          strokeWidth: 1,
+          fillColor: null,
+          insert: false,
+        });
+        rect.dashArray = [6, 4];
+        (rect as AnyItem).guide = true;
+        rect.locked = true;
+        if (!rect.data) rect.data = {};
+        rect.data.printSetupOverlay = true;
+        layer.addChild(rect);
+        const pageW = this.documentManager.pageSettings.widthPt ?? this.printSetupState.paperWidthPt;
+        const pageH = this.documentManager.pageSettings.heightPt ?? this.printSetupState.paperHeightPt;
+        for (const seg of cropMarkSegments(pageW, pageH)) {
+          drawLine(seg.from.x, seg.from.y, seg.to.x, seg.to.y, { printSetupOverlay: true }, '#e2712f');
+        }
+      }
+      try { this.scope.view?.update(); } catch { /* Headless. */ }
+    } catch { /* Headless or no project: guides stay model-only. */ }
+  }
+
+  // --- Print (Tier Two) -------------------------------------------------
+  // Page Setup is the printer's paper, margins and crop marks —
+  // separate from Document Size. Print prints the active page;
+  // Print Selection hides everything else for the print pass. The
+  // browser's print flow captures the canvas bitmap (see
+  // onBeforePrint); finishPrint restores visibility afterwards.
+
+  getPrintSetup(): PrintSetup {
+    return { ...this.printSetupState, margins: { ...this.printSetupState.margins } };
+  }
+
+  setPrintSetup(setup: PrintSetup): void {
+    const parsed = readPrintSetup(setup);
+    if (!parsed) return;
+    this.printSetupState = parsed;
+    this.documentManager.markEdited('page');
+    this.renderGuides();
+    this.notify();
+  }
+
+  /**
+   * Print the active page, or only the selection. Non-printing
+   * content is hidden and restored by finishPrint (wired to
+   * afterprint). Returns the Paper item ids that will print.
+   * Headless callers get the same state without a print dialog.
+   */
+  printDocument(scope: PrintScope = 'page'): string[] {
+    this.finishPrint();
+    const all = this.allContentItems();
+    const keep = new Set(resolvePrintItemIds(
+      all.map((item) => String(item.id)),
+      this.selectedItems.map((item) => String(item.id)),
+      scope,
+    ));
+    for (const item of all) {
+      if (!keep.has(String(item.id))) {
+        try {
+          item.visible = false;
+          this.printHiddenItems.push(item);
+        } catch { /* Detached already. */ }
+      }
+    }
+    if (this.printSetupState.cropMarks) {
+      try {
+        const pageW = this.documentManager.pageSettings.widthPt ?? this.printSetupState.paperWidthPt;
+        const pageH = this.documentManager.pageSettings.heightPt ?? this.printSetupState.paperHeightPt;
+        const layer = this.layers.activeLayer;
+        for (const seg of cropMarkSegments(pageW, pageH)) {
+          const line = new this.scope.Path({
+            segments: [
+              new this.scope.Point(seg.from.x, seg.from.y),
+              new this.scope.Point(seg.to.x, seg.to.y),
+            ],
+            strokeColor: '#000000',
+            strokeWidth: 0.5,
+            insert: false,
+          });
+          if (layer) layer.addChild(line);
+          this.printMarkItems.push(line);
+        }
+      } catch { /* Marks are best-effort. */ }
+    }
+    const view = (globalThis as { window?: { print?: () => void } }).window;
+    if (view && typeof view.print === 'function') {
+      try { view.print(); } catch { /* Print is userland. */ }
+    }
+    return [...keep];
+  }
+
+  /** Restore everything printDocument hid or added. Idempotent. */
+  finishPrint(): void {
+    for (const item of this.printHiddenItems) {
+      try { item.visible = true; } catch { /* Detached already. */ }
+    }
+    this.printHiddenItems = [];
+    for (const item of this.printMarkItems) {
+      try { item.remove(); } catch { /* Detached already. */ }
+    }
+    this.printMarkItems = [];
+  }
+
+  // --- Native document files -------------------------------------------
+  // The .nibglider envelope (document/NativeDocument.ts): the NG
+  // model sections (drawables, retained paths, layers, page, view)
+  // ride on the scene payload that carries the live geometry.
+
+  /** The per-document display settings as stored in the file (v5). */
+  displaySettingsSnapshot(): NativeDisplaySettings {
+    return {
+      gridEnabled: this.isGridEnabled,
+      gridType: this.gridType,
+      gridSpacing: this.gridSpacing,
+      gridSubdivisions: this.gridSubdivisions,
+      gridStyle: this.gridStyle,
+      gridColor: this.gridColor,
+      gridOpacity: this.gridOpacity,
+      pageFill: this.pageFill,
+      pageFillColor: this.pageFillColor,
+      pageSideTicks: this.pageSideTicks,
+    };
+  }
+
+  // --- Document palette (Slice 20) ---------------------------------
+  // The kept-colours palette is document state: it travels in the
+  // .nibglider file (v6). `paletteTouched` distinguishes a document
+  // that has a palette (even an emptied one) from one that has none
+  // — only the latter imports the legacy localStorage palette, once.
+
+  documentPalette: string[] = [];
+  paletteFromDocument = false;
+  private paletteTouched = false;
+  private legacyPaletteSeeded = false;
+
+  setDocumentPalette(colors: string[]): void {
+    const next = readPalette(colors) ?? [];
+    this.documentPalette = next;
+    this.paletteTouched = true;
+    this.notify();
+  }
+
+  /** Adopt a document's palette on open (null = no palette of its
+   * own: start empty and let the panel offer the legacy import). */
+  private adoptDocumentPalette(palette: string[] | null): void {
+    if (palette) {
+      this.documentPalette = [...palette];
+      this.paletteFromDocument = true;
+      this.paletteTouched = true;
+    } else {
+      this.documentPalette = [];
+      this.paletteFromDocument = false;
+      this.paletteTouched = false;
+    }
+  }
+
+  /** One-time legacy import: the pre-v6 localStorage palette seeds
+   * a document that carries no palette of its own. */
+  seedDocumentPaletteFromLegacy(colors: string[]): void {
+    if (this.legacyPaletteSeeded || this.paletteFromDocument || this.paletteTouched) return;
+    this.legacyPaletteSeeded = true;
+    const legacy = readPalette(colors);
+    if (legacy && legacy.length > 0) {
+      this.documentPalette = legacy;
+      this.paletteTouched = true;
+      this.notify();
+    }
+  }
+
+  /** Apply a document's display settings (on open, the document's
+   * values win). Each setter validates and repaints as needed. */
+  applyDisplaySettings(display: NativeDisplaySettings): void {
+    this.setGridEnabled(display.gridEnabled);
+    this.setGridType(display.gridType as GridType);
+    this.setGridSpacing(display.gridSpacing);
+    this.setGridSubdivisions(display.gridSubdivisions);
+    this.setGridStyle(display.gridStyle as 'dots' | 'lines');
+    this.setGridColor(display.gridColor);
+    this.setGridOpacity(display.gridOpacity);
+    this.setPageFill(display.pageFill);
+    this.setPageFillColor(display.pageFillColor);
+    this.setPageSideTicks(display.pageSideTicks);
+  }
+
+  /** Serialize the whole document as a native file body. */
+  exportNativeDocument(name: string): string {
+    const active = this.snapshotActivePage();
+    if (!active) return '';
+    const pageById = new Map<string, NativePageRecord>();
+    for (const [id, record] of this.pageSnapshots) pageById.set(id, record);
+    pageById.set(active.id, active);
+    const pages = this.documentPageIds()
+      .map((id) => pageById.get(id))
+      .filter((record): record is NativePageRecord => !!record);
+    for (const record of pageById.values()) {
+      if (!pages.includes(record)) pages.push(record);
+    }
+    const page = this.documentManager.pageSettings;
+    const doc: NativeDocumentFile = buildNativeDocument({
+      name,
+      savedAt: new Date().toISOString(),
+      layers: active.layers,
+      activeLayerId: active.activeLayerId,
+      drawables: active.drawables,
+      retainedPaths: active.retainedPaths,
+      page: {
+        widthPt: page.widthPt,
+        heightPt: page.heightPt,
+        orientation: page.orientation,
+        unit: page.unit,
+      },
+      view: readSceneView(active.scene),
+      scene: active.scene,
+      pages,
+      activePageId: active.id,
+      printSetup: this.printSetupState,
+      display: this.displaySettingsSnapshot(),
+      palette: this.paletteTouched ? [...this.documentPalette] : null,
+    });
+    return serializeNativeDocument(doc);
+  }
+
+  /** Find a live Path/CompoundPath carrying a drawableId (searching
+   * group children), or null. */
+  private itemByDrawableId(id: string): AnyItem {
+    const visit = (item: AnyItem): AnyItem => {
+      if (!item) return null;
+      if (item.data?.drawableId === id
+        && (item.className === 'Path' || item.className === 'CompoundPath')) return item;
+      for (const child of (item.children ?? []) as AnyItem[]) {
+        const found = visit(child);
+        if (found) return found;
+      }
+      return null;
+    };
+    for (const item of this.allContentItems()) {
+      const found = visit(item);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  /**
+   * Open a native document file body. Restores the scene (layers and
+   * view included), the catalog drawables, the retained Bézier
+   * sources, the page size, the current-file name, and clears the
+   * dirty flag. Returns a UI-ready error instead of throwing.
+   */
+  openNativeDocumentText(text: string): { ok: boolean; name?: string; error?: string } {
+    const parsed = parseNativeDocument(text);
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+    const doc = parsed.doc;
+    const activeRecord = doc.pages.find((page) => page.id === doc.activePageId) ?? doc.pages[0];
+    if (!activeRecord) return { ok: false, error: 'That document has no pages.' };
+    // Register every page with the DocumentManager (ids and names),
+    // falling back to the document page size (or Letter) for pages a
+    // v1 file never dimensioned.
+    const fallbackW = doc.page?.widthPt ?? 612;
+    const fallbackH = doc.page?.heightPt ?? 792;
+    const drawingPages: DrawingPage[] = [];
+    const names = new Map<string, string>();
+    for (const record of doc.pages) {
+      drawingPages.push(createDrawingPage(
+        record.id,
+        record.page?.widthPt ?? fallbackW,
+        record.page?.heightPt ?? fallbackH,
+        (record.page?.unit as LengthUnit) ?? 'pt',
+      ));
+      names.set(record.id, record.name);
+    }
+    this.documentManager.setPageList(drawingPages, activeRecord.id, names);
+    this.pageSnapshots.clear();
+    for (const record of doc.pages) {
+      if (record.id !== activeRecord.id) this.pageSnapshots.set(record.id, structuredClone(record));
+    }
+    if (doc.printSetup) this.printSetupState = doc.printSetup;
+    if (doc.display) this.applyDisplaySettings(doc.display);
+    this.adoptDocumentPalette(doc.palette);
+    if (!this.loadPageRecord(structuredClone(activeRecord), `Open ${doc.name}`)) {
+      return { ok: false, error: 'That document’s scene could not be loaded.' };
+    }
+    this.currentFileName = doc.name;
+    this.documentManager.markClean();
+    this.notify();
+    return { ok: true, name: doc.name };
+  }
+
+  /**
+   * Unified file-open entry (Open File picker + document drops):
+   * native documents open natively; legacy nibglider-scene JSON
+   * (v1/v2, including gallery bodies) opens as a scene import.
+   * Returns true when the text was taken as a document.
+   */
+  openDocumentText(text: string, fileName: string): boolean {
+    if (isNativeDocumentText(text)) {
+      const result = this.openNativeDocumentText(text);
+      if (!result.ok) this.noteImportFailure(`Open failed: ${result.error ?? 'unknown error'}`);
+      return result.ok;
+    }
+    if (isSceneJson(text)) {
+      const name = fileName.replace(/\.json$/i, '') || 'Imported Document';
+      if (this.replaceScene(`Open ${name}`, text)) {
+        this.currentFileName = name;
+        this.documentManager.markClean();
+        this.notify();
+        return true;
+      }
+      this.noteImportFailure(`Open failed: ${fileName} could not be loaded.`);
+      return false;
+    }
+    return false;
+  }
+
+  /** Download file name for a Save to File of the current document. */
+  suggestedNativeFileName(name: string): string {
+    return nativeFileName(name);
   }
 
   private ingestSvg(svg: string): AnyItem | null {
@@ -2711,7 +4212,7 @@ export class NibGliderEngine {
     opts?: { history?: boolean },
   ): boolean {
     const recordHistory = opts?.history !== false;
-    const before = this.contentItems();
+    const before = this.allContentItems();
     const selectedBefore = [...this.selectedItems];
     const retainedBefore = new Map(this.retainedPaths);
     this.clearOutSelection();
@@ -2806,10 +4307,10 @@ export class NibGliderEngine {
     this.updateTextContent();
 
     this.input.attach(scope, canvas, {
-      onMouseDown: (event) => this.pointer.onMouseDown(event),
-      onMouseMove: (event) => this.pointer.onMouseMove(event),
-      onMouseDrag: (event) => this.pointer.onMouseDrag(event),
-      onMouseUp: () => this.pointer.releasePointer(),
+      onMouseDown: (event) => this.inputMouseDown(event),
+      onMouseMove: (event) => this.inputMouseMove(event),
+      onMouseDrag: (event) => this.inputMouseDrag(event),
+      onMouseUp: () => this.inputMouseUp(),
       onDoubleClick: (event) => this.handleDoubleClick(event),
       onKeyDown: (event) => this.keyboard.handleKeyDown(event),
       onKeyHighlight: (event) => this.keyboard.reportKeyHighlight(event),
@@ -3061,6 +4562,45 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  setGridSubdivisions(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(1, Math.min(10, Math.floor(v)));
+    if (next === this.gridSubdivisions) return;
+    this.gridSubdivisions = next;
+    if (this.isGridEnabled) this.drawGrid();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setGridStyle(v: 'dots' | 'lines'): void {
+    if (v !== 'dots' && v !== 'lines') return;
+    if (v === this.gridStyle) return;
+    this.gridStyle = v;
+    if (this.isGridEnabled) this.drawGrid();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setGridColor(v: string): void {
+    const checked = cssHex(v, '');
+    if (checked == null) return;
+    if (checked === this.gridColor) return;
+    this.gridColor = checked;
+    if (this.isGridEnabled) this.drawGrid();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setGridOpacity(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0, Math.min(1, v));
+    if (next === this.gridOpacity) return;
+    this.gridOpacity = next;
+    if (this.isGridEnabled) this.drawGrid();
+    this.updateTextContent();
+    this.notify();
+  }
+
   // --- Grid repeat settings ---
   // Row/column counts clamp to 1..12; enabling with 1x1 still deposits the
   // single drawn object (no copies), so the toggle alone never surprises.
@@ -3125,6 +4665,622 @@ export class NibGliderEngine {
     this.repeatManager.refreshPreview();
     this.updateTextContent();
     this.notify();
+  }
+
+  // --- Symmetry repeat (Slice 9a) ---
+
+  setRepeatFamily(v: RepeatFamilyName): void {
+    if (v === this.repeatFamily) return;
+    this.repeatFamily = v;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatWallpaperGroup(v: WallpaperGroupId): void {
+    if (!WALLPAPER_GROUPS[v] || v === this.repeatWallpaperGroup) return;
+    this.repeatWallpaperGroup = v;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatFriezeGroup(v: FriezeGroupId): void {
+    if (!FRIEZE_GROUPS[v] || v === this.repeatFriezeGroup) return;
+    this.repeatFriezeGroup = v;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatSymmetryCount(v: number): void {
+    const next = Math.max(1, Math.min(64, Math.round(v) || 1));
+    if (next === this.repeatSymmetryCount) return;
+    this.repeatSymmetryCount = next;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatPolarReflect(v: boolean): void {
+    this.repeatPolarReflect = v;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** Flatten a path item to a world-space polyline for the
+   * path-following repeat families (longest subpath wins). */
+  private sampleGuidePath(item: AnyItem): { points: Array<{ x: number; y: number }>; closed: boolean } | null {
+    const paths: AnyItem[] = [];
+    const collect = (it: AnyItem): void => {
+      if (!it) return;
+      if (it.className === 'Path') paths.push(it);
+      for (const child of it.children ?? []) collect(child);
+    };
+    collect(item);
+    let best: AnyItem = null;
+    let bestLength = 0;
+    for (const path of paths) {
+      let length = 0;
+      try { length = path.length; } catch { continue; }
+      if (length > bestLength) { best = path; bestLength = length; }
+    }
+    if (!best || !(bestLength > 0)) return null;
+    const count = Math.max(24, Math.min(400, Math.ceil(bestLength / 3)));
+    const points: Array<{ x: number; y: number }> = [];
+    for (let i = 0; i < count; i++) {
+      try {
+        const local = best.getPointAt((bestLength * i) / count);
+        const world = best.localToGlobal(local);
+        points.push({ x: world.x, y: world.y });
+      } catch { return null; }
+    }
+    return { points, closed: !!best.closed };
+  }
+
+  /** The symmetry spec implied by the panel state and the current
+   * selection's bounds, or null without a usable selection. */
+  repeatSpecForSelection(): SymmetryRepeatSpec | null {
+    return this.symmetrySelection()?.spec ?? null;
+  }
+
+  /** Build the descriptor for a family from the panel state,
+   * anchored on a frame (a selection's bounds, a live draw's
+   * bounds, or a stored source's bounds). The single construction
+   * path behind apply, live preview/deposit, and regenerate, so
+   * all three agree. `guide` supplies the reference path for the
+   * path-relative families; null there means no descriptor. */
+  private buildRepeatSpec(
+    family: RepeatFamilyName,
+    anchor: { origin: { x: number; y: number }; center: { x: number; y: number }; width: number; height: number },
+    pivot: { x: number; y: number },
+    guide: { points: Array<{ x: number; y: number }>; closed: boolean } | null,
+  ): SymmetryRepeatSpec | null {
+    switch (family) {
+      case 'wallpaper': {
+        const basis = basisForWallpaper(this.repeatWallpaperGroup, anchor.width, anchor.height);
+        return {
+          family: 'wallpaper',
+          group: this.repeatWallpaperGroup,
+          origin: { ...anchor.origin },
+          basisA: basis.basisA,
+          basisB: basis.basisB,
+          cols: this.repeatCols,
+          rows: this.repeatRows,
+          motifOffsetDeg: this.repeatMotifOffsetDeg,
+        };
+      }
+      case 'frieze':
+        return {
+          family: 'frieze',
+          group: this.repeatFriezeGroup,
+          origin: { ...anchor.origin },
+          step: { x: anchor.width, y: 0 },
+          count: this.repeatSymmetryCount,
+          motifOffsetDeg: this.repeatMotifOffsetDeg,
+        };
+      case 'polar':
+        return {
+          family: 'polar',
+          center: { ...anchor.center },
+          count: this.repeatSymmetryCount,
+          reflect: this.repeatPolarReflect,
+          mode: this.repeatPolarMode,
+          stepDeg: this.repeatPolarStepDeg,
+          motifOffsetDeg: this.repeatMotifOffsetDeg,
+          progressions: this.progressionList([this.polarRadiusProgression, this.polarScaleProgression]),
+          outcome: this.repeatOutcomeName ?? undefined,
+        };
+      case 'alongStroke': {
+        if (!guide) return null;
+        return {
+          family: 'alongStroke',
+          guide: guide.points.map((p) => ({ ...p })),
+          closed: guide.closed,
+          stationMode: this.repeatStationMode,
+          count: this.repeatSymmetryCount,
+          spacing: this.repeatAlongSpacing,
+          pivot: { ...pivot },
+          alignToTangent: this.repeatAlongAlign,
+          orientationOffsetDeg: this.repeatAlongOrientationDeg,
+          progressions: this.progressionList([this.alongGapProgression]),
+        };
+      }
+      case 'normals': {
+        if (!guide) return null;
+        return {
+          family: 'normals',
+          guide: guide.points.map((p) => ({ ...p })),
+          closed: guide.closed,
+          stations: this.repeatSymmetryCount,
+          pivot: { ...pivot },
+        };
+      }
+    }
+  }
+
+  private progressionList(entries: Array<Progression | null>): Progression[] | undefined {
+    const list = entries.filter((entry): entry is Progression => !!entry).map((entry) => ({ ...entry }));
+    return list.length > 0 ? list : undefined;
+  }
+
+  /** Spec + the items it copies. For the path-following families
+   * the guide is the last selected path; the other items repeat
+   * along/across it (a lone path repeats along/across itself). */
+  private symmetrySelection(): { spec: SymmetryRepeatSpec; sources: AnyItem[] } | null {
+    const sources = this.selectedItems.filter((item) => item && !this.isNonContentItem(item));
+    if (sources.length === 0) return null;
+    let guide: { points: Array<{ x: number; y: number }>; closed: boolean } | null = null;
+    let useSources = sources;
+    if (this.repeatFamily === 'alongStroke' || this.repeatFamily === 'normals') {
+      const guides = new Map<AnyItem, { points: Array<{ x: number; y: number }>; closed: boolean }>();
+      for (const item of sources) {
+        const sampled = this.sampleGuidePath(item);
+        if (sampled) guides.set(item, sampled);
+      }
+      const guideItem = [...sources].reverse().find((item) => guides.has(item));
+      if (!guideItem) return null;
+      guide = guides.get(guideItem)!;
+      const rest = sources.filter((item) => item !== guideItem);
+      useSources = rest.length > 0 ? rest : [guideItem];
+    }
+    const first = useSources[0];
+    const b = first.bounds;
+    if (!b || !(b.width > 0) || !(b.height > 0)) return null;
+    const center = this.selection.collectiveCenter(useSources);
+    const spec = this.buildRepeatSpec(
+      this.repeatFamily,
+      {
+        origin: { x: b.x, y: b.y },
+        center: { x: center.x, y: center.y },
+        width: b.width,
+        height: b.height,
+      },
+      { x: b.center.x, y: b.center.y },
+      guide,
+    );
+    if (!spec) return null;
+    return { spec, sources: useSources };
+  }
+
+  /** Apply a symmetry repeat to the selected items: transformed
+   * clones through the scene/history machinery, ONE undo entry. */
+  applySymmetryRepeat(spec?: SymmetryRepeatSpec): number {
+    if (this.isLiveDrawing) return 0;
+    const built = spec ? null : this.symmetrySelection();
+    const useSpec = spec ?? built?.spec;
+    if (!useSpec) return 0;
+    const sources = built?.sources
+      ?? this.selectedItems.filter((item) => item && !this.isNonContentItem(item));
+    if (sources.length === 0) return 0;
+    const snap = this.captureDeposit();
+    const copies = this.repeatManager.applySymmetry(useSpec, sources);
+    const perSource = Math.max(1, copyTransforms(useSpec).length);
+    for (let i = 0; i < copies.length; i++) {
+      const source = sources[Math.min(sources.length - 1, Math.floor(i / perSource))];
+      try { this.scene.retainClone(source, copies[i], (item) => this.shapePartOf(item)); } catch { /* unretained sources clone plainly */ }
+    }
+    if (copies.length === 0) return 0;
+    // Applied deposits store the descriptor on the source too
+    // (Slice 10, revised point 4): Regenerate replays it later.
+    this.tagReplication(sources, copies, perSource, useSpec);
+    this.recordSceneCommand('Repeat', snap.before, snap.selected, copies, snap.retained);
+    this.updateTextContent();
+    this.notify();
+    return copies.length;
+  }
+
+  /** Operations > Repeat Grid: the plain-translation wallpaper
+   * preset (p1) with the panel's rows/columns. */
+  applyRepeatGrid(): number {
+    const savedFamily = this.repeatFamily;
+    const savedGroup = this.repeatWallpaperGroup;
+    this.repeatFamily = 'wallpaper';
+    this.repeatWallpaperGroup = 'p1';
+    const count = this.applySymmetryRepeat();
+    this.repeatFamily = savedFamily;
+    this.repeatWallpaperGroup = savedGroup;
+    return count;
+  }
+
+  /** Operations > Repeat Circle: the polar preset. */
+  applyRepeatCircle(): number {
+    const savedFamily = this.repeatFamily;
+    this.repeatFamily = 'polar';
+    const count = this.applySymmetryRepeat();
+    this.repeatFamily = savedFamily;
+    return count;
+  }
+
+  // --- Live symmetry + retained descriptors (Slice 10, revised) --
+  // One Repeat system: the panel's family + parameters define a
+  // symmetry descriptor (buildRepeatSpec). Armed, that descriptor
+  // previews live during drawing and deposits source + copies in
+  // one undo entry; applied, it deposits the same way. Every
+  // deposit stores the descriptor on the source as its retained
+  // replication record (native model v3); Regenerate replays it —
+  // or the panel's current parameters when they target the same
+  // family — replacing the old copies; Expand detaches it.
+
+  setLiveSymmetryArmed(v: boolean): void {
+    if (v === this.liveSymmetryArmed) return;
+    this.liveSymmetryArmed = v;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatPolarMode(v: 'division' | 'degrees'): void {
+    if (v !== 'division' && v !== 'degrees') return;
+    if (v === this.repeatPolarMode) return;
+    this.repeatPolarMode = v;
+    this.repeatOutcomeName = null;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatPolarStepDeg(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0.1, Math.min(360, v));
+    if (next === this.repeatPolarStepDeg) return;
+    this.repeatPolarStepDeg = next;
+    this.repeatOutcomeName = null;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatMotifOffsetDeg(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(-360, Math.min(360, v));
+    if (next === this.repeatMotifOffsetDeg) return;
+    this.repeatMotifOffsetDeg = next;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatStationMode(v: 'division' | 'spacing' | 'progression'): void {
+    if (v !== 'division' && v !== 'spacing' && v !== 'progression') return;
+    if (v === this.repeatStationMode) return;
+    this.repeatStationMode = v;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatAlongSpacing(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(1, Math.min(2000, v));
+    if (next === this.repeatAlongSpacing) return;
+    this.repeatAlongSpacing = next;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatAlongOrientationDeg(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(-360, Math.min(360, v));
+    if (next === this.repeatAlongOrientationDeg) return;
+    this.repeatAlongOrientationDeg = next;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatAlongAlign(v: boolean): void {
+    this.repeatAlongAlign = v;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** Store a progression for a target, or clear it with null.
+   * Values are validated, never repaired silently beyond finiteness. */
+  private setProgression(
+    target: 'radius' | 'scale' | 'gap',
+    value: { kind: 'arithmetic' | 'geometric'; start: number; step: number } | null,
+  ): void {
+    const next: Progression | null = value && (value.kind === 'arithmetic' || value.kind === 'geometric')
+      && Number.isFinite(value.start) && Number.isFinite(value.step)
+      ? { target, kind: value.kind, start: value.start, step: value.step }
+      : null;
+    if (target === 'radius') this.polarRadiusProgression = next;
+    else if (target === 'scale') this.polarScaleProgression = next;
+    else this.alongGapProgression = next;
+    if (target !== 'gap') this.repeatOutcomeName = null;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setPolarRadiusProgression(v: { kind: 'arithmetic' | 'geometric'; start: number; step: number } | null): void {
+    this.setProgression('radius', v);
+  }
+
+  setPolarScaleProgression(v: { kind: 'arithmetic' | 'geometric'; start: number; step: number } | null): void {
+    this.setProgression('scale', v);
+  }
+
+  setAlongGapProgression(v: { kind: 'arithmetic' | 'geometric'; start: number; step: number } | null): void {
+    this.setProgression('gap', v);
+    if (v) this.repeatStationMode = 'progression';
+  }
+
+  /** Fill the polar + progression fields from a named outcome
+   * (Whorl / Phyllotaxis). The fields stay the source of truth;
+   * the outcome name is kept for display until a field is edited. */
+  applyRepeatOutcome(id: string): void {
+    const outcome = repeatOutcome(id);
+    if (!outcome) return;
+    this.repeatFamily = 'polar';
+    this.repeatPolarMode = 'degrees';
+    this.repeatPolarStepDeg = outcome.stepDeg;
+    this.repeatSymmetryCount = outcome.count;
+    this.polarRadiusProgression = { target: 'radius', ...outcome.growth };
+    this.polarScaleProgression = outcome.scale ? { target: 'scale', ...outcome.scale } : null;
+    this.repeatOutcomeName = outcome.id;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** RepeatManager host: the armed descriptor around the live
+   * draw's frame. For the path-relative families the reference
+   * path is the chosen (or auto-captured selected) guide; without
+   * one there is no live preview yet. */
+  liveDescriptorForFrame(frame: LiveFrame): SymmetryRepeatSpec | null {
+    let guide: { points: Array<{ x: number; y: number }>; closed: boolean } | null = null;
+    if (this.repeatFamily === 'alongStroke' || this.repeatFamily === 'normals') {
+      if (!this.liveGuide) this.captureLiveGuideFromSelection(false);
+      guide = this.liveGuide;
+      if (!guide) return null;
+    }
+    return this.buildRepeatSpec(this.repeatFamily, frame, frame.center, guide);
+  }
+
+  /** Choose the reference path for live path-relative repeats from
+   * the current selection (the last selected path). */
+  captureLiveGuideFromSelection(announce = true): boolean {
+    const candidate = [...this.selectedItems].reverse()
+      .find((item) => item && !this.isNonContentItem(item) && !this.isGuideItem(item));
+    if (!candidate) return false;
+    const sampled = this.sampleGuidePath(candidate);
+    if (!sampled) return false;
+    this.liveGuide = sampled;
+    if (announce) {
+      this.repeatManager.refreshPreview();
+      this.updateTextContent();
+      this.notify();
+    }
+    return true;
+  }
+
+  liveGuidePathChosen(): boolean {
+    return !!this.liveGuide;
+  }
+
+  clearLiveGuidePath(): void {
+    this.liveGuide = null;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** The key linking a replication source to its copies: its
+   * drawable id when it has one, else a per-item key minted on the
+   * source the first time it is tagged. */
+  private replicationKeyOf(item: AnyItem): string {
+    const existing = item?.data?.drawableId ?? item?.data?.replicationKey;
+    if (typeof existing === 'string' && existing) return existing;
+    const key = crypto.randomUUID();
+    if (item?.data) item.data.replicationKey = key;
+    return key;
+  }
+
+  /** Tag a deposit (live or applied): the source keeps the
+   * retained record — the full symmetry descriptor — and each copy
+   * points back at the source's key. The record also mirrors onto
+   * the source's catalog drawable when it has one, so it is part of
+   * the native document model, not only scene data. Copy→source
+   * attribution slices the copies per source; at the shared
+   * 200-copy cap with several sources that attribution can drift
+   * for the last source, which only affects which copies a
+   * regenerate of that source sweeps. */
+  private tagReplication(
+    sources: AnyItem[], copies: AnyItem[], transformsPerSource: number,
+    spec: SymmetryRepeatSpec | null,
+  ): void {
+    if (!spec || copies.length === 0 || transformsPerSource <= 0) return;
+    const record: ReplicationRecord = { version: 2, spec: structuredClone(spec) };
+    sources.forEach((source, i) => {
+      if (!source?.data) return;
+      const key = this.replicationKeyOf(source);
+      source.data.replication = structuredClone(record);
+      const mine = copies.slice(i * transformsPerSource, (i + 1) * transformsPerSource);
+      for (const copy of mine) {
+        if (copy?.data) copy.data.replicationOf = key;
+      }
+      try {
+        const id = this.scene.drawableIdOf(source);
+        const drawable = id ? this.scene.drawableOf(id) : null;
+        if (id && drawable && drawable.replication !== record) {
+          this.scene.bindDrawable({ ...drawable, replication: structuredClone(record) }, source);
+        }
+      } catch { /* Unbound sources keep the record in scene data. */ }
+    });
+  }
+
+  /** The replication record carried by the current selection (via a
+   * source or one of its copies), or null. For the Repeat panel. */
+  selectionReplication(): ReplicationRecord | null {
+    const found = this.replicationSourcesForSelection();
+    return found.length > 0 ? found[0].record : null;
+  }
+
+  /** Resolve selected sources (items carrying a record, plus the
+   * sources of any selected copies) for regenerate/expand. */
+  private replicationSourcesForSelection(): Array<{ source: AnyItem; key: string; record: ReplicationRecord }> {
+    const out: Array<{ source: AnyItem; key: string; record: ReplicationRecord }> = [];
+    const seen = new Set<string>();
+    const content = this.contentItems();
+    for (const item of this.selectedItems) {
+      if (!item) continue;
+      if (isReplicationRecord(item.data?.replication)) {
+        const key = this.replicationKeyOf(item);
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push({ source: item, key, record: item.data.replication });
+        }
+        continue;
+      }
+      const of = item.data?.replicationOf;
+      if (typeof of === 'string') {
+        const source = content.find((candidate) => candidate !== item
+          && isReplicationRecord(candidate.data?.replication)
+          && this.replicationKeyOf(candidate) === of);
+        if (source && !seen.has(of)) {
+          seen.add(of);
+          out.push({ source, key: of, record: source.data.replication });
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Regenerate the copies of each selected replication source from
+   * its stored descriptor. When the Repeat panel is set to the
+   * record's family, the panel's current parameters rebuild the
+   * descriptor around the source (that is how parameters are
+   * adjusted — progressions and outcomes included); otherwise the
+   * stored descriptor replays as-is. For path-relative families the
+   * stored guide path is reused. Old copies are removed and the
+   * stored record is updated; everything lands as ONE undo entry,
+   * so copies are replaced, never duplicated.
+   */
+  regenerateReplication(): number {
+    if (this.isLiveDrawing) return 0;
+    const targets = this.replicationSourcesForSelection();
+    if (targets.length === 0) return 0;
+    const snap = this.captureDeposit();
+    const content = this.contentItems();
+    let made = 0;
+    const placedAll: AnyItem[] = [];
+    for (const { source, key, record } of targets) {
+      for (const item of content) {
+        if (item !== source && item.data?.replicationOf === key) {
+          try { item.remove(); } catch { /* already gone */ }
+        }
+      }
+      let spec: SymmetryRepeatSpec = record.spec;
+      const bounds = source.bounds;
+      if (!bounds) continue;
+      if (this.repeatFamily === record.spec.family) {
+        const stored = record.spec;
+        const guide = stored.family === 'alongStroke' || stored.family === 'normals'
+          ? { points: stored.guide, closed: stored.closed }
+          : this.liveGuide;
+        const built = this.buildRepeatSpec(
+          record.spec.family,
+          {
+            origin: { x: bounds.x, y: bounds.y },
+            center: { x: bounds.center.x, y: bounds.center.y },
+            width: Math.max(1, bounds.width),
+            height: Math.max(1, bounds.height),
+          },
+          { x: bounds.center.x, y: bounds.center.y },
+          guide,
+        );
+        if (built) spec = built;
+      }
+      const copies = this.repeatManager.applySymmetry(spec, [source]);
+      for (const copy of copies) {
+        try { this.scene.retainClone(source, copy, (item) => this.shapePartOf(item)); } catch { /* plain copy */ }
+        if (copy?.data) copy.data.replicationOf = key;
+      }
+      const next: ReplicationRecord = { version: 2, spec: structuredClone(spec) };
+      if (source.data) source.data.replication = structuredClone(next);
+      try {
+        const id = this.scene.drawableIdOf(source);
+        const drawable = id ? this.scene.drawableOf(id) : null;
+        if (id && drawable) this.scene.bindDrawable({ ...drawable, replication: structuredClone(next) }, source);
+      } catch { /* Scene data still carries the record. */ }
+      made += copies.length;
+      placedAll.push(...copies);
+    }
+    this.scene.pruneRecords();
+    if (made > 0) this.recordSceneCommand('Regenerate repeat', snap.before, snap.selected, placedAll, snap.retained);
+    this.updateTextContent();
+    this.notify();
+    return made;
+  }
+
+  /**
+   * Expand replication: copies become ordinary items and the
+   * source's record is detached. This changes only item data (no
+   * items are added or removed), so it is not a history entry.
+   */
+  expandReplication(): number {
+    const targets = this.replicationSourcesForSelection();
+    if (targets.length === 0) return 0;
+    const content = this.contentItems();
+    for (const { source, key } of targets) {
+      if (source.data) {
+        delete source.data.replication;
+        delete source.data.replicationKey;
+      }
+      for (const item of content) {
+        if (item.data?.replicationOf === key) delete item.data.replicationOf;
+      }
+      try {
+        const id = this.scene.drawableIdOf(source);
+        const drawable = id ? this.scene.drawableOf(id) : null;
+        if (id && drawable?.replication) {
+          const cleared = { ...drawable };
+          delete cleared.replication;
+          this.scene.bindDrawable(cleared, source);
+        }
+      } catch { /* Scene data is already cleared. */ }
+    }
+    this.updateTextContent();
+    this.notify();
+    return targets.length;
+  }
+
+  /** DrawingHost hook: capture the armed live symmetry transforms
+   * (and their descriptor) before a composite finish clears the
+   * session. */
+  captureLiveRepeatTransforms(): void {
+    this.pendingLiveTransforms = this.repeatManager.beginDepositTransforms();
+    this.pendingLiveSpec = this.repeatManager.takeDepositSpec();
+  }
+
+  /** DrawingHost hook: place the live symmetry copies for a
+   * composite deposit item and tag the descriptor record. */
+  liveRepeatCopiesFor(item: AnyItem): AnyItem[] {
+    const transforms = this.pendingLiveTransforms ?? this.repeatManager.beginDepositTransforms();
+    const spec = this.pendingLiveSpec ?? this.repeatManager.takeDepositSpec();
+    this.pendingLiveTransforms = null;
+    this.pendingLiveSpec = null;
+    if (!transforms || transforms.length === 0 || !item) return [];
+    const copies = this.repeatManager.finishDepositTransformed([item], transforms);
+    this.tagReplication([item], copies, transforms.length, spec);
+    return copies;
   }
 
   /** Rebuild repeat preview clones for the live draw; safe to call anytime. */
@@ -3403,11 +5559,76 @@ export class NibGliderEngine {
   }
 
   setTextJustification(v: TextJustification): void {
-    if (v !== 'left' && v !== 'center' && v !== 'right') return;
+    if (v !== 'left' && v !== 'center' && v !== 'right' && v !== 'justify') return;
     this.setText({ justification: v });
     this.applyToEditableText((lines) => {
+      // Paper lines carry the value as data; the slack distribution
+      // itself happens in body layout (TextLayout), the one place
+      // lines are wrapped to a measure.
       for (const line of lines) line.justification = v;
     });
+  }
+
+  /** Underline on/off. Live PointText cannot render decoration in
+   * Paper, so selected roots keep the flag as data (root.data) and
+   * it takes visual effect in shape-attached text and on Convert
+   * to Outlines — the same contract as tracking. */
+  setTextUnderline(v: boolean): void {
+    const on = !!v;
+    this.setText({ underline: on });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.underline = on; } catch { /* Best effort. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** Strikethrough on/off: same data/visual contract as underline. */
+  setTextStrikethrough(v: boolean): void {
+    const on = !!v;
+    this.setText({ strikethrough: on });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.strikethrough = on; } catch { /* Best effort. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  setTextCaseTransform(v: TextCaseTransform): void {
+    if (v !== 'none' && v !== 'upper' && v !== 'smallCaps') return;
+    this.setText({ caseTransform: v });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.caseTransform = v; } catch { /* Best effort. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** Baseline shift in points, −20..+40 (positive raises). Data on
+   * selected roots like tracking; visual in shape-attached layout
+   * and outline conversion. */
+  setTextBaselineShift(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const shift = Math.max(-20, Math.min(40, v));
+    this.setText({ baselineShift: shift });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.baselineShift = shift; } catch { /* Best effort. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** Word spacing in points, 0..20: extra advance after each space.
+   * Same storage/visual contract as baseline shift. */
+  setTextWordSpacing(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const spacing = Math.max(0, Math.min(20, v));
+    this.setText({ wordSpacing: spacing });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.wordSpacing = spacing; } catch { /* Best effort. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
   }
 
   setTextLeading(v: number): void {
@@ -3420,6 +5641,234 @@ export class NibGliderEngine {
         line.leading = (Number.isFinite(size) && size > 0 ? size : this.globalText.fontSize) * factor;
       }
     }, true);
+  }
+
+  /** Tracking in points (negative tightens). Stored on selected
+   * editable roots; layout, display/body rendering and outline
+   * conversion read it. Whole-line PointText items cannot render
+   * tracking in Paper, so for selected live text the value is kept
+   * as data and takes visual effect in shape-attached text and on
+   * Convert to Outlines. */
+  setTextLetterSpacing(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const spacing = Math.max(-20, Math.min(100, v));
+    this.setText({ letterSpacing: spacing });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.letterSpacing = spacing; } catch { /* Best effort. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  // --- Convert to Outlines (Tier Two, Slice 6) -----------------------
+  // Selected live text becomes NGPath geometry built from the parsed
+  // font's real glyph outlines (opentype.js), one history step for
+  // the whole conversion. Lines whose family has no parsed font
+  // (system families) stay live and are counted in the result.
+
+  /**
+   * Convert every selected editable text root to outlines.
+   * Returns { converted, skipped }: roots converted, and roots left
+   * live because no parsed font is available for them.
+   */
+  convertSelectedTextToOutlines(): { converted: number; skipped: number } {
+    const roots = this.editableTextRoots();
+    if (roots.length === 0) return { converted: 0, skipped: 0 };
+    const snap = this.captureDeposit();
+    const placed: AnyItem[] = [];
+    let converted = 0;
+    let skipped = 0;
+    for (const root of roots) {
+      const lines = this.editableLines(root);
+      const tracking = typeof root.data?.letterSpacing === 'number'
+        ? root.data.letterSpacing
+        : this.globalText.letterSpacing;
+      // Slice 18 spec data rides on the root like tracking: case,
+      // decorations, baseline shift, word spacing all take their
+      // visual effect here (and in shape-attached layout).
+      const caseTransform = root.data?.caseTransform === 'upper' || root.data?.caseTransform === 'smallCaps'
+        ? root.data.caseTransform
+        : this.globalText.caseTransform;
+      const baselineShift = typeof root.data?.baselineShift === 'number'
+        ? root.data.baselineShift
+        : this.globalText.baselineShift;
+      const wordSpacing = typeof root.data?.wordSpacing === 'number'
+        ? root.data.wordSpacing
+        : this.globalText.wordSpacing;
+      const underline = typeof root.data?.underline === 'boolean' ? root.data.underline : this.globalText.underline;
+      const strikethrough = typeof root.data?.strikethrough === 'boolean' ? root.data.strikethrough : this.globalText.strikethrough;
+      const outlines: AnyItem[] = [];
+      let rootOk = lines.length > 0;
+      for (const line of lines) {
+        let content = '';
+        let family = this.globalText.fontFamily;
+        let weight = this.globalText.fontWeight;
+        let size = this.globalText.fontSize;
+        try {
+          content = String(line.content ?? '');
+          if (typeof line.fontFamily === 'string' && line.fontFamily) family = line.fontFamily;
+          if (typeof line.fontWeight === 'string' && line.fontWeight) weight = line.fontWeight;
+          if (Number.isFinite(line.fontSize) && line.fontSize > 0) size = line.fontSize;
+        } catch { rootOk = false; break; }
+        if (!content.trim()) continue;
+        const font = this.textMetrics.fontFor(family, weight);
+        if (!font) { rootOk = false; break; }
+        if (caseTransform === 'upper') content = content.toUpperCase();
+        const outlined = outlineText(this.scope, font, content, size, tracking, {
+          wordSpacing,
+          smallCaps: caseTransform === 'smallCaps',
+        });
+        if (!outlined) { rootOk = false; break; }
+        const lineItems: AnyItem[] = [outlined.item];
+        // Decorations convert as filled strokes in the glyph group:
+        // thin rectangles in glyph space spanning the line width.
+        if ((underline || strikethrough) && outlined.width > 0) {
+          const th = Math.max(0.75, size * 0.055);
+          const rect = (y0: number): AnyItem => new this.scope.Path.Rectangle({
+            from: [0, y0], to: [outlined.width, y0 + th], insert: false,
+          });
+          if (underline) lineItems.push(rect(size * 0.18));
+          if (strikethrough) lineItems.push(rect(-size * 0.33));
+        }
+        for (const item of lineItems) {
+          // Paper justifies the line around its point: shift the glyph
+          // space so the outline lands where the line renders.
+          const justification = line.justification;
+          if (justification === 'center') item.translate(new this.scope.Point(-outlined.width / 2, 0));
+          else if (justification === 'right') item.translate(new this.scope.Point(-outlined.width, 0));
+          if (baselineShift !== 0) item.translate(new this.scope.Point(0, -baselineShift));
+          try {
+            const matrix = line.globalMatrix;
+            if (matrix) item.transform(matrix);
+          } catch { /* Keep the untransformed outline. */ }
+          try {
+            if (line.fillColor) item.fillColor = line.fillColor;
+          } catch { /* Keep the default fill. */ }
+          item.strokeColor = null;
+          outlines.push(item);
+        }
+      }
+      if (!rootOk || outlines.length === 0) {
+        for (const item of outlines) { try { item.remove(); } catch { /* Never placed. */ } }
+        skipped += 1;
+        continue;
+      }
+      const parent: AnyItem = root.parent ?? this.layers.activeLayer;
+      const index = typeof root.index === 'number' ? root.index : undefined;
+      outlines.forEach((item, i) => {
+        if (parent) {
+          try { parent.insertChild(index !== undefined ? index + i : parent.children.length, item); } catch { this.layers.addToActive(item); }
+        } else {
+          this.layers.addToActive(item);
+        }
+        try { this.scene.retain(item); } catch { /* Geometry still lands. */ }
+        placed.push(item);
+      });
+      try { root.remove(); } catch { /* Already gone. */ }
+      converted += 1;
+    }
+    if (placed.length > 0) {
+      this.selection.restore(placed);
+      this.recordSceneCommand('Convert to outlines', snap.before, snap.selected, placed, snap.retained);
+    }
+    this.updateTextContent();
+    this.notify();
+    return { converted, skipped };
+  }
+
+  // --- User fonts (Tier Two, Slice 6) --------------------------------
+  // Fonts loaded from a file or URL: parsed by opentype.js for
+  // metrics/outlines and registered with FontFace for canvas
+  // rendering. The family list persists in settings; URL fonts
+  // reload on startup, file fonts are session-only (their names are
+  // remembered so documents keep naming them, marked not loaded).
+
+  userFonts(): Array<{ family: string; source: 'file' | 'url'; url?: string; loaded: boolean }> {
+    return this.textMetrics.userFontList();
+  }
+
+  /** Settings payload: every user font the user has added. */
+  userFontSettings(): Array<{ family: string; source: 'file' | 'url'; url?: string }> {
+    return this.textMetrics.userFontList()
+      .map(({ family, source, url }) => ({ family, source, url }));
+  }
+
+  /** Restore user fonts from settings: URL fonts refetch; file fonts
+   * are remembered by name only (bytes are session-only). */
+  restoreUserFonts(list: Array<{ family: string; source: 'file' | 'url'; url?: string }>): void {
+    for (const entry of list ?? []) {
+      if (!entry || typeof entry.family !== 'string' || !entry.family) continue;
+      if (entry.source === 'url' && typeof entry.url === 'string' && entry.url) {
+        void this.addUserFontFromUrl(entry.url, entry.family);
+      } else {
+        this.textMetrics.registerKnownUserFont(entry.family, 'file');
+      }
+    }
+  }
+
+  /** Load a user font from raw TTF/OTF bytes. Returns the family
+   * name on success, null on a parse failure. */
+  async addUserFontFromBytes(
+    bytes: ArrayBuffer,
+    source: 'file' | 'url' = 'file',
+    url?: string,
+  ): Promise<string | null> {
+    let font: ReturnType<typeof opentype.parse>;
+    try {
+      font = opentype.parse(bytes);
+    } catch {
+      return null;
+    }
+    let family = '';
+    try { family = font.getEnglishName('fontFamily') ?? ''; } catch { /* Fall through. */ }
+    if (!family) {
+      try { family = font.names?.fontFamily?.en ?? ''; } catch { /* No name table. */ }
+    }
+    if (!family) return null;
+    this.textMetrics.registerUserFont(family, font, source, url);
+    // Canvas rendering: register the same bytes with FontFace.
+    try {
+      const FontFaceCtor = (globalThis as { FontFace?: typeof FontFace }).FontFace;
+      const fonts = (globalThis as { document?: Document }).document?.fonts;
+      if (FontFaceCtor && fonts) {
+        const face = new FontFaceCtor(family, bytes);
+        await face.load();
+        fonts.add(face);
+      }
+    } catch { /* Metrics/outlines still work; canvas falls back. */ }
+    this.notify();
+    return family;
+  }
+
+  /** Load a user font from a URL (fetched, then the bytes path). */
+  async addUserFontFromUrl(url: string, _familyHint?: string): Promise<string | null> {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return await this.addUserFontFromBytes(await res.arrayBuffer(), 'url', url);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The weight menu for a family: what the family actually ships. */
+  textWeightOptions(family: string): Array<{ value: string; label: string }> {
+    return weightsForFamily(family, this.textMetrics.fontFor(family, 'normal'))
+      .map(({ value, label }) => ({ value, label }));
+  }
+
+  /** Extra points after each paragraph (blank-line separated) in
+   * body text. Re-stacks selected body roots immediately. */
+  setTextParagraphSpacing(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const spacing = Math.max(0, Math.min(500, v));
+    this.setText({ paragraphSpacing: spacing });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.paragraphSpacing = spacing; } catch { /* Best effort. */ }
+      if (root.data?.textKind === 'body') this.restackBodyLines(root);
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
   }
 
   // --- Editable text selection sync (Text panel) ---
@@ -3487,6 +5936,7 @@ export class NibGliderEngine {
       if (first) italic = first.data?.italic === true;
     } catch { /* Keep the default. */ }
     const justification = first?.justification;
+    const rootData = roots[0]?.data ?? {};
     return {
       content: contents.join('\n'),
       line2: base.line2,
@@ -3494,11 +5944,280 @@ export class NibGliderEngine {
       fontSize: size,
       fontWeight,
       italic,
-      justification: justification === 'left' || justification === 'right' || justification === 'center'
+      underline: typeof rootData.underline === 'boolean' ? rootData.underline : base.underline,
+      strikethrough: typeof rootData.strikethrough === 'boolean' ? rootData.strikethrough : base.strikethrough,
+      caseTransform: rootData.caseTransform === 'upper' || rootData.caseTransform === 'smallCaps'
+        ? rootData.caseTransform
+        : rootData.caseTransform === 'none' ? 'none' : base.caseTransform,
+      baselineShift: typeof rootData.baselineShift === 'number' ? rootData.baselineShift : base.baselineShift,
+      wordSpacing: typeof rootData.wordSpacing === 'number' ? rootData.wordSpacing : base.wordSpacing,
+      justification: justification === 'left' || justification === 'right' || justification === 'center' || justification === 'justify'
         ? justification
         : base.justification,
       leading: factor !== null ? Math.max(0.8, Math.min(3, factor)) : base.leading,
+      letterSpacing: typeof rootData.letterSpacing === 'number' ? rootData.letterSpacing : base.letterSpacing,
+      paragraphSpacing: typeof rootData.paragraphSpacing === 'number' ? rootData.paragraphSpacing : base.paragraphSpacing,
     };
+  }
+
+  // --- Text styles (Slice 19) -------------------------------------
+  // Named TextSpec presets in app settings (not per-document: a
+  // style is a tool carried between documents, like added fonts).
+  // Applying to a selected text object restyles it as ONE undo
+  // entry; with no selection it sets the creation spec. A style
+  // never applies content/line2 — those are the document's words.
+
+  textStyles(): Array<TextStyleEntry & { builtIn: boolean }> {
+    return [
+      ...BUILT_IN_TEXT_STYLES.map((s) => ({ name: s.name, spec: { ...s.spec }, builtIn: true })),
+      ...this.userTextStyles.map((s) => ({ name: s.name, spec: { ...s.spec }, builtIn: false })),
+    ];
+  }
+
+  saveCurrentTextStyle(name: string): boolean {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    if (BUILT_IN_TEXT_STYLES.some((s) => s.name === trimmed)) return false;
+    const spec = this.selectionText() ?? { ...this.globalText };
+    const entry: TextStyleEntry = { name: trimmed, spec: { ...spec } };
+    const existing = this.userTextStyles.findIndex((s) => s.name === trimmed);
+    if (existing >= 0) this.userTextStyles[existing] = entry;
+    else this.userTextStyles.push(entry);
+    this.notify();
+    return true;
+  }
+
+  deleteTextStyle(name: string): boolean {
+    const index = this.userTextStyles.findIndex((s) => s.name === name);
+    if (index < 0) return false;
+    this.userTextStyles.splice(index, 1);
+    this.notify();
+    return true;
+  }
+
+  applyTextStyle(name: string): boolean {
+    const entry = this.textStyles().find((s) => s.name === name);
+    if (!entry) return false;
+    const roots = this.editableTextRoots();
+    if (roots.length === 0) {
+      this.setText(stylePatch(entry.spec));
+      return true;
+    }
+    // One undo entry: scene commands only track item set changes,
+    // so an in-place restyle pushes a custom command capturing the
+    // lines' before/after style state (the point-edit pattern).
+    const spec = entry.spec;
+    interface LineState {
+      fontFamily: unknown; fontWeight: unknown; fontSize: unknown;
+      leading: unknown; justification: unknown; italic: boolean;
+    }
+    const DATA_KEYS = [
+      'letterSpacing', 'paragraphSpacing', 'underline', 'strikethrough',
+      'caseTransform', 'baselineShift', 'wordSpacing',
+    ] as const;
+    const capture = (): { lines: Map<AnyItem, LineState>; data: Map<AnyItem, Record<string, unknown>> } => {
+      const lines = new Map<AnyItem, LineState>();
+      const data = new Map<AnyItem, Record<string, unknown>>();
+      for (const root of roots) {
+        const rootData: Record<string, unknown> = {};
+        for (const key of DATA_KEYS) {
+          try { rootData[key] = root.data?.[key]; } catch { /* Unreadable. */ }
+        }
+        data.set(root, rootData);
+        for (const line of this.editableLines(root)) {
+          let italic = false;
+          try { italic = line.data?.italic === true; } catch { /* Not italic. */ }
+          lines.set(line, {
+            fontFamily: line.fontFamily, fontWeight: line.fontWeight,
+            fontSize: line.fontSize, leading: line.leading,
+            justification: line.justification, italic,
+          });
+        }
+      }
+      return { lines, data };
+    };
+    const apply = (state: { lines: Map<AnyItem, LineState>; data: Map<AnyItem, Record<string, unknown>> }): void => {
+      this.applyToEditableText((lines, root) => {
+        for (const line of lines) {
+          const s = state.lines.get(line);
+          if (!s) continue;
+          line.fontFamily = s.fontFamily;
+          line.fontWeight = s.fontWeight;
+          line.fontSize = s.fontSize;
+          line.leading = s.leading;
+          line.justification = s.justification;
+          this.setLineItalic(line, s.italic);
+        }
+        const rootData = state.data.get(root);
+        if (rootData) {
+          try {
+            for (const key of DATA_KEYS) root.data[key] = rootData[key];
+          } catch { /* Best effort. */ }
+        }
+      }, true);
+    };
+    const before = capture();
+    const touched = this.applyToEditableText((lines, root) => {
+      for (const line of lines) {
+        line.fontFamily = spec.fontFamily;
+        line.fontWeight = spec.fontWeight;
+        line.fontSize = spec.fontSize;
+        line.leading = Math.max(0.8, spec.leading || 1.2) * spec.fontSize;
+        line.justification = spec.justification;
+        this.setLineItalic(line, spec.italic);
+      }
+      try {
+        root.data.letterSpacing = spec.letterSpacing;
+        root.data.paragraphSpacing = spec.paragraphSpacing;
+        root.data.underline = spec.underline;
+        root.data.strikethrough = spec.strikethrough;
+        root.data.caseTransform = spec.caseTransform;
+        root.data.baselineShift = spec.baselineShift;
+        root.data.wordSpacing = spec.wordSpacing;
+      } catch { /* Best effort. */ }
+    }, true);
+    if (touched) {
+      const after = capture();
+      this.history.push({
+        label: `Apply text style ${name}`,
+        undo: () => { apply(before); this.notify(); },
+        redo: () => { apply(after); this.notify(); },
+      });
+      this.documentManager.markEdited('scene');
+    }
+    this.notify();
+    return true;
+  }
+
+  /** Settings payload: the user's saved styles (built-ins ship in
+   * code and are never stored). */
+  userTextStyleSettings(): TextStyleEntry[] {
+    return this.userTextStyles.map((s) => ({ name: s.name, spec: { ...s.spec } }));
+  }
+
+  restoreUserTextStyles(list: unknown): void {
+    if (!Array.isArray(list)) return;
+    const out: TextStyleEntry[] = [];
+    for (const raw of list) {
+      const entry = sanitizeTextStyle(raw, this.globalText);
+      if (entry
+        && !BUILT_IN_TEXT_STYLES.some((b) => b.name === entry.name)
+        && !out.some((o) => o.name === entry.name)) {
+        out.push(entry);
+      }
+    }
+    this.userTextStyles = out;
+  }
+
+  // --- Find & Replace in text (Slice 19) ---------------------------
+  // Scope: the standalone text objects on the current page (editable
+  // roots across the page's content layers). Shape-attached text is
+  // regenerated from the creation spec, so it is not searched.
+
+  pageTextObjects(): AnyItem[] {
+    return this.allContentItems().filter((item) => !!item?.data?.editableText);
+  }
+
+  private countOccurrences(haystack: string, needle: string, caseSensitive: boolean): number {
+    if (!needle) return 0;
+    const h = caseSensitive ? haystack : haystack.toLowerCase();
+    const n = caseSensitive ? needle : needle.toLowerCase();
+    let count = 0;
+    let at = h.indexOf(n);
+    while (at >= 0) {
+      count += 1;
+      at = h.indexOf(n, at + n.length);
+    }
+    return count;
+  }
+
+  countTextMatches(query: string, caseSensitive: boolean): number {
+    let total = 0;
+    for (const root of this.pageTextObjects()) {
+      for (const line of this.editableLines(root)) {
+        try { total += this.countOccurrences(String(line.content ?? ''), query, caseSensitive); } catch { /* Skip unreadable lines. */ }
+      }
+    }
+    return total;
+  }
+
+  private replaceInText(
+    content: string, query: string, replacement: string, caseSensitive: boolean, firstOnly: boolean,
+  ): { text: string; count: number } {
+    if (!query) return { text: content, count: 0 };
+    const h = caseSensitive ? content : content.toLowerCase();
+    const n = caseSensitive ? query : query.toLowerCase();
+    let out = '';
+    let from = 0;
+    let count = 0;
+    let at = h.indexOf(n, from);
+    while (at >= 0) {
+      out += content.slice(from, at) + replacement;
+      from = at + n.length;
+      count += 1;
+      if (firstOnly) break;
+      at = h.indexOf(n, from);
+    }
+    out += content.slice(from);
+    return { text: out, count };
+  }
+
+  /** Push one undo entry for a set of in-place line-content edits
+   * (scene commands only track item set changes, so content edits
+   * capture before/after strings — the point-edit pattern). */
+  private recordTextContentEdit(label: string, plans: Array<{ line: AnyItem; before: string; after: string }>): void {
+    const apply = (key: 'before' | 'after'): void => {
+      for (const plan of plans) {
+        try { plan.line.content = plan[key]; } catch { /* Keep the current line. */ }
+      }
+    };
+    apply('after');
+    this.history.push({
+      label,
+      undo: () => { apply('before'); this.notify(); },
+      redo: () => { apply('after'); this.notify(); },
+    });
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** Replace every match on the page as ONE undo entry; returns
+   * the number of replacements (0 records no history). */
+  replaceAllText(query: string, replacement: string, caseSensitive: boolean): number {
+    if (!query) return 0;
+    const plans: Array<{ line: AnyItem; before: string; after: string }> = [];
+    let total = 0;
+    for (const root of this.pageTextObjects()) {
+      for (const line of this.editableLines(root)) {
+        let content = '';
+        try { content = String(line.content ?? ''); } catch { continue; }
+        const result = this.replaceInText(content, query, replacement, caseSensitive, false);
+        if (result.count > 0) {
+          plans.push({ line, before: content, after: result.text });
+          total += result.count;
+        }
+      }
+    }
+    if (total === 0) return 0;
+    this.recordTextContentEdit('Replace all text', plans);
+    return total;
+  }
+
+  /** Replace the first match on the page (one undo entry). */
+  replaceFirstTextMatch(query: string, replacement: string, caseSensitive: boolean): boolean {
+    if (!query) return false;
+    for (const root of this.pageTextObjects()) {
+      for (const line of this.editableLines(root)) {
+        let content = '';
+        try { content = String(line.content ?? ''); } catch { continue; }
+        const result = this.replaceInText(content, query, replacement, caseSensitive, true);
+        if (result.count > 0) {
+          this.recordTextContentEdit('Replace text', [{ line, before: content, after: result.text }]);
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /** Run a mutation over every selected editable root's lines, keeping each
@@ -3572,10 +6291,19 @@ export class NibGliderEngine {
       step = Number(lines[0].leading);
     } catch { return; }
     if (!origin || !(step > 0)) return;
+    const paragraphSpacing = Math.max(0, Number(root.data?.paragraphSpacing) || 0);
+    let y = origin.y;
     lines.forEach((line, i) => {
       if (i === 0) return;
+      y += step;
+      // A blank line ends a paragraph: the next line also gets the
+      // paragraph gap (Tier Two, Slice 6).
+      const prev = lines[i - 1];
+      let prevBlank = false;
+      try { prevBlank = String(prev?.content ?? '').trim() === ''; } catch { /* Not blank. */ }
+      if (prevBlank) y += paragraphSpacing;
       try {
-        line.position = new this.scope.Point(origin.x, origin.y + i * step);
+        line.position = new this.scope.Point(origin.x, y);
       } catch { /* Keep the line where it is. */ }
     });
   }
@@ -3919,6 +6647,13 @@ export class NibGliderEngine {
     pt.leading = Math.max(0.8, spec.leading || 1.2) * size;
     pt.data.textKind = 'display';
     pt.data.editableText = true;
+    pt.data.letterSpacing = spec.letterSpacing;
+    pt.data.paragraphSpacing = spec.paragraphSpacing;
+    pt.data.underline = spec.underline;
+    pt.data.strikethrough = spec.strikethrough;
+    pt.data.caseTransform = spec.caseTransform;
+    pt.data.baselineShift = spec.baselineShift;
+    pt.data.wordSpacing = spec.wordSpacing;
     this.setLineItalic(pt, spec.italic);
   }
 
@@ -4114,12 +6849,12 @@ export class NibGliderEngine {
       this.interlace.interlaceSelection(this.interlaceGap);
       return;
     }
-    if (mode !== 'union' && mode !== 'subtract' && mode !== 'intersect' && mode !== 'crop' && mode !== 'cut') return;
+    if (mode !== 'union' && mode !== 'subtract' && mode !== 'intersect' && mode !== 'exclude' && mode !== 'crop' && mode !== 'cut') return;
     this.combinatorics.combineSelection(mode);
   }
 
   setCombineMode(m: CombineMode | 'none'): void {
-    if (m !== 'none' && m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop'
+    if (m !== 'none' && m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'exclude' && m !== 'crop'
       && m !== 'cut' && m !== 'interlace') return;
     if (m !== 'none') this.combineTool = m;
     this.combineMode = m;
@@ -4129,7 +6864,7 @@ export class NibGliderEngine {
   }
 
   setCombineTool(m: CombineMode): void {
-    if (m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop' && m !== 'cut' && m !== 'interlace') return;
+    if (m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'exclude' && m !== 'crop' && m !== 'cut' && m !== 'interlace') return;
     if (this.combineTool === m) return;
     this.combineTool = m;
     this.notify();
@@ -4316,6 +7051,60 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  /** Bow parameters stamped onto bowed points at deposit (Slice 14,
+   * TASKS-FMStroke Phase 5.3). Stored through the settings registry. */
+  get bowAmplitude(): number { return this.compositePathTool.bowParams.amplitude; }
+  setBowAmplitude(value: number): void {
+    if (!Number.isFinite(value) || value < 0) return;
+    this.compositePathTool.setBowParams({ amplitude: value });
+    this.updateTextContent();
+    this.notify();
+  }
+  get bowAmplitudeIsPercent(): boolean { return this.compositePathTool.bowParams.amplitudeIsPercent; }
+  setBowAmplitudeIsPercent(on: boolean): void {
+    this.compositePathTool.setBowParams({ amplitudeIsPercent: !!on });
+    this.updateTextContent();
+    this.notify();
+  }
+  get bowPeakLocation(): number { return this.compositePathTool.bowParams.peakLocation; }
+  setBowPeakLocation(value: number): void {
+    if (!Number.isFinite(value) || value < 0 || value > 1) return;
+    this.compositePathTool.setBowParams({ peakLocation: value });
+    this.updateTextContent();
+    this.notify();
+  }
+  get bowIsArc(): boolean { return this.compositePathTool.bowParams.isArc; }
+  setBowIsArc(on: boolean): void {
+    this.compositePathTool.setBowParams({ isArc: !!on });
+    this.updateTextContent();
+    this.notify();
+  }
+  /** The live session's rounding selection (status display). */
+  get compositeRoundingMode(): string { return this.compositePathTool.roundingMode; }
+
+  /** Manual keyboard-layout choice: 'auto' follows D1 (the spline
+   * layout activates while composite mode is on / a composite
+   * session is live); 'base'/'spline' pin a layout when not drawing
+   * a composite path. */
+  keyboardLayoutChoice: 'auto' | 'base' | 'spline' = 'auto';
+  setKeyboardLayoutChoice(choice: string): void {
+    if (choice !== 'auto' && choice !== 'base' && choice !== 'spline') return;
+    this.keyboardLayoutChoice = choice;
+    this.updateTextContent();
+    this.notify();
+  }
+  activeKeyboardLayoutId(): KeyboardLayoutId {
+    // Merge resolution: remote derivation wins, with the manual override
+    // (now only the clothoid-layout key) and clothoid sessions grafted on.
+    const manual = this.manualLayoutId;
+    if (manual === 'clothoid' || manual === 'spline' || manual === 'base') return manual;
+    if (this.compositePathTool.isClothoid) return 'clothoid';
+    if (this.compositePathTool.active || this.pathDrawingMode === 'ngComposite') return 'spline';
+    return this.keyboardLayoutChoice === 'auto' ? 'base' : this.keyboardLayoutChoice;
+  }
+  /** Controller-facing layout id (KeyboardHost.keyboardLayoutId). */
+  keyboardLayoutId(): KeyboardLayoutId { return this.activeKeyboardLayoutId(); }
+
   getRetainedPathDrawable(id: string): NGPathDrawable | null {
     return this.scene.getRetainedPathDrawable(id);
   }
@@ -4399,11 +7188,18 @@ export class NibGliderEngine {
   updatePreviewBox(): void {}
 
   // --- Grid (drawingProperties.js) ---
-  // Dots, not lines: one small low-alpha dot per lattice point. Diamond is
-  // the square lattice rotated 45° with the same neighbor spacing, so snap
-  // targets coincide with the rendered dots (see snapToGrid).
+  // Dots (or lattice lines) at the grid spacing, with optional minor
+  // subdivision dots; colour and opacity are per-document settings.
+  // Diamond is the square lattice rotated 45° with the same neighbor
+  // spacing, so snap targets coincide with the rendered lattice (see
+  // snapToGrid).
   drawGrid(): void {
-    this.gridRenderer.draw(this.gridType, this.gridSpacing);
+    this.gridRenderer.draw(this.gridType, this.gridSpacing, {
+      subdivisions: this.gridSubdivisions,
+      style: this.gridStyle,
+      color: this.gridColor,
+      opacity: this.gridOpacity,
+    });
     this.gridLayer = this.gridRenderer.gridLayer;
     // Page corner marks and the grid both paint with sendToBack, so
     // restack the grid above the page chrome after every draw.
@@ -4488,7 +7284,7 @@ export class NibGliderEngine {
             size: new scope.Size(page.width, page.height),
             insert: false,
           });
-          sheet.fillColor = new scope.Color(0.16, 0.19, 0.24, 1);
+          sheet.fillColor = new scope.Color(this.pageFillColor);
           sheet.strokeColor = null;
           sheet.guide = true;
           sheet.locked = true;
@@ -4504,10 +7300,11 @@ export class NibGliderEngine {
         }
         if (this.pageSideTicks) {
           const unit = this.drawingPage?.unit ?? 'pt';
-          const spacing = this.gridSpacing;
           const major = 10 / zoom;
           const minor = 6 / zoom;
-          const along = (size: number, phase: number) => computeRulerTicks(size, spacing, unit, phase);
+          // Side ticks measure from the page corner at nice intervals,
+          // like the rulers — not on grid lines.
+          const along = (size: number, phase: number) => computeRulerTicks(size, unit, zoom, phase, true);
           for (const tick of pageEdgeTicks(page, along(page.width, page.x), along(page.height, page.y), major, minor)) {
             const mark: AnyItem = new scope.Path({ insert: false });
             for (const pt of tick.points) mark.add(new scope.Point(pt.x, pt.y));
@@ -4612,11 +7409,13 @@ export class NibGliderEngine {
   applyPathSnapping(original: AnyItem): void {
     const snapped = this.snapping.snapPath(original);
     if (snapped) this.mousePt = snapped;
+    this.mousePt = this.snapPointToGuides(this.mousePt);
     this.pathSnapCursor = this.snapping.pathIndicator;
   }
   applyPointSnapping(original: AnyItem): void {
     const snapped = this.snapping.snapPoint(original);
     if (snapped) this.mousePt = snapped;
+    this.mousePt = this.snapPointToGuides(this.mousePt);
     this.pointSnapCursor = this.snapping.pointIndicator;
   }
 
@@ -4878,6 +7677,31 @@ export class NibGliderEngine {
     this.updateTextContent(); this.notify();
   }
 
+  /** History panel data: entry labels in chronological order and
+   * the current position (entries before it are applied). */
+  historyEntries(): { labels: string[]; position: number } {
+    return this.history.entries();
+  }
+
+  /** Jump the history to a position (0 = empty document state
+   * before the first entry) by walking undo/redo one entry at a
+   * time — the same commands the Undo/Redo buttons run, so every
+   * entry's own guards apply. One user action, several entries. */
+  jumpToHistoryPosition(position: number): void {
+    if (this.isLiveDrawing) return;
+    const { labels } = this.history.entries();
+    const target = Math.max(0, Math.min(labels.length, Math.round(position)));
+    let guard = labels.length + 2;
+    while (guard-- > 0) {
+      const current = this.history.entries().position;
+      if (current === target) break;
+      if (current > target) this.history.undo();
+      else this.history.redo();
+    }
+    this.exitTransformModeIfIdle();
+    this.updateTextContent(); this.notify();
+  }
+
   // Top-level active-layer artwork. Live previews, cursors, and the
   // grid are excluded so a snapshot can never resurrect UI chrome.
   private contentItems(): AnyItem[] {
@@ -5035,7 +7859,7 @@ export class NibGliderEngine {
     }
   }
 
-  pasteSceneJson(json: string, at?: AnyItem): boolean {
+  pasteSceneJson(json: string, at?: AnyItem, inPlace = false): boolean {
     if (this.isLiveDrawing || !isSceneJson(json)) return false;
     const before = this.contentItems();
     const selectedBefore = [...this.selectedItems];
@@ -5046,7 +7870,9 @@ export class NibGliderEngine {
       return false;
     }
     if (placed.length === 0) return false;
-    this.centerPlacedOn(placed, this.pasteTarget(at));
+    // Paste in Place keeps the decoded (source) coordinates instead
+    // of re-centring on the paste target.
+    if (!inPlace) this.centerPlacedOn(placed, this.pasteTarget(at));
     this.selection.restore(placed);
     this.recordSceneCommand(
       placed.length > 1 ? `Paste ${placed.length} items` : 'Paste',
@@ -5095,6 +7921,8 @@ export class NibGliderEngine {
       pt.leading = leading;
       pt.data.textKind = kind;
       pt.data.editableText = true;
+      pt.data.letterSpacing = spec.letterSpacing;
+      pt.data.paragraphSpacing = spec.paragraphSpacing;
     };
     let placed: AnyItem;
     let label: string;
@@ -5110,16 +7938,25 @@ export class NibGliderEngine {
       label = 'Paste display text';
     } else {
       const group: AnyItem = new this.scope.Group();
-      for (const [index, line] of splitBodyLines(clean).entries()) {
+      const bodyLines = splitBodyLines(clean);
+      let stackY = target.y;
+      bodyLines.forEach((line, index) => {
+        if (index > 0) {
+          stackY += leading;
+          // Blank line = paragraph break: add the paragraph gap.
+          if (bodyLines[index - 1].trim() === '') stackY += Math.max(0, spec.paragraphSpacing);
+        }
         const pt: AnyItem = new this.scope.PointText(
-          new this.scope.Point(target.x, target.y + index * leading),
+          new this.scope.Point(target.x, stackY),
         );
         pt.content = line.length > 0 ? line : ' ';
         styleText(pt, 'body');
         group.addChild(pt);
-      }
+      });
       group.data.textKind = 'body';
       group.data.editableText = true;
+      group.data.letterSpacing = spec.letterSpacing;
+      group.data.paragraphSpacing = spec.paragraphSpacing;
       const anchor = this.textAnchorOf(group, true);
       if (anchor) this.anchorTextPointOn(group, target, anchor);
       placed = group;
@@ -5288,6 +8125,52 @@ export class NibGliderEngine {
     return internal ? this.pasteSceneJson(internal) : false;
   }
 
+  /** Paste in Place (Edit menu): scene payloads land at the exact
+   * coordinates they were copied from — no cascade, no re-centring.
+   * Non-scene clipboard content has no source position, so it takes
+   * the ordinary paste path. */
+  async pasteInPlaceFromClipboard(): Promise<boolean> {
+    if (this.isLiveDrawing || this.isTypingText) return false;
+    try {
+      const clip = await readSystemClipboard();
+      if (clip.scene && this.pasteSceneJson(clip.scene, undefined, true)) return true;
+    } catch {
+      // Fall through to the internal buffer below.
+    }
+    const internal = this.clipboardSceneJson();
+    if (internal) return this.pasteSceneJson(internal, undefined, true);
+    return this.pasteFromSystemClipboard();
+  }
+
+  // --- Selection lock / hide (Object menu) ---
+
+  /** Lock the selected objects in place (they stay visible; the
+   * Layers panel unlocks per object). Mirrors the panel setters:
+   * not an undo entry. */
+  lockSelection(): void {
+    const items = this.topLevelSelected();
+    if (items.length === 0) return;
+    for (const item of items) {
+      try { item.locked = true; } catch { /* Detached. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** Hide the selected objects (the Layers panel shows them again
+   * per object). The selection clears — hidden objects are not a
+   * working selection. */
+  hideSelection(): void {
+    const items = this.topLevelSelected();
+    if (items.length === 0) return;
+    for (const item of items) {
+      try { item.visible = false; } catch { /* Detached. */ }
+    }
+    this.clearOutSelection();
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
   /** Drop of an image URL (from text/uri-list): fetch, decode, deposit at
    * the drop point. Failures surface as a drop note, never a throw. */
   async depositImageUrl(url: string, at?: AnyItem): Promise<boolean> {
@@ -5387,6 +8270,257 @@ export class NibGliderEngine {
     }
     this.updateTextContent(); this.notify();
     return true;
+  }
+
+  // --- Images as citizens (Slice 8): trace, crop, shape mask,
+  // mask booleans. A placed image is a Raster, or the mask group
+  // wrapping one once it has a crop/mask record. ---
+
+  /** True when the item is image content: a Raster or a mask group. */
+  private isImageRoot(item: AnyItem): boolean {
+    if (!item) return false;
+    if (isImageMaskGroup(item)) return true;
+    try {
+      const Raster = this.scope?.Raster;
+      return !!Raster && item instanceof Raster;
+    } catch { return false; }
+  }
+
+  /** Whether any placed image (bare or masked) is selected. */
+  hasSelectedImage(): boolean {
+    return this.selectedItems.some((item) => this.isImageRoot(item));
+  }
+
+  /** The first selected image root (Raster or its mask group). */
+  selectedImageRoot(): AnyItem | null {
+    return this.selectedItems.find((item) => this.isImageRoot(item)) ?? null;
+  }
+
+  private retainImageMaskItem(root: AnyItem): void {
+    if (!isImageMaskGroup(root)) return;
+    for (const child of (root.children ?? []) as AnyItem[]) {
+      if (child?.data?.imageMaskPath === true) {
+        try { this.scene.retain(child); } catch { /* mask retention is best-effort */ }
+      }
+    }
+  }
+
+  /** Crop an image root to a document-space rectangle (its
+   * boundary record). Null clears the crop. One history step. */
+  applyImageCrop(root: AnyItem, crop: ImageCropRect | null): AnyItem | null {
+    if (!root || this.isLiveDrawing) return null;
+    const snap = this.captureDeposit();
+    const next = setImageCrop(this.scope, root, crop);
+    this.retainImageMaskItem(next);
+    this.recordSceneCommand(crop ? 'Crop Image' : 'Remove Image Crop', snap.before, snap.selected, [next], snap.retained);
+    this.updateTextContent(); this.notify();
+    return next;
+  }
+
+  /** Use a shape item's geometry as an image's clipping mask. The
+   * shape is consumed (its geometry lives on as the mask record). */
+  applyImageShapeMask(root: AnyItem, shapeItem: AnyItem): AnyItem | null {
+    if (!root || !shapeItem || this.isLiveDrawing) return null;
+    const geo = this.shapePartOf(shapeItem);
+    if (!geo) return null;
+    const snap = this.captureDeposit();
+    const next = setImageMask(this.scope, root, geo);
+    this.retainImageMaskItem(next);
+    if (shapeItem !== geo) { /* shapePartOf may return the item itself */ }
+    try { shapeItem.remove(); } catch { /* already gone */ }
+    this.recordSceneCommand('Mask Image', snap.before, snap.selected, [next], snap.retained);
+    this.updateTextContent(); this.notify();
+    return next;
+  }
+
+  /** Clear an image's shape mask (crop record, if any, stays). */
+  applyImageMaskRemoval(root: AnyItem): AnyItem | null {
+    if (!root || this.isLiveDrawing) return null;
+    const snap = this.captureDeposit();
+    const next = clearImageMask(this.scope, root);
+    this.retainImageMaskItem(next);
+    this.recordSceneCommand('Remove Image Mask', snap.before, snap.selected, [next], snap.retained);
+    this.updateTextContent(); this.notify();
+    return next;
+  }
+
+  /** Boolean an image against a tool shape by rewriting its mask. */
+  applyImageBoolean(root: AnyItem, mode: 'subtract' | 'intersect' | 'crop' | 'union', toolItem: AnyItem): AnyItem | null {
+    if (!root || !toolItem || this.isLiveDrawing) return null;
+    const geo = this.shapePartOf(toolItem);
+    if (!geo) return null;
+    const snap = this.captureDeposit();
+    const next = booleanImageMask(this.scope, root, mode, geo);
+    this.retainImageMaskItem(next);
+    try { toolItem.remove(); } catch { /* consumed like a combine tool */ }
+    this.recordSceneCommand('Image Mask Boolean', snap.before, snap.selected, [next], snap.retained);
+    this.updateTextContent(); this.notify();
+    return next;
+  }
+
+  /** CombinatoricsManager hook: an image + shape pair combines by
+   * mask, never by pixels. Returns true when handled. */
+  combineImageMask(mode: CombineMode, items: AnyItem[]): boolean {
+    if (this.isLiveDrawing || !items || items.length < 2) return false;
+    const image = items.find((item) => this.isImageRoot(item));
+    if (!image) return false;
+    const tool = items.find((item) => item !== image && !this.isImageRoot(item) && !this.isNonContentItem(item));
+    if (!tool) return false;
+    if (mode === 'cut') {
+      this.lastCombineNote = 'Cut does not apply to images — the mask is unchanged.';
+      return true;
+    }
+    if (mode === 'exclude') {
+      this.lastCombineNote = 'Exclude does not apply to images — the mask is unchanged.';
+      return true;
+    }
+    if (mode === 'interlace') return false;
+    const result = this.applyImageBoolean(image, mode, tool);
+    this.lastCombineNote = result ? '' : 'No result — shapes may not overlap.';
+    return true;
+  }
+
+  /** Crop the selected image to the other selected shape's frame. */
+  cropSelectedImageToShapeFrame(): boolean {
+    const image = this.selectedImageRoot();
+    const shape = this.selectedItems.find((item) => item !== image && !this.isImageRoot(item) && !this.isNonContentItem(item));
+    if (!image || !shape) { this.lastDropNote = 'Select an image and a shape to crop to its frame.'; this.notify(); return false; }
+    const b = shape.bounds;
+    return !!this.applyImageCrop(image, { x: b.x, y: b.y, width: b.width, height: b.height });
+  }
+
+  /** Mask the selected image with the other selected shape. */
+  maskSelectedImageWithShape(): boolean {
+    const image = this.selectedImageRoot();
+    const shape = this.selectedItems.find((item) => item !== image && !this.isImageRoot(item) && !this.isNonContentItem(item));
+    if (!image || !shape) { this.lastDropNote = 'Select an image and a shape to mask with.'; this.notify(); return false; }
+    return !!this.applyImageShapeMask(image, shape);
+  }
+
+  /** Remove the selected image's shape mask. */
+  removeSelectedImageMask(): boolean {
+    const image = this.selectedImageRoot();
+    if (!image) return false;
+    return !!this.applyImageMaskRemoval(image);
+  }
+
+  /** Remove the selected image's crop. */
+  removeSelectedImageCrop(): boolean {
+    const image = this.selectedImageRoot();
+    if (!image) return false;
+    return !!this.applyImageCrop(image, null);
+  }
+
+  /**
+   * Deposit traced contours (pixel space) as one editable
+   * CompoundPath in document space. Returns the placed item.
+   */
+  depositTrace(
+    bitmap: BitmapInput,
+    options: TraceOptions,
+    placement: { origin: { x: number; y: number }; scale: number },
+  ): AnyItem | null {
+    if (this.isLiveDrawing) return null;
+    const contours = traceBitmapPixels(bitmap, options);
+    if (contours.length === 0) return null;
+    const scope = this.scope;
+    const { origin, scale } = placement;
+    let pathData = '';
+    for (const contour of contours) {
+      contour.points.forEach((p, i) => {
+        const x = origin.x + p.x * scale;
+        const y = origin.y + p.y * scale;
+        pathData += `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
+      });
+      pathData += 'Z';
+    }
+    const snap = this.captureDeposit();
+    const layer = this.layers.activeLayer;
+    const item = new scope.CompoundPath(pathData);
+    item.fillColor = new scope.Color('#20242c');
+    item.fillRule = 'evenodd';
+    item.strokeColor = null;
+    layer.addChild(item);
+    this.scene.retain(item);
+    this.selection.restore([item]);
+    this.recordSceneCommand('Trace to Vector', snap.before, snap.selected, [item], snap.retained);
+    this.updateTextContent(); this.notify();
+    return item;
+  }
+
+  // --- Filters card parameters (Slice 20) ---------------------------
+  // The Filters card's working values live here (settings-backed)
+  // so they survive the card closing, instead of dying with the
+  // component. Ranges mirror the card's steppers.
+
+  filterBlurRadius = 1;
+  filterSharpenRadius = 1;
+  filterSharpenAmount = 1;
+  filterBrightness = 0;
+  filterContrastPct = 100;
+
+  setFilterBlurRadius(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.filterBlurRadius = Math.min(10, Math.max(1, Math.round(v)));
+    this.notify();
+  }
+
+  setFilterSharpenRadius(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.filterSharpenRadius = Math.min(10, Math.max(1, Math.round(v)));
+    this.notify();
+  }
+
+  setFilterSharpenAmount(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.filterSharpenAmount = Math.min(3, Math.max(0.1, v));
+    this.notify();
+  }
+
+  setFilterBrightness(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.filterBrightness = Math.min(255, Math.max(-255, Math.round(v)));
+    this.notify();
+  }
+
+  setFilterContrastPct(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.filterContrastPct = Math.min(400, Math.max(10, Math.round(v)));
+    this.notify();
+  }
+
+  /** Trace the selected image's pixels into vector paths. */
+  traceSelectedImage(options: TraceOptions): boolean {
+    const root = this.selectedImageRoot();
+    const raster = root ? imageContentOf(root) : null;
+    if (!raster) { this.lastDropNote = 'Select an image to trace.'; this.notify(); return false; }
+    let bitmap: BitmapInput | null = null;
+    try {
+      const size = raster.size;
+      const data = raster.getImageData(new this.scope.Rectangle(0, 0, size.width, size.height));
+      bitmap = { data: data.data, width: size.width, height: size.height };
+    } catch { bitmap = null; }
+    if (!bitmap) {
+      try {
+        const canvas = raster.canvas as AnyItem;
+        const ctx = canvas?.getContext?.('2d');
+        const d = ctx?.getImageData(0, 0, canvas.width, canvas.height);
+        if (d) bitmap = { data: d.data, width: canvas.width, height: canvas.height };
+      } catch { bitmap = null; }
+    }
+    if (!bitmap) {
+      this.lastDropNote = 'Trace needs the image to finish loading first.';
+      this.notify();
+      return false;
+    }
+    const bounds = raster.bounds;
+    const item = this.depositTrace(bitmap, options, {
+      origin: { x: bounds.x, y: bounds.y },
+      scale: bounds.width / Math.max(1, bitmap.width),
+    });
+    if (!item) this.lastDropNote = 'Nothing traced — try a different threshold.';
+    this.notify();
+    return !!item;
   }
 
   /** Run a pixel filter over every selected image's live canvas, with one
@@ -5627,6 +8761,246 @@ export class NibGliderEngine {
     this.updateTextContent(); this.notify();
   }
 
+  bringSelectionForward(): void {
+    if (this.isLiveDrawing || !this.selection.reorderStep('forward')) return;
+    this.updateTextContent(); this.notify();
+  }
+
+  sendSelectionBackward(): void {
+    if (this.isLiveDrawing || !this.selection.reorderStep('backward')) return;
+    this.updateTextContent(); this.notify();
+  }
+
+  // --- Layers & Objects (panel API) --------------------------------
+  // The panel lists registered content layers and the objects in
+  // them. Object rows are keyed by Paper item id; selecting a row
+  // activates the object's layer first, because selection and
+  // ordering operate within the active layer.
+
+  listLayers(): LayerRecord[] { return this.layers.listLayers(); }
+
+  activeLayerId(): string | null { return this.layers.activeLayerId; }
+
+  createLayer(name?: string): LayerRecord {
+    const record = this.layers.createLayer(name);
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return record;
+  }
+
+  deleteLayer(id: string): boolean {
+    const removed = this.layers.deleteLayer(id);
+    if (!removed) return false;
+    for (const item of removed) {
+      try { item.remove(); } catch { /* Already detached. */ }
+    }
+    this.scene.pruneRecords();
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  renameLayer(id: string, name: string): boolean {
+    if (!this.layers.renameLayer(id, name)) return false;
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  moveLayer(id: string, dir: 'up' | 'down'): boolean {
+    if (!this.layers.moveLayerRecord(id, dir)) return false;
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  setActiveLayer(id: string): boolean {
+    if (!this.layers.setActiveLayer(id)) return false;
+    this.notify();
+    return true;
+  }
+
+  /** Remove registered content layers that are empty and were not
+   * created by the latest scene decode (no layerRecordId flag). */
+  private pruneStaleContentLayers(): void {
+    try {
+      const projectLayers = ((this.scope.project?.layers ?? []) as AnyItem[]);
+      const anyDecoded = projectLayers.some((layer) => Boolean(layer.data?.layerRecordId));
+      const stale = this.layers.contentLayers().filter((layer) => {
+        const flagged = Boolean((layer as AnyItem).data?.layerRecordId);
+        return !flagged && (layer.children?.length ?? 0) === 0;
+      });
+      // When the decode created layers, every pre-existing empty
+      // content layer is stale. Otherwise keep at least one layer.
+      const removable = anyDecoded ? stale : stale.slice(0, Math.max(0, this.layers.contentLayers().length - 1));
+      for (const layer of removable) {
+        try { layer.remove(); } catch { /* Detached. */ }
+      }
+    } catch { /* Headless. */ }
+  }
+
+  private objectKindLabel(item: AnyItem): string {
+    try {
+      if (item.data?.shapeTextGroup || item.data?.isShapeText) return 'Shape';
+      switch (item.className) {
+        case 'Raster': return 'Image';
+        case 'PointText': return 'Text';
+        case 'Group': return item.data?.isUserGroup ? 'Group' : 'Shape';
+        case 'CompoundPath': return 'Compound Path';
+        case 'Path': return 'Path';
+        default: return 'Object';
+      }
+    } catch { return 'Object'; }
+  }
+
+  private listingInput(item: AnyItem): ListingObjectInput {
+    const children = (item.children ?? []) as AnyItem[];
+    const isGroup = item.className === 'Group';
+    return {
+      key: String(item.id),
+      name: typeof item.name === 'string' ? item.name : undefined,
+      kindLabel: this.objectKindLabel(item),
+      visible: item.visible !== false,
+      locked: Boolean(item.locked),
+      opacity: typeof item.opacity === 'number' ? item.opacity : 1,
+      children: isGroup
+        ? children.filter((child) => { try { return !this.scene.isNonContentItem(child); } catch { return false; } })
+          .map((child) => this.listingInput(child))
+        : undefined,
+    };
+  }
+
+  private objectByKey(key: string): { item: AnyItem; layerId: string } | null {
+    for (const record of this.layers.listLayers()) {
+      const layer = this.layers.layerForId(record.id);
+      if (!layer) continue;
+      const walk = (items: AnyItem[]): AnyItem | null => {
+        for (const item of items) {
+          if (String(item.id) === key) return item;
+          const found = walk((item.children ?? []) as AnyItem[]);
+          if (found) return found;
+        }
+        return null;
+      };
+      const found = walk([...(layer.children ?? [])] as AnyItem[]);
+      if (found) return { item: found, layerId: record.id };
+    }
+    return null;
+  }
+
+  objectListing(): LayerListing[] {
+    const inputs = this.layers.listLayers().map((record) => {
+      const layer = this.layers.layerForId(record.id);
+      // Layer state gates its objects' rows (Slice 20): a hidden
+      // layer's objects read as hidden, a locked layer's as locked,
+      // and layer opacity multiplies into each row.
+      const gateVisible = layerVisible(record);
+      const gateLocked = layerLocked(record);
+      const gateOpacity = layerOpacity(record);
+      const objects = ((layer?.children ?? []) as AnyItem[])
+        .filter((child) => { try { return !this.scene.isNonContentItem(child); } catch { return false; } })
+        .map((child) => {
+          const input = this.listingInput(child);
+          return {
+            ...input,
+            visible: input.visible && gateVisible,
+            locked: input.locked || gateLocked,
+            opacity: input.opacity * gateOpacity,
+          };
+        });
+      return { record, objects };
+    });
+    return buildLayerListing(inputs);
+  }
+
+  // --- Layer presentation state (Slice 20) ---
+
+  setLayerVisible(id: string, visible: boolean): void {
+    if (!this.layers.setLayerVisible(id, visible)) return;
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  setLayerLocked(id: string, locked: boolean): void {
+    if (!this.layers.setLayerLocked(id, locked)) return;
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  setLayerOpacity(id: string, opacity: number): void {
+    if (!this.layers.setLayerOpacity(id, opacity)) return;
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** Select the object behind a panel row. Locked objects can be
+   * selected here (so they can be unlocked) even though canvas
+   * hit-testing skips them. Activates the object's layer first. */
+  selectObjectByKey(key: string): boolean {
+    const found = this.objectByKey(key);
+    if (!found) return false;
+    if (found.layerId !== this.layers.activeLayerId) this.layers.setActiveLayer(found.layerId);
+    const top = this.selection.topUserGroupOf(found.item);
+    this.clearOutSelection();
+    this.addItemToSelection(top);
+    this.updateTextContent(); this.notify();
+    return true;
+  }
+
+  renameObjectByKey(key: string, name: string): boolean {
+    const found = this.objectByKey(key);
+    if (!found || name.trim().length === 0) return false;
+    found.item.name = name.trim();
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  setObjectVisibleByKey(key: string, visible: boolean): boolean {
+    const found = this.objectByKey(key);
+    if (!found) return false;
+    found.item.visible = visible;
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  setObjectLockedByKey(key: string, locked: boolean): boolean {
+    const found = this.objectByKey(key);
+    if (!found) return false;
+    found.item.locked = locked;
+    if (!locked) { /* Unlocking never changes the selection. */ }
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  setObjectOpacityByKey(key: string, opacity: number): boolean {
+    const found = this.objectByKey(key);
+    if (!found || !Number.isFinite(opacity)) return false;
+    found.item.opacity = Math.min(1, Math.max(0, opacity));
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
+  /** Apply a visibility/lock/opacity change to every object in a
+   * layer (the layer row's own toggles). */
+  setLayerObjectsFlag(id: string, patch: { visible?: boolean; locked?: boolean }): boolean {
+    const layer = this.layers.layerForId(id);
+    if (!layer) return false;
+    for (const child of [...(layer.children ?? [])] as AnyItem[]) {
+      try {
+        if (this.scene.isNonContentItem(child)) continue;
+        if (patch.visible !== undefined) child.visible = patch.visible;
+        if (patch.locked !== undefined) child.locked = patch.locked;
+      } catch { /* Detached. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+    return true;
+  }
+
   canTransformSelection(): boolean {
     if (this.isDrawingPath || this.isDrawingShape || this.isDrawingQuad)
       return false;
@@ -5743,6 +9117,10 @@ export class NibGliderEngine {
     this.circleTool.cancel();
     this.rectangleTool.cancel();
     this.quadTool.cancel();
+    this.cancelSimpleTool();
+    this.cancelFreehand();
+    this.pendingLiveTransforms = null;
+    this.pendingLiveSpec = null;
     this.repeatManager.clearPreview();
     // Clears anything a tool did not claim, and resets live scale/rotation.
     this.drawing.cancel();
@@ -6026,6 +9404,14 @@ export class NibGliderEngine {
   }
 
   endPathOrShape(): void {
+    if (this.simpleTool) {
+      // Enter finishes a Line/Ellipse/Arc session: the current
+      // cursor point completes it when one more point is needed.
+      const cursor = this.cursorVec();
+      if (cursor) this.simpleTool.points.push(cursor);
+      this.depositSimpleTool();
+      return;
+    }
     if (this.compositePathTool.active) {
       this.compositePathTool.finishIntoScene(false);
       return;
@@ -6033,31 +9419,939 @@ export class NibGliderEngine {
     const snap = this.captureDeposit();
     const deposited: Array<AnyItem | null> = [];
     if (this.isDrawingPath && this.path) {
-      const offsets = this.repeatManager.beginDeposit();
+      const transforms = this.repeatManager.beginDepositTransforms();
+      const offsets = transforms ? [] : this.repeatManager.beginDeposit();
       const base = this.compositePathTool.finishLegacy().filter((item) => !!item);
-      deposited.push(...base, ...this.repeatManager.finishDeposit(base, offsets));
+      const copies = transforms
+        ? this.repeatManager.finishDepositTransformed(base, transforms)
+        : this.repeatManager.finishDeposit(base, offsets);
+      if (transforms) this.tagReplication(base, copies, transforms.length, this.repeatManager.takeDepositSpec());
+      deposited.push(...base, ...copies);
     } else if (this.isDrawingShape) deposited.push(...this.endShapeAsStroke());
     else if (this.isDrawingQuad && this.quadPath) deposited.push(this.quadTool.finish());
-    this.recordSceneCommand('Deposit shape', snap.before, snap.selected, deposited);
+    const placed = deposited.map((item) => (item ? this.withArrowheads(item) : item));
+    this.recordSceneCommand('Deposit shape', snap.before, snap.selected, placed);
     this.updateTextContent();
     this.notify();
   }
 
   polyLineKC(): void { this.compositePathTool.sharpKey(); }
   roundedPointKC(): void { this.compositePathTool.roundedKey(); }
+  bowedPointKC(facing: 'left' | 'right'): void { this.compositePathTool.bowedKey(facing); }
+  arcThreePointKC(): void { this.compositePathTool.arcKey(); }
+  switchRoundingKC(): void { this.compositePathTool.switchRoundingKey(); }
+  eraseLastPointKC(): void { this.compositePathTool.eraseLastKey(); }
   splinePointKC(): void { this.compositePathTool.splineKey(); }
   clothoidPointKC(kind: 'g4' | 'g2' | 'clothoidCorner' | 'line' | 'prevConstraint' | 'nextConstraint'): void {
     this.compositePathTool.clothoidKey(kind);
   }
-  compositeBowedKC(corner: 'hardCorner' | 'roundedCorner', facing: 'A' | 'B'): void {
-    this.compositePathTool.bowedKey(corner, facing);
-  }
-  arcPointKC(): void { this.compositePathTool.arcKey(); }
-  switchRoundingKC(): void { this.compositePathTool.switchRoundingKey(); }
-  eraseLastPointKC(): boolean { return this.compositePathTool.eraseLastKey(); }
   isClothoidSessionActive(): boolean { return this.compositePathTool.isClothoid; }
 
   completeShapeWithSpline(): void { this.compositePathTool.completeWithSpline(); }
+
+  // --- Pointer entry points (DOM attach + tests share these) --------
+  // Interceptions ahead of the PointerController: freehand capture,
+  // ruler-guide drags (Slice 5), and simple-tool preview refresh.
+
+  inputMouseDown(event: unknown): void {
+    // Freehand (Pencil) captures the press stream itself.
+    if (this.freehandArmed && !this.isLiveDrawing && !this.isTypingText) {
+      this.beginFreehand((event as { point?: AnyItem }).point);
+      return;
+    }
+    // A press that lands on a ruler guide drags the guide
+    // instead of steering the drawing cursor.
+    if (!this.isLiveDrawing && this.beginGuideDragAt((event as { point?: AnyItem }).point)) return;
+    this.pointer.onMouseDown(event as never);
+  }
+
+  inputMouseMove(event: unknown): void {
+    this.pointer.onMouseMove(event as never);
+    if (this.simpleTool) this.refreshSimplePreview();
+  }
+
+  inputMouseDrag(event: unknown): void {
+    if (this.freehandCapture) {
+      this.extendFreehand((event as { point?: AnyItem }).point);
+      return;
+    }
+    if (this.guideDrag) {
+      this.dragGuideTo((event as { point?: AnyItem }).point);
+      return;
+    }
+    this.pointer.onMouseDrag(event as never);
+  }
+
+  inputMouseUp(): void {
+    if (this.freehandCapture) { this.endFreehand(); return; }
+    if (this.guideDrag) { this.endGuideDrag(); return; }
+    this.pointer.releasePointer();
+  }
+
+  // --- Tier Two Slice 7: Line / Ellipse / Arc tools, Freehand,
+  // arrowheads, and Stroke to Outline --------------------------------
+  // The three click tools share one tiny session: each KC call
+  // commits the cursor point; Line needs 2 points, Ellipse and Arc
+  // need 3 (centre + two extents / start + through + end — the arc
+  // is the three-point form, which fits the click pattern; centre+
+  // angles would need a dialog the session model doesn't have).
+  // Freehand is pointer-driven: drag captures a point stream that
+  // deposits as an NGSmoothedPolyline model path.
+
+  private simpleTool: { kind: 'line' | 'ellipse' | 'arc'; points: Vec2[] } | null = null;
+  private simplePreviewItem: AnyItem = null;
+  freehandArmed = false;
+  freehandTension = 0.3;
+  private freehandCapture: Vec2[] | null = null;
+  private freehandPreviewItem: AnyItem = null;
+
+  private cursorVec(): Vec2 | null {
+    const p = this.mousePt;
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+    return { x: p.x, y: p.y };
+  }
+
+  get activeSimpleTool(): 'line' | 'ellipse' | 'arc' | null {
+    return this.simpleTool?.kind ?? null;
+  }
+
+  lineKC(): void { this.simpleToolCommit('line'); }
+  ellipseKC(): void { this.simpleToolCommit('ellipse'); }
+  arcKC(): void { this.simpleToolCommit('arc'); }
+
+  private simpleToolCommit(kind: 'line' | 'ellipse' | 'arc'): void {
+    if (this.isLiveDrawing || this.isTypingText) return;
+    const point = this.cursorVec();
+    if (!point) return;
+    if (!this.simpleTool || this.simpleTool.kind !== kind) {
+      this.simpleTool = { kind, points: [] };
+    }
+    this.simpleTool.points.push(point);
+    const needed = kind === 'line' ? 2 : 3;
+    if (this.simpleTool.points.length >= needed) this.depositSimpleTool();
+    else this.refreshSimplePreview();
+    this.notify();
+  }
+
+  /** Segments for a tool session; `live` is the in-progress cursor
+   * point appended for previews. */
+  private simpleSegments(points: Vec2[], live?: Vec2 | null): BezierSegment[] | null {
+    const pts = live ? [...points, live] : points;
+    const kind = this.simpleTool?.kind;
+    if (!kind) return null;
+    const plain = (list: Vec2[]): BezierSegment[] => list.map((point) => ({
+      point: { ...point }, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 },
+    }));
+    if (kind === 'line') {
+      return pts.length >= 2 ? plain([pts[0], pts[1]]) : null;
+    }
+    if (kind === 'ellipse') {
+      if (pts.length < 3) return null;
+      const center = pts[0];
+      const rx = Math.hypot(pts[1].x - center.x, pts[1].y - center.y);
+      const ry = Math.hypot(pts[2].x - center.x, pts[2].y - center.y);
+      const segments = ellipseSegments(center, rx, ry);
+      return segments.length > 0 ? segments : null;
+    }
+    // arc
+    if (pts.length < 3) return null;
+    const info = arcThroughPoints(pts[0], pts[1], pts[2]);
+    return info ? arcSegments(info) : plain(pts.slice(0, 3));
+  }
+
+  private pathFromSegments(segments: BezierSegment[], closed: boolean): AnyItem {
+    const path = new this.scope.Path({
+      segments: segments.map((s) => new this.scope.Segment(
+        new this.scope.Point(s.point.x, s.point.y),
+        new this.scope.Point(s.handleIn.x, s.handleIn.y),
+        new this.scope.Point(s.handleOut.x, s.handleOut.y),
+      )),
+      closed,
+      insert: false,
+    });
+    return path;
+  }
+
+  /** Build a Paper item from resolved model geometry. */
+  private resolvedItem(geometry: ResolvedVectorGeometry): AnyItem {
+    if (geometry.kind === 'path') return this.pathFromSegments(geometry.segments, geometry.closed);
+    const compound = new this.scope.CompoundPath({ insert: false, fillRule: geometry.fillRule });
+    for (const sub of geometry.paths) compound.addChild(this.pathFromSegments(sub.segments, sub.closed));
+    return compound;
+  }
+
+  private depositSimpleTool(): void {
+    const tool = this.simpleTool;
+    if (!tool) return;
+    const segments = this.simpleSegments(tool.points);
+    this.cancelSimpleTool();
+    if (!segments) { this.notify(); return; }
+    const snap = this.captureDeposit();
+    const item = this.pathFromSegments(segments, tool.kind === 'ellipse');
+    this.styles.applyCurrentStyles(item);
+    this.layers.addToActive(item);
+    try { this.scene.retain(item); } catch { /* Geometry still lands. */ }
+    const placed = this.withArrowheads(item);
+    this.selection.restore([placed]);
+    const label = tool.kind === 'line' ? 'Deposit line' : tool.kind === 'ellipse' ? 'Deposit ellipse' : 'Deposit arc';
+    this.recordSceneCommand(label, snap.before, snap.selected, [placed], snap.retained);
+    this.updateTextContent();
+    this.notify();
+  }
+
+  private refreshSimplePreview(): void {
+    this.clearSimplePreview();
+    if (!this.simpleTool) return;
+    const segments = this.simpleSegments(this.simpleTool.points, this.cursorVec());
+    if (!segments) return;
+    const item = this.pathFromSegments(segments, this.simpleTool.kind === 'ellipse');
+    item.strokeColor = this.globalStrokeColor;
+    item.strokeWidth = 1;
+    item.dashArray = [5, 4];
+    item.fillColor = null;
+    item.guide = true;
+    item.locked = true;
+    this.mountGuideItem(item);
+    this.simplePreviewItem = item;
+  }
+
+  private clearSimplePreview(): void {
+    if (this.simplePreviewItem) {
+      try { this.simplePreviewItem.remove(); } catch { /* Already gone. */ }
+      this.simplePreviewItem = null;
+    }
+  }
+
+  cancelSimpleTool(): void {
+    this.simpleTool = null;
+    this.clearSimplePreview();
+  }
+
+  // --- Freehand / Pencil ---------------------------------------------
+
+  setFreehandArmed(on: boolean): void {
+    this.freehandArmed = !!on;
+    if (!this.freehandArmed) this.cancelFreehand();
+    this.notify();
+  }
+
+  setFreehandTension(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.freehandTension = Math.max(0, Math.min(1, v));
+    this.notify();
+  }
+
+  private beginFreehand(point: AnyItem): void {
+    if (!point) return;
+    this.freehandCapture = [{ x: point.x, y: point.y }];
+    const preview: AnyItem = new this.scope.Path({
+      segments: [new this.scope.Point(point.x, point.y)],
+      insert: false,
+    });
+    preview.strokeColor = this.globalStrokeColor;
+    preview.strokeWidth = this.globalStrokeWidth;
+    preview.fillColor = null;
+    (preview as AnyItem).guide = true;
+    preview.locked = true;
+    this.mountGuideItem(preview);
+    this.freehandPreviewItem = preview;
+  }
+
+  private extendFreehand(point: AnyItem): void {
+    if (!this.freehandCapture || !point) return;
+    const last = this.freehandCapture[this.freehandCapture.length - 1];
+    if (Math.hypot(point.x - last.x, point.y - last.y) < 1.5) return;
+    this.freehandCapture.push({ x: point.x, y: point.y });
+    try { this.freehandPreviewItem?.add(new this.scope.Point(point.x, point.y)); } catch { /* Preview only. */ }
+  }
+
+  private endFreehand(): void {
+    const points = this.freehandCapture;
+    this.cancelFreehand();
+    if (!points || points.length < 2) { this.notify(); return; }
+    const source: NGSmoothedPolyline = {
+      id: crypto.randomUUID(),
+      mode: 'smoothedPolyline',
+      closed: false,
+      points,
+      tension: this.freehandTension,
+    };
+    let item: AnyItem = null;
+    try {
+      item = this.resolvedItem(resolvePath(source));
+    } catch { item = null; }
+    if (!item) { this.notify(); return; }
+    const snap = this.captureDeposit();
+    this.styles.applyCurrentStyles(item);
+    this.layers.addToActive(item);
+    try { this.scene.retain(item, source); } catch { /* Geometry still lands. */ }
+    const placed = this.withArrowheads(item);
+    this.selection.restore([placed]);
+    this.recordSceneCommand('Freehand', snap.before, snap.selected, [placed], snap.retained);
+    this.updateTextContent();
+    this.notify();
+  }
+
+  cancelFreehand(): void {
+    this.freehandCapture = null;
+    if (this.freehandPreviewItem) {
+      try { this.freehandPreviewItem.remove(); } catch { /* Already gone. */ }
+      this.freehandPreviewItem = null;
+    }
+  }
+
+  get isFreehandCapturing(): boolean { return this.freehandCapture !== null; }
+
+  // --- Arrowheads ------------------------------------------------------
+  // Settings live in the stroke style state (globals) and, per item,
+  // in item.data (arrowStart/arrowEnd). Rendering wraps the spine in
+  // a group with the head items, tagged so refresh can rebuild them
+  // when the spine or the settings change.
+
+  setArrowStart(style: ArrowheadStyle): void { this.setArrowhead('start', style); }
+  setArrowEnd(style: ArrowheadStyle): void { this.setArrowhead('end', style); }
+
+  private setArrowhead(which: 'start' | 'end', style: ArrowheadStyle): void {
+    if (!isArrowheadStyle(style)) return;
+    if (which === 'start') this.paint.globalArrowStart = style;
+    else this.paint.globalArrowEnd = style;
+    for (const top of this.topLevelSelected()) {
+      const spine = this.arrowSpineOf(top);
+      if (!spine) continue;
+      if (!top.data) top.data = {};
+      if (!spine.data) spine.data = {};
+      top.data[which === 'start' ? 'arrowStart' : 'arrowEnd'] = style;
+      spine.data[which === 'start' ? 'arrowStart' : 'arrowEnd'] = style;
+      this.refreshArrowheads(top);
+    }
+    this.documentManager.markEdited('scene');
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** The stroked path inside a top-level item that can carry
+   * arrowheads: the item itself, or an arrow group's spine. Other
+   * groups are left alone. */
+  private arrowSpineOf(top: AnyItem): AnyItem | null {
+    if (!top) return null;
+    if (top.className === 'Path') return top;
+    if (top.className === 'Group' && top.data?.arrowGroup && Array.isArray(top.children)) {
+      return top.children.find((c: AnyItem) => c?.data?.arrowSpine)
+        ?? top.children.find((c: AnyItem) => c?.className === 'Path' && !c?.data?.arrowhead)
+        ?? null;
+    }
+    return null;
+  }
+
+  /** Stamp the global arrow settings onto a freshly deposited item
+   * and render its heads. Returns the top-level item to select
+   * (a group when heads exist, the item itself otherwise). */
+  withArrowheads(item: AnyItem): AnyItem {
+    if (!item || (item.className !== 'Path' && item.className !== 'CompoundPath')) return item;
+    if (item.className === 'CompoundPath' || item.closed) return item;
+    const start = this.paint.globalArrowStart;
+    const end = this.paint.globalArrowEnd;
+    if (start === 'none' && end === 'none') return item;
+    if (!item.data) item.data = {};
+    item.data.arrowStart = start;
+    item.data.arrowEnd = end;
+    return this.refreshArrowheads(item);
+  }
+
+  /** Rebuild an item's arrowhead items from its spine + settings.
+   * Returns the top-level item (unwrapping the group when both
+   * heads are 'none'). */
+  refreshArrowheads(top: AnyItem): AnyItem {
+    const spine = this.arrowSpineOf(top);
+    if (!spine || spine.closed || !Array.isArray(spine.segments) || spine.segments.length < 2) return top;
+    const start = isArrowheadStyle(top.data?.arrowStart) ? top.data.arrowStart
+      : isArrowheadStyle(spine.data?.arrowStart) ? spine.data.arrowStart : 'none';
+    const end = isArrowheadStyle(top.data?.arrowEnd) ? top.data.arrowEnd
+      : isArrowheadStyle(spine.data?.arrowEnd) ? spine.data.arrowEnd : 'none';
+    const isGroup = top.className === 'Group' && top.data?.arrowGroup;
+    if (isGroup) {
+      for (const child of [...top.children] as AnyItem[]) {
+        if (child?.data?.arrowhead) { try { child.remove(); } catch { /* Gone. */ } }
+      }
+    }
+    if (start === 'none' && end === 'none') {
+      if (isGroup) {
+        const parent = top.parent;
+        const index = typeof top.index === 'number' ? top.index : 0;
+        try { top.remove(); } catch { /* Gone. */ }
+        if (parent) { try { parent.insertChild(index, spine); } catch { this.layers.addToActive(spine); } }
+        if (spine.data) { delete spine.data.arrowSpine; }
+        return spine;
+      }
+      return top;
+    }
+    const width = Number(spine.strokeWidth) > 0 ? Number(spine.strokeWidth) : this.paint.globalStrokeWidth;
+    const heads: AnyItem[] = [];
+    const build = (which: 'start' | 'end', style: ArrowheadStyle): void => {
+      if (style === 'none') return;
+      const atEnd = which === 'end';
+      const tipSeg = atEnd ? spine.lastSegment : spine.firstSegment;
+      if (!tipSeg) return;
+      const tip = { x: tipSeg.point.x, y: tipSeg.point.y };
+      let tangent: AnyItem = null;
+      try { tangent = spine.getTangentAt(atEnd ? spine.length : 0); } catch { /* Fall back below. */ }
+      if (!tangent || !(tangent.length > 0)) {
+        const other = atEnd ? spine.segments[spine.segments.length - 2] : spine.segments[1];
+        if (!other) return;
+        tangent = atEnd
+          ? { x: tip.x - other.point.x, y: tip.y - other.point.y }
+          : { x: other.point.x - tip.x, y: other.point.y - tip.y };
+      }
+      const dir = atEnd
+        ? { x: tangent.x, y: tangent.y }
+        : { x: -tangent.x, y: -tangent.y };
+      const geo = arrowheadGeometry(tip, dir, style, width);
+      let head: AnyItem = null;
+      if (geo.polygon) {
+        head = new this.scope.Path({
+          segments: geo.polygon.map((p) => new this.scope.Point(p.x, p.y)),
+          closed: true,
+          insert: false,
+        });
+        head.fillColor = spine.strokeColor ?? this.paint.globalStrokeColor;
+        head.strokeColor = null;
+      } else if (geo.polyline) {
+        head = new this.scope.Path({
+          segments: geo.polyline.map((p) => new this.scope.Point(p.x, p.y)),
+          insert: false,
+        });
+        head.strokeColor = spine.strokeColor ?? this.paint.globalStrokeColor;
+        head.strokeWidth = Math.max(1, width * 0.7);
+        head.fillColor = null;
+        head.strokeCap = 'round';
+      }
+      if (!head) return;
+      if (!head.data) head.data = {};
+      head.data.arrowhead = which;
+      head.data.arrowStyle = style;
+      heads.push(head);
+    };
+    build('start', start);
+    build('end', end);
+    if (heads.length === 0) return top;
+    if (isGroup) {
+      for (const head of heads) top.addChild(head);
+      top.data.arrowStart = start;
+      top.data.arrowEnd = end;
+      return top;
+    }
+    const parent = spine.parent;
+    const index = typeof spine.index === 'number' ? spine.index : 0;
+    const group = new this.scope.Group();
+    if (parent) { try { parent.insertChild(index, group); } catch { /* Append below. */ } }
+    group.addChild(spine);
+    for (const head of heads) group.addChild(head);
+    if (!group.parent) this.layers.addToActive(group);
+    if (!group.data) group.data = {};
+    group.data.arrowGroup = true;
+    group.data.arrowStart = start;
+    group.data.arrowEnd = end;
+    if (!spine.data) spine.data = {};
+    spine.data.arrowSpine = true;
+    return group;
+  }
+
+  /** Rotate the selection by the given degrees as one undo entry
+   * (the Arrange panel's quarter-turn buttons; the same
+   * TransformManager path the keyboard rotate and Operations
+   * dialog use). */
+  rotateSelectionBy(degrees: number): void {
+    if (this.isLiveDrawing || !Number.isFinite(degrees) || degrees === 0) return;
+    if (this.topLevelSelected().length === 0) return;
+    this.rotateSelection(degrees);
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** Which path operations the current selection can take (the
+   * Path Operations section's disabled states). Mirrors each op's
+   * own target rules. */
+  pathOpAvailability(): { noise: boolean; simplify: boolean; fit: boolean; hull: boolean; strokeOutline: boolean } {
+    const selected = this.topLevelSelected();
+    const paths = selected.filter((item) => (
+      item?.className === 'Path' || item?.className === 'CompoundPath'
+    ));
+    return {
+      noise: paths.length > 0,
+      simplify: paths.length > 0,
+      fit: paths.length > 0,
+      hull: this.selectionAnchorPoints().length >= 3,
+      strokeOutline: paths.some((item) => item.strokeColor && Number(item.strokeWidth) > 0),
+    };
+  }
+
+  // --- Stroke to Outline ------------------------------------------------
+  // Converts selected stroked paths into their outlined filled form
+  // via the model's NGOutlinedStrokePath: the result stays a live
+  // outlined-stroke path in the retained model (spine + width + cap/
+  // join/dash/position), rendered as filled geometry.
+
+  strokeToOutlineSelection(): number {
+    const targets = this.topLevelSelected().filter((item) => (
+      (item?.className === 'Path' || item?.className === 'CompoundPath')
+      && item.strokeColor
+      && Number(item.strokeWidth) > 0
+    ));
+    if (targets.length === 0) return 0;
+    const snap = this.captureDeposit();
+    const placed: AnyItem[] = [];
+    for (const item of targets) {
+      const spine = this.scene.bezierSource(item);
+      const dash = Array.isArray(item.dashArray) ? item.dashArray : [];
+      const outlined: NGOutlinedStrokePath = {
+        id: crypto.randomUUID(),
+        mode: 'outlinedStroke',
+        spine,
+        width: Number(item.strokeWidth),
+        cap: item.strokeCap === 'round' || item.strokeCap === 'square' ? item.strokeCap : 'butt',
+        join: item.strokeJoin === 'round' || item.strokeJoin === 'bevel' ? item.strokeJoin : 'miter',
+        miterLimit: Number.isFinite(item.miterLimit) ? item.miterLimit : 10,
+        dashLength: Number(dash[0]) || 0,
+        gapLength: Number(dash[1]) || 0,
+        position: displayedStrokePosition(item),
+      };
+      let geometry: ResolvedVectorGeometry;
+      try {
+        geometry = resolvePath(outlined);
+      } catch { continue; }
+      const converted = this.resolvedItem(geometry);
+      converted.fillColor = item.strokeColor;
+      converted.strokeColor = null;
+      const parent = item.parent;
+      const index = typeof item.index === 'number' ? item.index : undefined;
+      if (parent && index !== undefined) {
+        try { parent.insertChild(index, converted); } catch { this.layers.addToActive(converted); }
+      } else {
+        this.layers.addToActive(converted);
+      }
+      try { this.scene.retain(converted, outlined); } catch { /* Geometry still lands. */ }
+      try { item.remove(); } catch { /* Already gone. */ }
+      placed.push(converted);
+    }
+    if (placed.length > 0) {
+      this.selection.restore(placed);
+      this.recordSceneCommand('Stroke to outline', snap.before, snap.selected, placed, snap.retained);
+    }
+    this.updateTextContent();
+    this.notify();
+    return placed.length;
+  }
+
+  // --- Noise displacement (Slice 11) -------------------------------
+  // Seeded gradient noise pushes a path's sampled points along
+  // their normals; the displaced samples are refitted to cubics
+  // through the shared polyline fit, so curves stay curves and
+  // closed paths stay closed. Apply-as-geometry: the parameters
+  // and seed are recorded on the resulting item's data
+  // (noiseDisplacement), so the operation is reproducible, and the
+  // replacement lands as ONE undo entry.
+
+  noiseAmplitude = 12;
+  noiseScale = 60;
+  noiseSeed = 1;
+  noisePreviewOn = false;
+  private noisePreviewItems: AnyItem[] = [];
+
+  setNoiseAmplitude(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0, Math.min(200, v));
+    if (next === this.noiseAmplitude) return;
+    this.noiseAmplitude = next;
+    this.refreshNoisePreview();
+    this.notify();
+  }
+
+  setNoiseScale(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(5, Math.min(1000, v));
+    if (next === this.noiseScale) return;
+    this.noiseScale = next;
+    this.refreshNoisePreview();
+    this.notify();
+  }
+
+  setNoiseSeed(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0, Math.min(999999, Math.round(v)));
+    if (next === this.noiseSeed) return;
+    this.noiseSeed = next;
+    this.refreshNoisePreview();
+    this.notify();
+  }
+
+  setNoisePreview(on: boolean): void {
+    this.noisePreviewOn = on;
+    this.refreshNoisePreview();
+    this.notify();
+  }
+
+  private noiseParams(): { amplitude: number; scale: number; seed: number } {
+    return { amplitude: this.noiseAmplitude, scale: this.noiseScale, seed: this.noiseSeed };
+  }
+
+  /** Sample one Paper path densely, displace each sample along its
+   * normal by the seeded noise at its arc position, and refit. */
+  private displacedSegments(
+    path: AnyItem,
+    params: { amplitude: number; scale: number; seed: number },
+  ): BezierSegment[] | null {
+    let length = 0;
+    try { length = path.length; } catch { return null; }
+    if (!(length > 0)) return null;
+    const closed = !!path.closed;
+    const steps = Math.max(8, Math.min(1200, Math.ceil(length / 3)));
+    const points: Array<{ x: number; y: number }> = [];
+    const count = closed ? steps : steps + 1;
+    for (let i = 0; i < count; i++) {
+      const offset = Math.min(length, (length * i) / steps);
+      let point: AnyItem = null;
+      let tangent: AnyItem = null;
+      try {
+        point = path.getPointAt(offset);
+        tangent = path.getTangentAt(offset);
+      } catch { return null; }
+      if (!point || !tangent) return null;
+      const d = params.amplitude * fbm1(params.seed, offset / params.scale, 3);
+      points.push({ x: point.x + (-tangent.y) * d, y: point.y + tangent.x * d });
+    }
+    return reducePolyline(points, closed, 0.35);
+  }
+
+  /** Clone a path item and rebuild every subpath's segments
+   * through `rebuild` (style and data ride along). Shared by the
+   * noise, simplify, and fit operations. Null when no subpath
+   * could be rebuilt. */
+  private rebuildPathClone(
+    item: AnyItem,
+    rebuild: (path: AnyItem) => BezierSegment[] | null,
+  ): AnyItem | null {
+    let clone: AnyItem = null;
+    try { clone = item.clone(); } catch { return null; }
+    if (!clone) return null;
+    const paths: AnyItem[] = clone.className === 'CompoundPath' ? [...(clone.children ?? [])] : [clone];
+    let changed = false;
+    for (const path of paths) {
+      if (path?.className !== 'Path') continue;
+      const fitted = rebuild(path);
+      if (!fitted || fitted.length === 0) continue;
+      try {
+        path.removeSegments();
+        for (const seg of fitted) {
+          path.add(new this.scope.Segment(
+            new this.scope.Point(seg.point.x, seg.point.y),
+            new this.scope.Point(seg.handleIn.x, seg.handleIn.y),
+            new this.scope.Point(seg.handleOut.x, seg.handleOut.y),
+          ));
+        }
+        changed = true;
+      } catch { /* Keep the cloned geometry for this subpath. */ }
+    }
+    if (!changed) {
+      try { clone.remove(); } catch { /* detached */ }
+      return null;
+    }
+    return clone;
+  }
+
+  /** Replace items with built replacements at their stack
+   * positions, as ONE undo entry under `label`. Shared by the
+   * path-geometry operations. Returns the placed replacements. */
+  private replaceItems(
+    targets: AnyItem[],
+    label: string,
+    buildOne: (item: AnyItem) => AnyItem | null,
+  ): AnyItem[] {
+    const snap = this.captureDeposit();
+    const placed: AnyItem[] = [];
+    for (const item of targets) {
+      const converted = buildOne(item);
+      if (!converted) continue;
+      const parent = item.parent;
+      const index = typeof item.index === 'number' ? item.index : undefined;
+      if (parent && index !== undefined && converted.parent !== parent) {
+        try { parent.insertChild(index, converted); } catch { this.layers.addToActive(converted); }
+      }
+      try { this.scene.retain(converted); } catch { /* Geometry still lands. */ }
+      try { item.remove(); } catch { /* Already gone. */ }
+      placed.push(converted);
+    }
+    if (placed.length > 0) {
+      this.selection.restore(placed);
+      this.recordSceneCommand(label, snap.before, snap.selected, placed, snap.retained);
+    }
+    return placed;
+  }
+
+  /** A displaced clone of a path item, or null when nothing could
+   * be displaced. The clone records the parameters in its data for
+   * reproducibility. */
+  private displacedClone(
+    item: AnyItem,
+    params: { amplitude: number; scale: number; seed: number },
+  ): AnyItem | null {
+    const clone = this.rebuildPathClone(item, (path) => this.displacedSegments(path, params));
+    if (clone?.data) {
+      clone.data.noiseDisplacement = { version: 1, amplitude: params.amplitude, scale: params.scale, seed: params.seed };
+    }
+    return clone;
+  }
+
+  /** Show the displaced result as guide items over the selection.
+   * Rebuilt whenever a parameter changes while preview is on; the
+   * guides never enter content, history, or files. */
+  refreshNoisePreview(): void {
+    this.clearNoisePreview();
+    if (!this.noisePreviewOn) return;
+    const targets = this.topLevelSelected().filter((item) => (
+      item?.className === 'Path' || item?.className === 'CompoundPath'
+    ));
+    for (const item of targets) {
+      const clone = this.displacedClone(item, this.noiseParams());
+      if (!clone) continue;
+      clone.guide = true;
+      clone.selected = false;
+      this.noisePreviewItems.push(clone);
+    }
+  }
+
+  clearNoisePreview(): void {
+    for (const item of this.noisePreviewItems) {
+      try { item.remove(); } catch { /* already gone */ }
+    }
+    this.noisePreviewItems = [];
+  }
+
+  /** Displace every selected path by the current noise parameters.
+   * One undo entry; the source items are replaced by their
+   * displaced versions. Returns how many items were displaced. */
+  applyNoiseDisplacement(): number {
+    const targets = this.topLevelSelected().filter((item) => (
+      item?.className === 'Path' || item?.className === 'CompoundPath'
+    ));
+    if (targets.length === 0) return 0;
+    this.clearNoisePreview();
+    const params = this.noiseParams();
+    const placed = this.replaceItems(targets, 'Noise displacement', (item) => this.displacedClone(item, params));
+    this.updateTextContent();
+    this.notify();
+    return placed.length;
+  }
+
+  // --- Fit & simplify (Slice 12) -----------------------------------
+  // Simplify reduces a path to a Douglas–Peucker polyline at a
+  // user tolerance (shared DP module; the tracer uses the same
+  // code). Fit converts a polyline or smoothed polyline into an
+  // editable Bézier path through the Schneider fit and reports
+  // the achieved error. Both replace the source in ONE undo entry
+  // and leave a feedback line for the panel.
+
+  simplifyTolerance = 2;
+  fitTolerance = 1;
+  /** Result line of the last fit/simplify operation, for the panel. */
+  pathOpFeedback = '';
+
+  setSimplifyTolerance(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0.05, Math.min(100, v));
+    if (next === this.simplifyTolerance) return;
+    this.simplifyTolerance = next;
+    this.notify();
+  }
+
+  setFitTolerance(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0.05, Math.min(100, v));
+    if (next === this.fitTolerance) return;
+    this.fitTolerance = next;
+    this.notify();
+  }
+
+  /** The points a fit/simplify runs on: a purely linear path
+   * contributes its own vertices (exact); a curved path is sampled
+   * densely along its length. */
+  private pathInputPoints(path: AnyItem): { points: Array<{ x: number; y: number }>; closed: boolean } | null {
+    const segments = path?.segments;
+    if (!segments || segments.length === 0) return null;
+    const closed = !!path.closed;
+    const linear = segments.every((seg: AnyItem) => (
+      Math.hypot(seg.handleIn?.x ?? 0, seg.handleIn?.y ?? 0) < 1e-9
+      && Math.hypot(seg.handleOut?.x ?? 0, seg.handleOut?.y ?? 0) < 1e-9
+    ));
+    if (linear) {
+      return { points: segments.map((seg: AnyItem) => ({ x: seg.point.x, y: seg.point.y })), closed };
+    }
+    let length = 0;
+    try { length = path.length; } catch { return null; }
+    if (!(length > 0)) return null;
+    const steps = Math.max(8, Math.min(2000, Math.ceil(length / 2)));
+    const points: Array<{ x: number; y: number }> = [];
+    const count = closed ? steps : steps + 1;
+    for (let i = 0; i < count; i++) {
+      try {
+        const p = path.getPointAt(Math.min(length, (length * i) / steps));
+        if (p) points.push({ x: p.x, y: p.y });
+      } catch { return null; }
+    }
+    return points.length >= 2 ? { points, closed } : null;
+  }
+
+  private selectedPathItems(): AnyItem[] {
+    return this.topLevelSelected().filter((item) => (
+      item?.className === 'Path' || item?.className === 'CompoundPath'
+    ));
+  }
+
+  /** Simplify every selected path at the current tolerance. */
+  simplifySelectionPaths(): number {
+    const targets = this.selectedPathItems();
+    if (targets.length === 0) return 0;
+    const tolerance = this.simplifyTolerance;
+    let before = 0;
+    let after = 0;
+    const placed = this.replaceItems(targets, 'Simplify path', (item) => {
+      const clone = this.rebuildPathClone(item, (path) => {
+        const input = this.pathInputPoints(path);
+        if (!input || input.points.length < 3) return null;
+        const kept = input.closed
+          ? douglasPeuckerClosed(input.points, tolerance)
+          : douglasPeucker(input.points, tolerance);
+        if (kept.length < 2 || kept.length >= input.points.length) return null;
+        before += input.points.length;
+        after += kept.length;
+        return kept.map((p) => ({ point: { ...p }, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } }));
+      });
+      if (clone?.data) clone.data.simplifyRecord = { version: 1, tolerance };
+      return clone;
+    });
+    if (placed.length > 0) {
+      this.pathOpFeedback = `Simplified ${placed.length} path${placed.length === 1 ? '' : 's'} — ${before} points became ${after}.`;
+    }
+    this.updateTextContent();
+    this.notify();
+    return placed.length;
+  }
+
+  /** Fit Bézier curves to every selected path/polyline at the
+   * current tolerance; the feedback line reports the achieved
+   * error of the fit. */
+  fitBeziersSelection(): number {
+    const targets = this.selectedPathItems();
+    if (targets.length === 0) return 0;
+    const tolerance = this.fitTolerance;
+    let before = 0;
+    let after = 0;
+    let maxError = 0;
+    const placed = this.replaceItems(targets, 'Fit curves', (item) => {
+      let itemError = 0;
+      const clone = this.rebuildPathClone(item, (path) => {
+        const input = this.pathInputPoints(path);
+        if (!input || input.points.length < 3) return null;
+        const fitted = fitPolylineWithError(input.points, input.closed, tolerance);
+        if (fitted.segments.length === 0 || fitted.segments.length >= input.points.length) return null;
+        before += input.points.length;
+        after += fitted.segments.length;
+        itemError = Math.max(itemError, fitted.maxError);
+        return fitted.segments;
+      });
+      if (clone?.data) {
+        clone.data.fitRecord = { version: 1, tolerance, maxError: itemError };
+        maxError = Math.max(maxError, itemError);
+      }
+      return clone;
+    });
+    if (placed.length > 0) {
+      this.pathOpFeedback = `Fit ${placed.length} path${placed.length === 1 ? '' : 's'} — ${before} points became ${after} anchors, largest error ${maxError.toFixed(2)}.`;
+    }
+    this.updateTextContent();
+    this.notify();
+    return placed.length;
+  }
+
+  // --- Concave hull (Slice 13) -------------------------------------
+  // The hull of the selection's anchor points: paths contribute
+  // their anchors (in world coordinates), other items their bounds
+  // corners. The result is a NEW closed path in one undo entry;
+  // the sources stay untouched. Concaveness 0..1 maps onto the
+  // kNN hull's neighbour count k (1 -> k=3, tightest; 0 -> k=40,
+  // near the convex hull), quadratically so the tight end — where
+  // the hull changes fastest — gets finer control.
+
+  hullConcaveness = 0.6;
+
+  setHullConcaveness(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0, Math.min(1, v));
+    if (next === this.hullConcaveness) return;
+    this.hullConcaveness = next;
+    this.notify();
+  }
+
+  /** World-space anchor/vertex points of the current selection. */
+  private selectionAnchorPoints(): Array<{ x: number; y: number }> {
+    const points: Array<{ x: number; y: number }> = [];
+    const collectPath = (path: AnyItem): void => {
+      for (const seg of path.segments ?? []) {
+        try {
+          const world = path.localToGlobal(new this.scope.Point(seg.point.x, seg.point.y));
+          points.push({ x: world.x, y: world.y });
+        } catch { /* skip unreadable anchors */ }
+      }
+    };
+    const visit = (item: AnyItem): void => {
+      if (!item || this.isNonContentItem(item)) return;
+      if (item.className === 'Path') { collectPath(item); return; }
+      if (item.className === 'CompoundPath') {
+        for (const child of item.children ?? []) if (child?.className === 'Path') collectPath(child);
+        return;
+      }
+      const children = item.children ?? [];
+      if (children.length > 0) { for (const child of children) visit(child); return; }
+      const b = item.bounds;
+      if (b) {
+        points.push(
+          { x: b.topLeft.x, y: b.topLeft.y }, { x: b.topRight.x, y: b.topRight.y },
+          { x: b.bottomRight.x, y: b.bottomRight.y }, { x: b.bottomLeft.x, y: b.bottomLeft.y },
+        );
+      }
+    };
+    for (const item of this.topLevelSelected()) visit(item);
+    return points;
+  }
+
+  /** Build the concave hull of the selection's anchor points as a
+   * new closed path. Returns 1 when a hull was deposited. */
+  concaveHullSelection(): number {
+    const points = this.selectionAnchorPoints();
+    if (points.length < 3) return 0;
+    const k = Math.round(3 + (1 - this.hullConcaveness) * (1 - this.hullConcaveness) * 37);
+    const hull = concaveHull(points, k);
+    if (!hull || hull.length < 3) {
+      this.pathOpFeedback = 'No hull could be drawn around those points.';
+      this.notify();
+      return 0;
+    }
+    const snap = this.captureDeposit();
+    const item = new this.scope.Path({
+      segments: hull.map((p) => new this.scope.Point(p.x, p.y)),
+      closed: true,
+    });
+    this.applyCurrentStyles(item);
+    item.closed = true;
+    if (item.data) {
+      item.data.concaveHullRecord = { version: 1, concaveness: this.hullConcaveness, neighbours: k, anchors: points.length };
+    }
+    this.layers.addToActive(item);
+    this.recordSceneCommand('Concave hull', snap.before, snap.selected, [item], snap.retained);
+    this.pathOpFeedback = `Concave hull — ${hull.length} points around ${points.length} anchors.`;
+    this.updateTextContent();
+    this.notify();
+    return 1;
+  }
 
   // --- Live-drawing key remaps ---
   // Reserved number-key slots for future live bindings (repeat counts,
@@ -6169,13 +10463,19 @@ export class NibGliderEngine {
   }
 
   endShapeAsStroke(): AnyItem[] {
-    // Snapshot repeat offsets before finish clears the live session.
-    const offsets = this.repeatManager.beginDeposit();
+    // Snapshot repeat offsets/transforms before finish clears the
+    // live session.
+    const transforms = this.repeatManager.beginDepositTransforms();
+    const offsets = transforms ? [] : this.repeatManager.beginDeposit();
     let base: AnyItem[] = [];
     if (this.circleTool.active) base = this.circleTool.finish();
     else if (this.rectangleTool.active) base = this.rectangleTool.finish();
     const placed = base.filter((item) => !!item);
-    return [...placed, ...this.repeatManager.finishDeposit(placed, offsets)];
+    const copies = transforms
+      ? this.repeatManager.finishDepositTransformed(placed, transforms)
+      : this.repeatManager.finishDeposit(placed, offsets);
+    if (transforms) this.tagReplication(placed, copies, transforms.length, this.repeatManager.takeDepositSpec());
+    return [...placed, ...copies];
   }
 
   createRegularPolygon(center: AnyItem, radius: number, sides: number, rotationAngle = 0, radiusMode = 'circumradius'): AnyItem {
@@ -6271,6 +10571,7 @@ export class NibGliderEngine {
   private onAfterPrint = (): void => {
     this.selection.restoreGlow();
     this.setGuideLayersVisible(true);
+    this.finishPrint();
   };
 
   // --- Mouse (NibGliderApp.js) ---
@@ -6325,8 +10626,35 @@ export class NibGliderEngine {
     this.viewport.stepZoom(dir);
   }
 
-  private resetZoom(): void {
+  resetZoom(): void {
     this.viewport.resetZoom();
+  }
+
+  /** View menu zoom steps (the ⌘/Ctrl +/- keys share stepZoom). */
+  zoomIn(): void { this.stepZoom(1); }
+  zoomOut(): void { this.stepZoom(-1); }
+
+  /** Fit the active page rect into the view. False when no page is set. */
+  fitPage(): boolean {
+    const page = this.pageRect();
+    return page ? this.viewport.fitToRect(page) : false;
+  }
+
+  /** Fit the union of the artwork into the view. */
+  fitArtwork(): boolean {
+    const art = this.artworkRect();
+    return art ? this.viewport.fitToRect(art) : false;
+  }
+
+  /** Fit the current selection's bounds into the view. */
+  fitSelection(): boolean {
+    const items = this.topLevelSelected();
+    if (items.length === 0) return false;
+    const bounds = this.collectiveBounds(items);
+    if (!bounds || !(bounds.width > 0 || bounds.height > 0)) return false;
+    return this.viewport.fitToRect({
+      x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+    });
   }
 
   private lastTrackpadPanAt = 0;
@@ -6502,6 +10830,10 @@ export class NibGliderEngine {
   }
 
   private nudgeSelection(dx: number, dy: number): void {
+    if (this.pointEdit?.active && this.pointEdit.selection) {
+      this.pointEdit.nudgeSelected({ x: dx, y: dy });
+      return;
+    }
     this.transforms.nudge(dx, dy);
     this.updateTextContent();
     this.notify();
@@ -6541,8 +10873,12 @@ export class NibGliderEngine {
       panLock: this.isPanLocked,
       drawingPath: this.isDrawingPath,
       composite: this.compositePathTool.active,
-      layoutLabel: this.compositePathTool.active ? layoutLabelForState(this.getKeyState()) : undefined,
+      layoutLabel: this.compositePathTool.active ? keyboardLayoutById(this.activeKeyboardLayoutId()).label : undefined,
       cornerRadius: this.compositeCornerRadius,
+      keyboardLayout: keyboardLayoutById(this.activeKeyboardLayoutId()).label,
+      roundingMode: this.compositeRoundingMode,
+      bowAmplitude: this.bowAmplitude,
+      bowAmplitudeIsPercent: this.bowAmplitudeIsPercent,
       splineTension: this.splineTension,
       drawingShape: this.isDrawingShape,
       shapeType: this.shapeType,

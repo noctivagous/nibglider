@@ -137,11 +137,19 @@ test('missing layers, foreign-project layers, styles, and unsupported sources le
     const item = renderer.render(model);
     for (const invalid of [
       { ...model, layerId: 'missing' }, { ...model, styleId: 'missing' },
-      { ...model, source: { id: 'future', mode: 'smoothedPolyline', tension: 0.4, closed: false, points: [] } },
     ]) assert.throws(() => renderer.render(invalid));
     assert.equal(renderer.getItem(model.id), item);
     assert.equal(item.parent, layer);
     assert.equal(layer.children.length, 1);
+    // smoothedPolyline stopped being an unsupported source in
+    // Tier Two Slice 7: it renders like every other path mode.
+    const smooth = renderer.render({
+      ...model,
+      id: 'smooth-1',
+      source: { id: 'smooth-1', mode: 'smoothedPolyline', tension: 0.4, closed: false, points: [{ x: 0, y: 0 }, { x: 40, y: 20 }, { x: 80, y: 0 }] },
+    });
+    assert.equal(smooth.parent, layer);
+    assert.equal(layer.children.length, 2);
     const other = new paper.PaperScope(); other.setup(new other.Size(400, 300));
     try {
       const foreign = new DrawableRenderer(scope, { layerForId: () => other.project.activeLayer });
@@ -150,7 +158,7 @@ test('missing layers, foreign-project layers, styles, and unsupported sources le
   } finally { scope.project.remove(); }
 });
 
-test('supported semantic modes resolve while deferred modes reject silent flattening', () => {
+test('supported semantic modes resolve, smoothedPolyline included since Slice 7', () => {
   const composite = fixture('composite');
   assert.equal(composite.source.points[2].corner.radius, 12);
   const base = fixture('bezier');
@@ -160,8 +168,7 @@ test('supported semantic modes resolve while deferred modes reject silent flatte
   ]) {
     const model = roundTrip({ ...base, source });
     assert.deepEqual(model.source, source);
-    if (source.mode === 'smoothedPolyline') assert.throws(() => resolveDrawableGeometry(model), GeometryResolutionError);
-    else assert.equal(resolveDrawableGeometry(model).kind, 'path');
+    assert.equal(resolveDrawableGeometry(model).kind, 'path');
   }
 });
 
@@ -254,7 +261,7 @@ test('every FM point kind round-trips through serialization', () => {
   assert.deepEqual(roundTrip(model).source.points, model.source.points);
 });
 
-test('a trailing unfinished arc validates only as a live session snapshot', () => {
+test('a trailing unfinished arc never validates; sessions complete it before persisting', () => {
   const staged = {
     id: 'composite-path-staged', mode: 'ngComposite', closed: false,
     points: [
@@ -262,11 +269,10 @@ test('a trailing unfinished arc validates only as a live session snapshot', () =
       { id: 'p2', x: 60, y: 0, kind: 'arcByThreeStart', outgoing: { kind: 'arc' } },
     ],
   };
-  assert.doesNotThrow(() => validatePath(staged, 'path', { allowStagedArc: true }));
   assert.throws(() => validatePath(staged), ModelValidationError);
   const mid = structuredClone(staged);
   mid.points.push({ id: 'p3', x: 90, y: 10, kind: 'bSpline', outgoing: { kind: 'bSpline' } });
-  assert.throws(() => validatePath(mid, 'path', { allowStagedArc: true }), ModelValidationError);
+  assert.throws(() => validatePath(mid), ModelValidationError);
 });
 
 test('supershape resolution keeps finite samples and does not change the source', () => {

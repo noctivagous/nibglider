@@ -7,12 +7,14 @@
     <tab id="page" title="Page">
       <section id="page" title="Page">
         <toggle key="pageFill" label="Fill" />
+        <field key="pageFillColor" type="color" label="Fill colour" />
         <toggle key="pageSideTicks" label="Ruler ticks on the sides" />
       </section>
       <section id="rulers" title="Rulers">
         <switch key="rulerPlacement" label="Ruler placement">
           <option value="viewer" label="Viewer edges" />
           <option value="page" label="Page frame" />
+          <option value="off" label="Off" />
         </switch>
         <toggle key="rulerGuides" label="Guide lines to canvas edges" />
       </section>

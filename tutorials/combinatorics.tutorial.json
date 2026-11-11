@@ -1,0 +1,254 @@
+{
+  "id": "combinatorics",
+  "title": "Combinatorics",
+  "description": "Merge shapes with union, subtract, intersect and more: arm a mode and draw over an existing shape, or combine a selection on the spot.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-combinatoricsControls",
+      "bubble": {
+        "title": "Combinatorics: shapes that merge",
+        "body": "Combinatorics merges shapes into new ones — union joins them, subtract cuts one out of another. Arm a mode in this section, and the next shape you draw over an existing one combines with it as it lands.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-combine",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: union, then subtract",
+        "body": "Press Watch demo: the program draws a rectangle, arms Union and draws over it so the two merge, then arms Subtract and cuts a bite out.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-i"
+        ]
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "combinatoricsControls",
+          "rectFrameControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "A first rectangle",
+          "body": "Drawing a plain rectangle. No mode is armed yet."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.36,
+          "y": 0.4,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.56,
+          "y": 0.58,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "Union armed",
+          "body": "Arming Union in the Combinatorics section. The next overlapping shape merges on deposit."
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "combinatorics",
+          "field": "mode",
+          "value": "union"
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.48,
+          "y": 0.46,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.68,
+          "y": 0.64,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "Merged",
+          "body": "The second rectangle landed overlapping the first, and the two are now one shape."
+        },
+        {
+          "kind": "narrate",
+          "title": "Subtract armed",
+          "body": "Arming Subtract. The next overlapping shape cuts its overlap away."
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "combinatorics",
+          "field": "mode",
+          "value": "subtract"
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.52,
+          "y": 0.5,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.64,
+          "y": 0.62,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "A bite taken",
+          "body": "The overlap is cut out of the merged shape."
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "combinatorics",
+          "field": "mode",
+          "value": "none"
+        },
+        {
+          "kind": "narrate",
+          "title": "Mode off",
+          "body": "Back to None — plain drawing again. Modes stay armed until you switch them off."
+        }
+      ]
+    },
+    {
+      "id": "do-arm-union",
+      "target": "section-combinatoricsControls",
+      "bubble": {
+        "title": "Arm Union yourself",
+        "body": "In the Combinatorics section, choose Union. The mode stays armed for the next shape you draw.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "combinatorics",
+        "field": "mode",
+        "value": "union"
+      }
+    },
+    {
+      "id": "do-union-press",
+      "target": "key-i",
+      "bubble": {
+        "title": "Draw over a shape",
+        "body": "Steer so your rectangle will overlap an existing shape, and press I to start it.",
+        "placement": "above"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "i"
+      }
+    },
+    {
+      "id": "do-union-draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Deposit the union",
+        "body": "Steer and press I again. Because Union is armed and the shapes overlap, the new rectangle merges into the one it covers.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "do-arm-subtract",
+      "target": "section-combinatoricsControls",
+      "bubble": {
+        "title": "Now arm Subtract",
+        "body": "Choose Subtract in the Combinatorics section.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "combinatorics",
+        "field": "mode",
+        "value": "subtract"
+      }
+    },
+    {
+      "id": "do-subtract-press",
+      "target": "key-i",
+      "bubble": {
+        "title": "Draw the cutter",
+        "body": "Steer so this rectangle will overlap the merged shape, and press I to start it.",
+        "placement": "above"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "i"
+      }
+    },
+    {
+      "id": "do-subtract-draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Deposit the cut",
+        "body": "Steer and press I again. The overlap is cut out of the shape underneath.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-combinatoricsControls",
+      "bubble": {
+        "title": "Two ways to combine",
+        "body": "Modes work two ways: armed, they combine the next shape you draw over another — and with two or more shapes selected, choosing a mode combines the selection immediately. Choose None in the section to return to plain drawing.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

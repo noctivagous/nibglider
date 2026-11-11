@@ -23,7 +23,7 @@ const BINDINGS: Record<string, FieldBinding> = {
   rulerPlacement: {
     get: (engine) => engine.rulerPlacement,
     set: (engine, value) => {
-      if (value === 'viewer' || value === 'page') engine.setRulerPlacement(value);
+      if (value === 'viewer' || value === 'page' || value === 'off') engine.setRulerPlacement(value);
     },
   },
   rulerGuides: {
@@ -33,6 +33,10 @@ const BINDINGS: Record<string, FieldBinding> = {
   pageFill: {
     get: (engine) => engine.pageFill,
     set: (engine, value) => engine.setPageFill(value === true || value === 'true'),
+  },
+  pageFillColor: {
+    get: (engine) => engine.pageFillColor,
+    set: (engine, value) => { if (typeof value === 'string') engine.setPageFillColor(value); },
   },
   pageSideTicks: {
     get: (engine) => engine.pageSideTicks,

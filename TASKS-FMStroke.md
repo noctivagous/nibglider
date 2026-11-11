@@ -103,17 +103,24 @@ Defaults are proposed so work can start; flag any you want changed.
   `isCompositeSessionActive`) and the base layout returns on
   finish/cancel. A manual layout switcher (for future Grid Paint /
   Repeat layouts from `TASKS.txt`) is built in Phase 5, not now.
+  (Widened by Tier Three Slice 14, 2026-11-10: activation is
+  composite mode on OR session live, so the bowed key can start a
+  path; the manual choice is the persisted `keyboard.layout`
+  setting. Merge 2026-11-11: kept the widening; the manual
+  override survives only as the clothoid-layout key, Shift+B.)
 - [ ] **D2 — Default path mode.** FM keys only make sense in
   `ngComposite`. Default: keep `legacy` as the global default;
   starting a path from the spline layout implies `ngComposite`.
   Changing the global default is a separate, explicit decision.
-- [ ] **D3 — Rounded-corner length semantics.** FM stamps
+  (Followed by Tier Two Slice 9b: bowed/arc keys act only in
+  ngComposite mode; the global default is unchanged.)
+- [x] **D3 — Rounded-corner length semantics.** FM stamps
   `roundedCornerSegmentLength` (default 25, a trim length along each
   leg, halved when a leg is short). NibGlider stores a tangent-arc
   `radius` (default 12) and already caps trims at half-leg. Default:
   keep radius as the stored truth; expose FM's length only as the
   derived trim. Do not add a second stored length.
-- [ ] **D4 — New physical keys (spline layout only).** Proposed,
+- [x] **D4 — New physical keys (spline layout only).** Proposed,
   chosen from currently free/unused caps so the base layout is
   untouched. FM's original macOS keycodes do not transfer.
   Reserved everywhere: `A` = End, `Q` = Cancel (see 1.1) —
@@ -129,12 +136,16 @@ Defaults are proposed so work can start; flag any you want changed.
     stroke width), and record the final table there.
   - Phase 1 audit result (2026-10-31): `KeyB`, `Period`,
     `Backslash` confirmed free (empty legends in `KEY_CAPS`).
-    Reservation is enforced in code: `validateLayoutTable` throws
-    if any layout binds a `POINT_COMMAND_IDS` command to plain
-    `A`/`Q`/`Escape`/`R`. Pre-existing conditional bindings on
-    those codes (`transform-rotate` on R, `clear-selection` on
-    Escape) are not point keys and stay. Final FM key table still
-    lands in Phase 5 with the new commands.
+    Reservation was enforced in code (`validateLayoutTable` +
+    `POINT_COMMAND_IDS` on plain `A`/`Q`/`Escape`/`R`).
+  - **Settled (Slice 14, 2026-11-10):** `.` = three-point arc,
+    `\` = switch-rounding, `Z` = erase-last (Pan-lock is idle-only,
+    so `Z` is free while drawing); the bowed pair stays by facing
+    (`B`/`Shift+B`) over the single `bowedLine` kind. Full table in
+    the Slice 14 completion note after Phase 6. Merge 2026-11-11:
+    Slice 14 table wins; the reservation helper is retired with the
+    old registry (A/Q/Escape/R stay point-free by construction).
+    Clothoid entry moves to `Shift+B` (toggle).
 - [ ] **D5 — Clothoid.** FM notes clothoid only as an interest, with
   no implementation to trace. Default: Phase 7 is a research spike
   (Euler-spiral solver behind the same expansion interface); it does
@@ -271,14 +282,18 @@ layout. Files: [keymap.ts](/Users/jpratt/Developer/nibglider/src/engine/input/ke
   layout commands win on their caps; unmatched caps fall back to
   base (so End/Cancel/Undo keep working while drawing).
   Layout-wide reservation (applies to every layout, including
-  the B-spline and clothoid spline layouts): **no point key on
-  plain `A`/`Q`/`Escape`/`R`** (enforced by `validateLayoutTable`
-  + `POINT_COMMAND_IDS`; Phase 5 extends the list with each new
-  point command). The base layout's extra End aliases (`E`, `S`)
-  are layout-local and MAY be repurposed as point keys inside
-  spline layouts. — Done 2026-10-31 (`base` + `spline` shell;
-  `clothoid`/`grid-paint`/`repeat` reserved in
-  `FUTURE_LAYOUT_IDS` with no stub tables).
+  the B-spline and clothoid spline layouts): **`A` is always End
+  and `Q` is always Cancel** (plus the existing `Esc` cancel
+  alias and `R` Complete Shape). The base layout's extra End
+  aliases (`E`, `S`) are layout-local and MAY be repurposed as
+  point keys inside spline layouts — but `A` and `Q` are never
+  shadowed. Any layout proposal that puts a point key on `A` or
+  `Q` is invalid on arrival. — Done 2026-10-31 (`base` + `spline`
+  shell; `clothoid`/`grid-paint`/`repeat` reserved with no stub
+  tables; enforced then by `validateLayoutTable` +
+  `POINT_COMMAND_IDS`). Merge 2026-11-11: the registry is now the
+  tier per-layout compile; the rule stands, enforced by
+  construction instead of a validator.
 - [x] 1.2 Add `activeLayoutId` to `KeyState`; thread it through
   `KeyboardController.keyState()`, `resolveKeyVariants`,
   `resolveKeyboardLayout`, and `matchAppCommand`. Dispatch and
@@ -287,12 +302,15 @@ layout. Files: [keymap.ts](/Users/jpratt/Developer/nibglider/src/engine/input/ke
   `resolveKeyVariants` keeps one shared lookup path over the
   layout table, `matchAppCommand` keeps iterating the base table
   (app commands are unavailable while drawing, so layout is moot).
+  Re-implemented Tier Three Slice 14 as a per-layout compile
+  (`compileKeyVariants` + `KEY_VARIANTS_BY_LAYOUT`); merge
+  2026-11-11 keeps the tier form.
 - [x] 1.3 Collision audit + final key table for the spline layout
   (settles D4). Every spline-layout key must list: physical code,
   chord, command id, FM equivalent, and which base command it
   shadows while drawing. — Done 2026-10-31, see D4 audit result
   above; per-key table deferred to Phase 5 since the shell adds
-  no commands.
+  no commands. Final table settled Slice 14 (see D4).
 - [x] 1.4 Layout switching: engine-owned `activeKeyboardLayout`
   derived from session state (D1); layout name shown on the board
   and in the status overlay. Switching mid-draw must not cancel or
@@ -300,12 +318,17 @@ layout. Files: [keymap.ts](/Users/jpratt/Developer/nibglider/src/engine/input/ke
   (`isCompositeSessionActive` from `PathTool.active`; board badge
   + `data-layout`; status title gains `· Spline layout` while a
   composite session draws; resolution never touches the session).
+  Merge 2026-11-11: derivation also yields `clothoid` while a
+  clothoid session draws; the manual override survives only for
+  the clothoid key.
 - [x] 1.5 `KEY_VARIANTS` compilation becomes per-layout (or
   layout-tagged). Watch the startup cost: it already enumerates
   codes × 16 chords × commands. — Done 2026-10-31 as sparse
   per-layout maps keyed by code+chord (FM-plist shape: 55 commands
   → 226 bound triples, not the ~52k product space). `KEY_VARIANTS`
   stays as the flattened base table, unchanged in content/order.
+  Tier Slice 14 recompiles per registered layout at startup;
+  merge 2026-11-11 keeps that form (clothoid registers third).
 - [x] 1.6 Tests: extend [composite-path.test.mjs](/Users/jpratt/Developer/nibglider/tests/composite-path.test.mjs)
   keymap test + add layout-resolution cases (base ↔ spline swap,
   fallback keys, `isTypingText` still suppresses everything).
@@ -335,10 +358,13 @@ Files: [NGPath.ts](/Users/jpratt/Developer/nibglider/src/engine/model/NGPath.ts)
 - [x] 2.3 Arc staged validation (done 2026-11-01, model slice):
   `validatePath(path, { allowStagedArc: true })` permits one
   trailing unpaired start for live snapshots; persisted paths stay
-  strict.
+  strict. (Superseded by the tier strict pairing + `arcOpen`
+  session flag; merge 2026-11-11 drops the staged flag — the
+  session completes arcs before they persist.)
 - [x] 2.4 `validatePath` covers the new fields (done 2026-11-01,
   model slice): finite/clamped ranges rejected-not-repaired,
-  unknown keys still rejected.
+  unknown keys still rejected. (Tier Phase 2.4 adds explicit
+  range minima; merge 2026-11-11 keeps the tier ranges.)
 - [x] 2.5 Tests in [engine-model.test.mjs](/Users/jpratt/Developer/nibglider/tests/engine-model.test.mjs) (done
   2026-11-01, model slice): bow round-trip + 9 rejections, every-FM-kind
   fixture round-trip, staged-arc session/persisted split.
@@ -355,22 +381,25 @@ Pure, Paper-free; this is where the "not implemented" throw goes away.
 - [x] 3.1 Bowed segment (spline mode, done 2026-11-01): `bowPeakPoints`
   per FM math (facing = normal ±90°, %/absolute amplitude, dual
   straddle, 2×/3× apex copies); degenerate chord (1e-9 discipline)
-  emits just the peak.
+  emits just the peak. (Kept as the exported peak-math helper;
+  the walk now resolves through `bowedCommands`.)
 - [x] 3.2 Arc mode + standalone arc (done 2026-11-01):
   `sampleCircleThrough3` (perpendicular-bisector center, sweep side
   containing `through`, kappa cubics, collinear/coincident → line
   fallback, never NaN/throw); arc-mode bows use the single central
-  peak like FM.
-- [x] 3.3 Wired as `bowedControls`/`arc` commands (done 2026-11-01):
-  segment-level replacement; unfinished arcs preview as hard
-  corners; incoming line/bowed legs are subsumed by the arc so no
-  spike; bowed runs stay B-spline even in clothoid paths.
-- [x] 3.4 Closed paths (done 2026-11-01): bow/arc on the seam work
-  (arc-at-seam moves the seam to the arc end); rounded targets keep
-  entry/exit trims while bowed points stay FM-literal trim-free.
-- [x] 3.5 Tests (done 2026-11-01, 7 new in `composite-path.test.mjs`):
-  all listed cases plus arc-mode circle, seam/trim cases, and the
-  staged-arc preview; `distinct()` throughout.
+  peak like FM. (Re-implemented Tier Two Slice 9b via
+  simpleGeometry's `arcThroughPoints`/`arcSegments`, sampled as
+  cubics; merge 2026-11-11 keeps the tier form.)
+- [x] 3.3 Wired into `expandCompositePoints` (done 2026-11-01,
+  re-implemented Slice 9b): segment-level replacement; unfinished
+  arcs complete at finish instead of previewing as hard corners;
+  bowed runs stay B-spline even in clothoid paths.
+- [x] 3.4 Closed paths (done 2026-11-01, reworked Slice 14): bow/arc
+  on the seam work (seam-safe vertex choice); rounded targets keep
+  entry/exit trims.
+- [x] 3.5 Tests (done 2026-11-01, 7 new in `composite-path.test.mjs`,
+  reworked Slice 14 + merge 2026-11-11): peak-math helper cases
+  plus arc-resolution cases; `distinct()` throughout.
 
 **Gate:** the throw at `compositeExpansion.ts:59` is gone; every
 FM point kind expands to finite geometry. — Met 2026-11-01 (29/29
@@ -419,6 +448,33 @@ Files: [PathDrawingSession.ts](/Users/jpratt/Developer/nibglider/src/engine/draw
 **Gate:** a scripted key sequence builds a semantic path using
 every FM key, and `snapshot()` matches the expected point list.
 
+**Tier Two Slice 9b completion note (2026-11-10).** The core of
+Phases 3–4 landed, with deliberate simplifications vs. this plan:
+`expandCompositePoints` no longer throws — bowed segments resolve
+to an exact quadratic-peak cubic (peak at the chord midpoint,
+`bowOffset` absolute pt or a 25%-of-chord default, `bowFacing`
+left/right), three-point arcs resolve through
+`arcThroughPoints`/`arcSegments` with a collinear line fallback,
+and an `arc` outgoing segment resolves as the semicircle on its
+chord. The drawing session deposits both: `B` / `Shift+B` stamp a
+bowed point (facing A/B) and `.` runs the arc state machine under
+the app's stamp-previous convention (pressing `.` at the end point
+arcs through the previous point; any next point key commits the
+end; finishing mid-arc completes the arc at the final point in
+`snapshot()`, and ending exactly on the through point abandons it,
+mirroring FM's unfinished-arc fallback). Engine `*KC` entry
+points, PathTool methods, host interface, keymap commands/caps,
+and tests (`tests/fmstroke-completion.test.mjs`) are in.
+NOT done: Phase 1's swappable keyboard-layout registry (the new
+keys are ordinary KEY_COMMANDS entries — the layout system did
+not fall out of this slice), Phase 2's 9-field `NGBowedParams`
+(the model's existing `bowOffset`/`bowFacing` carry the bow;
+peak-location/multiplier/dual-peak parameters remain future),
+the hard/rounded bowed key pair (one `bowedLine` kind, repeats=2),
+3.4's seam-crossing arc triples (they fall back to ordinary
+vertices; bowed seam segments do work), 4.4's switch-rounding
+key, and 4.5's erase-last key.
+
 ## Phase 5 — Wiring: dispatch, board, status, settings
 
 Files: [KeyboardController.ts](/Users/jpratt/Developer/nibglider/src/engine/input/KeyboardController.ts),
@@ -434,7 +490,7 @@ Files: [KeyboardController.ts](/Users/jpratt/Developer/nibglider/src/engine/inpu
 - [x] 5.2 Spline-layout caps with legends (e.g. `BOW →`,
   `ARC 3-PT`) following the existing two-line legend style;
   settings gear links via `KEY_SETTINGS_LINKS` pattern.
-- [ ] 5.3 Key-settings fields (path-tool schema, spline-layout
+- [x] 5.3 Key-settings fields (path-tool schema, spline-layout
   section): bow amplitude + %/absolute toggle, peak location,
   arc-vs-spline bow mode, dual distance, apex cornering, corner
   rounding type. All persisted through `engineSettings`
@@ -450,7 +506,7 @@ Files: [KeyboardController.ts](/Users/jpratt/Developer/nibglider/src/engine/inpu
   is meaningful. Also register the future layout ids
   (`grid-paint`, `repeat`) as placeholders **only if** the
   registry needs them — no stub layouts.
-- [ ] 5.6 Tests: dispatch through `KeyboardController` (not just
+- [x] 5.6 Tests: dispatch through `KeyboardController` (not just
   the resolver), board legends for each chord, settings
   read/write/validate round-trip in
   [engine-settings.test.mjs](/Users/jpratt/Developer/nibglider/tests/engine-settings.test.mjs).
@@ -460,22 +516,104 @@ deposit → undo/redo — for each new key, in tests.
 
 ## Phase 6 — Persistence, export, and downstream consumers
 
-- [ ] 6.1 Retained-source round-trip: deposit a path using every
+- [x] 6.1 Retained-source round-trip: deposit a path using every
   new kind, save/load the drawable, confirm identical geometry
   after re-resolution (extend the Phase 5 engine test).
-- [ ] 6.2 SVG/export: derived Bezier output only — no FM/NibGlider
+- [x] 6.2 SVG/export: derived Bezier output only — no FM/NibGlider
   metadata required by external readers (per the study). Verify
   bowed/arc paths export as ordinary path data.
-- [ ] 6.3 Downstream lowering audit: outlined-stroke spine
+- [x] 6.3 Downstream lowering audit: outlined-stroke spine
   ([outlinedStroke.ts](/Users/jpratt/Developer/nibglider/src/engine/geometry/outlinedStroke.ts)),
   interlace, boolean ops, endpoint join, direct Paper-segment
   edits. Each must either resolve the new kinds or lower to
   Bézier exactly as composite paths already do — no new throws.
-- [ ] 6.4 Text-on-path and shape-text (`withShapeText`) still work
+- [x] 6.4 Text-on-path and shape-text (`withShapeText`) still work
   on bowed/arc deposits.
 
 **Gate:** no code path in `src/` throws on a persisted bowed/arc
 composite path.
+
+**Tier Three Slice 14 completion note (2026-11-10).** Phases 1, 2,
+3.1, 3.4, 3.5, 4, 5 (except 5.5), and 6 landed; tests are in
+`tests/fmstroke-slice14.test.mjs`. What shipped, with the honest
+deviations from this file's letter:
+
+- **Phase 1 — layout registry.** `KEYBOARD_LAYOUTS` in `keymap.ts`
+  holds named `KeyboardLayoutDef`s; the base layout is the existing
+  command/cap set, and the spline layout carries the FMStroke
+  commands (the bowed/arc commands moved out of `KEY_COMMANDS` into
+  it) ahead of the base set over merged caps, so layout commands win
+  their caps and everything else falls back to base. Variants compile
+  per layout (`KEY_VARIANTS_BY_LAYOUT`); dispatch and the board both
+  resolve through the active layout's list. D1: the engine derives
+  the active layout — spline while composite mode is on or a
+  composite session is live (mode-level, not session-only, so `B`
+  can still start a path, matching Tier Two's board behaviour), else
+  the manual `keyboard.layout` setting (`auto|base|spline`). `A`/`Q`
+  are never claimed by the spline layout and are test-asserted to
+  resolve to End/Cancel there. The layout name shows in the status
+  overlay ("Keys: Spline · Rounding: … · Bow: …"); a board-header
+  switcher control (5.5) was NOT built — the registry setting exists
+  and persists, the visible control remains open.
+- **D4 final key table (spline layout).** `B` bowed facing A,
+  `Shift+B` bowed facing B (the pair is by facing; the single
+  `bowedLine` kind with repeats=2 from Tier Two is unchanged — no
+  separate hard/rounded bowed keys), `.` three-point arc, `\`
+  switch-rounding (the Backslash cap had no base command), `Z`
+  erase-last (base `Z` is Pan-lock, available only while idle, so
+  the cap is free while drawing). Found while wiring this: `.` had
+  never compiled a dispatch variant (`Period` was missing from the
+  physical-key punctuation table), so the Tier Two arc key resolved
+  on the board but did not dispatch; fixed by adding the mapping.
+- **Phase 2 — model.** `NGBowedParams` (9 fields) rides on
+  `outgoing.bow`, superseding `bowOffset`/`bowFacing`; the point
+  kind stays the corner, per 2.2's default. Where the file said "no
+  legacy migration", the slice brief required one: native format
+  v3 → v4 (`migrate3to4`) converts stored pairs preserving Tier Two
+  semantics exactly (present offset = absolute pt, absent = 25% of
+  chord, left/right = A/B). `BOWED_DEFAULTS` keeps 25% (Tier Two's
+  shipped default) rather than FM's 10 — the record a session
+  stamps carries the settings value either way. Validation rejects
+  out-of-range values, never repairs; closed-path arc pairing is
+  checked cyclically so a seam-wrapped pair persists legally, open
+  paths stay strict.
+- **Phase 3 — geometry.** Single peak = the exact quadratic through
+  the computed peak (Tier Two semantics, generalized to peak
+  location × multiplier and %/absolute amplitude); dual peaks chain
+  two quadratics through both peaks with the saddle between them;
+  a cornered apex emits the peak as a repeated B-spline control
+  (×2/×3, FM multiplicity); arc mode takes the circle through
+  (start, peak, end) with a collinear line fallback; a degenerate
+  chord emits just its endpoints (documented in code). Seam: the
+  expansion walk now chooses a seam-safe start vertex, so arc
+  triples crossing the array seam expand as arcs; a closed ring
+  made only of through/end points (no anchor vertex) keeps the
+  ordinary-vertex fallback.
+- **Phase 4 — session.** Commits stamp the session's bow-parameter
+  snapshot and rounding selection; settings changes never rewrite
+  committed points (the deliberate `setCornerRadius` live behaviour
+  stays, and now preserves each point's stamped rounding type).
+  Switch-rounding (`\`) cycles arc → bSpline → bevel for later
+  points. Erase-last (`Z`) removes the last committed point, is a
+  no-op at the first point, abandons an open arc (through point
+  reverts to a spline point) and likewise abandons a completed arc
+  whose end is erased. Scale scales absolute bow amplitudes;
+  percent amplitudes ride the chord; rotation leaves bow records
+  untouched (they are chord-relative).
+- **Phase 5 — wiring.** `perform()` cases, host methods, engine
+  `*KC` entry points for both new keys; spline caps (Backslash
+  gains the ROUNDING TYPE legend; B/Period/Z resolve through the
+  layout); bow settings persisted as `path.bowAmplitude`,
+  `path.bowAmplitudeIsPercent`, `path.bowPeakLocation`,
+  `path.bowIsArc` (dual distance and apex cornering are
+  record-level parameters, not settings fields; rounding type is
+  the switch key's session state). Keymap-table rows for the new
+  keys appear only in the composite branch.
+- **Phase 6.** The bow record round-trips through drawable
+  serialization field-for-field; exports remain derived-Bézier
+  only (no new metadata); downstream consumers all resolve through
+  `resolveCompositePath`, which is now total over every persisted
+  kind — the full suite is the evidence.
 
 ## Phase 7 — Clothoid layout (spike, after Phase 5)
 

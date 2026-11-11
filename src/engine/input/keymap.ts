@@ -721,32 +721,105 @@ export const KEY_COMMANDS: KeyCommand[] = [
   {
     id: 'enter-clothoid-layout',
     action: 'enter-clothoid-layout',
-    keycap: 'B',
+    keycap: '\\',
     group: 'neutral',
     help: 'Open the clothoid layout',
-    match: (e) => !meta(e) && letter('b')(e),
-    // A layout key opens its layout; it never fires from inside another one.
-    available: (s) => layoutIdForState(s) === 'base',
+    // Plain Backslash: free in every layout while idle (the spline
+    // layout's switch-rounding wins this chord while drawing, and the
+    // clothoid board has no use for it). Fires once to pin the manual
+    // clothoid override; the controller toggles it back off.
+    match: (e) => e.code === 'Backslash' && !e.shiftKey && !e.altKey && !meta(e),
+    // Never fires while drawing or from inside the clothoid layout itself.
+    available: (s) => !s.isDrawingPath && s.activeLayoutId !== 'clothoid',
+    exclusive: true,
+  },
+];
+
+/**
+ * Swappable keyboard layouts (TASKS-FMStroke Phase 1, Slice 14). A
+ * layout is named data: the commands it adds or overrides plus the
+ * caps it overrides. Layout commands win on their caps; unmatched
+ * caps fall back to the base layout, so the base command set stays
+ * live underneath every layout. Reservation (Phase 1.1): A is always
+ * End and Q is always Cancel in every layout — no layout command may
+ * claim KeyA or KeyQ, so those base commands always resolve.
+ */
+export interface KeyboardLayoutDef {
+  id: string;
+  label: string;
+  /** Commands this layout adds; they precede the base commands when
+   * this layout's variants are compiled, so they win shared caps. */
+  commands: KeyCommand[];
+  /** Cap overrides/additions, merged over KEY_CAPS by cap id. */
+  caps: KeyCap[];
+}
+
+const compositeReady = (s: KeyState): boolean =>
+  !!s.isCompositePath && !s.isDrawingShape && !s.isDrawingQuad;
+const compositeDrawing = (s: KeyState): boolean =>
+  compositeReady(s) && s.isDrawingPath;
+
+/** Shared erase-last-point command, compiled into every session layout
+ * (spline and clothoid): Z is Pan-lock in the base layout, but Pan-lock
+ * is idle-only, so the cap is free while drawing (the TASKS-FMStroke
+ * audit). Hoisted so both layouts resolve the same command object. */
+const eraseLastPointCommand: KeyCommand = {
+  id: 'erase-last-point',
+  action: 'erase-last-point',
+  keycap: 'Z',
+  group: 'neutral',
+  help: 'Erase last point',
+  match: (e) => !meta(e) && !e.shiftKey && letter('z')(e),
+  available: compositeDrawing,
+  exclusive: true,
+};
+
+/** The spline (FMStroke) layout's commands. These keys used to be
+ * hard-coded KEY_COMMANDS entries; they resolve through the layout
+ * registry now. The layout activates automatically while composite
+ * mode is on (D1); see engine.activeKeyboardLayoutId. */
+export const SPLINE_COMMANDS: KeyCommand[] = [
+  {
+    id: 'bowed-point',
+    action: 'bowed-point',
+    keycap: 'B',
+    group: 'neutral',
+    help: 'Bowed line point (composite paths)',
+    match: (e) => letter('b')(e) && !e.shiftKey,
+    available: compositeReady,
     exclusive: true,
   },
   {
-    id: 'enter-spline-layout',
-    action: 'enter-spline-layout',
-    keycap: '.',
+    id: 'bowed-point-flip',
+    action: 'bowed-point-flip',
+    keycap: '⇧B',
     group: 'neutral',
-    help: 'Open the spline layout',
-    match: codeOrKey('Period', '.'),
-    // A layout key opens its layout; '.' doubles as the exit while the
-    // manually opened spline board is live (no session), so its cap keeps
-    // resolving there. Mid-draw '.' stays dead: the board is already live
-    // and firing would strand a manual override behind the session.
-    available: (s) => {
-      const layout = layoutIdForState(s);
-      if (layout === 'base') return true;
-      return layout === 'spline' && !s.isCompositeSessionActive;
-    },
+    help: 'Bowed line point, facing flipped (composite paths)',
+    match: (e) => letter('b')(e) && e.shiftKey,
+    available: compositeReady,
     exclusive: true,
   },
+  {
+    id: 'arc-three-point',
+    action: 'arc-three-point',
+    keycap: '.',
+    group: 'neutral',
+    help: 'Arc by three points: press at the end point to arc through the previous point; the next point key finishes it (composite paths)',
+    match: (e) => e.key === '.',
+    available: compositeReady,
+    exclusive: true,
+  },
+  {
+    id: 'switch-rounding',
+    action: 'switch-rounding',
+    keycap: '\\',
+    group: 'neutral',
+    help: 'Switch corner rounding: arc, spline, or bevel, for the next rounded points',
+    match: (e) => e.code === 'Backslash' && !e.shiftKey && !e.altKey && !meta(e),
+    available: compositeDrawing,
+    exclusive: true,
+  },
+  eraseLastPointCommand,
 ];
 
 // Settings metadata attached to the command that owns the behavior.
@@ -757,12 +830,17 @@ const KEY_SETTINGS_LINKS: Record<string, { settingsId: string; settingsSummary: 
   'sharp-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
   'spline-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
   'rounded-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
+  'bowed-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
+  'bowed-point-flip': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
+  'switch-rounding': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
+  'erase-last-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
+  'arc-three-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
   'circle-diameter': { settingsId: 'circle-diameter-tool', settingsSummary: 'Circle polygon fit' },
   'circle-radius': { settingsId: 'circle-radius-tool', settingsSummary: 'Circle radius start' },
   'rect-diagonal': { settingsId: 'rect-diagonal-tool', settingsSummary: 'Rect diagonal extent' },
 };
 
-for (const cmd of KEY_COMMANDS) {
+for (const cmd of [...KEY_COMMANDS, ...SPLINE_COMMANDS]) {
   const link = KEY_SETTINGS_LINKS[cmd.id];
   if (!link) continue;
   cmd.settingsId = link.settingsId;
@@ -806,25 +884,27 @@ export const KEY_CAPS: KeyCap[] = [
   { id: 'KeyX', dataKey: 'x', commandId: 'select-rectangle', row: 'z', className: 'keyboardkey xKey drawingButton enabledButton', transform: 'translate(38%, 0%)', legend: 'SELECT<br/>RECT' },
   { id: 'KeyC', dataKey: 'c', commandId: 'stroke-thinner', row: 'z', className: 'keyboardkey cKey stepper1Decrement enabledButton', transform: 'translate(38%, 0%)', legend: '-<br />STROKE<br />WIDTH' },
   { id: 'KeyV', dataKey: 'v', commandId: 'stroke-thicker', row: 'z', className: 'keyboardkey vKey stepper1Increment enabledButton', transform: 'translate(38%, 0%)', legend: '+<br />STROKE<br />WIDTH' },
-  { id: 'KeyB', dataKey: 'b', commandId: 'enter-clothoid-layout', row: 'z', className: 'keyboardkey bKey drawingButton enabledButton', transform: 'translate(38%, 0%)', legend: 'CLOTHOID<br/>LAYOUT' },
+  { id: 'KeyB', dataKey: 'b', commandId: 'bowed-point', row: 'z', className: 'keyboardkey bKey drawingButton', transform: 'translate(38%, 0%)', legend: 'BOWED<br/>LINE' },
   { id: 'KeyN', dataKey: 'n', commandId: 'circle-radius', row: 'z', className: 'keyboardkey nKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', legend: 'CIRCLE<br/>BY RADIUS', badge: 'circle' },
   { id: 'KeyM', dataKey: 'm', commandId: 'circle-diameter', row: 'z', className: 'keyboardkey mKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', legend: 'CIRCLE<br/>BY DIAMETER', badge: 'circle' },
   { id: 'Comma', dataKey: ',', commandId: 'radial-stamp', row: 'z', className: 'keyboardkey commaKey drawingButton enabledButton circleButton', transform: 'translate(38%, 0%)', legend: 'RADIAL<br/>STAMP', badge: 'circle' },
-  { id: 'Period', dataKey: '.', row: 'z', className: 'keyboardkey periodKey ', transform: 'translate(38%, 0%)', commandId: 'enter-spline-layout', legend: 'SPLINE<br/>LAYOUT' },
+  { id: 'Period', dataKey: '.', commandId: 'arc-three-point', row: 'z', className: 'keyboardkey periodKey drawingButton', transform: 'translate(38%, 0%)', legend: 'ARC<br/>3-PT' },
   { id: 'Slash', dataKey: '/', commandId: 'grid-toggle', row: 'z', className: 'keyboardkey forwardSlashKey OtherKey enabledButton', transform: 'translate(38%, 0%)', legend: 'GRID<br/>TOGGLE' },
   { id: 'ShiftRight', dataKey: 'shift', row: 'z', className: 'keyboardkey shiftKeyRight OtherKey', transform: 'translate(15%, 0%)', legend: '' },
   { id: 'Space', dataKey: 'spacebar', commandId: 'drag-lock', row: 'space', className: 'keyboardkey spacebarKey OtherKey enabledButton selectionButton', legend: 'DRAG LOCK' },
 ];
 
 // Clothoid (Spiro-vocabulary) point commands for the clothoid layout.
-// Slice 7.3: deposits are live through PathDrawingSession + sampleClothoid,
-// so the board shows them enabled.
+// Deposits are live through PathDrawingSession + sampleClothoid. They
+// resolve through the layout registry like the spline commands; the
+// clothoid layout activates while a clothoid session draws, or through
+// the manual clothoid-layout key (see engine.activeKeyboardLayoutId).
 function clothoidPoint(id: string, keycap: string, key: string, help: string): KeyCommand {
   return {
     id, action: `${id}-deposit`, keycap, group: 'neutral',
     help,
     match: letter(key),
-    available: always,
+    available: compositeReady,
     exclusive: true,
   };
 }
@@ -842,33 +922,7 @@ export const CLOTHOID_COMMANDS: KeyCommand[] = [
   },
 ];
 
-// FMStroke spline-layout commands (Phase 4/5): bowed corners shadow the
-// idle-only toggles, the arc shadows an End alias (A stays End), and the
-// rounding switch + erase reuse session-dead app keys. All live only in
-// the spline layout, which is session- or manually-driven.
-function splinePoint(id: string, keycap: string, key: string, help: string): KeyCommand {
-  return {
-    id, action: id, keycap, group: 'neutral',
-    help,
-    match: letter(key),
-    available: always,
-    exclusive: true,
-  };
-}
-export const SPLINE_COMMANDS: KeyCommand[] = [
-  splinePoint('bowed-hard-a', 'S', 's', 'Bowed hard corner, facing A'),
-  splinePoint('bowed-hard-b', 'D', 'd', 'Bowed hard corner, facing B'),
-  splinePoint('bowed-rounded-a', 'J', 'j', 'Bowed rounded corner, facing A'),
-  splinePoint('bowed-rounded-b', 'K', 'k', 'Bowed rounded corner, facing B'),
-  splinePoint('arc-by-three', 'E', 'e', 'Three-point arc'),
-  {
-    id: 'switch-rounding', action: 'switch-rounding', keycap: 'L', group: 'neutral',
-    help: 'Switch rounded-corner type',
-    match: letter('l'), available: always, exclusive: true,
-  },
-];
-
-// Clothoid caps: base board with the Phase 7 vocabulary legends. Only caps
+// Clothoid caps: base board with the Spiro-vocabulary legends. Only caps
 // carrying a clothoid command get a new commandId; the rest share base caps.
 const CLOTHOID_CAP_COMMANDS: Record<string, string> = {
   KeyS: 'clothoid-g4', KeyD: 'clothoid-g2', KeyF: 'clothoid-corner',
@@ -887,42 +941,53 @@ export const CLOTHOID_CAPS: KeyCap[] = KEY_CAPS.map((cap) => {
   return { ...cap, commandId, legend };
 });
 
-// Spline caps: base board with the FMStroke vocabulary legends. Shadowing
-// reuses keys that are dead while a composite session draws (S/D toggles,
-// J/K/L app toggles, E End alias — A stays End — and Z pan-lock).
-const SPLINE_CAP_COMMANDS: Record<string, string> = {
-  KeyS: 'bowed-hard-a', KeyD: 'bowed-hard-b', KeyJ: 'bowed-rounded-a',
-  KeyK: 'bowed-rounded-b', KeyE: 'arc-by-three', KeyL: 'switch-rounding',
-  KeyZ: 'erase-last-point',
-};
-const SPLINE_CAP_LEGENDS: Record<string, string> = {
-  KeyS: 'BOW<br/>HARD A', KeyD: 'BOW<br/>HARD B', KeyJ: 'BOW<br/>ROUND A',
-  KeyK: 'BOW<br/>ROUND B', KeyE: 'ARC<br/>3-PT', KeyL: 'SWITCH<br/>ROUND',
-  KeyZ: 'ERASE<br/>LAST',
-};
-export const SPLINE_CAPS: KeyCap[] = KEY_CAPS.map((cap) => {
-  const commandId = SPLINE_CAP_COMMANDS[cap.id] ?? cap.commandId;
-  const legend = SPLINE_CAP_LEGENDS[cap.id] ?? cap.legend;
-  if (commandId === cap.commandId && legend === cap.legend) return cap;
-  return { ...cap, commandId, legend };
-});
+/** The layout registry. Base is today's keymap, unchanged; the
+ * spline layout adds the FMStroke session keys on top of it and the
+ * clothoid layout adds the Spiro-vocabulary point keys. */
+export const KEYBOARD_LAYOUTS: KeyboardLayoutDef[] = [
+  { id: 'base', label: 'Base', commands: KEY_COMMANDS, caps: [] },
+  {
+    id: 'spline',
+    label: 'Spline',
+    commands: SPLINE_COMMANDS,
+    caps: [
+      { id: 'Backslash', dataKey: '\\', commandId: 'switch-rounding', row: 'q', className: 'keyboardkey  backslashKey drawingButton', legend: 'ROUNDING<br/>TYPE' },
+    ],
+  },
+  {
+    id: 'clothoid',
+    label: 'Clothoid',
+    commands: [...CLOTHOID_COMMANDS, eraseLastPointCommand],
+    caps: CLOTHOID_CAPS,
+  },
+];
 
-/** Cap legend lookup across every layout board (base first, then overlays). */
-function capForCommand(id: string): KeyCap | undefined {
-  return KEY_CAPS.find((cap) => cap.commandId === id)
-    ?? CLOTHOID_CAPS.find((cap) => cap.commandId === id)
-    ?? SPLINE_CAPS.find((cap) => cap.commandId === id);
+export function keyboardLayoutById(id: string | undefined): KeyboardLayoutDef {
+  return KEYBOARD_LAYOUTS.find((l) => l.id === id) ?? KEYBOARD_LAYOUTS[0];
+}
+
+/** The cap set a layout renders: base caps with the layout's
+ * overrides merged in by cap id. Base returns KEY_CAPS itself. */
+export function capsForLayout(id: string | undefined): KeyCap[] {
+  const layout = keyboardLayoutById(id);
+  if (!layout.caps.length) return KEY_CAPS;
+  const overrides = new Map(layout.caps.map((cap) => [cap.id, cap]));
+  const merged = KEY_CAPS.map((cap) => overrides.get(cap.id) ?? cap);
+  for (const cap of layout.caps) if (!KEY_CAPS.some((c) => c.id === cap.id)) merged.push(cap);
+  return merged;
 }
 
 export function commandById(id: string): KeyCommand | undefined {
-  return KEY_COMMANDS.find((c) => c.id === id)
-    ?? CLOTHOID_COMMANDS.find((c) => c.id === id)
-    ?? SPLINE_COMMANDS.find((c) => c.id === id);
+  for (const layout of KEYBOARD_LAYOUTS) {
+    const found = layout.commands.find((c) => c.id === id);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 export function keyGroupForLabel(label: string): StatusKeyGroup {
   const k = label.toLowerCase();
-  const cmd = KEY_COMMANDS.find(
+  const cmd = KEYBOARD_LAYOUTS.flatMap((l) => l.commands).find(
     (c) => !c.alias && c.keycap.toLowerCase() === k,
   );
   return cmd?.group ?? 'neutral';
@@ -1025,7 +1090,7 @@ export function nudgeStep(chord: Pick<ModifierChord, 'shift' | 'alt'>): number {
 
 const PUNCTUATION: Record<string, string> = {
   BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'",
-  Comma: ',', Slash: '/', Space: ' ', Digit0: '0', Minus: '-', Equal: '=',
+  Comma: ',', Period: '.', Slash: '/', Space: ' ', Digit0: '0', Minus: '-', Equal: '=',
 };
 export function physicalKey(code: string): string {
   return PUNCTUATION[code] ?? (code.startsWith('Key') ? code.slice(3).toLowerCase() : code);
@@ -1046,8 +1111,8 @@ export interface KeyCommandVariant {
   };
 }
 
-function presentation(command: KeyCommand, code: string, state: KeyState, chord: ModifierSnapshot, platform: KeyboardPlatform) {
-  const cap = capForCommand(command.id);
+function presentation(command: KeyCommand, code: string, state: KeyState, chord: ModifierSnapshot, platform: KeyboardPlatform, caps: KeyCap[] = KEY_CAPS) {
+  const cap = caps.find((cap) => cap.commandId === command.id);
   let legend = cap?.legend || command.help.toUpperCase();
   let description = command.help;
   const dir = code === 'BracketLeft' || code === 'Semicolon' ? -1 : 1;
@@ -1137,27 +1202,27 @@ export function adjustActionForCommand(id: string): AdjustAction | undefined {
   return ADJUST_ACTIONS.find((a) => a.commandIds.includes(id));
 }
 
-// Compile existing ordered commands into exact typed physical chords. Both
+// Compile ordered commands into exact typed physical chords. Both
 // dispatch and presentation consume this registry. No browser Event is needed
 // to resolve a layout, and Option-produced characters cannot move a keycap.
 // Only commands that require a primary modifier may claim browser shortcuts.
-const LAYOUT_EXTRA_CODES = [
-  'Digit0', 'Minus', 'Equal', 'Escape', 'Backspace',
-  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
-];
-function codesForCaps(caps: KeyCap[]): string[] {
-  return [...new Set([...caps.map((cap) => cap.id), ...LAYOUT_EXTRA_CODES])];
-}
-const variantCodes = codesForCaps(KEY_CAPS);
-function compileVariants(commands: KeyCommand[], codes: string[]): KeyCommandVariant[] {
+// Compilation is per layout (Phase 1.5): the base list is exactly what
+// it was before layouts existed, and each other layout compiles its own
+// commands ahead of the base set over its merged caps — same size class
+// as the base compile, paid once per registered layout at startup.
+function compileKeyVariants(commands: KeyCommand[], caps: KeyCap[]): KeyCommandVariant[] {
   const variants: KeyCommandVariant[] = [];
+  const variantCodes = [...new Set([
+    ...caps.map((cap) => cap.id), 'Digit0', 'Minus', 'Equal', 'Escape', 'Backspace',
+    'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+  ])];
   for (const command of commands) {
     const adjust = adjustActionForCommand(command.id);
     const when = adjust ? adjust.when
       : command.action === 'nudge' ? (state: KeyState) => idle(state) && state.selectedCount > 0
       : command.id === 'radial-lock' ? (state: KeyState) => state.isDrawingShape && state.shapeType === 'circle_radial_stamp'
       : command.available;
-    for (const code of codes) {
+    for (const code of variantCodes) {
       for (let bits = 0; bits < 16; bits++) {
         const chord = Object.freeze({ shift: !!(bits & 1), alt: !!(bits & 2), control: !!(bits & 4), meta: !!(bits & 8) });
         const event = { code, key: physicalKey(code), shiftKey: chord.shift, altKey: chord.alt, ctrlKey: chord.control, metaKey: chord.meta } as KeyboardEvent;
@@ -1167,145 +1232,25 @@ function compileVariants(commands: KeyCommand[], codes: string[]): KeyCommandVar
           if (chord.alt || (chord.control && chord.meta) || command.match({ ...event, ctrlKey: false, metaKey: false } as KeyboardEvent)) continue;
         }
         variants.push({ code, chord, commandId: command.id, command, when,
-          present: (state, modifiers, platform) => presentation(command, code, state, modifiers, platform),
+          present: (state, modifiers, platform) => presentation(command, code, state, modifiers, platform, caps),
         });
       }
     }
   }
   return variants;
 }
-export const KEY_VARIANTS: KeyCommandVariant[] = compileVariants(KEY_COMMANDS, variantCodes);
 
-// Swappable keyboard layouts. Each layout overlays the base board: layout
-// commands win on their caps while unmatched caps fall back to base (so
-// End/Cancel/Undo keep working mid-draw). The spline entry is a shell — the
-// same commands on the same caps — proving the swap; FM point commands
-// (bowed, arc, switch-rounding, erase-last) land here in a later phase.
-export interface KeyboardLayoutDef {
-  id: ConcreteLayoutId;
-  label: string;
-  caps: KeyCap[];
-  commands: KeyCommand[];
-  /**
-   * 'partial' falls back to base for unmatched caps (the board stays fully
-   * usable); 'full' blanks them — only the layout-wide reserved codes
-   * (plain A/Q/Escape/R) still resolve from base.
-   */
-  overlay: 'partial' | 'full';
-}
-export const KEYBOARD_LAYOUTS: Record<ConcreteLayoutId, KeyboardLayoutDef> = {
-  base: { id: 'base', label: 'Base', caps: KEY_CAPS, commands: KEY_COMMANDS, overlay: 'partial' },
-  spline: {
-    id: 'spline', label: 'Spline', caps: SPLINE_CAPS,
-    commands: [...SPLINE_COMMANDS, ...KEY_COMMANDS], overlay: 'partial',
-  },
-  clothoid: {
-    id: 'clothoid', label: 'Clothoid', caps: CLOTHOID_CAPS,
-    commands: [...CLOTHOID_COMMANDS, ...KEY_COMMANDS], overlay: 'partial',
-  },
-};
-/** Reserved future ids with no tables yet — resolving them falls back to base. */
-export const FUTURE_LAYOUT_IDS: KeyboardLayoutId[] = ['grid-paint', 'repeat'];
+export const KEY_VARIANTS: KeyCommandVariant[] = compileKeyVariants(KEY_COMMANDS, KEY_CAPS);
 
-// Sparse per-layout binding tables in the shape of Floating Marker's
-// keyboardMappingsDescriptions.plist: one flat map keyed by code + chord
-// (FM keys flags+keyCode, e.g. "$2" for Shift+2) holding only triples that
-// actually bind, instead of enumerating commands x codes x 16 chords per
-// layout. FM's numeric keycodes do not transfer (macOS virtual keycodes,
-// not web event.code); only the sparse-table shape transfers.
-function variantTableKeyFor(code: string, chord: { shift: boolean; alt: boolean; control: boolean; meta: boolean }): string {
-  const bits = (chord.shift ? 1 : 0) | (chord.alt ? 2 : 0) | (chord.control ? 4 : 0) | (chord.meta ? 8 : 0);
-  return `${code}|${bits}`;
-}
-export function variantTableKey(code: string, chord: ModifierChord | ModifierSnapshot): string {
-  return variantTableKeyFor(code, chord);
-}
-function indexVariants(variants: KeyCommandVariant[]): Map<string, KeyCommandVariant[]> {
-  const table = new Map<string, KeyCommandVariant[]>();
-  for (const variant of variants) {
-    const key = variantTableKeyFor(variant.code, variant.chord);
-    const list = table.get(key);
-    if (list) list.push(variant);
-    else table.set(key, [variant]);
-  }
-  return table;
-}
-export const LAYOUT_VARIANT_TABLES: Record<ConcreteLayoutId, Map<string, KeyCommandVariant[]>> = {
-  base: indexVariants(KEY_VARIANTS),
-  spline: indexVariants(compileVariants(
-    KEYBOARD_LAYOUTS.spline.commands, codesForCaps(KEYBOARD_LAYOUTS.spline.caps),
-  )),
-  clothoid: indexVariants(compileVariants(
-    KEYBOARD_LAYOUTS.clothoid.commands, codesForCaps(KEYBOARD_LAYOUTS.clothoid.caps),
-  )),
-};
-
-/**
- * Layout-wide reservation (applies to every layout, including spline and
- * clothoid): no point-deposit key may bind the plain End/Cancel/Complete
- * codes — A is always End, Q and Escape are always Cancel, R completes the
- * shape. Other conditional bindings on those codes (transform-rotate on R,
- * clear-selection on Escape) predate layouts and are unaffected. Phase 5
- * must extend POINT_COMMAND_IDS with each new point command it adds.
- */
-const RESERVED_LAYOUT_CODES = ['KeyA', 'KeyQ', 'Escape', 'KeyR'];
-/** Point-deposit commands, forbidden on the reserved codes above. */
-export const POINT_COMMAND_IDS = [
-  'sharp-point', 'spline-point', 'rounded-point',
-  'clothoid-g4', 'clothoid-g2', 'clothoid-corner', 'clothoid-line',
-  'clothoid-prev-constraint', 'clothoid-next-constraint',
-  'bowed-hard-a', 'bowed-hard-b', 'bowed-rounded-a', 'bowed-rounded-b',
-  'arc-by-three',
-];
-function validateLayoutTable(id: string, table: Map<string, KeyCommandVariant[]>): void {
-  for (const code of RESERVED_LAYOUT_CODES) {
-    // Plain presses only (chord bits 0): modified chords such as Cmd+A
-    // select-all are unaffected by the reservation.
-    for (const variant of table.get(`${code}|0`) ?? []) {
-      if (POINT_COMMAND_IDS.includes(variant.commandId)) {
-        throw new Error(`Keyboard layout "${id}" puts point key "${variant.commandId}" on reserved code ${code}`);
-      }
-    }
-  }
-}
-validateLayoutTable('spline', LAYOUT_VARIANT_TABLES.spline);
-validateLayoutTable('clothoid', LAYOUT_VARIANT_TABLES.clothoid);
-
-/** True for plain presses of the layout-wide reserved codes (A/Q/Escape/R). */
-export function isReservedLayoutKey(key: string): boolean {
-  const sep = key.lastIndexOf('|');
-  return sep > 0 && key.slice(sep + 1) === '0'
-    && (RESERVED_LAYOUT_CODES as string[]).includes(key.slice(0, sep));
+/** Variant lists per layout id; 'base' is KEY_VARIANTS itself. */
+export const KEY_VARIANTS_BY_LAYOUT: Record<string, KeyCommandVariant[]> = { base: KEY_VARIANTS };
+for (const layout of KEYBOARD_LAYOUTS) {
+  if (layout.id === 'base') continue;
+  KEY_VARIANTS_BY_LAYOUT[layout.id] = compileKeyVariants(
+    [...layout.commands, ...KEY_COMMANDS], capsForLayout(layout.id),
+  );
 }
 
-export function capsForLayout(id?: KeyboardLayoutId): KeyCap[] {
-  if (id === 'spline') return KEYBOARD_LAYOUTS.spline.caps;
-  if (id === 'clothoid') return KEYBOARD_LAYOUTS.clothoid.caps;
-  return KEY_CAPS;
-}
-export function variantsForLayout(id?: KeyboardLayoutId): Map<string, KeyCommandVariant[]> {
-  if (id === 'spline') return LAYOUT_VARIANT_TABLES.spline;
-  if (id === 'clothoid') return LAYOUT_VARIANT_TABLES.clothoid;
-  // Base default; future ids have no stub tables and fall back to base.
-  return LAYOUT_VARIANT_TABLES.base;
-}
-/**
- * Engine-owned derivation: an explicit override (manual layout key) wins;
- * otherwise the spline layout is live while a composite path session draws
- * (the controller reports clothoid instead while a clothoid session draws).
- */
-export function layoutIdForState(s: KeyState): ConcreteLayoutId {
-  if (s.activeLayoutId === 'spline' || s.activeLayoutId === 'clothoid') return s.activeLayoutId;
-  if (s.activeLayoutId != null) return 'base';
-  return s.isDrawingPath && s.isCompositePath ? 'spline' : 'base';
-}
-export function layoutLabelForId(id: KeyboardLayoutId): string {
-  if (id === 'spline') return 'Spline';
-  if (id === 'clothoid') return 'Clothoid';
-  if (id === 'grid-paint') return 'Grid Paint';
-  if (id === 'repeat') return 'Repeat';
-  return 'Base';
-}
-export function layoutLabelForState(s: KeyState): string {
-  return layoutLabelForId(layoutIdForState(s));
+export function keyVariantsForLayout(id: string | undefined): KeyCommandVariant[] {
+  return KEY_VARIANTS_BY_LAYOUT[id ?? 'base'] ?? KEY_VARIANTS;
 }

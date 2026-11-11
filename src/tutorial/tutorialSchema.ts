@@ -1,10 +1,22 @@
-// Declarative tutorial schema (v1).
+// Declarative tutorial schema (v2).
 // UI-agnostic: pure types plus a hand-written validator, no new dependency.
 // A tutorial is JSON-compatible data authored under tutorials/ and checked
 // with validateTutorial() before a TutorialRunner ever sees it.
 // v1 adds an optional per-step `demo` action list for the Demonstration
 // module: the program performs the actions live while the tutorial window
 // stays open. v0 tutorials without `demo` still validate unchanged.
+// v2 extends the expect vocabulary with state predicates, so a step can
+// wait for a precise condition instead of any engine activity:
+//   press-key gains an optional `count` (presses needed; default 1).
+//   selection-count {min?, max?} — selection size within range.
+//   object-count {min?, max?} — top-level objects on the active page.
+//   setting-is {settingsId, field, value} — the addressed panel/engine
+//     param equals a value. The (settingsId, field) addressing is the
+//     same one the demo system's set-param action uses.
+// State predicates are re-evaluated on every engine/bridge event and once
+// when the step becomes current; a predicate that is already true when
+// its step is reached completes the step immediately. v1 files validate
+// and run unchanged under v2.
 
 export type TutorialPlacement = 'above' | 'below' | 'left' | 'right' | 'center';
 
@@ -14,10 +26,13 @@ export type TutorialCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-
 
 export type TutorialExpect =
   | { kind: 'none' }
-  | { kind: 'press-key'; key: string }
+  | { kind: 'press-key'; key: string; count?: number }
   | { kind: 'run-command'; command: string }
   | { kind: 'selection-changed' }
-  | { kind: 'scene-changed' };
+  | { kind: 'scene-changed' }
+  | { kind: 'selection-count'; min?: number; max?: number }
+  | { kind: 'object-count'; min?: number; max?: number }
+  | { kind: 'setting-is'; settingsId: string; field: string; value: string | number | boolean };
 
 export interface TutorialBubble {
   title: string;
@@ -45,7 +60,10 @@ export interface TutorialStep {
 }
 
 /** One performed beat of a live demonstration. Targets reuse the
- * data-tutorial-id namespace; canvas points use 0..1 view fractions. */
+ * data-tutorial-id namespace; canvas points use 0..1 view fractions.
+ * 'run-command' (Slice 26) dispatches a menu command through the app's
+ * real command path, so demos can perform actions that have no key —
+ * align, flip, point-edit, undo — exactly as a menu choice would. */
 export type DemoAction =
   | { kind: 'move-cursor'; to: string; durationMs?: number }
   | { kind: 'move-cursor-xy'; x: number; y: number; durationMs?: number }
@@ -53,6 +71,7 @@ export type DemoAction =
   | { kind: 'open-popover'; key: string }
   | { kind: 'point-at'; target: string; label?: string }
   | { kind: 'set-param'; settingsId: string; field: string; value: string | number | boolean }
+  | { kind: 'run-command'; command: string }
   | { kind: 'close-popover' }
   | { kind: 'wait'; ms: number }
   | { kind: 'narrate'; title: string; body: string };
@@ -82,7 +101,16 @@ export type TutorialValidation =
 
 const PLACEMENTS: readonly string[] = ['above', 'below', 'left', 'right', 'center'];
 const CORNERS: readonly string[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
-const EXPECT_KINDS: readonly string[] = ['none', 'press-key', 'run-command', 'selection-changed', 'scene-changed'];
+const EXPECT_KINDS: readonly string[] = [
+  'none',
+  'press-key',
+  'run-command',
+  'selection-changed',
+  'scene-changed',
+  'selection-count',
+  'object-count',
+  'setting-is',
+];
 const DEMO_KINDS: readonly string[] = [
   'move-cursor',
   'move-cursor-xy',
@@ -90,6 +118,7 @@ const DEMO_KINDS: readonly string[] = [
   'open-popover',
   'point-at',
   'set-param',
+  'run-command',
   'close-popover',
   'wait',
   'narrate',
@@ -119,6 +148,13 @@ function checkExpect(value: unknown, stepId: string, errors: string[]): Tutorial
       errors.push(`step "${stepId}": press-key expect needs a non-empty "key"`);
       return null;
     }
+    if (value.count !== undefined) {
+      if (!isFiniteNumber(value.count) || !Number.isInteger(value.count) || value.count < 1 || value.count > 99) {
+        errors.push(`step "${stepId}": press-key "count" must be an integer 1..99 when present`);
+        return null;
+      }
+      return { kind, key: value.key, count: value.count };
+    }
     return { kind, key: value.key };
   }
   if (kind === 'run-command') {
@@ -128,7 +164,52 @@ function checkExpect(value: unknown, stepId: string, errors: string[]): Tutorial
     }
     return { kind, command: value.command };
   }
+  if (kind === 'selection-count' || kind === 'object-count') {
+    const range = checkCountRange(value, stepId, kind, errors);
+    if (range === null) return null;
+    return { kind, ...range };
+  }
+  if (kind === 'setting-is') {
+    if (!isNonEmptyString(value.settingsId) || !isNonEmptyString(value.field)) {
+      errors.push(`step "${stepId}": setting-is expect needs non-empty "settingsId" and "field"`);
+      return null;
+    }
+    if (typeof value.value !== 'string' && typeof value.value !== 'number' && typeof value.value !== 'boolean') {
+      errors.push(`step "${stepId}": setting-is expect needs a string, number, or boolean "value"`);
+      return null;
+    }
+    return { kind, settingsId: value.settingsId, field: value.field, value: value.value };
+  }
   return { kind } as TutorialExpect;
+}
+
+/** Validate the optional min/max bounds of a *-count expect: at least one
+ * bound, each a non-negative integer, min not above max. */
+function checkCountRange(
+  value: Record<string, unknown>,
+  stepId: string,
+  kind: string,
+  errors: string[],
+): { min?: number; max?: number } | null {
+  const { min, max } = value;
+  if (min === undefined && max === undefined) {
+    errors.push(`step "${stepId}": ${kind} expect needs at least one of "min" and "max"`);
+    return null;
+  }
+  for (const [name, bound] of [['min', min], ['max', max]] as const) {
+    if (bound !== undefined && (!isFiniteNumber(bound) || !Number.isInteger(bound) || bound < 0)) {
+      errors.push(`step "${stepId}": ${kind} "${name}" must be a non-negative integer when present`);
+      return null;
+    }
+  }
+  if (min !== undefined && max !== undefined && (min as number) > (max as number)) {
+    errors.push(`step "${stepId}": ${kind} "min" must not exceed "max"`);
+    return null;
+  }
+  return {
+    ...(min !== undefined ? { min: min as number } : {}),
+    ...(max !== undefined ? { max: max as number } : {}),
+  };
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -211,6 +292,13 @@ function checkDemoAction(value: unknown, stepId: string, index: number, errors: 
         return null;
       }
       return { kind, settingsId: value.settingsId, field: value.field, value: value.value };
+    }
+    case 'run-command': {
+      if (!isNonEmptyString(value.command)) {
+        errors.push(`${where}: run-command needs a non-empty "command"`);
+        return null;
+      }
+      return { kind, command: value.command };
     }
     case 'close-popover':
       return { kind };

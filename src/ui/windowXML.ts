@@ -53,7 +53,7 @@ export interface WindowToggleControl {
   label: string;
 }
 
-export type WindowFieldType = 'text' | 'number' | 'password';
+export type WindowFieldType = 'text' | 'number' | 'password' | 'color';
 
 export interface WindowFieldControl {
   kind: 'field';
@@ -146,8 +146,8 @@ function parseField(node: XmlNode): WindowFieldControl | string {
   if (!key) return '<field> is missing its key attribute';
   if (node.children.length > 0) return `<field key="${key}"> takes no children`;
   const rawType = node.attrs['type'] ?? 'text';
-  if (rawType !== 'text' && rawType !== 'number' && rawType !== 'password') {
-    return `<field key="${key}"> type must be text, number, or password`;
+  if (rawType !== 'text' && rawType !== 'number' && rawType !== 'password' && rawType !== 'color') {
+    return `<field key="${key}"> type must be text, number, password, or color`;
   }
   const numeric: { min?: number; max?: number; step?: number } = {};
   for (const name of ['min', 'max', 'step'] as const) {

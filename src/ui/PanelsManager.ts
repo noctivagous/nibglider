@@ -60,19 +60,24 @@ export type PanelGroupId = (typeof PANEL_GROUP_IDS)[number];
 export const PANEL_SECTIONS: Array<{ id: string; label: string }> = [
   { id: 'strokeControls', label: 'Stroke' },
   { id: 'fillControls', label: 'Fill' },
+  { id: 'swatchesControls', label: 'Swatches' },
   { id: 'textControls', label: 'Text' },
   { id: 'circleFrameControls', label: 'Circle Keys' },
   { id: 'rectFrameControls', label: 'Rect Keys' },
   { id: 'combinatoricsControls', label: 'Combinatorics' },
+  { id: 'pathOpsControls', label: 'Path Operations' },
   { id: 'historyControls', label: 'History' },
   { id: 'gridControls', label: 'Grid' },
   { id: 'snappingControls', label: 'Snapping' },
   { id: 'repeatControls', label: 'Repeat' },
+  { id: 'layersControls', label: 'Layers & Objects' },
+  { id: 'pagesControls', label: 'Pages & Guides' },
+  { id: 'arrangeControls', label: 'Arrange' },
 ];
 
 const DEFAULT_SECTION_GROUPS: Record<string, string[]> = {
-  paint: ['strokeControls', 'fillControls', 'textControls'],
-  keys: ['circleFrameControls', 'rectFrameControls', 'combinatoricsControls', 'historyControls', 'repeatControls'],
+  paint: ['strokeControls', 'fillControls', 'swatchesControls', 'textControls'],
+  keys: ['circleFrameControls', 'rectFrameControls', 'combinatoricsControls', 'pathOpsControls', 'historyControls', 'repeatControls', 'layersControls', 'pagesControls', 'arrangeControls'],
   snap: ['gridControls', 'snappingControls'],
 };
 
@@ -93,6 +98,9 @@ export function sectionLabel(id: string): string {
 export const MENU_PANEL_SECTIONS: Record<string, string[]> = {
   modes: ['circleFrameControls', 'rectFrameControls', 'combinatoricsControls', 'snappingControls', 'textControls'],
   edit: ['historyControls'],
+  layers: ['layersControls'],
+  object: ['arrangeControls'],
+  document: ['swatchesControls'],
 };
 
 export function sectionLists(orderMap: Record<string, string[]>): Record<string, string[]> {

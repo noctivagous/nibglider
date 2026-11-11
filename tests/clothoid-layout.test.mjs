@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import paper from 'paper';
 import { resolveKeyVariants } from '../src/engine/input/KeyboardLayoutResolver.ts';
 import {
-  KEYBOARD_LAYOUTS, KEY_COMMANDS, LAYOUT_VARIANT_TABLES,
-  layoutIdForState, layoutLabelForState, variantsForLayout,
+  KEYBOARD_LAYOUTS, KEY_COMMANDS, KEY_VARIANTS_BY_LAYOUT,
+  keyboardLayoutById,
 } from '../src/engine/input/keymap.ts';
+
+const layoutLabel = (state) => keyboardLayoutById(state.activeLayoutId).label;
 import { BASE_MODIFIERS } from '../src/engine/input/ModifierStateTracker.ts';
 import { NibGliderEngine } from '../src/engine/engine.ts';
 
@@ -31,20 +33,21 @@ const press = (code, k, mods = {}) => ({
   ...mods, target: null, getModifierState: () => false, preventDefault: () => {},
 });
 
-test('KeyB opens the clothoid overlay and Escape returns to base', () => {
+test('Backslash opens the clothoid layout and Escape returns to the mode layout', () => {
   const { e, cleanup } = engine();
   try {
-    assert.equal(layoutIdForState(e.getKeyState()), 'base');
-    e.handleKeyDown(press('KeyB', 'b'));
+    // Composite mode drives the spline board while idle.
+    assert.equal(e.getKeyState().activeLayoutId, 'spline');
+    e.handleKeyDown(press('Backslash', '\\'));
     tick();
     const live = e.getKeyState();
     assert.equal(live.activeLayoutId, 'clothoid');
-    assert.equal(layoutIdForState(live), 'clothoid');
-    assert.equal(layoutLabelForState(live), 'Clothoid');
-    // Partial overlay: keys with no clothoid binding fall
-    // through to base (J toggles the panel from inside the layout).
+    assert.equal(e.manualLayoutId, 'clothoid');
+    assert.equal(layoutLabel(live), 'Clothoid');
+    // Unmatched caps fall through to base (J toggles the panel
+    // from inside the layout).
     assert.deepEqual(resolveKeyVariants('KeyJ', BASE_MODIFIERS, live).map((v) => v.commandId), ['toggle-panel']);
-    // Slice 7.3: Spiro point keys are live and shadow base caps.
+    // Spiro point keys are live and shadow base caps.
     assert.deepEqual(resolveKeyVariants('KeyW', BASE_MODIFIERS, live).map((v) => v.commandId), ['clothoid-prev-constraint']);
     assert.deepEqual(resolveKeyVariants('KeyS', BASE_MODIFIERS, live).map((v) => v.commandId), ['clothoid-g4']);
     assert.deepEqual(resolveKeyVariants('KeyD', BASE_MODIFIERS, live).map((v) => v.commandId), ['clothoid-g2']);
@@ -55,32 +58,33 @@ test('KeyB opens the clothoid overlay and Escape returns to base', () => {
     assert.deepEqual(resolveKeyVariants('KeyB', BASE_MODIFIERS, live).map((v) => v.commandId), ['clothoid-stamp']);
     // Escape with no live drawing leaves the manual layout, canceling nothing.
     e.handleKeyDown(press('Escape', 'Escape'));
-    assert.equal(layoutIdForState(e.getKeyState()), 'base');
+    assert.equal(e.getKeyState().activeLayoutId, 'spline');
     assert.equal(e.manualLayoutId, null);
   } finally { cleanup(); }
 });
 
-test('manual clothoid yields to a spline session and returns after', () => {
+test('manual clothoid persists across spline sessions until cleared', () => {
   const { s, e, cleanup } = engine();
   try {
-    e.handleKeyDown(press('KeyB', 'b'));
-    assert.equal(layoutIdForState(e.getKeyState()), 'clothoid');
-    // Starting a spline path temporarily overrides the manual layout.
+    e.handleKeyDown(press('Backslash', '\\'));
+    assert.equal(e.getKeyState().activeLayoutId, 'clothoid');
+    // A manual override wins over session derivation: starting a
+    // spline path keeps the clothoid board up.
     e.mousePt = new s.Point(10, 10); e.splinePointKC();
-    assert.equal(layoutIdForState(e.getKeyState()), 'spline');
-    // Finish restores the manual choice, not base.
+    assert.equal(e.getKeyState().activeLayoutId, 'clothoid');
+    // Finish keeps the manual choice, not the mode layout.
     e.handleKeyDown(press('KeyA', 'a'));
     assert.equal(e.isDrawingPath, false);
-    assert.equal(layoutIdForState(e.getKeyState()), 'clothoid');
-    // Cancel restores it too.
+    assert.equal(e.getKeyState().activeLayoutId, 'clothoid');
+    // Cancel keeps it too.
     e.mousePt = new s.Point(10, 10); e.splinePointKC();
-    assert.equal(layoutIdForState(e.getKeyState()), 'spline');
+    assert.equal(e.getKeyState().activeLayoutId, 'clothoid');
     e.handleKeyDown(press('KeyQ', 'q'));
-    assert.equal(layoutIdForState(e.getKeyState()), 'clothoid');
-    // Resolving through other layouts never mutates engine state.
+    assert.equal(e.getKeyState().activeLayoutId, 'clothoid');
+    // Resolving never mutates engine state.
     assert.equal(e.manualLayoutId, 'clothoid');
     e.handleKeyDown(press('Escape', 'Escape'));
-    assert.equal(layoutIdForState(e.getKeyState()), 'base');
+    assert.equal(e.getKeyState().activeLayoutId, 'spline');
   } finally { cleanup(); }
 });
 
@@ -89,9 +93,9 @@ test('clothoid deposits route through the clothoid solver and persist', async ()
   try {
     const { resolveCompositePath } = await import('../src/engine/geometry/compositeExpansion.ts');
     const { validatePath } = await import('../src/engine/model/serialization.ts');
-    e.handleKeyDown(press('KeyB', 'b'));
+    e.handleKeyDown(press('Backslash', '\\'));
     tick();
-    assert.equal(layoutIdForState(e.getKeyState()), 'clothoid');
+    assert.equal(e.getKeyState().activeLayoutId, 'clothoid');
     e.mousePt = new s.Point(10, 10);
     e.handleKeyDown(press('KeyS', 's'));
     tick();
@@ -122,16 +126,13 @@ test('clothoid deposits route through the clothoid solver and persist', async ()
   } finally { cleanup(); }
 });
 
-test('clothoid registry shape: partial overlay, shell commands, sparse tables', () => {
-  assert.equal(KEYBOARD_LAYOUTS.clothoid.overlay, 'partial');
-  assert.equal(KEYBOARD_LAYOUTS.spline.overlay, 'partial');
-  assert.equal(KEYBOARD_LAYOUTS.base.overlay, 'partial');
-  assert.deepEqual(Object.keys(KEYBOARD_LAYOUTS), ['base', 'spline', 'clothoid']);
-  assert.equal(variantsForLayout('clothoid'), LAYOUT_VARIANT_TABLES.clothoid);
-  // Shell stays near FM-plist order, not near the product space.
-  let keyed = 0;
-  for (const [, list] of LAYOUT_VARIANT_TABLES.clothoid) keyed += list.length;
-  assert.ok(keyed < KEY_COMMANDS.length * 10);
+test('clothoid registry shape: third layout, per-layout compile, sparse tables', () => {
+  assert.deepEqual(KEYBOARD_LAYOUTS.map((l) => l.id), ['base', 'spline', 'clothoid']);
+  assert.deepEqual(KEYBOARD_LAYOUTS.map((l) => l.label), ['Base', 'Spline', 'Clothoid']);
+  assert.ok(Array.isArray(KEY_VARIANTS_BY_LAYOUT.clothoid));
+  assert.ok(KEY_VARIANTS_BY_LAYOUT.clothoid.some((v) => v.commandId === 'clothoid-g4'));
+  // The compile stays near FM-plist order, not near the product space.
+  assert.ok(KEY_VARIANTS_BY_LAYOUT.clothoid.length < KEY_COMMANDS.length * 10);
   // W shadows Stamp while a session draws, so the audit's explicit Stamp
   // binding (B) must resolve inside the layout.
   const drawingClothoid = {

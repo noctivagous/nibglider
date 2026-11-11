@@ -87,11 +87,19 @@ export interface KeyboardHost {
   polyLineKC(): void;
   splinePointKC(): void;
   roundedPointKC(): void;
-  compositeBowedKC(corner: 'hardCorner' | 'roundedCorner', facing: 'A' | 'B'): void;
-  arcPointKC(): void;
+  bowedPointKC(facing: 'left' | 'right'): void;
+  arcThreePointKC(): void;
   switchRoundingKC(): void;
-  eraseLastPointKC(): boolean;
+  eraseLastPointKC(): void;
   clothoidPointKC(kind: 'g4' | 'g2' | 'clothoidCorner' | 'line' | 'prevConstraint' | 'nextConstraint'): void;
+  /** Active keyboard layout id (layout registry, Slice 14). */
+  keyboardLayoutId(): KeyboardLayoutId;
+  lineKC(): void;
+  ellipseKC(): void;
+  arcKC(): void;
+  setFreehandArmed(on: boolean): void;
+  freehandArmed(): boolean;
+  strokeToOutlineSelection(): number;
   compositePathEnabled(): boolean;
   /** True while a composite path session holds the live point. Drives the spline layout. */
   isCompositeSessionActive(): boolean;
@@ -284,12 +292,12 @@ export class KeyboardController {
       liveAdjustApplies: host.liveAdjustApplies(),
       isCompositePath: host.compositePathEnabled(),
       isCompositeSessionActive: host.isCompositeSessionActive(),
-      // Engine-owned layout derivation: a live session wins (clothoid while
-      // a clothoid session draws, else spline while a composite path
-      // session draws); otherwise a manual layout key override applies;
-      // the base returns when neither is set.
-      activeLayoutId: host.isClothoidSessionActive() ? 'clothoid'
-        : host.isCompositeSessionActive() ? 'spline' : (host.manualLayout() ?? 'base'),
+      // Engine-owned layout derivation: a manual layout key wins;
+      // otherwise clothoid while a clothoid session draws, else the
+      // engine's derived layout (spline while composite mode is on or
+      // a composite session is live, else the layout choice).
+      activeLayoutId: host.manualLayout()
+        ?? (host.isClothoidSessionActive() ? 'clothoid' : host.keyboardLayoutId()),
       isTransformMode: host.isTransformMode(),
     };
   }
@@ -428,20 +436,14 @@ export class KeyboardController {
       case 'clothoid-next-constraint-deposit':
         host.clothoidPointKC('nextConstraint');
         return;
-      case 'bowed-hard-a':
-        host.compositeBowedKC('hardCorner', 'A');
+      case 'bowed-point':
+        host.bowedPointKC('left');
         return;
-      case 'bowed-hard-b':
-        host.compositeBowedKC('hardCorner', 'B');
+      case 'bowed-point-flip':
+        host.bowedPointKC('right');
         return;
-      case 'bowed-rounded-a':
-        host.compositeBowedKC('roundedCorner', 'A');
-        return;
-      case 'bowed-rounded-b':
-        host.compositeBowedKC('roundedCorner', 'B');
-        return;
-      case 'arc-by-three':
-        host.arcPointKC();
+      case 'arc-three-point':
+        host.arcThreePointKC();
         return;
       case 'switch-rounding':
         host.switchRoundingKC();
@@ -449,10 +451,25 @@ export class KeyboardController {
       case 'erase-last-point':
         host.eraseLastPointKC();
         return;
-      case 'enter-spline-layout':
+      case 'enter-clothoid-layout':
         event.preventDefault();
-        if (host.manualLayout() === 'spline') host.clearManualLayout();
-        else host.setManualLayout('spline');
+        if (host.manualLayout() === 'clothoid') host.clearManualLayout();
+        else host.setManualLayout('clothoid');
+        return;
+      case 'tool-line':
+        host.lineKC();
+        return;
+      case 'tool-ellipse':
+        host.ellipseKC();
+        return;
+      case 'tool-arc':
+        host.arcKC();
+        return;
+      case 'tool-freehand':
+        host.setFreehandArmed(!host.freehandArmed());
+        return;
+      case 'stroke-to-outline':
+        host.strokeToOutlineSelection();
         return;
       case 'circle-diameter':
         host.circleKC('diameter');
@@ -508,10 +525,6 @@ export class KeyboardController {
         host.updateTextContent();
         return;
       }
-      case 'enter-clothoid-layout':
-        event.preventDefault();
-        host.setManualLayout('clothoid');
-        return;
       case 'cancel':
         // Escape with no live drawing leaves a manually opened layout
         // instead of canceling: there is nothing to cancel.

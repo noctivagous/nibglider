@@ -1,0 +1,200 @@
+{
+  "id": "repeat",
+  "title": "Repeat",
+  "description": "Arm a symmetry once and every shape you draw arrives with its copies: wallpaper tilings, polar rings, bands, and more.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-repeatControls",
+      "bubble": {
+        "title": "Repeat: draw once, get the pattern",
+        "body": "Repeat is a symmetry engine. Arm it, pick a family and a group, and every shape you draw is deposited with its copies — tiled, ringed, or banded — as one retained record you can revisit.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-repeat",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: a polar ring, live",
+        "body": "Press Watch demo: the program chooses the Polar family, arms Repeat live while drawing, and draws one small rectangle — six copies ring it as it lands.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-i"
+        ]
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "repeatControls",
+          "rectFrameControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "set-param",
+          "settingsId": "repeat",
+          "field": "wallpaperGroup",
+          "value": "p4"
+        },
+        {
+          "kind": "narrate",
+          "title": "The Polar family",
+          "body": "Choosing Polar: copies rotate around a centre. Six divisions, so five copies join the original."
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "repeat",
+          "field": "family",
+          "value": "polar"
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "repeat",
+          "field": "count",
+          "value": 6
+        },
+        {
+          "kind": "narrate",
+          "title": "Armed live",
+          "body": "Arming Repeat live while drawing — the next shape lands with its whole ring."
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "repeat",
+          "field": "armed",
+          "value": true
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.56,
+          "y": 0.4,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.64,
+          "y": 0.48,
+          "durationMs": 1000
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "One draw, six shapes",
+          "body": "A single small rectangle, deposited as a ring of six. The copies are one record on the shape, not six loose shapes."
+        },
+        {
+          "kind": "set-param",
+          "settingsId": "repeat",
+          "field": "armed",
+          "value": false
+        },
+        {
+          "kind": "wait",
+          "ms": 400
+        }
+      ]
+    },
+    {
+      "id": "do-family",
+      "target": "section-repeatControls",
+      "bubble": {
+        "title": "Choose the Wallpaper family",
+        "body": "In the Repeat section, set Family to Wallpaper. Wallpaper tiles the plane — the family of the plain grid and the classic patterns.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "repeat",
+        "field": "family",
+        "value": "wallpaper"
+      }
+    },
+    {
+      "id": "do-group",
+      "target": "section-repeatControls",
+      "bubble": {
+        "title": "Choose the plain grid group",
+        "body": "Set the wallpaper Group to the one labelled o — the plain grid: copies in rows and columns, nothing rotated or mirrored. (The labels are Conway's orbifold signatures; the section stores the group as p1.)",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "repeat",
+        "field": "wallpaperGroup",
+        "value": "p1"
+      }
+    },
+    {
+      "id": "do-arm",
+      "target": "section-repeatControls",
+      "bubble": {
+        "title": "Arm it live",
+        "body": "Check Repeat live while drawing in the Repeat section.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "repeat",
+        "field": "armed",
+        "value": true
+      }
+    },
+    {
+      "id": "do-draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Draw the motif",
+        "body": "Draw a small shape with I — a rectangle is fine. It lands as a grid of copies: one drawing, tiled.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "progressions",
+      "target": "section-repeatControls",
+      "bubble": {
+        "title": "Progressions and outcomes",
+        "body": "Under Progressions, each copy can step or grow by an equation — arithmetic or geometric. Whorl and Phyllotaxis are ready-made outcomes there: choose one and its numbers (the golden angle, for phyllotaxis) fill in.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-repeatControls",
+      "bubble": {
+        "title": "The record stays on the shape",
+        "body": "Uncheck Repeat live while drawing when you are done. Select a repeated shape later and this section shows its descriptor again — Regenerate replays it, Expand repeat keeps the copies as ordinary shapes.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

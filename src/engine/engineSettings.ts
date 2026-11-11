@@ -159,6 +159,9 @@ const ENTRIES: SettingEntry[] = [
   hex('stroke.color', (e) => e.globalStrokeColor, (e, v) => e.setStrokeColor(v)),
   en('stroke.cap', ['butt', 'round', 'square'], (e) => e.globalStrokeCap, (e, v) => e.setStrokeCap(v as never)),
   en('stroke.join', ['miter', 'round', 'bevel'], (e) => e.globalStrokeJoin, (e, v) => e.setStrokeJoin(v as never)),
+  en('stroke.arrowStart', ['none', 'triangle', 'barb', 'dot'], (e) => e.globalArrowStart, (e, v) => e.setArrowStart(v as never)),
+  en('stroke.arrowEnd', ['none', 'triangle', 'barb', 'dot'], (e) => e.globalArrowEnd, (e, v) => e.setArrowEnd(v as never)),
+  num('draw.freehandTension', (e) => e.freehandTension, (e, v) => e.setFreehandTension(v)),
   // Stroke alignment is hidden. Leave it out of the snapshot so a stored
   // inside/outside cannot override the center default.
   num('stroke.miter', (e) => e.globalMiterLimit, (e, v) => e.setMiterLimit(v)),
@@ -179,10 +182,8 @@ const ENTRIES: SettingEntry[] = [
   num('fill.angle', (e) => e.globalFillAngle, (e, v) => e.setFillAngle(v)),
   num('fill.inner', (e) => e.globalFillInner, (e, v) => e.setFillInner(v)),
   bool('fill.enabled', (e) => e.fillEnabled, (e, v) => e.setFillEnabled(v)),
-  // Grid and snapping.
-  bool('grid.enabled', (e) => e.isGridEnabled, (e, v) => e.setGridEnabled(v)),
-  en('grid.type', ['square', 'diamond'], (e) => e.gridType, (e, v) => e.setGridType(v as never)),
-  num('grid.spacing', (e) => e.gridSpacing, (e, v) => e.setGridSpacing(v)),
+  // Snapping. (Grid DISPLAY state is per-document from Tier Four
+  // Slice 17 — see LEGACY_LOAD_ONLY below.)
   bool('repeat.enabled', (e) => e.isRepeatEnabled, (e, v) => e.setRepeatEnabled(v)),
   num('repeat.rows', (e) => e.repeatRows, (e, v) => e.setRepeatRows(v)),
   num('repeat.cols', (e) => e.repeatCols, (e, v) => e.setRepeatCols(v)),
@@ -191,10 +192,29 @@ const ENTRIES: SettingEntry[] = [
   bool('repeat.rectKeys', (e) => e.repeatRectKeys, (e, v) => e.setRepeatRectKeys(v)),
   bool('repeat.circleKeys', (e) => e.repeatCircleKeys, (e, v) => e.setRepeatCircleKeys(v)),
   bool('repeat.paths', (e) => e.repeatPaths, (e, v) => e.setRepeatPaths(v)),
-  en('ruler.placement', ['viewer', 'page'], (e) => e.rulerPlacement, (e, v) => e.setRulerPlacement(v as never)),
+  en('repeat.family', ['wallpaper', 'polar', 'frieze', 'alongStroke', 'normals'], (e) => e.repeatFamily, (e, v) => e.setRepeatFamily(v as never)),
+  en('repeat.wallpaperGroup', ['p1', 'p2', 'pm', 'pg', 'cm', 'pmm', 'pmg', 'pgg', 'cmm', 'p4', 'p4m', 'p4g', 'p3', 'p3m1', 'p31m', 'p6', 'p6m'], (e) => e.repeatWallpaperGroup, (e, v) => e.setRepeatWallpaperGroup(v as never)),
+  en('repeat.friezeGroup', ['p1111', 'p11g', 'p1m1', 'pm11', 'p112', 'p2mg', 'p2mm'], (e) => e.repeatFriezeGroup, (e, v) => e.setRepeatFriezeGroup(v as never)),
+  num('repeat.symmetryCount', (e) => e.repeatSymmetryCount, (e, v) => e.setRepeatSymmetryCount(v)),
+  bool('repeat.polarReflect', (e) => e.repeatPolarReflect, (e, v) => e.setRepeatPolarReflect(v)),
+  bool('repeat.liveSymmetry', (e) => e.liveSymmetryArmed, (e, v) => e.setLiveSymmetryArmed(v)),
+  en('repeat.polarMode', ['division', 'degrees'], (e) => e.repeatPolarMode, (e, v) => e.setRepeatPolarMode(v as never)),
+  num('repeat.polarStepDeg', (e) => e.repeatPolarStepDeg, (e, v) => e.setRepeatPolarStepDeg(v)),
+  num('repeat.motifOffsetDeg', (e) => e.repeatMotifOffsetDeg, (e, v) => e.setRepeatMotifOffsetDeg(v)),
+  en('repeat.stationMode', ['division', 'spacing', 'progression'], (e) => e.repeatStationMode, (e, v) => e.setRepeatStationMode(v as never)),
+  num('repeat.alongSpacing', (e) => e.repeatAlongSpacing, (e, v) => e.setRepeatAlongSpacing(v)),
+  num('repeat.alongOrientationDeg', (e) => e.repeatAlongOrientationDeg, (e, v) => e.setRepeatAlongOrientationDeg(v)),
+  bool('repeat.alongAlign', (e) => e.repeatAlongAlign, (e, v) => e.setRepeatAlongAlign(v)),
+  num('noise.amplitude', (e) => e.noiseAmplitude, (e, v) => e.setNoiseAmplitude(v)),
+  num('noise.scale', (e) => e.noiseScale, (e, v) => e.setNoiseScale(v)),
+  num('noise.seed', (e) => e.noiseSeed, (e, v) => e.setNoiseSeed(v)),
+  num('pathops.simplifyTolerance', (e) => e.simplifyTolerance, (e, v) => e.setSimplifyTolerance(v)),
+  num('pathops.fitTolerance', (e) => e.fitTolerance, (e, v) => e.setFitTolerance(v)),
+  num('pathops.hullConcaveness', (e) => e.hullConcaveness, (e, v) => e.setHullConcaveness(v)),
+  en('ruler.placement', ['viewer', 'page', 'off'], (e) => e.rulerPlacement, (e, v) => e.setRulerPlacement(v as never)),
   bool('ruler.guides', (e) => e.rulerGuides, (e, v) => e.setRulerGuides(v)),
-  bool('page.fill', (e) => e.pageFill, (e, v) => e.setPageFill(v)),
-  bool('page.sideTicks', (e) => e.pageSideTicks, (e, v) => e.setPageSideTicks(v)),
+  bool('guides.visible', (e) => e.guidesVisible, (e, v) => e.setGuidesVisible(v)),
+  bool('guides.snapping', (e) => e.guideSnapping, (e, v) => e.setGuideSnapping(v)),
   // Keys table widget.
   bool('keymap.hideCommon', (e) => e.hideCommonKeymapRows, (e, v) => e.setHideCommonKeymapRows(v)),
   bool('snap.grid', (e) => e.isGridSnappingEnabled, (e, v) => e.setGridSnappingEnabled(v)),
@@ -234,6 +254,11 @@ const ENTRIES: SettingEntry[] = [
   en('path.mode', ['legacy', 'ngComposite'], (e) => e.pathDrawingMode, (e, v) => e.setPathDrawingMode(v as never)),
   num('path.cornerRadius', (e) => e.compositeCornerRadius, (e, v) => e.setCompositeCornerRadius(v)),
   num('path.splineTension', (e) => e.splineTension, (e, v) => e.setSplineTension(clampSplineTension(v))),
+  num('path.bowAmplitude', (e) => e.bowAmplitude, (e, v) => e.setBowAmplitude(v)),
+  bool('path.bowAmplitudeIsPercent', (e) => e.bowAmplitudeIsPercent, (e, v) => e.setBowAmplitudeIsPercent(v)),
+  num('path.bowPeakLocation', (e) => e.bowPeakLocation, (e, v) => e.setBowPeakLocation(v)),
+  bool('path.bowIsArc', (e) => e.bowIsArc, (e, v) => e.setBowIsArc(v)),
+  en('keyboard.layout', ['auto', 'base', 'spline'], (e) => e.keyboardLayoutChoice, (e, v) => e.setKeyboardLayoutChoice(v)),
   // Text.
   str('text.content', (e) => e.globalText.content, (e, v) => e.setTextContent(v)),
   str('text.line2', (e) => e.globalText.line2, (e, v) => e.setTextLine2(v)),
@@ -241,8 +266,39 @@ const ENTRIES: SettingEntry[] = [
   num('text.fontSize', (e) => e.globalText.fontSize, (e, v) => e.setTextFontSize(v)),
   str('text.fontWeight', (e) => e.globalText.fontWeight, (e, v) => e.setTextFontWeight(v)),
   bool('text.italic', (e) => e.globalText.italic, (e, v) => e.setTextItalic(v)),
-  en('text.justification', ['left', 'center', 'right'], (e) => e.globalText.justification, (e, v) => e.setTextJustification(v as never)),
+  bool('text.underline', (e) => e.globalText.underline, (e, v) => e.setTextUnderline(v)),
+  bool('text.strikethrough', (e) => e.globalText.strikethrough, (e, v) => e.setTextStrikethrough(v)),
+  en('text.caseTransform', ['none', 'upper', 'smallCaps'], (e) => e.globalText.caseTransform, (e, v) => e.setTextCaseTransform(v as never)),
+  num('text.baselineShift', (e) => e.globalText.baselineShift, (e, v) => e.setTextBaselineShift(v)),
+  num('text.wordSpacing', (e) => e.globalText.wordSpacing, (e, v) => e.setTextWordSpacing(v)),
+  en('text.justification', ['left', 'center', 'right', 'justify'], (e) => e.globalText.justification, (e, v) => e.setTextJustification(v as never)),
   num('text.leading', (e) => e.globalText.leading, (e, v) => e.setTextLeading(v)),
+  num('text.letterSpacing', (e) => e.globalText.letterSpacing, (e, v) => e.setTextLetterSpacing(v)),
+  num('text.paragraphSpacing', (e) => e.globalText.paragraphSpacing, (e, v) => e.setTextParagraphSpacing(v)),
+  {
+    // Text styles (Slice 19): app-level presets, carried between
+    // documents like user fonts. Built-ins ship in code; only the
+    // user's own styles are stored.
+    key: 'text.styles',
+    save: (e) => e.userTextStyleSettings(),
+    load: (e, raw) => { e.restoreUserTextStyles(raw); },
+  },
+  {
+    // User-added fonts: the family list persists; URL fonts reload
+    // from their URL, file fonts are remembered by name only (their
+    // bytes are session-only by design).
+    key: 'text.userFonts',
+    save: (e) => e.userFontSettings(),
+    load: (e, raw) => {
+      if (!Array.isArray(raw)) return;
+      const list = raw.filter((entry): entry is { family: string; source: 'file' | 'url'; url?: string } => (
+        !!entry && typeof entry === 'object'
+        && typeof (entry as { family?: unknown }).family === 'string'
+        && ((entry as { source?: unknown }).source === 'file' || (entry as { source?: unknown }).source === 'url')
+      ));
+      e.restoreUserFonts(list);
+    },
+  },
   bool('text.modeEnabled', (e) => e.textModeEnabled, (e, v) => e.setTextModeEnabled(v)),
   en('text.mode', ['display', 'body'], (e) => e.textMode, (e, v) => e.setTextMode(v as never)),
   en('text.flow', ['interior', 'exterior'], (e) => e.displayFlow, (e, v) => e.setDisplayFlow(v as never)),
@@ -259,14 +315,34 @@ const ENTRIES: SettingEntry[] = [
   ], (e) => e.typeCursorAnchor, (e, v) => e.setTypeCursorAnchor(v as never)),
   en('text.typeAnchorBottom', ['baseline', 'descender'], (e) => e.typeCursorBottomEdge, (e, v) => e.setTypeCursorBottomEdge(v as never)),
   // Modes.
-  en('combine.mode', ['none', 'union', 'subtract', 'intersect', 'crop', 'cut', 'interlace'], (e) => e.combineMode, (e, v) => e.setCombineMode(v as never)),
-  en('combine.tool', ['union', 'subtract', 'intersect', 'crop', 'cut', 'interlace'], (e) => e.combineTool, (e, v) => e.setCombineTool(v as never)),
+  en('combine.mode', ['none', 'union', 'subtract', 'intersect', 'exclude', 'crop', 'cut', 'interlace'], (e) => e.combineMode, (e, v) => e.setCombineMode(v as never)),
+  en('combine.tool', ['union', 'subtract', 'intersect', 'exclude', 'crop', 'cut', 'interlace'], (e) => e.combineTool, (e, v) => e.setCombineTool(v as never)),
+  num('filters.blurRadius', (e) => e.filterBlurRadius, (e, v) => e.setFilterBlurRadius(v)),
+  num('filters.sharpenRadius', (e) => e.filterSharpenRadius, (e, v) => e.setFilterSharpenRadius(v)),
+  num('filters.sharpenAmount', (e) => e.filterSharpenAmount, (e, v) => e.setFilterSharpenAmount(v)),
+  num('filters.brightness', (e) => e.filterBrightness, (e, v) => e.setFilterBrightness(v)),
+  num('filters.contrastPct', (e) => e.filterContrastPct, (e, v) => e.setFilterContrastPct(v)),
   num('combine.interlaceGap', (e) => e.interlaceGap, (e, v) => e.setInterlaceGap(v)),
   en('quad.mapping', ['bilinear', 'projective'], (e) => e.quadMapping, (e, v) => e.setQuadMapping(v as QuadMapping)),
   bool('quad.perspectiveCircle', (e) => e.perspectiveCircle, (e, v) => e.setPerspectiveCircle(v)),
   // Printify: the shop id persists; the token stays memory-only and is
   // never a settings entry.
   str('printify.shopId', (e) => e.printifyShopId, (e, v) => e.setPrintifyShopId(v)),
+];
+
+/**
+ * Display settings that were global before Tier Four (Slice 17) and
+ * are per-document now (native format v5). They are LOAD-ONLY: a
+ * stored blob from before the move seeds the engine's starting
+ * values — the defaults a new document begins from — but snapshots
+ * never write them back, so from here on they live in documents.
+ */
+const LEGACY_LOAD_ONLY: SettingEntry[] = [
+  bool('grid.enabled', (e) => e.isGridEnabled, (e, v) => e.setGridEnabled(v)),
+  en('grid.type', ['square', 'diamond'], (e) => e.gridType, (e, v) => e.setGridType(v as never)),
+  num('grid.spacing', (e) => e.gridSpacing, (e, v) => e.setGridSpacing(v)),
+  bool('page.fill', (e) => e.pageFill, (e, v) => e.setPageFill(v)),
+  bool('page.sideTicks', (e) => e.pageSideTicks, (e, v) => e.setPageSideTicks(v)),
 ];
 
 export function snapshotEngineSettings(engine: NibGliderEngine): Record<string, unknown> {
@@ -276,7 +352,7 @@ export function snapshotEngineSettings(engine: NibGliderEngine): Record<string, 
 }
 
 export function applyEngineSettings(engine: NibGliderEngine, values: Record<string, unknown>): void {
-  for (const entry of ENTRIES) {
+  for (const entry of [...ENTRIES, ...LEGACY_LOAD_ONLY]) {
     if (!(entry.key in values)) continue;
     try {
       entry.load(engine, values[entry.key]);

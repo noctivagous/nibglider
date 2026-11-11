@@ -3,6 +3,7 @@
 // non-plain objects are rejected so Paper items cannot become document truth.
 import type { NGDrawable } from './NGDrawable';
 import type { NGPath } from './NGPath';
+import { isReplicationRecord } from '../repeat/replication';
 
 export class ModelValidationError extends Error {
   constructor(message: string) { super(message); this.name = 'ModelValidationError'; }
@@ -45,7 +46,6 @@ function points(value: unknown, path: string): unknown[] {
 export function validatePath(
   value: unknown,
   path = 'path',
-  options: { allowStagedArc?: boolean } = {},
 ): asserts value is NGPath {
   const p = record(value, path, ['id', 'mode', 'contours', 'fillRule', 'closed', 'points', 'degree', 'tension',
     'spine', 'width', 'cap', 'join', 'miterLimit', 'dashLength', 'gapLength', 'position']);
@@ -108,33 +108,29 @@ export function validatePath(
       choice(o.kind, `${name}.outgoing.kind`, ['inherit', 'line', 'bSpline', 'bowedLine', 'arc']);
       if (o.bow !== undefined) {
         requireValue(o.kind === 'bowedLine', name, 'bowedLine segment for bow');
-        const b = record(o.bow, `${name}.outgoing.bow`, ['facing', 'amplitude', 'amplitudeIsPercent', 'peakLocation', 'peakLocationMultiplier', 'isArc', 'dualDistance', 'corneredApex']);
-        choice(b.facing, `${name}.outgoing.bow.facing`, ['A', 'B']);
-        number(b.amplitude, `${name}.outgoing.bow.amplitude`);
-        requireValue((b.amplitude as number) >= 0, `${name}.outgoing.bow.amplitude`, 'nonnegative amplitude');
-        bool(b.amplitudeIsPercent, `${name}.outgoing.bow.amplitudeIsPercent`);
-        number(b.peakLocation, `${name}.outgoing.bow.peakLocation`, 0, 1);
-        number(b.peakLocationMultiplier, `${name}.outgoing.bow.peakLocationMultiplier`);
-        bool(b.isArc, `${name}.outgoing.bow.isArc`);
-        number(b.dualDistance, `${name}.outgoing.bow.dualDistance`, 0, 1);
-        choice(b.corneredApex, `${name}.outgoing.bow.corneredApex`, ['none', 'rounded', 'hard']);
+        // Phase 2.4: ranges are rejected, never repaired.
+        const b = record(o.bow, `${name}.bow`, ['facing', 'amplitude', 'amplitudeIsPercent', 'peakLocation', 'peakLocationMultiplier', 'isArc', 'dualDistance', 'corneredApex']);
+        choice(b.facing, `${name}.bow.facing`, ['A', 'B']);
+        number(b.amplitude, `${name}.bow.amplitude`, 0);
+        bool(b.amplitudeIsPercent, `${name}.bow.amplitudeIsPercent`);
+        number(b.peakLocation, `${name}.bow.peakLocation`, 0, 1);
+        number(b.peakLocationMultiplier, `${name}.bow.peakLocationMultiplier`, 0, 2);
+        bool(b.isArc, `${name}.bow.isArc`);
+        number(b.dualDistance, `${name}.bow.dualDistance`, 0, 1);
+        choice(b.corneredApex, `${name}.bow.corneredApex`, ['none', 'rounded', 'hard']);
       }
     }
-    // Arc pairs are adjacent; on a closed path they may wrap the seam.
-    // A live session may also hold one unfinished arc at the trailing
-    // edge (Phase 4 staged protocol); persisted paths stay strict.
-    const arcNext = p.closed === true
-      ? (semantic[(i + 1) % semantic.length] as Record<string, unknown> | undefined)?.kind
-      : (semantic[i + 1] as Record<string, unknown> | undefined)?.kind;
-    const arcPrev = p.closed === true
-      ? (semantic[(i - 1 + semantic.length) % semantic.length] as Record<string, unknown> | undefined)?.kind
-      : (semantic[i - 1] as Record<string, unknown> | undefined)?.kind;
+    // Arc pairing stays strict in persisted paths (Phase 2.3). In a
+    // closed path the pair may wrap the array seam: a start in the
+    // last slot pairs with an end in the first (and vice versa).
+    const closedPath = (p as { closed?: unknown }).closed === true;
     if (q.kind === 'arcByThreeStart') {
-      const staged = !!options.allowStagedArc && i === semantic.length - 1;
-      requireValue(staged || arcNext === 'arcByThreeEnd', name, 'paired adjacent arc end');
+      const next = semantic[i + 1] ?? (closedPath ? semantic[0] : undefined);
+      requireValue((next as Record<string, unknown>)?.kind === 'arcByThreeEnd', name, 'paired adjacent arc end');
     }
     if (q.kind === 'arcByThreeEnd') {
-      requireValue(arcPrev === 'arcByThreeStart', name, 'paired adjacent arc start');
+      const prev = semantic[i - 1] ?? (closedPath ? semantic[semantic.length - 1] : undefined);
+      requireValue((prev as Record<string, unknown>)?.kind === 'arcByThreeStart', name, 'paired adjacent arc start');
     }
   });
 }
@@ -177,10 +173,13 @@ function validateShape(value: unknown, path: string): void {
 }
 
 export function validateDrawable(value: unknown): asserts value is NGDrawable {
-  const d = record(value, 'drawable', ['id', 'kind', 'layerId', 'transform', 'opacity', 'visible', 'locked', 'name', 'styleId', 'source']);
+  const d = record(value, 'drawable', ['id', 'kind', 'layerId', 'transform', 'opacity', 'visible', 'locked', 'name', 'styleId', 'source', 'replication']);
   string(d.id, 'drawable.id'); string(d.layerId, 'drawable.layerId');
   if (d.name !== undefined) string(d.name, 'drawable.name', false);
   if (d.styleId !== undefined) string(d.styleId, 'drawable.styleId');
+  if (d.replication !== undefined) {
+    requireValue(isReplicationRecord(d.replication), 'drawable.replication', 'replication record (version 2, a symmetry descriptor)');
+  }
   const transform = record(d.transform, 'drawable.transform', ['a', 'b', 'c', 'd', 'tx', 'ty']);
   for (const key of ['a', 'b', 'c', 'd', 'tx', 'ty']) number(transform[key], `drawable.transform.${key}`);
   number(d.opacity, 'drawable.opacity', 0, 1); bool(d.visible, 'drawable.visible'); bool(d.locked, 'drawable.locked');
@@ -188,10 +187,12 @@ export function validateDrawable(value: unknown): asserts value is NGDrawable {
     case 'path': validatePath(d.source, 'drawable.source'); return;
     case 'shape': validateShape(d.source, 'drawable.source'); return;
     case 'text': {
-      const t = record(d.source, 'drawable.source', ['content', 'fontFamily', 'fontSize', 'fontWeight', 'italic', 'layout', 'pathId']);
+      const t = record(d.source, 'drawable.source', ['content', 'fontFamily', 'fontSize', 'fontWeight', 'italic', 'layout', 'pathId', 'letterSpacing', 'paragraphSpacing']);
       string(t.content, 'text.content', false); string(t.fontFamily, 'text.fontFamily'); positive(t.fontSize, 'text.fontSize'); string(t.fontWeight, 'text.fontWeight'); bool(t.italic, 'text.italic'); choice(t.layout, 'text.layout', ['display', 'body', 'path']);
       if (t.pathId !== undefined) string(t.pathId, 'text.pathId');
       if (t.layout === 'path') string(t.pathId, 'text.pathId');
+      if (t.letterSpacing !== undefined) number(t.letterSpacing, 'text.letterSpacing');
+      if (t.paragraphSpacing !== undefined) number(t.paragraphSpacing, 'text.paragraphSpacing', 0);
       return;
     }
     case 'image': {

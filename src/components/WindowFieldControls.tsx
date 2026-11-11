@@ -66,6 +66,22 @@ export function FieldInput({ control, engine, bindings }: FieldProps) {
       </>
     );
   }
+  if (control.fieldType === 'color') {
+    const current = binding ? String(binding.get(engine)) : '#000000';
+    return (
+      <>
+        <input
+          type="color"
+          className="settings-color"
+          value={/^#[0-9a-f]{6}$/i.test(current) ? current : '#000000'}
+          aria-label={control.label}
+          disabled={!binding}
+          onChange={(event) => binding?.set(engine, event.target.value)}
+        />
+        {!binding && <span className="settings-unknown">Unknown setting: {control.key}</span>}
+      </>
+    );
+  }
   const committed = binding ? String(binding.get(engine)) : '';
   const value = draft ?? committed;
   const commit = (text: string): void => {

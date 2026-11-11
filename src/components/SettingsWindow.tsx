@@ -2,10 +2,16 @@
 // bound to engine settings. Unknown setting keys render as disabled rows so
 // a future window never silently drops a control. A spec that fails to parse
 // renders an error box. Mounted by App when the window registry names it.
+// Two hand-built sections follow the XML ones (Slice 21): Printify
+// (moved here when the Services menu was deleted) and Reset all
+// settings (moved here from the removed Debug menu, behind a
+// confirm).
 import type { NibGliderEngine } from '../engine/engine';
 import type { GUIManager } from '../ui/GUIManager';
 import { parseWindowXML, type WindowControl } from '../ui/windowXML';
 import settingsXML from '../ui/windows/settings.xml?raw';
+import { PrintifySettingsForm } from './PrintifySettingsDialog';
+import { clearNibGliderSettings } from '../tutorial/tutorialProgress';
 import type { ReactNode } from 'react';
 import {
   AccordionControl,
@@ -151,6 +157,30 @@ export default function SettingsWindow({
             </div>
           ))
         )}
+        <div className="settings-section">
+          <div className="settings-section-title">Printify</div>
+          <PrintifySettingsForm engine={engine} />
+        </div>
+        <div className="settings-section">
+          <div className="settings-section-title">Reset</div>
+          <div className="settings-row">
+            <span className="settings-label">All settings</span>
+            <button
+              type="button"
+              className="settings-toggle"
+              onClick={() => {
+                if (!window.confirm('Reset all settings to their defaults? The app will reload.')) return;
+                try {
+                  clearNibGliderSettings(localStorage);
+                } catch { /* Storage can be unavailable in private browsing. */ }
+                window.location.reload();
+              }}
+            >
+              Reset all settings…
+            </button>
+          </div>
+          <div className="settings-note">Clears every saved setting and reloads the app. Your documents are not touched.</div>
+        </div>
       </div>
     </div>
   );

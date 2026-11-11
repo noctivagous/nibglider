@@ -1,7 +1,7 @@
 {
   "id": "hello-rectangle",
   "title": "Hello Rectangle",
-  "description": "Draw rectangles two ways (by diagonal, by two edges), change the frame's shape, then read the status and available-keys boxes to keep learning on your own.",
+  "description": "Start here: what a key-click is and why the keyboard is the tool palette, then draw rectangles two ways (by diagonal, by two edges), change the frame's shape, and read the status and available-keys boxes to keep learning on your own.",
   "steps": [
     {
       "id": "welcome",
@@ -10,7 +10,96 @@
         "body": "The mouse steers the cursor, but keys do the clicking. This tour points at the controls you will need.",
         "placement": "center"
       },
-      "expect": { "kind": "none" }
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "key-click",
+      "target": "canvas",
+      "bubble": {
+        "title": "What is a key-click?",
+        "body": "A key-click is a click made with a key instead of the mouse button. You steer the cursor with the mouse, and a key press does the clicking — so the point lands exactly where the cursor sits at the moment of the press, with no mouse-button push nudging it off target. Press Watch demo and watch one key press place a corner.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-i",
+          "key-q"
+        ]
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "rectFrameControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "Steering only",
+          "body": "The cursor is moving, but nothing is placed yet. The mouse only steers."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.42,
+          "y": 0.44,
+          "durationMs": 900
+        },
+        {
+          "kind": "narrate",
+          "title": "The press is the click",
+          "body": "Pressing I now. The first corner lands exactly where the cursor is at this moment."
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.58,
+          "y": 0.6,
+          "durationMs": 1000
+        },
+        {
+          "kind": "narrate",
+          "title": "The corner stayed put",
+          "body": "Steering again only stretches the preview. The corner stays exactly where the I press put it."
+        },
+        {
+          "kind": "press-key",
+          "key": "q",
+          "holdMs": 150
+        },
+        {
+          "kind": "wait",
+          "ms": 300
+        },
+        {
+          "kind": "narrate",
+          "title": "Q cancels",
+          "body": "Q cancels the half-drawn rectangle. Every drawing here works this way: steer with the mouse, click with a key."
+        }
+      ]
+    },
+    {
+      "id": "key-palette",
+      "target": "available-keys",
+      "bubble": {
+        "title": "The keyboard is the tool palette",
+        "body": "Every tool and action here is a key, and the keys you can use right now are listed in the available-keys box. Your mouse hand steers while your keyboard hand picks tools and clicks, so both hands work at once. Nothing important hides in menus — if it can be done, a key does it.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "none"
+      }
     },
     {
       "id": "watch-diagonal",
@@ -20,26 +109,65 @@
         "body": "Press Watch demo: the program steers the cursor itself and presses I twice to draw a rectangle, live on the canvas.",
         "placement": "center",
         "anchor": "bottom-right",
-        "avoid": ["key-i"]
+        "avoid": [
+          "key-i"
+        ]
       },
-      "expect": { "kind": "none" },
+      "expect": {
+        "kind": "none"
+      },
       "preconditions": {
         "normalZoom": true,
         "showKeyboard": true,
         "showPanel": true,
         "showStatus": true,
-        "expandSections": ["rectFrameControls"],
+        "expandSections": [
+          "rectFrameControls"
+        ],
         "cancelDrawing": true
       },
       "demo": [
-        { "kind": "narrate", "title": "First corner", "body": "Steering to the first corner of the diagonal." },
-        { "kind": "move-cursor-xy", "x": 0.35, "y": 0.4, "durationMs": 900 },
-        { "kind": "press-key", "key": "i", "holdMs": 150 },
-        { "kind": "narrate", "title": "Second corner", "body": "The I key starts Rect by Diagonal. Now steering to the opposite corner." },
-        { "kind": "move-cursor-xy", "x": 0.65, "y": 0.6, "durationMs": 1200 },
-        { "kind": "press-key", "key": "i", "holdMs": 150 },
-        { "kind": "wait", "ms": 400 },
-        { "kind": "narrate", "title": "Done", "body": "The second I press deposits the rectangle, exactly as your own key presses would." }
+        {
+          "kind": "narrate",
+          "title": "First corner",
+          "body": "Steering to the first corner of the diagonal."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.35,
+          "y": 0.4,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "Second corner",
+          "body": "The I key starts Rect by Diagonal. Now steering to the opposite corner."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.65,
+          "y": 0.6,
+          "durationMs": 1200
+        },
+        {
+          "kind": "press-key",
+          "key": "i",
+          "holdMs": 150
+        },
+        {
+          "kind": "wait",
+          "ms": 400
+        },
+        {
+          "kind": "narrate",
+          "title": "Done",
+          "body": "The second I press deposits the rectangle, exactly as your own key presses would."
+        }
       ]
     },
     {
@@ -50,7 +178,10 @@
         "body": "Steer the mouse where you want the first corner, then press the I key to start Rect by Diagonal — the same key the demo pressed.",
         "placement": "above"
       },
-      "expect": { "kind": "press-key", "key": "i" }
+      "expect": {
+        "kind": "press-key",
+        "key": "i"
+      }
     },
     {
       "id": "try-diagonal-draw",
@@ -60,7 +191,9 @@
         "body": "Steer to the opposite corner and press I again to deposit your rectangle.",
         "placement": "center"
       },
-      "expect": { "kind": "scene-changed" }
+      "expect": {
+        "kind": "scene-changed"
+      }
     },
     {
       "id": "watch-two-edges",
@@ -70,26 +203,65 @@
         "body": "Press Watch demo: the program steers the cursor itself and presses U twice to draw a rectangle from two edges, live on the canvas.",
         "placement": "center",
         "anchor": "bottom-right",
-        "avoid": ["key-u"]
+        "avoid": [
+          "key-u"
+        ]
       },
-      "expect": { "kind": "none" },
+      "expect": {
+        "kind": "none"
+      },
       "preconditions": {
         "normalZoom": true,
         "showKeyboard": true,
         "showPanel": true,
         "showStatus": true,
-        "expandSections": ["rectFrameControls"],
+        "expandSections": [
+          "rectFrameControls"
+        ],
         "cancelDrawing": true
       },
       "demo": [
-        { "kind": "narrate", "title": "First edge", "body": "Steering to the first edge." },
-        { "kind": "move-cursor-xy", "x": 0.35, "y": 0.45, "durationMs": 900 },
-        { "kind": "press-key", "key": "u", "holdMs": 150 },
-        { "kind": "narrate", "title": "Second edge", "body": "The U key starts Rect by Two Edges. Now steering to the opposite edge." },
-        { "kind": "move-cursor-xy", "x": 0.65, "y": 0.55, "durationMs": 1200 },
-        { "kind": "press-key", "key": "u", "holdMs": 150 },
-        { "kind": "wait", "ms": 400 },
-        { "kind": "narrate", "title": "Done", "body": "The second U press deposits the rectangle, exactly as your own key presses would." }
+        {
+          "kind": "narrate",
+          "title": "First edge",
+          "body": "Steering to the first edge."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.35,
+          "y": 0.45,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "u",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "Second edge",
+          "body": "The U key starts Rect by Two Edges. Now steering to the opposite edge."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.65,
+          "y": 0.55,
+          "durationMs": 1200
+        },
+        {
+          "kind": "press-key",
+          "key": "u",
+          "holdMs": 150
+        },
+        {
+          "kind": "wait",
+          "ms": 400
+        },
+        {
+          "kind": "narrate",
+          "title": "Done",
+          "body": "The second U press deposits the rectangle, exactly as your own key presses would."
+        }
       ]
     },
     {
@@ -100,7 +272,10 @@
         "body": "Steer the mouse where you want to start, then press the U key to start Rect by Two Edges — the same key the demo pressed.",
         "placement": "above"
       },
-      "expect": { "kind": "press-key", "key": "u" }
+      "expect": {
+        "kind": "press-key",
+        "key": "u"
+      }
     },
     {
       "id": "try-two-edges-draw",
@@ -110,17 +285,24 @@
         "body": "Steer to the second edge and press U again to deposit your rectangle.",
         "placement": "center"
       },
-      "expect": { "kind": "scene-changed" }
+      "expect": {
+        "kind": "scene-changed"
+      }
     },
     {
       "id": "shape-selector",
       "target": "rect-shape-select",
       "bubble": {
         "title": "Change the frame's shape",
-        "body": "Here's where to change the shape that the rectangle frame draws. Hover over this control to see the shapes — circles, polygons, and more.",
+        "body": "This selector in the Rect Keys section chooses the shape the frame draws. Open it and choose Polygon, under Polygons — the next rectangle you draw will put a polygon inside its frame.",
         "placement": "below"
       },
-      "expect": { "kind": "none" }
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "rect",
+        "field": "innerShape",
+        "value": "polygon"
+      }
     },
     {
       "id": "status-box",
@@ -130,7 +312,9 @@
         "body": "The status box tells you what is happening and what you can do next.",
         "placement": "right"
       },
-      "expect": { "kind": "none" }
+      "expect": {
+        "kind": "none"
+      }
     },
     {
       "id": "available-keys",
@@ -140,7 +324,21 @@
         "body": "The available keys box tells you what keys you can use. You can learn how to use many keys on your own from these two boxes.",
         "placement": "right"
       },
-      "expect": { "kind": "none" }
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "closing",
+      "target": "menu-help",
+      "bubble": {
+        "title": "One tutorial per section",
+        "body": "That is the pattern: watch first, then do it yourself. Help ▸ Tutorials has a short tutorial like this one for each section of the panel — paint, text, arranging, pages, and more. Open it whenever you want a guided first run at a section.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
     }
   ]
 }

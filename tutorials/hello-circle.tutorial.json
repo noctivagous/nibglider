@@ -1,0 +1,234 @@
+{
+  "id": "hello-circle",
+  "title": "Hello Circle",
+  "description": "Draw circle-frame shapes two ways (by diameter, by radius) and change the shape inside the frame.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-circleFrameControls",
+      "bubble": {
+        "title": "Circle Keys",
+        "body": "The Circle Keys draw circle-frame shapes the same way Rect Keys draw rectangles: steer to a point, press a key, steer to a second point, press again. Two keys size the circle two ways.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "watch-diameter",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: circle by diameter",
+        "body": "Press Watch demo: the program presses M at one end of a diameter, then at the other end, and the circle lands between them.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-m"
+        ]
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "circleFrameControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "One end of the diameter",
+          "body": "Steering to the first end. M starts Circle by Diameter."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.42,
+          "y": 0.42,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "m",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "The other end",
+          "body": "Steering across. The circle will span exactly these two points."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.6,
+          "y": 0.6,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "m",
+          "holdMs": 150
+        },
+        {
+          "kind": "wait",
+          "ms": 400
+        },
+        {
+          "kind": "narrate",
+          "title": "Done",
+          "body": "The second M press deposits the circle, its diameter between the two presses."
+        }
+      ]
+    },
+    {
+      "id": "try-diameter-press",
+      "target": "key-m",
+      "bubble": {
+        "title": "Your turn: press M",
+        "body": "Steer to one end of the diameter you want, then press M to start Circle by Diameter.",
+        "placement": "above"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "m"
+      }
+    },
+    {
+      "id": "try-diameter-draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Place the other end",
+        "body": "Steer to the opposite end of the diameter and press M again to deposit your circle.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "watch-radius",
+      "target": "canvas",
+      "bubble": {
+        "title": "Watch: circle by radius",
+        "body": "Press Watch demo: the program presses N at the centre, then at a point on the rim — centre first, radius second.",
+        "placement": "center",
+        "anchor": "bottom-right",
+        "avoid": [
+          "key-n"
+        ]
+      },
+      "expect": {
+        "kind": "none"
+      },
+      "preconditions": {
+        "normalZoom": true,
+        "showKeyboard": true,
+        "showPanel": true,
+        "showStatus": true,
+        "expandSections": [
+          "circleFrameControls"
+        ],
+        "cancelDrawing": true
+      },
+      "demo": [
+        {
+          "kind": "narrate",
+          "title": "The centre",
+          "body": "Steering to the centre. N starts Circle by Radius."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.48,
+          "y": 0.46,
+          "durationMs": 900
+        },
+        {
+          "kind": "press-key",
+          "key": "n",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "A point on the rim",
+          "body": "Steering out to the rim. The distance from the centre sets the radius."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.6,
+          "y": 0.46,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "n",
+          "holdMs": 150
+        },
+        {
+          "kind": "wait",
+          "ms": 400
+        },
+        {
+          "kind": "narrate",
+          "title": "Done",
+          "body": "The second N press deposits the circle around the centre you picked."
+        }
+      ]
+    },
+    {
+      "id": "try-radius-press",
+      "target": "key-n",
+      "bubble": {
+        "title": "Your turn: press N",
+        "body": "Steer to where the centre should be, then press N to start Circle by Radius.",
+        "placement": "above"
+      },
+      "expect": {
+        "kind": "press-key",
+        "key": "n"
+      }
+    },
+    {
+      "id": "try-radius-draw",
+      "target": "canvas",
+      "bubble": {
+        "title": "Place a point on the rim",
+        "body": "Steer out to the rim and press N again to deposit your circle.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "scene-changed"
+      }
+    },
+    {
+      "id": "shape-selector",
+      "target": "circle-shape-select",
+      "bubble": {
+        "title": "Change the shape inside",
+        "body": "This selector in the Circle Keys section chooses the shape the circle frame draws. Open it and choose Polygon — the next circle you draw will put a polygon inside its frame.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "circle",
+        "field": "innerShape",
+        "value": "polygon"
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-circleFrameControls",
+      "bubble": {
+        "title": "Circles, key-clicked",
+        "body": "Circles work exactly like rectangles: steer, press, steer, press. The frame is round; the shape inside it is your choice from the selector.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}

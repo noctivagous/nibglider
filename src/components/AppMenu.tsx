@@ -256,6 +256,13 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M10.5 8.5 v4 M8.5 10.5 h4" />
     </MenuGlyph>
   ),
+  'zoom-out': (
+    <MenuGlyph>
+      <circle cx="10.5" cy="10.5" r="6" />
+      <path d="M15.5 15.5 L21 21" />
+      <path d="M8.5 10.5 h4" />
+    </MenuGlyph>
+  ),
   'toggle-panel': (
     <MenuGlyph>
       <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -299,6 +306,24 @@ const MENU_ICONS: Record<string, ReactNode> = {
   'text-mode': (
     <MenuGlyph>
       <path d="M5 5 h14 M12 5 v14" />
+    </MenuGlyph>
+  ),
+  text: (
+    <MenuGlyph>
+      <path d="M5 5 h14 M12 5 v14" />
+      <path d="M8 19 h8" strokeDasharray="2.5 2" />
+    </MenuGlyph>
+  ),
+  path: (
+    <MenuGlyph>
+      <path d="M4 20 C7 10 11 18 14 9 C16 4 19 6 20 4" />
+      <circle cx="4" cy="20" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="20" cy="4" r="1.4" fill="currentColor" stroke="none" />
+    </MenuGlyph>
+  ),
+  stroke: (
+    <MenuGlyph>
+      <path d="M4 18 L20 6" strokeWidth="3.5" />
     </MenuGlyph>
   ),
   'repeat-grid': (
@@ -345,6 +370,96 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M4 5 l8 6 8 -6 M4 10 l8 6 8 -6" />
     </MenuGlyph>
   ),
+  'bring-forward': (
+    <MenuGlyph>
+      <path d="M4 14 l8 -6 8 6 M5 20 h14" />
+    </MenuGlyph>
+  ),
+  'send-backward': (
+    <MenuGlyph>
+      <path d="M4 10 l8 6 8 -6 M5 4 h14" />
+    </MenuGlyph>
+  ),
+  'align-left': (
+    <MenuGlyph>
+      <path d="M4 3 v18 M8 7 h9 M8 12 h6 M8 17 h8" />
+    </MenuGlyph>
+  ),
+  'align-center-x': (
+    <MenuGlyph>
+      <path d="M12 3 v18 M6 7 h12 M8 12 h8 M7 17 h10" />
+    </MenuGlyph>
+  ),
+  'align-right': (
+    <MenuGlyph>
+      <path d="M20 3 v18 M7 7 h10 M11 12 h6 M9 17 h8" />
+    </MenuGlyph>
+  ),
+  'align-top': (
+    <MenuGlyph>
+      <path d="M3 4 h18 M7 4 v9 M12 4 v6 M17 4 v11" />
+    </MenuGlyph>
+  ),
+  'align-center-y': (
+    <MenuGlyph>
+      <path d="M3 12 h18 M7 5 v14 M12 8 v8 M17 6 v12" />
+    </MenuGlyph>
+  ),
+  'align-bottom': (
+    <MenuGlyph>
+      <path d="M3 20 h18 M7 20 V9 M12 20 v-6 M17 20 V7" />
+    </MenuGlyph>
+  ),
+  'align-doc-left': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M9 8 h6 M9 13 h4" />
+    </MenuGlyph>
+  ),
+  'align-doc-center-x': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M8 8 h8 M10 13 h4" />
+    </MenuGlyph>
+  ),
+  'align-doc-right': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M10 8 h6 M12 13 h4" />
+    </MenuGlyph>
+  ),
+  'align-doc-top': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M9 8 v5 M14 8 v3" />
+    </MenuGlyph>
+  ),
+  'align-doc-center-y': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M9 7 v10 M14 9 v6" />
+    </MenuGlyph>
+  ),
+  'align-doc-bottom': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M9 17 V9 M14 17 v-4" />
+    </MenuGlyph>
+  ),
+  'distribute-horizontal': (
+    <MenuGlyph>
+      <path d="M5 5 v14 M12 5 v14 M19 5 v14" />
+    </MenuGlyph>
+  ),
+  'distribute-vertical': (
+    <MenuGlyph>
+      <path d="M5 5 h14 M5 12 h14 M5 19 h14" />
+    </MenuGlyph>
+  ),
+  'flip-horizontal': (
+    <MenuGlyph>
+      <path d="M12 4 v16 M8 9 l-4 3 4 3 M16 9 l4 3 -4 3" />
+    </MenuGlyph>
+  ),
+  'flip-vertical': (
+    <MenuGlyph>
+      <path d="M4 12 h16 M9 8 l3 -4 3 4 M9 16 l3 4 3 -4" />
+    </MenuGlyph>
+  ),
   group: (
     <MenuGlyph>
       <rect x="3" y="10" width="9" height="9" />
@@ -357,10 +472,16 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <rect x="14" y="8" width="8" height="8" />
     </MenuGlyph>
   ),
-  'reset-settings': (
+  lock: (
     <MenuGlyph>
-      <path d="M4 12 a8 8 0 1 0 2.34 5.66" />
-      <path d="M4 20.5 V16 h4.5" />
+      <rect x="5" y="10" width="14" height="9" />
+      <path d="M8 10 V7 a4 4 0 0 1 8 0 v3" />
+    </MenuGlyph>
+  ),
+  hide: (
+    <MenuGlyph>
+      <path d="M3 12 C6 6, 18 6, 21 12 C18 18, 6 18, 3 12 Z" />
+      <path d="M4 20 L20 4" />
     </MenuGlyph>
   ),
   // Shape silhouettes from the panel's Circle/Rect Keys custom selects.
@@ -499,6 +620,12 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M6 3.4 A3.6 3.6 0 0 1 6 10.6 A3.6 3.6 0 0 1 6 3.4 Z M10 3.4 A3.6 3.6 0 0 0 10 10.6 A3.6 3.6 0 0 0 10 3.4 Z" />
     </Thumb1614>
   ),
+  'combinatorics-exclude': (
+    <Thumb1614>
+      <path d="M6 3.4 A3.6 3.6 0 1 0 6 10.6 A3.6 3.6 0 0 0 10 6.99 A3.6 3.6 0 1 0 6 3.4 Z" />
+      <path d="M10 3.4 A3.6 3.6 0 1 1 10 10.6 A3.6 3.6 0 0 1 6 7.01 A3.6 3.6 0 1 1 10 3.4 Z" />
+    </Thumb1614>
+  ),
   'combinatorics-crop': (
     <Thumb1614>
       <circle cx="8" cy="7" r="3.6" strokeDasharray="2 1.4" />
@@ -579,6 +706,12 @@ const TRIGGER_ICONS: Record<string, ReactNode> = {
     <MenuGlyph size={13}>
       <path d="M4 20 l1 -4 L16 5 l3 3 L8 19 Z" />
       <path d="M14 7 l3 3" />
+    </MenuGlyph>
+  ),
+  view: (
+    <MenuGlyph size={13}>
+      <path d="M2.5 12 C5.5 5.5 18.5 5.5 21.5 12 C18.5 18.5 5.5 18.5 2.5 12 Z" />
+      <circle cx="12" cy="12" r="3" />
     </MenuGlyph>
   ),
   image: (

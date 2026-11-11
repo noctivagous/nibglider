@@ -21,6 +21,12 @@ export interface StatusSnapshot {
   /** Active swappable-layout name, shown while drawing. Undefined keeps the legacy title. */
   layoutLabel?: string;
   cornerRadius: number;
+  /** Spline-layout state, shown while a composite path is drawing
+   * (Slice 14, Phase 5.4). */
+  keyboardLayout?: string;
+  roundingMode?: string;
+  bowAmplitude?: number;
+  bowAmplitudeIsPercent?: boolean;
   splineTension: number;
   drawingShape: boolean;
   shapeType: ShapeType | null;
@@ -98,6 +104,10 @@ export function buildStatusSchema(snap: StatusSnapshot): StatusSchema {
     if (snap.composite) {
       steps.push(L('hint', [T('Add sharp, spline, or rounded points to the path.')]));
       steps.push(L('hint', [T(`Rounded corners use ${snap.cornerRadius}pt. Close the shape, end the drawing, or cancel.`)]));
+      if (snap.keyboardLayout) {
+        const bow = snap.bowAmplitudeIsPercent ? `${snap.bowAmplitude ?? 25}%` : `${snap.bowAmplitude ?? 25}pt`;
+        state.push(L('meta', [T(`Keys: ${snap.keyboardLayout} · Rounding: ${snap.roundingMode ?? 'arc'} · Bow: ${bow}`)]));
+      }
     } else {
       steps.push(L('hint', [T('Move mouse to adjust path.')]));
       steps.push(L('hint', [T(

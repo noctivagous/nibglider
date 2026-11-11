@@ -1,7 +1,7 @@
 // Owns polyline, spline, and composite-path sessions. Composite semantics,
 // sampling, and Paper construction stay in PathDrawingSession, the path
 // resolver, and PathRenderer. Callers place returned geometry through the host.
-import { DEFAULT_BOWED_PARAMS, type NGBowedParams, type NGCompositePath } from '../model/NGPath';
+import { BOWED_DEFAULTS, type NGBowedParams, type NGCompositePath } from '../model/NGPath';
 import type { Vec2 } from '../model/geometryResolution';
 import type { DrawingHost } from './DrawingHost';
 import { PathDrawingSession, type CompositePointKind } from './PathDrawingSession';
@@ -19,6 +19,15 @@ export class PathTool {
   private readonly scheduler?: FrameScheduler;
   private radius = 12;
   private clothoidSession = false;
+  private bowSettings: Omit<NGBowedParams, 'facing'> = {
+    amplitude: BOWED_DEFAULTS.amplitude,
+    amplitudeIsPercent: BOWED_DEFAULTS.amplitudeIsPercent,
+    peakLocation: BOWED_DEFAULTS.peakLocation,
+    peakLocationMultiplier: BOWED_DEFAULTS.peakLocationMultiplier,
+    isArc: BOWED_DEFAULTS.isArc,
+    dualDistance: BOWED_DEFAULTS.dualDistance,
+    corneredApex: BOWED_DEFAULTS.corneredApex,
+  };
 
   constructor(scope: paper.PaperScope, updated: (item: paper.Path) => void, scheduler?: FrameScheduler) {
     this.scope = scope; this.updated = updated; this.scheduler = scheduler;
@@ -41,9 +50,19 @@ export class PathTool {
     this.radius = radius; this.composite?.setCornerRadius(radius); this.request();
   }
 
-  point(kind: CompositePointKind, point: Vec2, bow?: NGBowedParams): void {
+  /** Bow parameter snapshot for subsequently stamped bowed points. */
+  get bowParams(): Omit<NGBowedParams, 'facing'> { return { ...this.bowSettings }; }
+  setBowParams(params: Partial<Omit<NGBowedParams, 'facing'>>): void {
+    this.bowSettings = { ...this.bowSettings, ...params };
+    this.composite?.setBowParams(params);
+  }
+  /** The live session's rounding selection, when one is drawing. */
+  get roundingMode(): string { return this.composite?.roundingMode ?? 'arc'; }
+
+  point(kind: CompositePointKind, point: Vec2): void {
     if (!this.composite) {
-      this.composite = new PathDrawingSession(crypto.randomUUID(), point, kind, this.radius, bow);
+      this.composite = new PathDrawingSession(crypto.randomUUID(), point, kind, this.radius);
+      this.composite.setBowParams(this.bowSettings);
       this.renderer = new PathRenderer(this.scope, this.updated, this.scheduler);
     } else this.composite.commit(kind, point);
     this.request();
@@ -64,9 +83,6 @@ export class PathTool {
   }
 
   finish(closed: boolean): CompositeDeposit | null {
-    // Finishing abandons a staged start (keeping earlier points); a lone
-    // staged arc then yields nothing and the session simply ends.
-    this.composite?.dropArcStart();
     const deposit = this.stamp(closed);
     this.cancel();
     return deposit;
@@ -135,58 +151,6 @@ export class PathTool {
   roundedKey(): void { this.key('roundedCorner', true); }
   splineKey(): void { this.key('bSpline', false); }
   clothoidKey(kind: CompositePointKind): void { this.clothoidPoint(kind); }
-  /** Bowed deposit with default params (5.3 settings thread through later)
-   * plus the facing carried by the key. Always composite, like clothoid. */
-  bowedKey(corner: 'hardCorner' | 'roundedCorner', facing: 'A' | 'B'): void {
-    const host = this.host;
-    if (!host) return;
-    const session = host.session;
-    if (!session.mousePt || session.isDrawingShape || session.isDrawingQuad) return;
-    const bow = { ...DEFAULT_BOWED_PARAMS, facing };
-    if (!this.active) {
-      this.clothoidSession = false;
-      this.point(corner, session.mousePt, bow);
-    } else {
-      this.composite!.commitBowed(corner, bow, session.mousePt);
-    }
-    session.path = this.preview;
-    session.isDrawingPath = true;
-    host.updateTextContent();
-    host.notify();
-  }
-  /** Arc deposit: completes a staged start, or starts a new arc. */
-  arcKey(): void {
-    const host = this.host;
-    if (!host) return;
-    const session = host.session;
-    if (!session.mousePt || session.isDrawingShape || session.isDrawingQuad) return;
-    if (!this.active) {
-      this.clothoidSession = false;
-      this.point('hardCorner', session.mousePt);
-    }
-    this.composite!.toggleArc(session.mousePt);
-    session.path = this.preview;
-    session.isDrawingPath = true;
-    host.updateTextContent();
-    host.notify();
-  }
-  /** Cycle the session rounding for subsequently deposited rounded points. */
-  switchRoundingKey(): void {
-    if (!this.active || !this.host) return;
-    this.composite!.cycleRoundingMode();
-    this.request();
-    this.host.updateTextContent();
-    this.host.notify();
-  }
-  /** Erase the last committed point, keeping the session live. */
-  eraseLastKey(): boolean {
-    if (!this.active || !this.host) return false;
-    if (!this.composite!.eraseLast()) return false;
-    this.request();
-    this.host.updateTextContent();
-    this.host.notify();
-    return true;
-  }
 
   private clothoidPoint(kind: CompositePointKind): void {
     const host = this.host;
@@ -195,6 +159,65 @@ export class PathTool {
     if (!session.mousePt || session.isDrawingShape || session.isDrawingQuad) return;
     this.clothoidSession = true;
     this.point(kind, session.mousePt);
+    session.path = this.preview;
+    session.isDrawingPath = true;
+    host.updateTextContent();
+    host.notify();
+  }
+
+  /** B / Shift+B (TASKS-FMStroke D4): bowed-line point, composite
+   * mode only (D2: legacy mode keeps its existing keys). */
+  bowedKey(facing: 'left' | 'right'): void {
+    const host = this.host;
+    if (!host || host.pathDrawingMode() !== 'ngComposite') return;
+    const session = host.session;
+    if (!session.mousePt || session.isDrawingShape || session.isDrawingQuad) return;
+    const fresh = !this.composite;
+    if (fresh) this.point('bowedLine', session.mousePt);
+    else this.composite?.commitBowed(session.mousePt, facing);
+    if (fresh) this.composite?.stampBowed(facing);
+    this.request();
+    session.path = this.preview;
+    session.isDrawingPath = true;
+    host.updateTextContent();
+    host.notify();
+  }
+
+  /** Backslash key: cycle the corner rounding (arc → bSpline →
+   * bevel) for subsequently deposited rounded points. Composite only. */
+  switchRoundingKey(): void {
+    const host = this.host;
+    if (!host || host.pathDrawingMode() !== 'ngComposite' || !this.composite) return;
+    this.composite.cycleRounding();
+    this.request();
+    host.updateTextContent();
+    host.notify();
+  }
+
+  /** Z while drawing: erase the last committed point, keeping the
+   * trailing point live. Composite only. */
+  eraseLastKey(): void {
+    const host = this.host;
+    if (!host || host.pathDrawingMode() !== 'ngComposite' || !this.composite) return;
+    if (!this.composite.eraseLast()) return;
+    this.request();
+    host.updateTextContent();
+    host.notify();
+  }
+
+  /** Period key: three-point arc. First press commits the through
+   * point; the next point key commits the end. Composite only. */
+  arcKey(): void {
+    const host = this.host;
+    if (!host || host.pathDrawingMode() !== 'ngComposite') return;
+    const session = host.session;
+    if (!session.mousePt || session.isDrawingShape || session.isDrawingQuad) return;
+    if (!this.composite) {
+      this.point('bSpline', session.mousePt);
+    } else {
+      this.composite.commitArcThrough(session.mousePt);
+      this.request();
+    }
     session.path = this.preview;
     session.isDrawingPath = true;
     host.updateTextContent();
@@ -226,6 +249,7 @@ export class PathTool {
   finishIntoScene(close: boolean): void {
     const host = this.host;
     if (!host || !this.active) return;
+    host.captureLiveRepeat();
     const origin = this.origin;
     const mouse = host.session.mousePt;
     const nearStart = origin && mouse && Math.hypot(mouse.x - origin.x, mouse.y - origin.y) <= host.endpointTolerance();
@@ -472,9 +496,10 @@ export class PathTool {
         host.retainResult(placed, source);
       }
     }
+    const copies = placed ? host.liveRepeatCopies(placed) : [];
     this.retainNewResults(snap.before);
     host.pruneRecords();
-    host.commit(label, snap, placed ? [placed] : [], true);
+    host.commit(label, snap, placed ? [placed, ...copies] : [], true);
     host.updateTextContent();
     host.notify();
   }

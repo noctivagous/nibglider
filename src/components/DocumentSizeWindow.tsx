@@ -1,5 +1,5 @@
 // Document Size window: dedicated canvas-size editor opened from the top
-// row of the Document and Settings menu. Hosts the shared
+// row of the Document menu. Hosts the shared
 // DocumentSizeEditor in the Settings modal chrome; applying closes the
 // window. Mounted by App when the window registry names it.
 import { useSyncExternalStore } from 'react';

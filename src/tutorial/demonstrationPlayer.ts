@@ -33,6 +33,9 @@ export interface DemoHooks {
   openPopover(key: string): void | Promise<void>;
   pointAt(target: string | null, label?: string): void | Promise<void>;
   setParam(settingsId: string, field: string, value: string | number | boolean): void | Promise<void>;
+  /** Dispatch a menu command through the app's real command path, for
+   * actions that have no key (align, flip, point-edit, undo…). */
+  runCommand(commandId: string): void | Promise<void>;
   closePopover(): void | Promise<void>;
   showNarration(narration: DemoNarration | null): void | Promise<void>;
 }
@@ -158,6 +161,9 @@ export class DemonstrationPlayer {
         return gen !== this.generation;
       case 'set-param':
         await hooks.setParam(action.settingsId, action.field, action.value);
+        return gen !== this.generation;
+      case 'run-command':
+        await hooks.runCommand(action.command);
         return gen !== this.generation;
       case 'close-popover':
         await hooks.closePopover();

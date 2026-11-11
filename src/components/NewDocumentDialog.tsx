@@ -74,6 +74,10 @@ export default function NewDocumentDialog({
   });
   const [system, setSystem] = useState<UnitSystem>(initial.system);
   const [workspaceId, setWorkspaceId] = useState<string>('canvas-16-9');
+  const [workspaceCustom, setWorkspaceCustom] = useState(false);
+  const [wsWidth, setWsWidth] = useState('1920');
+  const [wsHeight, setWsHeight] = useState('1080');
+  const [wsUnit, setWsUnit] = useState<LengthUnit>('pt');
   const [printId, setPrintId] = useState<string | 'custom'>(initial.printId);
   const [imageId, setImageId] = useState<string>('img-hd');
   const [ratioId, setRatioId] = useState<string>('ratio-16-9');
@@ -127,6 +131,21 @@ export default function NewDocumentDialog({
   const result = useMemo((): { spec: Omit<NewDocumentSpec, 'name'>; note: string } | { error: string } => {
     const fail = (error: string) => ({ error });
     if (tab === 'workspace') {
+      if (workspaceCustom) {
+        const w = parsePositive(wsWidth);
+        const h = parsePositive(wsHeight);
+        if (w == null || h == null) return fail('Enter a positive width and height.');
+        const widthPt = unitToPoints(w, wsUnit);
+        const heightPt = unitToPoints(h, wsUnit);
+        if (widthPt > MAX_DIMENSION_PT || heightPt > MAX_DIMENSION_PT) {
+          return fail(`Sizes are limited to ${formatInUnit(MAX_DIMENSION_PT, wsUnit)}.`);
+        }
+        const ordered =
+          orientation === 'landscape'
+            ? { widthPt: Math.max(widthPt, heightPt), heightPt: Math.min(widthPt, heightPt) }
+            : { widthPt: Math.min(widthPt, heightPt), heightPt: Math.max(widthPt, heightPt) };
+        return { spec: { ...ordered, unit: wsUnit }, note: 'Custom working canvas.' };
+      }
       const preset: PagePreset | undefined = WORKSPACE_PRESETS.find((p) => p.id === workspaceId);
       if (!preset) return fail('Pick a workspace size.');
       return {
@@ -181,7 +200,8 @@ export default function NewDocumentDialog({
       return fail('Enter a positive scale length.');
     }
   }, [
-    tab, workspaceId, printId, imageId, ratioId, orientation,
+    tab, workspaceId, workspaceCustom, wsWidth, wsHeight, wsUnit,
+    printId, imageId, ratioId, orientation,
     customWidth, customHeight, customUnit, ratioScale, ratioUnit,
   ]);
 
@@ -257,12 +277,48 @@ export default function NewDocumentDialog({
         </div>
         <div className="newdoc-body">
           {tab === 'workspace' && (
-            <PresetList
-              presets={WORKSPACE_PRESETS}
-              selected={workspaceId}
-              onSelect={setWorkspaceId}
-              details={(preset) => `${preset.width} × ${preset.height} ${unitLabel(preset.unit)}`}
-            />
+            <>
+              <PresetList
+                presets={WORKSPACE_PRESETS}
+                selected={workspaceCustom ? '' : workspaceId}
+                onSelect={(id) => { setWorkspaceCustom(false); setWorkspaceId(id); }}
+                details={(preset) => `${preset.width} × ${preset.height} ${unitLabel(preset.unit)}`}
+              />
+              <div className="newdoc-row">
+                <div className="newdoc-orient" role="group" aria-label="Orientation">
+                  {(['landscape', 'portrait'] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      aria-pressed={orientation === option}
+                      className={orientation === option ? 'newdoc-orient-option active' : 'newdoc-orient-option'}
+                      onClick={() => setOrientation(option)}
+                    >
+                      {option === 'landscape' ? 'Landscape' : 'Portrait'}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  aria-pressed={workspaceCustom}
+                  className={workspaceCustom ? 'newdoc-orient-option active' : 'newdoc-orient-option'}
+                  onClick={() => setWorkspaceCustom(true)}
+                >
+                  Custom
+                </button>
+              </div>
+              {workspaceCustom && (
+                <DimensionFields
+                  width={wsWidth}
+                  height={wsHeight}
+                  unit={wsUnit}
+                  units={units}
+                  onWidth={setWsWidth}
+                  onHeight={setWsHeight}
+                  onUnit={setWsUnit}
+                />
+              )}
+            </>
           )}
           {tab === 'print' && (
             <>

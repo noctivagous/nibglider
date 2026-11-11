@@ -10,7 +10,8 @@ import {
   snapPageToGrid,
 } from '../src/engine/document/DrawingPage.ts';
 import { defaultGridSpacingPt, pointsPerUnit } from '../src/engine/document/MeasurementUnits.ts';
-import { computeRulerTicks, labeledMajors, pageFrameTracks, rulerSource } from '../src/engine/document/pageRuler.ts';
+import { computeRulerTicks, labeledMajors, niceRulerIntervalPt, pageFrameTracks, rulerSource } from '../src/engine/document/pageRuler.ts';
+import { ENGINE_SETTINGS_KEY } from '../src/engine/engineSettings.ts';
 
 function store(seed = {}) {
   const mem = new Map(Object.entries(seed));
@@ -59,15 +60,25 @@ test('grid spacing defaults follow the document unit', () => {
   assert.equal(defaultGridSpacingPt('pica'), 20);
 });
 
-test('ruler ticks land on grid lines with unit labels', () => {
-  const ticks = computeRulerTicks(72, 18, 'inch');
+test('ruler ticks use nice intervals from the page corner, independent of the grid', () => {
+  // Slice 17: intervals come from the unit + zoom (1/2/5 x 10^n in the
+  // display unit), never from grid spacing. At 4 px/pt the smallest
+  // inch step covering 64 px is 0.5 in (36 pt at 144 px).
+  assert.equal(niceRulerIntervalPt('inch', 4), 36);
+  assert.equal(niceRulerIntervalPt('inch', 1), 72);
+  assert.equal(niceRulerIntervalPt('pt', 1), 100);
+  const ticks = computeRulerTicks(72, 'inch', 4, 0, true);
   const majors = ticks.filter((t) => t.major);
-  assert.deepEqual(majors.map((t) => t.offsetPt), [0, 18, 36, 54, 72]);
-  assert.deepEqual(majors.map((t) => t.label), ['0', '0.25', '0.5', '0.75', '1']);
+  assert.deepEqual(majors.map((t) => t.offsetPt), [0, 36, 72]);
+  assert.deepEqual(majors.map((t) => t.label), ['0', '0.5', '1']);
   const minors = ticks.filter((t) => !t.major);
   assert.ok(minors.length > 0);
   assert.ok(minors.every((t) => t.label === null));
   assert.ok(ticks.every((t, i, all) => i === 0 || t.offsetPt > all[i - 1].offsetPt));
+  // Corner origin: labels read distance from the corner even when the
+  // page sits at a negative absolute coordinate.
+  const pageTicks = computeRulerTicks(72, 'inch', 4, -306, true);
+  assert.deepEqual(pageTicks.filter((t) => t.major).map((t) => t.label), ['0', '0.5', '1']);
 });
 
 test('ruler placement defaults to viewer edges and persists', () => {
@@ -79,10 +90,12 @@ test('ruler placement defaults to viewer edges and persists', () => {
     assert.equal(first.engine.rulerPlacement, 'page');
     assert.doesNotThrow(() => first.engine.setRulerPlacement('ceiling'));
     assert.equal(first.engine.rulerPlacement, 'page');
+    first.engine.setRulerPlacement('off');
+    assert.equal(first.engine.rulerPlacement, 'off');
   } finally { first.cleanup(); }
   const second = openEngine(shared);
   try {
-    assert.equal(second.engine.rulerPlacement, 'page');
+    assert.equal(second.engine.rulerPlacement, 'off');
   } finally { second.cleanup(); }
 });
 
@@ -115,20 +128,21 @@ test('ruler source falls back past the page', () => {
   assert.deepEqual(withoutPage, { rect: artwork, unit: 'pt' });
 });
 
-test('off-grid edges still land majors on grid lines', () => {
-  const ticks = computeRulerTicks(100, 18, 'inch', 10);
+test('absolute rulers land majors on nice-interval multiples', () => {
+  // No page: majors sit on absolute multiples of the nice interval and
+  // labels read the absolute coordinate.
+  const ticks = computeRulerTicks(100, 'inch', 4, 10);
   const majors = ticks.filter((t) => t.major);
-  assert.deepEqual(majors.map((t) => t.offsetPt), [8, 26, 44, 62, 80, 98]);
-  assert.equal(majors[0].label, '0.25');
-  assert.deepEqual(labeledMajors(100, 18, 16, 1, 10), [8, 26, 44, 62, 80, 98]);
-  // Phase zero keeps the historical on-grid behavior.
-  assert.deepEqual(labeledMajors(72, 18, 16, 1), [0, 18, 36, 54, 72]);
+  assert.deepEqual(majors.map((t) => t.offsetPt), [26, 62, 98]);
+  assert.equal(majors[0].label, '0.5');
+  assert.deepEqual(labeledMajors(100, 'inch', 64, 4, 10), [26, 62, 98]);
+  assert.deepEqual(labeledMajors(72, 'inch', 64, 4, 0, true), [0, 36, 72]);
 });
 
 test('labeled majors stride with zoom', () => {
-  // Dense majors all label; sparse ones thin out.
-  assert.deepEqual(labeledMajors(72, 18, 16, 1), [0, 18, 36, 54, 72]);
-  assert.deepEqual(labeledMajors(144, 18, 64, 1), [0, 72, 144]);
+  // Zoomed out, the interval steps up to the next nice number.
+  assert.deepEqual(labeledMajors(144, 'inch', 64, 1, 0, true), [0, 72, 144]);
+  assert.deepEqual(labeledMajors(72, 'inch', 64, 4, 0, true), [0, 36, 72]);
 });
 
 test('ruler guides default off, toggle, and persist', () => {
@@ -153,7 +167,7 @@ test('document settings window defines page presentation and rulers', async () =
   assert.ok('spec' in parsed);
   const page = parsed.spec.sections.find((s) => s.id === 'page');
   assert.equal(page?.title, 'Page');
-  assert.deepEqual(page.controls.map((c) => c.key), ['pageFill', 'pageSideTicks']);
+  assert.deepEqual(page.controls.map((c) => c.key), ['pageFill', 'pageFillColor', 'pageSideTicks']);
   const rulers = parsed.spec.sections.find((s) => s.id === 'rulers');
   assert.ok(rulers);
   const keys = rulers.controls.map((c) => c.key).sort();
@@ -185,7 +199,7 @@ test('new inch document gets a quarter-inch grid and a snapped page', () => {
   } finally { cleanup(); }
 });
 
-test('grid spacing setter validates and persists', () => {
+test('grid spacing setter validates; grid state is per-document, not global', () => {
   const shared = store();
   const first = openEngine(shared);
   try {
@@ -197,10 +211,29 @@ test('grid spacing setter validates and persists', () => {
     });
     assert.equal(first.engine.gridSpacing, 18);
   } finally { first.cleanup(); }
+  // Slice 17: grid values live in the .nibglider document. A fresh
+  // engine on the same settings store keeps its own defaults (the
+  // store no longer carries them) unless a legacy blob seeds it.
   const second = openEngine(shared);
   try {
-    assert.equal(second.engine.gridSpacing, 18);
+    assert.equal(second.engine.gridSpacing, 20);
   } finally { second.cleanup(); }
+  const legacy = openEngine(store({
+    [ENGINE_SETTINGS_KEY]: JSON.stringify({
+      version: 1,
+      values: {
+        'grid.spacing': 18, 'grid.enabled': true, 'grid.type': 'diamond',
+        'page.fill': true, 'page.sideTicks': true,
+      },
+    }),
+  }));
+  try {
+    assert.equal(legacy.engine.gridSpacing, 18, 'legacy global values seed new documents');
+    assert.equal(legacy.engine.isGridEnabled, true);
+    assert.equal(legacy.engine.gridType, 'diamond');
+    assert.equal(legacy.engine.pageFill, true);
+    assert.equal(legacy.engine.pageSideTicks, true);
+  } finally { legacy.cleanup(); }
 });
 
 test('page claims its content layer without stealing activation', () => {
@@ -256,12 +289,14 @@ test('page corners are stroked brackets without a fill', () => {
 test('page fill and side ticks follow document settings and persist', () => {
   const shared = store();
   const first = openEngine(shared);
+  let exported = '';
   try {
     assert.equal(first.engine.pageFill, false);
     assert.equal(first.engine.pageSideTicks, false);
     first.engine.setPageDimensions(800, 600, 'pt');
     first.engine.setPageFill(true);
     first.engine.setPageSideTicks(true);
+    exported = first.engine.exportNativeDocument('Page Look');
     const marks = first.engine.pageOutline;
     const fill = marks.children.find((child) => child.data.pageRole === 'fill');
     const brackets = marks.children.filter((child) => child.data.pageRole === 'bracket');
@@ -287,8 +322,13 @@ test('page fill and side ticks follow document settings and persist', () => {
     assert.equal(edge.length, 4);
     assert.equal(edge[0].points[1].y - edge[0].points[0].y, 10);
   } finally { first.cleanup(); }
+  // Slice 17: page presentation is per-document — a fresh engine on
+  // the same settings store starts unfilled, but the values travel in
+  // the .nibglider document.
   const second = openEngine(shared);
   try {
+    assert.equal(second.engine.pageFill, false);
+    assert.equal(second.engine.openNativeDocumentText(exported).ok, true);
     assert.equal(second.engine.pageFill, true);
     assert.equal(second.engine.pageSideTicks, true);
     second.engine.setPageDimensions(800, 600, 'pt');

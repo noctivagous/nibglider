@@ -2,45 +2,33 @@
 // Reads only the keymap, immutable modifiers, platform, and a KeyState snapshot.
 // It never mutates engine state or registers browser listeners.
 import {
-  KEYBOARD_LAYOUTS, KEY_VARIANTS, capsForLayout, isReservedLayoutKey, layoutIdForState,
-  physicalKey, variantTableKey, variantsForLayout,
-  type KeyCap, type KeyCommandVariant, type KeyState, type KeyboardPlatform,
+  capsForLayout, keyVariantsForLayout, KEY_VARIANTS_BY_LAYOUT, physicalKey, type KeyCap, type KeyCommandVariant,
+  type KeyState, type KeyboardPlatform,
 } from './keymap';
 import type { ModifierSnapshot } from './ModifierStateTracker';
-
-function matchInTable(
-  table: Map<string, KeyCommandVariant[]>,
-  key: string,
-  state: KeyState,
-): KeyCommandVariant[] {
-  const variants: KeyCommandVariant[] = [];
-  for (const variant of table.get(key) ?? []) {
-    if (!variant.when(state)) continue;
-    variants.push(variant);
-    if (variant.command.exclusive) break;
-  }
-  return variants;
-}
 
 export function resolveKeyVariants(
   code: string,
   modifiers: ModifierSnapshot,
   state: KeyState,
 ): KeyCommandVariant[] {
+  const variants: KeyCommandVariant[] = [];
   // Type At Cursor owns the keyboard: physical dispatch never reaches here
   // while typing (the controller branches first), so no command resolves —
   // keeping the on-screen caps and chord rows honest.
-  if (state.isTypingText) return [];
-  // Layouts overlay: the active layout wins on its caps. Partial layouts
-  // fall back to base for unmatched caps (End/Cancel/Undo keep working
-  // mid-draw); full layouts ("empty and assign") blank them, except the
-  // layout-wide reserved codes, which always resolve from base.
-  const layout = layoutIdForState(state);
-  const key = variantTableKey(code, modifiers);
-  const own = matchInTable(variantsForLayout(layout), key, state);
-  if (own.length > 0 || layout === 'base') return own;
-  if (KEYBOARD_LAYOUTS[layout].overlay === 'full' && !isReservedLayoutKey(key)) return [];
-  return matchInTable(variantsForLayout('base'), key, state);
+  if (state.isTypingText) return variants;
+  // Dispatch and display resolve through the active layout's variant
+  // list — the same list, so the board can never promise a key the
+  // dispatcher would not run (layout registry, Slice 14).
+  for (const variant of keyVariantsForLayout(state.activeLayoutId)) {
+    if (variant.code !== code) continue;
+    if (variant.chord.shift !== modifiers.shift || variant.chord.alt !== modifiers.alt ||
+      variant.chord.control !== modifiers.control || variant.chord.meta !== modifiers.meta) continue;
+    if (!variant.when(state)) continue;
+    variants.push(variant);
+    if (variant.command.exclusive) break;
+  }
+  return variants;
 }
 
 export interface ResolvedKeyCap extends KeyCap {
@@ -87,11 +75,15 @@ export function resolveKeyCap(
 export function resolveKeyboardLayout(
   modifiers: ModifierSnapshot, platform: KeyboardPlatform, state: KeyState,
 ): ResolvedKeyCap[] {
-  return capsForLayout(layoutIdForState(state)).map((cap) => resolveKeyCap(cap, modifiers, platform, state));
+  return capsForLayout(state.activeLayoutId).map((cap) => resolveKeyCap(cap, modifiers, platform, state));
 }
-
 
 export function eventCode(event: KeyboardEvent): string {
   if (event.code) return event.code;
-  return KEY_VARIANTS.find((variant) => physicalKey(variant.code) === event.key.toLowerCase())?.code ?? '';
+  const key = event.key.toLowerCase();
+  for (const variants of Object.values(KEY_VARIANTS_BY_LAYOUT)) {
+    const code = variants.find((variant) => physicalKey(variant.code) === key)?.code;
+    if (code) return code;
+  }
+  return '';
 }

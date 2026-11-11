@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type CSSProperties } from 'react';
 import paper from 'paper';
 import {
   NibGliderEngine,
@@ -12,6 +12,7 @@ import {
   EXPORT_COMMANDS,
   FILE_COMMANDS,
   IMPORT_COMMANDS,
+  PRINTIFY_COMMANDS,
   exportFileName,
   exportScopeOf,
   type ExportScopeId,
@@ -29,7 +30,9 @@ import JpgExportDialog from './components/JpgExportDialog';
 import { svgToPdfBlob } from './engine/document/pdfExport';
 import ContextMenu from './components/ContextMenu';
 import SettingsWindow from './components/SettingsWindow';
-import PrintifySettingsDialog from './components/PrintifySettingsDialog';
+import AboutDialog from './components/AboutDialog';
+import PageSetupDialog from './components/PageSetupDialog';
+import ImageTraceDialog from './components/ImageTraceDialog';
 import DocumentInfoWindow from './components/DocumentInfoWindow';
 import DocumentSettingsWindow from './components/DocumentSettingsWindow';
 import DocumentSizeWindow from './components/DocumentSizeWindow';
@@ -37,7 +40,6 @@ import OnscreenKeyboard from './components/OnscreenKeyboard';
 import CanvasScrollbars from './components/CanvasScrollbars';
 import PageRuler from './components/PageRuler';
 import TutorialOverlay from './components/TutorialOverlay';
-import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
 import ExportFramePopover from './components/ExportFramePopover';
 import InterlacePopover from './components/InterlacePopover';
@@ -50,23 +52,24 @@ import { CONTEXT_MENU_ID, MENU_PANEL_SECTIONS, PanelsManager, hideMenuSection, s
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
 import { TutorialRunner } from './tutorial/TutorialRunner';
-import { DemonstrationPlayer, type DemoHooks, type DemoWorkspace } from './tutorial/demonstrationPlayer';
+import { DemonstrationPlayer, prepareDemoWorkspace, type DemoHooks, type DemoWorkspace } from './tutorial/demonstrationPlayer';
 import { getTutorialTargetRect } from './tutorial/TargetResolver';
-import { schemaById } from './engine/input/KeySettingsRegistry';
-import { settingsView } from './engine/input/KeySettingsViewModel';
+import { readParam, writeParam } from './engine/input/ParamAddress';
 import {
   attachTutorialKeyListener,
   bridgeEngineToRunner,
   emitTutorialCommand,
+  readTutorialState,
+  type TutorialEngineSource,
 } from './tutorial/completionDetectors';
 import { parseTutorialText } from './tutorial/tutorialLoader';
 import {
-  clearNibGliderSettings,
-  markTutorialCompleted,
-  markTutorialDismissed,
+  getTutorialProgress,
+  recordTutorialProgress,
   shouldAutoShowTutorial,
 } from './tutorial/tutorialProgress';
-import helloTutorialRaw from '../tutorials/hello-rectangle.tutorial.json?raw';
+import { tutorialByCommand, tutorialById } from './tutorial/tutorialCatalog';
+import HelpWindow, { type HelpDocId } from './components/HelpWindow';
 
 // Section title labels in the panel are hidden; icons, keys, and hover
 // tooltips still identify each section.
@@ -77,15 +80,31 @@ const MENU_COMMANDS: Set<string> = new Set([
   ...FILE_COMMANDS,
   ...IMPORT_COMMANDS,
   ...EXPORT_COMMANDS,
-  'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
-  'printify-settings',
+  ...PRINTIFY_COMMANDS,
+  'reset-zoom', 'zoom-in', 'zoom-out', 'fit-page', 'fit-artwork', 'fit-selection',
+  'find-replace',
+  'ruler-viewer', 'ruler-page', 'ruler-off', 'show-grid', 'show-guides', 'guide-snapping',
+  'settings', 'document-settings', 'canvas-size', 'pages-guides', 'tutorial', 'empty-canvas',
+  'about', 'tutorials',
+  'print', 'print-selection', 'page-setup',
+  'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-hello-circle',
+  'tutorial-stroke', 'tutorial-fill', 'tutorial-swatches', 'tutorial-adding-text',
+  'tutorial-combinatorics', 'tutorial-history', 'tutorial-layers-and-objects',
+  'tutorial-grouping-and-ordering', 'tutorial-pages-and-guides', 'tutorial-saving-and-exporting',
+  'tutorial-arrange', 'tutorial-grid', 'tutorial-repeat', 'tutorial-snapping',
+  'tutorial-path-operations',
+  'help-getting-started', 'help-keys-reference',
   'undo', 'redo',
-  'cut', 'copy', 'paste', 'select-all',
+  'cut', 'copy', 'paste', 'paste-in-place', 'select-all', 'select-none',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
-  'bring-to-front', 'send-to-back', 'duplicate-selection',
-  'group', 'ungroup-selection', 'delete-selection', 'transform-mode',
-  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-crop', 'combinatorics-cut', 'combinatorics-interlace',
+  'bring-to-front', 'send-to-back', 'bring-forward', 'send-backward', 'duplicate-selection',
+  'group', 'ungroup-selection', 'delete-selection', 'transform-mode', 'lock-selection', 'hide-selection',
+  'point-edit', 'point-select', 'point-split', 'point-delete', 'point-smooth', 'point-corner', 'point-close', 'point-join',
+  'align-left', 'align-center-x', 'align-right', 'align-top', 'align-center-y', 'align-bottom',
+  'align-doc-left', 'align-doc-center-x', 'align-doc-right', 'align-doc-top', 'align-doc-center-y', 'align-doc-bottom',
+  'distribute-horizontal', 'distribute-vertical', 'flip-horizontal', 'flip-vertical',
+  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-exclude', 'combinatorics-crop', 'combinatorics-cut', 'combinatorics-interlace',
   'interlace', 'interlace-group', 'remove-from-interlace',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
   'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
@@ -96,10 +115,13 @@ const MENU_COMMANDS: Set<string> = new Set([
   'circle-shape-kite',
   'snap-grid', 'snap-path', 'snap-points', 'snap-angle', 'snap-length', 'snap-aspect',
   'text-mode-display', 'text-mode-body',
-  'scale-dialog', 'rotate-dialog',
+  'scale-dialog', 'rotate-dialog', 'text-convert-outlines', 'stroke-to-outline',
+  'repeat-grid', 'repeat-circle', 'repeat-apply',
+  'tool-line', 'tool-ellipse', 'tool-arc', 'tool-freehand',
   'image-place', 'image-replace', 'image-info',
   'image-scale-half', 'image-scale-double', 'image-fit-view',
   'image-grayscale', 'image-flatten', 'image-convert-png', 'image-convert-jpeg',
+  'image-trace', 'image-crop-frame', 'image-mask-shape', 'image-remove-mask', 'image-remove-crop',
   'image-filters',
 ]);
 
@@ -148,9 +170,27 @@ export default function App() {
     setDemoCursor(pos);
   }, []);
 
-  // Tutorial completion: physical keys and engine mutations feed the runner.
-  useEffect(() => bridgeEngineToRunner(engine, tutorialRunner), [engine, tutorialRunner]);
+  // Tutorial completion: the bridge observes precise engine signals —
+  // selected-id diffs, document changes, and fresh state reads for the
+  // predicate expects — and physical keys feed the runner directly.
+  const tutorialSource = useMemo<TutorialEngineSource>(() => ({
+    subscribe: engine.subscribe,
+    subscribeDocumentChanges: (fn) => engine.subscribeDocumentChanges(fn),
+    selectionIds: () => engine.selectedItems.map((item) => item.id),
+    objectCount: () => engine.contentObjectCount(),
+    settingValue: (settingsId, field) => readParam(engine, settingsId, field),
+  }), [engine]);
+  useEffect(() => bridgeEngineToRunner(tutorialSource, tutorialRunner), [tutorialSource, tutorialRunner]);
   useEffect(() => attachTutorialKeyListener(tutorialRunner), [tutorialRunner]);
+
+  // A state-predicate step whose condition is already true when the step
+  // becomes current completes immediately: re-evaluate on every step
+  // change (the bridge also re-evaluates on every engine event).
+  useEffect(() => {
+    if (tutorialSnap.status !== 'active') return;
+    const state = readTutorialState(tutorialSource);
+    if (state) tutorialRunner.notifyState(state);
+  }, [tutorialSnap.status, tutorialSnap.stepIndex, tutorialSource, tutorialRunner]);
 
   const canvasClientPoint = useCallback((fx: number, fy: number): { x: number; y: number } | null => {
     const canvas = canvasRef.current;
@@ -190,6 +230,11 @@ export default function App() {
     [demoPlayer, setGhost],
   );
 
+  // The demo hooks dispatch menu commands through handleMenuCommand,
+  // which is defined further down; the ref bridges the definition order
+  // and is refreshed by an effect below.
+  const menuCommandRef = useRef<(commandId: string) => void>(() => {});
+
   const demoWorkspace = useCallback(
     (): DemoWorkspace => ({
       resetZoom: () => engine.resetZoomForDemo(),
@@ -205,6 +250,21 @@ export default function App() {
     }),
     [engine, gui, panels],
   );
+
+  // Every step gets its declared workspace on entry, not just steps whose
+  // demo is played: apply the step's preconditions (idempotent) and open
+  // the panel section the step points at, so what the bubble names is on
+  // screen and usable before the user is asked to act on it.
+  const stepTarget = tutorialSnap.tutorial?.steps[tutorialSnap.stepIndex]?.target;
+  const stepPreconditions = tutorialSnap.tutorial?.steps[tutorialSnap.stepIndex]?.preconditions;
+  useEffect(() => {
+    if (tutorialSnap.status !== 'active') return;
+    const ws = demoWorkspace();
+    prepareDemoWorkspace(stepPreconditions, ws);
+    if (stepTarget?.startsWith('section-')) {
+      ws.expandSections([stepTarget.slice('section-'.length)]);
+    }
+  }, [tutorialSnap.status, tutorialSnap.stepIndex, stepTarget, stepPreconditions, demoWorkspace]);
 
   const demoHooks = useCallback(
     (): DemoHooks => ({
@@ -251,11 +311,15 @@ export default function App() {
         setDemoPointAt(target ? { target, label } : null);
       },
       setParam: (settingsId, field, value) => {
-        const schema = schemaById(settingsId);
-        if (!schema) return;
-        const control = settingsView(schema, engine).controls.find((entry) => entry.id === field);
-        if (!control) return;
-        (control as unknown as { commit: (v: unknown) => void }).commit(value);
+        // One addressing scheme (ParamAddress): per-key popover schemas
+        // and panel params alike. An unresolvable address is a no-op,
+        // matching the previous behaviour for unknown schemas.
+        writeParam(engine, settingsId, field, value);
+      },
+      runCommand: (commandId) => {
+        // Dispatch through the same handler the menus use (held in a
+        // ref because the hooks are defined before the handler).
+        menuCommandRef.current(commandId);
       },
       closePopover: () => {
         setDemoSettingsKey(null);
@@ -309,11 +373,20 @@ export default function App() {
     tutorialSnap.status === 'active' &&
     demoSnap.stepId === tutorialRunner.currentStep?.id;
 
-  const startTutorial = useCallback(() => {
-    const loaded = parseTutorialText(helloTutorialRaw);
+  const [helpDoc, setHelpDoc] = useState<HelpDocId | null>(null);
+  const startTutorial = useCallback((tutorialId = 'hello-rectangle') => {
+    const entry = tutorialById(tutorialId);
+    if (!entry) return;
+    const loaded = parseTutorialText(entry.raw);
     if (!loaded.ok || !loaded.tutorial) return;
+    // Per-tutorial progress: an in-progress record resumes at its saved
+    // step (the resumed step's own bubble shows first); a completed or
+    // dismissed tutorial, or a first run, restarts at the beginning.
+    const record = getTutorialProgress(browserStore(), entry.id);
+    const resumeAt = record?.status === 'in-progress' ? record.stepIndex : 0;
     tutorialRunner.load(loaded.tutorial);
-    tutorialRunner.start();
+    tutorialRunner.start(resumeAt);
+    recordTutorialProgress(browserStore(), entry.id, 'in-progress', tutorialRunner.getSnapshot().stepIndex);
   }, [tutorialRunner]);
 
   const controlPanelRef = useRef<ControlPanelHandle>(null);
@@ -373,6 +446,12 @@ export default function App() {
   }, [gallery.currentName]);
 
   const runVectorExport = useCallback((scope: ExportScopeId) => {
+    if (vectorFormat === 'dxf') {
+      const output = engine.exportScopeDXF(scope);
+      if (!output) return;
+      downloadText(exportFileName(exportFileStem(), scope, 'dxf'), output.dxf, 'application/dxf');
+      return;
+    }
     const output = engine.exportScopeSVG(scope);
     if (!output) return;
     if (vectorFormat === 'pdf') {
@@ -392,6 +471,14 @@ export default function App() {
       setJpgScope(scope);
       return;
     }
+    if (rasterFormat === 'webp') {
+      void (async (): Promise<void> => {
+        const output = await engine.exportScopeWEBP(scope, { quality: 92, scale: 1, background: null });
+        if (!output) return;
+        downloadBlob(exportFileName(exportFileStem(), scope, 'webp'), output.blob);
+      })();
+      return;
+    }
     if (rasterFormat !== 'png') return;
     void (async (): Promise<void> => {
       const output = await engine.exportScopePNG(scope);
@@ -401,6 +488,9 @@ export default function App() {
   }, [downloadBlob, engine, exportFileStem, rasterFormat]);
 
   const handleMenuCommand = useCallback((commandId: string) => {
+    // Every dispatched menu/context/panel command is also a tutorial
+    // command event, so run-command expects complete from real menu use.
+    emitTutorialCommand(commandId);
     if ((FILE_COMMANDS as readonly string[]).includes(commandId)
       || (IMPORT_COMMANDS as readonly string[]).includes(commandId)) {
       controlPanelRef.current?.dispatchFileCommand(commandId as FileCommand | ImportCommand);
@@ -412,23 +502,50 @@ export default function App() {
       else runVectorExport(exportScope);
       return;
     }
+    if (commandId === 'export-printify-area') {
+      void engine.uploadSelectedPrintifyAreaToPrintify();
+      return;
+    }
+    if (commandId === 'export-printify-product') {
+      void engine.createSelectedPrintifyProductOnPrintify();
+      return;
+    }
     if (commandId === 'settings') gui.openWindow('settings');
-    else if (commandId === 'printify-settings') gui.openWindow('printify-settings');
+    else if (commandId === 'page-setup') gui.openWindow('page-setup');
     else if (commandId === 'document-settings') gui.openWindow('document-settings');
     else if (commandId === 'canvas-size') gui.openWindow('document-size');
     else if (commandId === 'tutorial') startTutorial();
+    else if (tutorialByCommand(commandId)) startTutorial(tutorialByCommand(commandId)!.id);
+    else if (commandId === 'help-getting-started') setHelpDoc('getting-started');
+    else if (commandId === 'help-keys-reference') setHelpDoc('keys-reference');
     else if (commandId === 'undo') engine.undo();
     else if (commandId === 'redo') engine.redo();
     else if (commandId === 'cut') engine.cutSelection();
     else if (commandId === 'copy') engine.copySelection();
     else if (commandId === 'paste') void engine.pasteFromSystemClipboard();
     else if (commandId === 'select-all') engine.selectAll();
-    else if (commandId === 'reset-settings') {
-      try {
-        clearNibGliderSettings(localStorage);
-      } catch { /* Storage can be unavailable in private browsing. */ }
-      window.location.reload();
-    } else if (commandId === 'empty-canvas') engine.newDocument();
+    else if (commandId === 'reset-zoom') engine.resetZoom();
+    else if (commandId === 'zoom-in') engine.zoomIn();
+    else if (commandId === 'zoom-out') engine.zoomOut();
+    else if (commandId === 'fit-page') engine.fitPage();
+    else if (commandId === 'fit-artwork') engine.fitArtwork();
+    else if (commandId === 'fit-selection') engine.fitSelection();
+    else if (commandId === 'ruler-viewer') engine.setRulerPlacement('viewer');
+    else if (commandId === 'ruler-page') engine.setRulerPlacement('page');
+    else if (commandId === 'ruler-off') engine.setRulerPlacement('off');
+    else if (commandId === 'show-grid') engine.setGridEnabled(!engine.isGridEnabled);
+    else if (commandId === 'show-guides') engine.setGuidesVisible(!engine.guidesVisible);
+    else if (commandId === 'guide-snapping') engine.setGuideSnapping(!engine.guideSnapping);
+    else if (commandId === 'empty-canvas') engine.newDocument();
+    else if (commandId === 'paste-in-place') void engine.pasteInPlaceFromClipboard();
+    else if (commandId === 'select-none') engine.clearOutSelection();
+    else if (commandId === 'lock-selection') engine.lockSelection();
+    else if (commandId === 'hide-selection') engine.hideSelection();
+    else if (commandId === 'about') gui.openWindow('about');
+    else if (commandId === 'pages-guides') {
+      gui.setControlsVisible(true);
+      controlPanelRef.current?.focusSection('pagesControls');
+    }
     else if (commandId === 'toggle-panel') gui.toggleControls();
     else if (commandId === 'toggle-keyboard') gui.toggleKeyboard();
     else if (commandId === 'toggle-status') gui.toggleStatus();
@@ -436,12 +553,47 @@ export default function App() {
     else if (commandId === 'length-unit-inch') engine.setLengthUnit('inch');
     else if (commandId === 'length-unit-cm') engine.setLengthUnit('cm');
     else if (commandId === 'bring-to-front') engine.bringSelectionToFront();
+    else if (commandId === 'bring-forward') engine.bringSelectionForward();
+    else if (commandId === 'send-backward') engine.sendSelectionBackward();
     else if (commandId === 'send-to-back') engine.sendSelectionToBack();
     else if (commandId === 'duplicate-selection') engine.duplicateSelection();
     else if (commandId === 'group') engine.groupSelection();
     else if (commandId === 'ungroup-selection') engine.ungroupSelected();
     else if (commandId === 'delete-selection') engine.removeAllSelectedItemsAndReset();
     else if (commandId === 'transform-mode') engine.toggleTransformMode();
+    else if (commandId === 'point-edit') engine.togglePointEdit();
+    else if (commandId === 'point-select') engine.selectPointAtCursor();
+    else if (commandId === 'point-split') engine.pointEditInsertPointAtCursor();
+    else if (commandId === 'point-delete') engine.pointEditDeleteSelectedPoint();
+    else if (commandId === 'point-smooth') engine.pointEditConvertSelected('smooth');
+    else if (commandId === 'point-corner') engine.pointEditConvertSelected('corner');
+    else if (commandId === 'point-close') engine.pointEditClosePath();
+    else if (commandId === 'point-join') engine.pointEditJoin();
+    else if (commandId === 'text-convert-outlines') engine.convertSelectedTextToOutlines();
+    else if (commandId === 'stroke-to-outline') engine.strokeToOutlineSelection();
+    else if (commandId === 'repeat-grid') engine.applyRepeatGrid();
+    else if (commandId === 'repeat-circle') engine.applyRepeatCircle();
+    else if (commandId === 'repeat-apply') engine.applySymmetryRepeat();
+    else if (commandId === 'tool-line') engine.lineKC();
+    else if (commandId === 'tool-ellipse') engine.ellipseKC();
+    else if (commandId === 'tool-arc') engine.arcKC();
+    else if (commandId === 'tool-freehand') engine.setFreehandArmed(!engine.freehandArmed);
+    else if (commandId === 'align-left') engine.alignSelection('left', 'selection');
+    else if (commandId === 'align-center-x') engine.alignSelection('centerX', 'selection');
+    else if (commandId === 'align-right') engine.alignSelection('right', 'selection');
+    else if (commandId === 'align-top') engine.alignSelection('top', 'selection');
+    else if (commandId === 'align-center-y') engine.alignSelection('centerY', 'selection');
+    else if (commandId === 'align-bottom') engine.alignSelection('bottom', 'selection');
+    else if (commandId === 'align-doc-left') engine.alignSelection('left', 'document');
+    else if (commandId === 'align-doc-center-x') engine.alignSelection('centerX', 'document');
+    else if (commandId === 'align-doc-right') engine.alignSelection('right', 'document');
+    else if (commandId === 'align-doc-top') engine.alignSelection('top', 'document');
+    else if (commandId === 'align-doc-center-y') engine.alignSelection('centerY', 'document');
+    else if (commandId === 'align-doc-bottom') engine.alignSelection('bottom', 'document');
+    else if (commandId === 'distribute-horizontal') engine.distributeSelection('horizontal');
+    else if (commandId === 'distribute-vertical') engine.distributeSelection('vertical');
+    else if (commandId === 'flip-horizontal') engine.flipSelection('horizontal');
+    else if (commandId === 'flip-vertical') engine.flipSelection('vertical');
     else if (commandId === 'interlace') engine.interlaceSelection();
     else if (commandId === 'interlace-group') engine.interlaceGroupSelection();
     else if (commandId === 'remove-from-interlace') engine.removeFromInterlace();
@@ -470,11 +622,17 @@ export default function App() {
     else if (commandId === 'snap-aspect') engine.setAspectSnappingEnabled(!engine.isAspectSnappingEnabled);
     else if (commandId === 'text-mode-display') engine.setTextMode('display');
     else if (commandId === 'text-mode-body') engine.setTextMode('body');
+    else if (commandId === 'find-replace') controlPanelRef.current?.openFindReplace();
     else if (commandId === 'scale-dialog') controlPanelRef.current?.openOperationDialog('scale');
     else if (commandId === 'rotate-dialog') controlPanelRef.current?.openOperationDialog('rotate');
     else if (commandId === 'image-place') { imageFileModeRef.current = 'place'; imageFileInputRef.current?.click(); }
     else if (commandId === 'image-replace') { imageFileModeRef.current = 'replace'; imageFileInputRef.current?.click(); }
     else if (commandId === 'image-info') engine.noteSelectedRasterInfo();
+    else if (commandId === 'image-trace') gui.openWindow('image-trace');
+    else if (commandId === 'image-crop-frame') engine.cropSelectedImageToShapeFrame();
+    else if (commandId === 'image-mask-shape') engine.maskSelectedImageWithShape();
+    else if (commandId === 'image-remove-mask') engine.removeSelectedImageMask();
+    else if (commandId === 'image-remove-crop') engine.removeSelectedImageCrop();
     else if (commandId === 'image-scale-half') engine.scaleSelectedRasters(0.5);
     else if (commandId === 'image-scale-double') engine.scaleSelectedRasters(2);
     else if (commandId === 'image-fit-view') engine.fitSelectedRastersToView();
@@ -484,6 +642,11 @@ export default function App() {
     else if (commandId === 'image-convert-jpeg') engine.convertSelectedRaster('jpeg');
     else if (commandId === 'image-filters') gui.toggleFilters();
   }, [engine, gui, runRasterExport, runVectorExport, startTutorial]);
+
+  // Keep the demo system's command dispatch pointed at the live handler.
+  useEffect(() => {
+    menuCommandRef.current = handleMenuCommand;
+  }, [handleMenuCommand]);
 
   // Re-render on engine changes so menu checkmarks (length unit) stay fresh.
   // Visibility toggles arrive through the gui snapshot above.
@@ -543,6 +706,10 @@ export default function App() {
     ...(ui.statusVisible ? ['toggle-status'] : []),
     ...(ui.filtersVisible ? ['image-filters'] : []),
     `length-unit-${engine.lengthUnit}`,
+    `ruler-${engine.rulerPlacement}`,
+    ...(engine.isGridEnabled ? ['show-grid'] : []),
+    ...(engine.guidesVisible ? ['show-guides'] : []),
+    ...(engine.guideSnapping ? ['guide-snapping'] : []),
     `combinatorics-${engine.combineMode}`,
     `rect-shape-${engine.rectangleInnerShapeType}`,
     `circle-shape-${engine.circleInnerShapeType}`,
@@ -572,7 +739,7 @@ export default function App() {
       options: [
         { value: 'png', label: 'PNG' },
         { value: 'jpg', label: 'JPG' },
-        { value: 'webp', label: 'WEBP', disabled: true, title: 'Not available yet' },
+        { value: 'webp', label: 'WEBP' },
       ],
     },
     'export-vector': {
@@ -581,14 +748,14 @@ export default function App() {
       options: [
         { value: 'svg', label: 'SVG' },
         { value: 'pdf', label: 'PDF' },
-        { value: 'dxf', label: 'DXF', disabled: true, title: 'Not available yet' },
+        { value: 'dxf', label: 'DXF' },
       ],
     },
   };
   const handleExportSegment = useCallback((commandId: string, value: string) => {
-    if (commandId === 'export-raster' && (value === 'png' || value === 'jpg')) {
+    if (commandId === 'export-raster' && (value === 'png' || value === 'jpg' || value === 'webp')) {
       setRasterFormat(value);
-    } else if (commandId === 'export-vector' && (value === 'svg' || value === 'pdf')) {
+    } else if (commandId === 'export-vector' && (value === 'svg' || value === 'pdf' || value === 'dxf')) {
       setVectorFormat(value);
     }
   }, []);
@@ -613,7 +780,7 @@ export default function App() {
   };
   // Image menu rows (except Place) need a selected raster; without one
   // they render disabled, like Export's selection scope without a selection.
-  const hasRasterSelection = engine.hasSelectedRaster();
+  const hasRasterSelection = engine.hasSelectedRaster() || engine.hasSelectedImage();
   const enabledMenuCommands = hasRasterSelection
     ? MENU_COMMANDS
     : new Set([...MENU_COMMANDS].filter((id) => id === 'image-place' || !id.startsWith('image-')));
@@ -639,16 +806,30 @@ export default function App() {
   }, [startTutorial]);
 
   const endTutorial = useCallback(() => {
-    markTutorialDismissed(browserStore());
+    // Ending early records dismissal (distinct from completion) for the
+    // tutorial that is actually running, at the step it ended on.
+    const snap = tutorialRunner.getSnapshot();
+    if (snap.tutorial) {
+      recordTutorialProgress(browserStore(), snap.tutorial.id, 'dismissed', snap.stepIndex);
+    }
     tutorialRunner.abort();
   }, [tutorialRunner]);
 
-  // Finishing the last step records completion so it won't auto-show again.
-  // Ending early records dismissal (distinct from completion) so the
-  // tutorial stays closed on the next load.
+  // Position is saved on every step change, so leaving mid-tutorial
+  // (closing the tab included) resumes at the same step next time.
   useEffect(() => {
-    if (tutorialSnap.status === 'done') markTutorialCompleted(browserStore());
-  }, [tutorialSnap.status]);
+    if (tutorialSnap.status === 'active' && tutorialSnap.tutorial) {
+      recordTutorialProgress(browserStore(), tutorialSnap.tutorial.id, 'in-progress', tutorialSnap.stepIndex);
+    }
+  }, [tutorialSnap.status, tutorialSnap.tutorial, tutorialSnap.stepIndex]);
+
+  // Finishing the last step records completion for that tutorial, so the
+  // intro won't auto-show again.
+  useEffect(() => {
+    if (tutorialSnap.status === 'done' && tutorialSnap.tutorial) {
+      recordTutorialProgress(browserStore(), tutorialSnap.tutorial.id, 'completed', tutorialSnap.stepIndex);
+    }
+  }, [tutorialSnap.status, tutorialSnap.tutorial, tutorialSnap.stepIndex]);
 
   // Restores the open gallery document when the scene is empty. attach()
   // keeps the Paper project across StrictMode remounts, so a second pass
@@ -835,7 +1016,7 @@ export default function App() {
     : contextMenuDef;
   const contextEnabled = engine.selectedItems.length > 0
     ? MENU_COMMANDS
-    : new Set([...MENU_COMMANDS].filter((id) => id !== 'bring-to-front' && id !== 'send-to-back' && id !== 'transform-mode' && id !== 'interlace' && id !== 'interlace-group'));
+    : new Set([...MENU_COMMANDS].filter((id) => id !== 'bring-to-front' && id !== 'send-to-back' && id !== 'bring-forward' && id !== 'send-backward' && id !== 'transform-mode' && id !== 'interlace' && id !== 'interlace-group' && id !== 'cut' && id !== 'copy' && id !== 'duplicate-selection' && id !== 'delete-selection' && id !== 'group' && id !== 'ungroup-selection' && id !== 'lock-selection' && id !== 'hide-selection' && !id.startsWith('point-')));
 
   return (
     <div id="mainLayout">
@@ -873,8 +1054,14 @@ export default function App() {
       {ui.openWindowId === 'settings' && (
         <SettingsWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
       )}
-      {ui.openWindowId === 'printify-settings' && (
-        <PrintifySettingsDialog engine={engine} onClose={() => gui.closeWindow()} />
+      {ui.openWindowId === 'about' && (
+        <AboutDialog onClose={() => gui.closeWindow()} />
+      )}
+      {ui.openWindowId === 'page-setup' && (
+        <PageSetupDialog engine={engine} onClose={() => gui.closeWindow()} />
+      )}
+      {ui.openWindowId === 'image-trace' && (
+        <ImageTraceDialog engine={engine} onClose={() => gui.closeWindow()} />
       )}
       {ui.openWindowId === 'document-info' && (
         <DocumentInfoWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
@@ -918,6 +1105,7 @@ export default function App() {
               engine={engine}
               panels={panels}
               onOpenDocumentSettings={() => gui.openWindow('document-settings')}
+              onOpenPageSetup={() => gui.openWindow('page-setup')}
             />
           </div>
           <StatusOverlay
@@ -948,7 +1136,6 @@ export default function App() {
               } as CSSProperties
             }
           >
-            <WidgetHandle widget="keyboard" label="On-screen keyboard" />
             <OnscreenKeyboard
               engine={engine}
               activeCode={activeCode}
@@ -983,6 +1170,7 @@ export default function App() {
           onClose={() => setContextMenuAt(null)}
         />
       )}
+      {helpDoc && <HelpWindow doc={helpDoc} onClose={() => setHelpDoc(null)} />}
       {tutorialSnap.status === 'active' && tutorialRunner.currentStep && tutorialSnap.tutorial && (
         <TutorialOverlay
           tutorialTitle={tutorialSnap.tutorial.title}

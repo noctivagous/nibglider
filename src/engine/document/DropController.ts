@@ -1,4 +1,5 @@
-import { stripSvgClips } from './SceneIO';
+import { isSceneJson, stripSvgClips } from './SceneIO';
+import { isNativeDocumentText } from './NativeDocument';
 import { adoptImportedArtwork } from './vectorArtwork';
 import { classifyClipboardText, SCENE_MIME } from './clipboardIngest';
 
@@ -25,6 +26,10 @@ export interface DropHost {
   /** Shared paste-path deposit for string drops. Optional so older and
    * minimal test hosts keep working; without it string drops are skipped. */
   depositTextPayload?(text: string, at: Item): void;
+  /** Whole-document open for dropped document files (native or
+   * legacy scene JSON). Returns true when the text was a document.
+   * Optional so minimal test hosts keep working. */
+  openDocumentText?(text: string, fileName: string): boolean;
   depositImageUrl?(url: string, at: Item): void;
   updateTextContent(): void;
   notify(): void;
@@ -218,6 +223,14 @@ export class DropController {
     reader.onerror = () => this.note(`Drop skipped: ${file.name} is not an image.`);
     reader.onload = (e) => {
       const result = e.target?.result;
+      if (typeof result === 'string' && (isNativeDocumentText(result) || isSceneJson(result))) {
+        if (this.host.openDocumentText?.(result, file.name)) {
+          this.note(`Opened document ${file.name}.`);
+        } else {
+          this.note(`Drop failed: ${file.name} could not be opened as a document.`);
+        }
+        return;
+      }
       if (typeof result === 'string' && /<svg[\s>]/i.test(result.slice(0, 4096))) {
         this.importSvgText(result, file.name, at, selBefore);
         return;

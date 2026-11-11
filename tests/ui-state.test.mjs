@@ -67,7 +67,7 @@ test('panel order round-trips through the store', () => {
   panels.moveSection('textControls', 'strokeControls');
   const again = new PanelsManager(mem);
   assert.deepEqual(sectionOrder(again.order).slice(0, 4), [
-    'textControls', 'strokeControls', 'fillControls', 'circleFrameControls',
+    'textControls', 'strokeControls', 'fillControls', 'swatchesControls',
   ]);
   again.moveSection('textControls', 'gridControls', true);
   assert.equal(sectionOrder(new PanelsManager(mem).order).at(-2), 'textControls');
@@ -80,10 +80,12 @@ test('legacy grouped panel layout becomes one ordered sequence', () => {
     keys: ['historyControls', 'circleFrameControls', 'rectFrameControls', 'combinatoricsControls'],
     snap: ['snappingControls', 'gridControls'],
   }));
+  // Sections a saved layout predates (swatches, arrange) append at
+  // the end of their panel group rather than reshuffling the layout.
   assert.deepEqual(sectionOrder(new PanelsManager(mem).order), [
-    'fillControls', 'strokeControls', 'textControls', 'historyControls',
-    'circleFrameControls', 'rectFrameControls', 'combinatoricsControls',
-    'repeatControls',
+    'fillControls', 'strokeControls', 'textControls', 'swatchesControls', 'historyControls',
+    'circleFrameControls', 'rectFrameControls', 'combinatoricsControls', 'pathOpsControls',
+    'repeatControls', 'layersControls', 'pagesControls', 'arrangeControls',
     'snappingControls', 'gridControls',
   ]);
 });
@@ -98,7 +100,7 @@ test('dragging across a row boundary keeps the requested visual row', () => {
   // must move onto the dragged card itself.
   panels.moveSection('strokeControls', 'circleFrameControls');
   assert.equal(panels.rowStarts[0], 'strokeControls');
-  assert.equal(sectionOrder(panels.order).indexOf('strokeControls'), 2);
+  assert.equal(sectionOrder(panels.order).indexOf('strokeControls'), 3);
   assert.equal(new PanelsManager(mem).rowStarts[0], 'strokeControls');
 
   // Starting with a fresh layout, move the last card of row one to the end
@@ -107,17 +109,18 @@ test('dragging across a row boundary keeps the requested visual row', () => {
   again.setRowStarts(['circleFrameControls', 'gridControls']);
   again.moveSection('textControls', 'historyControls', true);
   assert.deepEqual(again.rowStarts, ['circleFrameControls', 'gridControls']);
-  assert.equal(sectionOrder(again.order).indexOf('textControls'), 6);
+  assert.equal(sectionOrder(again.order).indexOf('textControls'), 8);
 });
 
-test('application menus cover file, edit, image, document, services, operations, modes, layers, context-object, help, and debug', () => {
+test('application menus cover file, edit, view, image, document, object, repeat, modes, layers, context-object, and help', () => {
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
-  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'image', 'document', 'services', 'operations', 'modes', 'layers', 'context-object', 'help', 'debug']);
+  assert.deepEqual(APPLICATION_MENUS.map((menu) => menu.id), ['file', 'edit', 'view', 'image', 'document', 'object', 'operations', 'modes', 'layers', 'context-object', 'help']);
   assert.equal(byId.image.title, 'Image');
   assert.equal(byId.file.title, 'File');
   assert.deepEqual(byId.file.items.map((item) => item.commandId), [
-    'open-gallery', 'new-document', 'save-gallery', 'rename-document',
-    'export-raster', 'export-vector', 'import',
+    'open-gallery', 'new-document', 'empty-canvas', 'save-gallery', 'rename-document', 'save-file', 'open-file',
+    'import', 'export-raster', 'export-vector', 'export-printify',
+    'page-setup', 'print', 'print-selection',
     'settings',
   ]);
   assert.deepEqual(
@@ -130,33 +133,60 @@ test('application menus cover file, edit, image, document, services, operations,
       `${parent}-canvas`, `${parent}-viewport`, `${parent}-selection`,
     ]);
   }
-  assert.deepEqual(byId.help.items.map((item) => item.commandId), ['tutorial']);
-  assert.equal(byId.services.title, 'Services');
-  assert.deepStrictEqual(byId.services.items.map((item) => item.commandId), ['printify-settings']);
-  assert.ok(byId.document.items.some((item) => item.commandId === 'length-unit'));
-  // Object control lives in Layers, not Operations.
+  assert.deepEqual(byId.help.items.map((item) => item.commandId), [
+    'tutorials', 'help-getting-started', 'help-keys-reference', 'about',
+  ]);
+  assert.equal(byId.services, undefined, 'Services menu is deleted');
+  assert.equal(byId.debug, undefined, 'Debug menu is removed from the bar');
+  assert.ok(byId.view.items.some((item) => item.commandId === 'length-unit'));
+  assert.ok(!byId.document.items.some((item) => item.commandId === 'length-unit'));
+  assert.deepEqual(byId.view.items.map((item) => item.commandId), [
+    'hdr-view-1', 'zoom-in', 'zoom-out', 'reset-zoom', 'fit-page', 'fit-artwork', 'fit-selection',
+    'length-unit',
+    'hdr-view-2', 'toggle-panel', 'toggle-keyboard', 'toggle-status', 'show-grid', 'show-guides', 'guide-snapping',
+    'rulers',
+  ]);
+  // Object control lives in the Object menu, not Repeat.
   assert.ok(!byId.operations.items.some((item) => item.commandId === 'group'));
   assert.ok(!byId.operations.items.some((item) => item.commandId === 'delete-selection'));
+  // FLAGGED EDIT (layout fix): the Order commands live under the Order
+  // flyout now; the Group commands stay as direct rows.
   for (const id of [
-    'select', 'bring-to-front', 'send-to-back', 'duplicate-selection',
-    'group', 'ungroup-selection', 'delete-selection',
+    'group', 'ungroup-selection', 'lock-selection', 'hide-selection',
   ]) {
+    assert.ok(byId.object.items.some((item) => item.commandId === id), `object menu lists ${id}`);
+  }
+  const orderParent = byId.object.items.find((item) => item.commandId === 'order');
+  for (const id of [
+    'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
+  ]) {
+    assert.ok(orderParent?.children.some((child) => child.commandId === id), `object menu lists ${id}`);
+  }
+  // Layers keeps Group/Ungroup only; the duplicated Order/Duplicate/
+  // Delete rows are gone.
+  for (const id of ['group', 'ungroup-selection']) {
     assert.ok(byId.layers.items.some((item) => item.commandId === id), `layers menu lists ${id}`);
   }
+  assert.ok(!byId.layers.items.some((item) => item.commandId === 'delete-selection'));
+  assert.ok(!byId.layers.items.some((item) => item.commandId === 'bring-to-front'));
   // Modes holds the mode parents; Operations holds the future Repeat area and dialogs.
   for (const id of ['rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode']) {
     const parent = byId.modes.items.find((item) => item.commandId === id);
     assert.ok(parent?.children && parent.children.length > 0, `modes menu lists ${id} submenu`);
   }
-  assert.deepEqual(byId.debug.items.map((item) => item.commandId), ['reset-settings', 'empty-canvas']);
-  // Canvas right-click menu mirrors the Layers Order group, plus transform,
-  // interlace, and the conditional Obj. Actions section.
+  // Canvas right-click menu leads with the clipboard + selection
+  // basics, then Order, transform, point edit, interlace, and the
+  // conditional Obj. Actions section.
   assert.equal(byId['context-object'].title, 'Object');
   assert.deepEqual(
     byId['context-object'].items.map((item) => item.commandId),
-    ['hdr-context-object-1', 'bring-to-front', 'send-to-back', 'hdr-context-object-2', 'transform-mode',
-      'hdr-context-object-3', 'interlace', 'interlace-group',
-      'hdr-context-object-4', 'remove-from-interlace'],
+    ['hdr-context-object-1', 'cut', 'copy', 'paste',
+      'hdr-context-object-2', 'duplicate-selection', 'delete-selection', 'group', 'ungroup-selection',
+      'hdr-context-object-3', 'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
+      'hdr-context-object-4', 'transform-mode',
+      'hdr-context-object-5', 'point-edit', 'point-select', 'point-split', 'point-delete', 'point-smooth', 'point-corner', 'point-close', 'point-join',
+      'hdr-context-object-6', 'interlace', 'interlace-group',
+      'hdr-context-object-7', 'remove-from-interlace'],
   );
 });
 
@@ -166,8 +196,12 @@ test('Obj. Actions section hides unless relevant', () => {
   const hidden = hideMenuSection(context, 'Obj. Actions');
   assert.deepEqual(
     hidden.items.map((item) => item.commandId),
-    ['hdr-context-object-1', 'bring-to-front', 'send-to-back', 'hdr-context-object-2', 'transform-mode',
-      'hdr-context-object-3', 'interlace', 'interlace-group'],
+    ['hdr-context-object-1', 'cut', 'copy', 'paste',
+      'hdr-context-object-2', 'duplicate-selection', 'delete-selection', 'group', 'ungroup-selection',
+      'hdr-context-object-3', 'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
+      'hdr-context-object-4', 'transform-mode',
+      'hdr-context-object-5', 'point-edit', 'point-select', 'point-split', 'point-delete', 'point-smooth', 'point-corner', 'point-close', 'point-join',
+      'hdr-context-object-6', 'interlace', 'interlace-group'],
   );
   // Other sections are untouched, and hiding an unknown label is a no-op.
   assert.equal(hidden.title, 'Object');
@@ -190,12 +224,20 @@ test('menu panel sections map to known panel sections', () => {
   }
 });
 
-test('operations menu groups dialog entries and carries rail shortcuts and icons', () => {
+test('object menu groups dialog entries and carries rail shortcuts and icons', () => {
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
-  const ops = byId.operations.items.map((item) => item.commandId);
-  // Scale/Rotate sit under a "With dialog" group header, mirroring the rail.
-  assert.deepEqual(ops.slice(-3), ['hdr-operations-2', 'scale-dialog', 'rotate-dialog']);
-  const dialogHeader = byId.operations.items.find((item) => item.commandId === 'hdr-operations-2');
+  const ops = byId.object.items.map((item) => item.commandId);
+  // FLAGGED EDIT (layout fix): the variant sets became flyout parents (see
+  // menus.xml), so the flat list is shorter and "With dialog" is the second
+  // header. Scale/Rotate still sit under it, mirroring the rail.
+  assert.deepEqual(ops.slice(10, 13), ['hdr-object-2', 'scale-dialog', 'rotate-dialog']);
+  // The Flip flyout precedes the dialog group; Convert Text to Outlines
+  // ends the menu.
+  const flipParent = byId.object.items.find((item) => item.commandId === 'flip');
+  assert.deepEqual(flipParent.children.map((child) => child.commandId), ['flip-horizontal', 'flip-vertical']);
+  assert.equal(ops.indexOf('flip'), 9);
+  assert.equal(ops[ops.length - 1], 'text-convert-outlines');
+  const dialogHeader = byId.object.items.find((item) => item.commandId === 'hdr-object-2');
   assert.equal(dialogHeader.header, true);
   assert.equal(dialogHeader.label, 'With dialog');
   // Shortcuts match the vertical rail's Operations/Layers menus.
@@ -214,11 +256,18 @@ test('operations menu groups dialog entries and carries rail shortcuts and icons
   assert.deepEqual(iconById, {
     'open-gallery': 'open',
     'new-document': 'new',
+    'empty-canvas': 'delete',
+    'page-setup': 'page-size',
     'save-gallery': 'save',
     'rename-document': 'rename',
+    'save-file': 'save',
+    'open-file': 'open',
     'export-raster': 'export',
     'export-vector': 'export',
+    'export-printify': 'export',
     import: 'import',
+    print: 'export',
+    'print-selection': 'export',
     settings: 'settings',
   });
 });

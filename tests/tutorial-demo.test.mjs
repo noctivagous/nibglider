@@ -43,6 +43,7 @@ function fakeHooks(log) {
     openPopover: (key) => { log.push(['openPopover', key]); },
     pointAt: (target, label) => { log.push(['pointAt', target, label ?? null]); },
     setParam: (settingsId, field, value) => { log.push(['setParam', settingsId, field, value]); },
+    runCommand: (commandId) => { log.push(['runCommand', commandId]); },
     closePopover: () => { log.push(['closePopover']); },
     showNarration: () => { log.push(['showNarration']); },
   };
@@ -186,4 +187,34 @@ test('suspended runner ignores observed events until resumed', () => {
   runner.setSuspended(false);
   assert.equal(runner.notify({ type: 'key', key: 'i' }), true);
   assert.equal(runner.getSnapshot().status, 'done');
+});
+
+test('player dispatches run-command demo actions through the hooks (Slice 26)', async () => {
+  const checked = validateTutorial({
+    id: 'demo-rc',
+    title: 'Demo RC',
+    steps: [
+      {
+        id: 'watch',
+        bubble: { title: 'Watch', body: 'Watch this.' },
+        demo: [
+          { kind: 'run-command', command: 'align-left' },
+          { kind: 'run-command', command: 'flip-horizontal' },
+        ],
+      },
+    ],
+  });
+  assert.equal(checked.ok, true);
+  const log = [];
+  const player = new DemonstrationPlayer();
+  const status = await player.play(checked.tutorial.steps[0], fakeHooks(log), fakeWorkspace([]));
+  assert.equal(status, 'done');
+  assert.deepEqual(log, [['runCommand', 'align-left'], ['runCommand', 'flip-horizontal']]);
+  // A run-command action without a command is rejected by the validator.
+  const bad = validateTutorial({
+    id: 'x',
+    title: 'X',
+    steps: [{ id: 's', bubble: { title: 'T', body: 'B' }, demo: [{ kind: 'run-command' }] }],
+  });
+  assert.equal(bad.ok, false);
 });

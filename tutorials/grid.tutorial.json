@@ -1,0 +1,76 @@
+{
+  "id": "grid",
+  "title": "Grid",
+  "description": "Turn the background grid on, set its spacing and subdivisions, and snap drawing to it.",
+  "steps": [
+    {
+      "id": "welcome",
+      "target": "section-gridControls",
+      "bubble": {
+        "title": "The Grid section",
+        "body": "The grid is a background ruler laid over the page: evenly spaced points or lines to measure and snap against. It is document state — it saves with the file.",
+        "placement": "center"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    },
+    {
+      "id": "do-enable",
+      "target": "section-gridControls",
+      "bubble": {
+        "title": "Turn the grid on",
+        "body": "Switch on Grid in the Grid section (the / key does it too). The page gains its dotted measuring grid.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "grid",
+        "field": "enabled",
+        "value": true
+      }
+    },
+    {
+      "id": "do-spacing",
+      "target": "section-gridControls",
+      "bubble": {
+        "title": "Set the spacing",
+        "body": "Set Spacing to 40. The grid breathes out — every cell is now 40 points wide.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "grid",
+        "field": "spacing",
+        "value": 40
+      }
+    },
+    {
+      "id": "do-snap",
+      "target": "section-snappingControls",
+      "bubble": {
+        "title": "Snap to it",
+        "body": "In the Snapping section, switch on Grid snapping. Points you place now land on grid intersections instead of between them.",
+        "placement": "right"
+      },
+      "expect": {
+        "kind": "setting-is",
+        "settingsId": "snapping",
+        "field": "grid",
+        "value": true
+      }
+    },
+    {
+      "id": "done",
+      "target": "section-gridControls",
+      "bubble": {
+        "title": "Finer detail",
+        "body": "Subdivisions splits each cell into smaller steps for snapping without crowding the page, and Style switches the dots to full lines. A diamond grid is under Type.",
+        "placement": "below"
+      },
+      "expect": {
+        "kind": "none"
+      }
+    }
+  ]
+}
