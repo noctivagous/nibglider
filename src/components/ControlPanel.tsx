@@ -34,6 +34,7 @@ import DocumentGallery, { type GalleryMode } from './DocumentGallery';
 import NewDocumentDialog, { type NewDocumentSpec } from './NewDocumentDialog';
 import PdfImportDialog from './PdfImportDialog';
 import LayersPanel from './LayersPanel';
+import PagesPanel from './PagesPanel';
 import SwatchesPanel from './SwatchesPanel';
 import ArrangePanel from './ArrangePanel';
 import {
@@ -50,6 +51,15 @@ import {
   unitLabel,
 } from '../engine/document/MeasurementUnits';
 import type { RepeatAnchor, RepeatDirection } from '../engine/geometry/RepeatGeometry';
+import {
+  FRIEZE_GROUP_IDS,
+  FRIEZE_GROUPS,
+  WALLPAPER_GROUP_IDS,
+  WALLPAPER_GROUPS,
+  type FriezeGroupId,
+  type RepeatFamilyName,
+  type WallpaperGroupId,
+} from '../engine/repeat/symmetry';
 import KeymapWidget from './KeymapWidget';
 import ConfigSummaryBox from './ConfigSummaryBox';
 import WidgetHandle from './WidgetHandle';
@@ -72,6 +82,7 @@ import type {
   TypeCursorAnchor,
   TypeCursorBottomEdge,
 } from '../engine/engine';
+import type { ArrowheadStyle } from '../engine/appearance/arrowheads';
 
 const ASPECT_RATIO_PRESETS = ['1:1', '3:4', '2:3', '16:9'];
 
@@ -1267,6 +1278,13 @@ const SUPERSHAPE_SLIDERS: Array<{
   { key: 'a2', label: 'A2', min: 0.1, max: 1.7, step: 0.1 },
 ];
 
+const ARROWHEAD_OPTIONS: Array<{ value: ArrowheadStyle; label: string }> = [
+  { value: 'none', label: 'None' },
+  { value: 'triangle', label: 'Triangle' },
+  { value: 'barb', label: 'Barb' },
+  { value: 'dot', label: 'Dot' },
+];
+
 const CAP_OPTIONS: Array<{ value: StrokeCap; label: string; icon: string }> = [
   { value: 'butt', label: 'Butt', icon: 'M3 7 H13 M13 4 V10' },
   { value: 'round', label: 'Round', icon: 'M3 7 H10 A3.5 3.5 0 0 1 10 7' },
@@ -1520,6 +1538,42 @@ function StrokeParams({
         />
       </span>
       </div>
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label htmlFor="arrowStartSelect">Start arrow</label>
+          <select
+            id="arrowStartSelect"
+            value={engine.selectionPaint()?.arrowStart ?? engine.globalArrowStart}
+            onChange={(e) => engine.setArrowStart(e.target.value as ArrowheadStyle)}
+          >
+            {ARROWHEAD_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </span>
+        <span className="param-item">
+          <label htmlFor="arrowEndSelect">End arrow</label>
+          <select
+            id="arrowEndSelect"
+            value={engine.selectionPaint()?.arrowEnd ?? engine.globalArrowEnd}
+            onChange={(e) => engine.setArrowEnd(e.target.value as ArrowheadStyle)}
+          >
+            {ARROWHEAD_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </span>
+        <span className="param-item">
+          <label>Outline</label>
+          <button
+            type="button"
+            onClick={() => engine.strokeToOutlineSelection()}
+            title="Convert the selected stroked paths to their outlined filled form"
+          >
+            Stroke to Outline
+          </button>
+        </span>
+      </div>
       </div>
     </div>
   );
@@ -1758,10 +1812,13 @@ const TEXT_FONT_GROUPS: FontFamilyGroup[] = [
   },
 ];
 
-const TEXT_WEIGHT_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'normal', label: 'Regular' },
-  { value: 'bold', label: 'Bold' },
-];
+/** The fontWeight string the panel's numeric weight select shows:
+ * legacy 'normal'/'bold' map to 400/700. */
+function panelWeightValue(fontWeight: string): string {
+  if (fontWeight === 'bold') return '700';
+  if (fontWeight === 'normal') return '400';
+  return fontWeight;
+}
 
 const TEXT_JUSTIFY_OPTIONS: Array<{ value: TextJustification; label: string; icon: string }> = [
   { value: 'left', label: 'Left', icon: 'M2 3 H14 M2 7 H10 M2 11 H14' },
@@ -1910,6 +1967,34 @@ function TextParams({
   const glyphOrientation = engine.glyphOrientation;
   const splineTextPlacement = engine.splineTextPlacement;
   const [tab, setTab] = useState<'style' | 'type'>('style');
+  const userFonts = engine.userFonts();
+  const fontGroups: FontFamilyGroup[] = userFonts.length > 0
+    ? [...TEXT_FONT_GROUPS, {
+      label: 'Your fonts',
+      fonts: userFonts.map((f) => ({
+        value: f.family,
+        label: f.loaded ? f.family : `${f.family} (re-add file to use)`,
+        family: f.family,
+      })),
+    }]
+    : TEXT_FONT_GROUPS;
+  const fontFileRef = useRef<HTMLInputElement>(null);
+  const [fontUrl, setFontUrl] = useState('');
+  const [fontNote, setFontNote] = useState<string | null>(null);
+  const addFontFile = async (file: File | undefined): Promise<void> => {
+    if (!file) return;
+    const family = await engine.addUserFontFromBytes(await file.arrayBuffer(), 'file');
+    setFontNote(family
+      ? `Added ${family}. The file itself is kept for this session only; its name is remembered in settings.`
+      : 'That file could not be read as a font.');
+  };
+  const addFontUrl = async (): Promise<void> => {
+    const url = fontUrl.trim();
+    if (!url) return;
+    const family = await engine.addUserFontFromUrl(url);
+    setFontNote(family ? `Added ${family} from URL.` : 'That URL did not return a readable font.');
+    if (family) setFontUrl('');
+  };
   return (
     <div className="panelParameters">
       <div className="seg-ctrl seg-text" role="tablist" aria-label="Text settings">
@@ -2144,10 +2229,34 @@ function TextParams({
           id="textFontSelect"
           ariaLabel="Typeface"
           value={spec.fontFamily}
-          groups={TEXT_FONT_GROUPS}
+          groups={fontGroups}
           onChange={(v) => engine.setTextFontFamily(v)}
         />
       </div>
+      <div className="flyout-inline-row param-item">
+        <label>Add font</label>
+        <span>
+          <input
+            ref={fontFileRef}
+            type="file"
+            accept=".ttf,.otf,font/ttf,font/otf"
+            style={{ display: 'none' }}
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(e) => { void addFontFile(e.target.files?.[0]); e.target.value = ''; }}
+          />
+          <button type="button" onClick={() => fontFileRef.current?.click()}>Font file…</button>
+          <input
+            type="url"
+            placeholder="https://…/font.ttf"
+            aria-label="Font URL"
+            value={fontUrl}
+            onChange={(e) => setFontUrl(e.target.value)}
+          />
+          <button type="button" onClick={() => void addFontUrl()}>Load URL</button>
+        </span>
+      </div>
+      {fontNote && <div className="param-item" role="status">{fontNote}</div>}
       <ParamSlider
         id="textSizeSlider"
         label="Size"
@@ -2161,22 +2270,17 @@ function TextParams({
       />
       <div className="flyout-trio-row">
         <span className="param-item">
-          <label>Weight</label>
-          <div className="seg-ctrl seg-text" role="group" aria-label="Font weight">
-            {TEXT_WEIGHT_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                title={opt.label}
-                className={spec.fontWeight === opt.value ? 'active' : undefined}
-                onClick={() => engine.setTextFontWeight(opt.value)}
-              >
-                <span style={{ fontWeight: opt.value === 'bold' ? 700 : 400 }}>
-                  {opt.label}
-                </span>
-              </button>
+          <label htmlFor="textWeightSelect">Weight</label>
+          <select
+            id="textWeightSelect"
+            aria-label="Font weight"
+            value={panelWeightValue(spec.fontWeight)}
+            onChange={(e) => engine.setTextFontWeight(e.target.value)}
+          >
+            {engine.textWeightOptions(spec.fontFamily).map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
-          </div>
+          </select>
         </span>
         <span className="param-item">
           <label>Style</label>
@@ -2230,6 +2334,42 @@ function TextParams({
         formatValue={(v) => v.toFixed(2)}
         onChange={(n) => engine.setTextLeading(n)}
       />
+      <ParamSlider
+        id="textTrackingSlider"
+        label="Tracking"
+        value={spec.letterSpacing}
+        min={-2}
+        max={20}
+        step={0.1}
+        decimals={1}
+        unit="pt"
+        formatValue={(v) => v.toFixed(1)}
+        onChange={(n) => engine.setTextLetterSpacing(n)}
+      />
+      {mode === 'body' ? (
+        <ParamSlider
+          id="textParagraphSlider"
+          label="Paragraph space"
+          value={spec.paragraphSpacing}
+          min={0}
+          max={72}
+          step={1}
+          unit="pt"
+          formatValue={(v) => String(Math.round(v))}
+          onChange={(n) => engine.setTextParagraphSpacing(n)}
+        />
+      ) : null}
+      {editingObject ? (
+        <span className="param-item">
+          <button
+            type="button"
+            onClick={() => engine.convertSelectedTextToOutlines()}
+            title="Replace the selected live text with its glyph outlines (one undo step). Families without a parsed font stay live."
+          >
+            Convert to Outlines
+          </button>
+        </span>
+      ) : null}
       </>
       ) : (
         <TypeCursorAnchorBox engine={engine} />
@@ -2815,10 +2955,13 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   /** Opens the Document Settings window. App wires this to the window
    * registry; the summary box document menu calls it from Settings. */
   onOpenDocumentSettings?: () => void;
+  /** Opens the Page Setup dialog (Pages & Guides section button). */
+  onOpenPageSetup?: () => void;
 }>(function ControlPanel({
   engine,
   panels: panelsProp,
   onOpenDocumentSettings,
+  onOpenPageSetup,
 }, ref) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
@@ -3307,6 +3450,12 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       case 'open-file':
         openFileInputRef.current?.click();
         break;
+      case 'print':
+        engine.printDocument('page');
+        break;
+      case 'print-selection':
+        engine.printDocument('selection');
+        break;
       case 'import-svg':
       case 'import-pdf':
       case 'import-raster': {
@@ -3318,7 +3467,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         break;
       }
     }
-  }, [dismissSelects, gallery.currentId, gallery.currentName, openGallery, saveSceneToGallery, handleSaveToFile]);
+  }, [dismissSelects, engine, gallery.currentId, gallery.currentName, openGallery, saveSceneToGallery, handleSaveToFile]);
   // Top Operations menu entry point for the scale/rotate modal dialog.
   const openOperationDialog = useCallback((kind: 'scale' | 'rotate') => {
     if (!engine.canTransformSelection()) return;
@@ -4266,6 +4415,31 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         <LayersPanel engine={engine} />
       </PanelSection>
       )}
+      {isRemoved('pagesControls') ? null : (
+      <PanelSection
+        id="pagesControls"
+        label="Pages & Guides"
+        icon={
+          <TitleIcon>
+            <path d="M3 2 H11 V14 H3 Z" />
+            <path d="M6 5 H13 V14 H6 Z" />
+          </TitleIcon>
+        }
+        collapsed={!!collapsedMap['pagesControls']}
+        {...sectionProps('pagesControls')}
+      >
+        <header className="pane-titlebar titlebar-single">
+          <SectionTitleButton sectionId="pagesControls" title="Pages & Guides" menuOpen={iconMenu?.id === 'pagesControls'} onOpen={toggleIconMenu}><span className="pane-title">
+            <TitleIcon>
+              <path d="M3 2 H11 V14 H3 Z" />
+              <path d="M6 5 H13 V14 H6 Z" />
+            </TitleIcon>
+            <span className="pane-title-text">Pages &amp; Guides</span></span>
+          </SectionTitleButton>
+        </header>
+        <PagesPanel engine={engine} onPageSetup={onOpenPageSetup} />
+      </PanelSection>
+      )}
       {isRemoved('arrangeControls') ? null : (
       <PanelSection
         id="arrangeControls"
@@ -4480,6 +4654,86 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
                 onHoverOpen={handleSelectHoverOpen}
                 forceCloseKey={selectCloseKey}
               />
+            </span>
+          </div>
+          <div className="flyout-seg">
+            <div className="flyout-title">Symmetry repeat (selection)</div>
+            <span className="param-item">
+              <label htmlFor="repeatFamilySelect">Family</label>
+              <select
+                id="repeatFamilySelect"
+                value={engine.repeatFamily}
+                onChange={(e) => engine.setRepeatFamily(e.target.value as RepeatFamilyName)}
+              >
+                <option value="wallpaper">Wallpaper</option>
+                <option value="polar">Polar</option>
+                <option value="frieze">Frieze</option>
+              </select>
+            </span>
+            {engine.repeatFamily === 'wallpaper' ? (
+              <span className="param-item">
+                <label htmlFor="repeatWallpaperGroupSelect">Group</label>
+                <select
+                  id="repeatWallpaperGroupSelect"
+                  value={engine.repeatWallpaperGroup}
+                  onChange={(e) => engine.setRepeatWallpaperGroup(e.target.value as WallpaperGroupId)}
+                >
+                  {WALLPAPER_GROUP_IDS.map((id) => (
+                    <option key={id} value={id}>{WALLPAPER_GROUPS[id].label}</option>
+                  ))}
+                </select>
+              </span>
+            ) : null}
+            {engine.repeatFamily === 'frieze' ? (
+              <span className="param-item">
+                <label htmlFor="repeatFriezeGroupSelect">Group</label>
+                <select
+                  id="repeatFriezeGroupSelect"
+                  value={engine.repeatFriezeGroup}
+                  onChange={(e) => engine.setRepeatFriezeGroup(e.target.value as FriezeGroupId)}
+                >
+                  {FRIEZE_GROUP_IDS.map((id) => (
+                    <option key={id} value={id}>{FRIEZE_GROUPS[id].label}</option>
+                  ))}
+                </select>
+              </span>
+            ) : null}
+            {engine.repeatFamily !== 'wallpaper' ? (
+              <span className="param-item">
+                <label htmlFor="repeatSymmetryCountStepper">Count</label>
+                <NumericStepper
+                  id="repeatSymmetryCountStepper"
+                  size="compact"
+                  value={engine.repeatSymmetryCount}
+                  min={1}
+                  max={64}
+                  step={1}
+                  ariaLabel="Repeat count"
+                  title="Repeat count"
+                  onCommit={(n) => engine.setRepeatSymmetryCount(n)}
+                />
+              </span>
+            ) : (
+              <span className="param-item">Wallpaper uses Rows / Columns above.</span>
+            )}
+            {engine.repeatFamily === 'polar' ? (
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={engine.repeatPolarReflect}
+                  onChange={(e) => engine.setRepeatPolarReflect(e.target.checked)}
+                />
+                Reflect (dihedral)
+              </label>
+            ) : null}
+            <span className="param-item">
+              <button
+                type="button"
+                onClick={() => engine.applySymmetryRepeat()}
+                title="Clone the selection under the symmetry family's transforms (one undo step)"
+              >
+                Apply repeat to selection
+              </button>
             </span>
           </div>
           <div className="flyout-seg">

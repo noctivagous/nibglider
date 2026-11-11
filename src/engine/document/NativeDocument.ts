@@ -16,17 +16,25 @@
 // entry point; this module only defines the native envelope, its
 // schema version, and its migrations. Version history:
 //   v0 — pre-release drafts: no `version` field, no model sections.
-//   v1 — first shipped format (this module).
-// Tested from tests/native-document.test.mjs.
+//   v1 — first shipped format: one page, sections at the top level.
+//   v2 — multi-page: a `pages` array of full page records (each with
+//        its own layers, drawables, retained paths, scene and
+//        guides), an `activePageId`, and a document `printSetup`.
+//        The v1 top-level sections remain, mirroring the ACTIVE
+//        page, so a v1 reader still opens the page you were on.
+// Tested from tests/native-document.test.mjs and
+// tests/pages-guides-print.test.mjs.
 import { validateDrawable } from '../model/serialization';
 import type { NGDrawable, NGPathDrawable } from '../model/NGDrawable';
 import {
   isSceneJson, readSceneActiveLayerId, readSceneLayers, readSceneView,
   type SceneView,
 } from './SceneIO';
+import { readGuideRecords, type GuideRecord } from './guides';
+import { readPrintSetup, type PrintSetup } from './printSetup';
 
 export const NATIVE_FORMAT = 'nibglider-document';
-export const NATIVE_VERSION = 1;
+export const NATIVE_VERSION = 2;
 export const NATIVE_FILE_EXTENSION = '.nibglider.json';
 
 export interface NativeLayerRecord {
@@ -41,15 +49,31 @@ export interface NativePageSettings {
   unit: string;
 }
 
+/** One page of a v2 document: a complete scene of its own, with its
+ * own layers and model sections, sharing the document's settings. */
+export interface NativePageRecord {
+  id: string;
+  name: string;
+  page: NativePageSettings | null;
+  layers: NativeLayerRecord[];
+  activeLayerId: string | null;
+  drawables: NGDrawable[];
+  retainedPaths: NGPathDrawable[];
+  scene: string;
+  guides: GuideRecord[];
+}
+
 export interface NativeDocumentFile {
   format: typeof NATIVE_FORMAT;
   version: number;
   name: string;
   savedAt: string;
-  /** Document layers in stack order (bottom first). */
+  /** Document layers in stack order (bottom first). Mirrors the
+   * active page in v2. */
   layers: NativeLayerRecord[];
   activeLayerId: string | null;
-  /** Catalog drawables for the document's page, in stack order. */
+  /** Catalog drawables for the document's page, in stack order.
+   * Mirrors the active page in v2. */
   drawables: NGDrawable[];
   /** Retained Bézier sources for non-catalog items, keyed by the
    * drawableId the scene items carry. */
@@ -57,8 +81,14 @@ export interface NativeDocumentFile {
   page: NativePageSettings | null;
   view: SceneView | null;
   /** nibglider-scene payload (current scene version) with the live
-   * geometry of every item in the document. */
+   * geometry of every item in the document. Mirrors the active page
+   * in v2. */
   scene: string;
+  /** All pages, in document order (v2). */
+  pages: NativePageRecord[];
+  activePageId: string | null;
+  /** Printer page setup, separate from Document Size (v2). */
+  printSetup: PrintSetup | null;
 }
 
 export interface NativeDocumentParts {
@@ -71,9 +101,45 @@ export interface NativeDocumentParts {
   page: NativePageSettings | null;
   view: SceneView | null;
   scene: string;
+  pages?: NativePageRecord[];
+  activePageId?: string | null;
+  printSetup?: PrintSetup | null;
+}
+
+/** The single page record a pre-v2 document amounts to. */
+export function synthesizedPage(parts: {
+  page: NativePageSettings | null;
+  layers: NativeLayerRecord[];
+  activeLayerId: string | null;
+  drawables: NGDrawable[];
+  retainedPaths: NGPathDrawable[];
+  scene: string;
+  guides?: GuideRecord[];
+}): NativePageRecord {
+  return {
+    id: 'page-1',
+    name: 'Page 1',
+    page: parts.page,
+    layers: parts.layers.map((layer) => ({ id: layer.id, name: layer.name })),
+    activeLayerId: parts.activeLayerId,
+    drawables: parts.drawables,
+    retainedPaths: parts.retainedPaths,
+    scene: parts.scene,
+    guides: parts.guides ? parts.guides.map((guide) => ({ ...guide })) : [],
+  };
 }
 
 export function buildNativeDocument(parts: NativeDocumentParts): NativeDocumentFile {
+  const pages = parts.pages && parts.pages.length > 0
+    ? parts.pages.map((page) => ({
+      ...page,
+      layers: page.layers.map((layer) => ({ id: layer.id, name: layer.name })),
+      guides: page.guides.map((guide) => ({ ...guide })),
+    }))
+    : [synthesizedPage(parts)];
+  const activePageId = parts.activePageId && pages.some((page) => page.id === parts.activePageId)
+    ? parts.activePageId
+    : pages[0].id;
   return {
     format: NATIVE_FORMAT,
     version: NATIVE_VERSION,
@@ -86,6 +152,9 @@ export function buildNativeDocument(parts: NativeDocumentParts): NativeDocumentF
     page: parts.page,
     view: parts.view,
     scene: parts.scene,
+    pages,
+    activePageId,
+    printSetup: parts.printSetup ?? null,
   };
 }
 
@@ -159,9 +228,95 @@ function migrate0to1(raw: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
+/** v1 → v2: the single set of top-level sections becomes the one
+ * page; the top level stays as its mirror. Guides and print setup
+ * start empty/default. */
+function migrate1to2(raw: Record<string, unknown>): Record<string, unknown> {
+  const page: Record<string, unknown> = {
+    id: 'page-1',
+    name: 'Page 1',
+    page: raw.page ?? null,
+    layers: Array.isArray(raw.layers) ? raw.layers : [],
+    activeLayerId: typeof raw.activeLayerId === 'string' ? raw.activeLayerId : null,
+    drawables: Array.isArray(raw.drawables) ? raw.drawables : [],
+    retainedPaths: Array.isArray(raw.retainedPaths) ? raw.retainedPaths : [],
+    scene: typeof raw.scene === 'string' ? raw.scene : '',
+    guides: [],
+  };
+  return { ...raw, version: 2, pages: [page], activePageId: 'page-1', printSetup: null };
+}
+
 const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string, unknown>> = {
   0: migrate0to1,
+  1: migrate1to2,
 };
+
+function readDrawables(value: unknown, section: string): NGDrawable[] | string {
+  const out: NGDrawable[] = [];
+  if (value === undefined) return out;
+  if (!Array.isArray(value)) return `That document has a malformed ${section} section.`;
+  for (const entry of value) {
+    try {
+      validateDrawable(entry);
+      out.push(entry);
+    } catch (err) {
+      return `That document contains an invalid drawable: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+  return out;
+}
+
+function readRetained(value: unknown): NGPathDrawable[] | string {
+  const out: NGPathDrawable[] = [];
+  if (value === undefined) return out;
+  if (!Array.isArray(value)) return 'That document has a malformed retained-paths section.';
+  for (const entry of value) {
+    try {
+      validateDrawable(entry);
+      if (entry.kind !== 'path') throw new Error('retained entry is not a path');
+      out.push(entry);
+    } catch (err) {
+      return `That document contains an invalid retained path: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+  return out;
+}
+
+/** Read the v2 pages array. Returns an error string on failure. */
+function readPages(value: unknown): NativePageRecord[] | string {
+  if (!Array.isArray(value) || value.length === 0) return 'That document has a malformed pages section.';
+  const pages: NativePageRecord[] = [];
+  const ids = new Set<string>();
+  for (const entry of value) {
+    if (!isRecord(entry)) return 'That document has a malformed pages section.';
+    if (typeof entry.id !== 'string' || entry.id.length === 0 || ids.has(entry.id)) {
+      return 'That document has a malformed pages section.';
+    }
+    ids.add(entry.id);
+    if (typeof entry.scene !== 'string' || !isSceneJson(entry.scene)) {
+      return 'That document is missing its scene payload.';
+    }
+    const drawables = readDrawables(entry.drawables, 'drawables');
+    if (typeof drawables === 'string') return drawables;
+    const retainedPaths = readRetained(entry.retainedPaths);
+    if (typeof retainedPaths === 'string') return retainedPaths;
+    const layers = readLayers(entry.layers);
+    pages.push({
+      id: entry.id,
+      name: typeof entry.name === 'string' && entry.name ? entry.name : 'Page',
+      page: readPage(entry.page),
+      layers: layers.length > 0 ? layers : readSceneLayers(entry.scene),
+      activeLayerId: typeof entry.activeLayerId === 'string'
+        ? entry.activeLayerId
+        : readSceneActiveLayerId(entry.scene),
+      drawables,
+      retainedPaths,
+      scene: entry.scene,
+      guides: readGuideRecords(entry.guides),
+    });
+  }
+  return pages;
+}
 
 /**
  * Parse + migrate + validate a native document. Never throws: every
@@ -200,33 +355,21 @@ export function parseNativeDocument(text: string): NativeParseResult {
   if (typeof current.scene !== 'string' || !isSceneJson(current.scene)) {
     return { ok: false, error: 'That document is missing its scene payload.' };
   }
-  const drawables: NGDrawable[] = [];
-  if (current.drawables !== undefined) {
-    if (!Array.isArray(current.drawables)) return { ok: false, error: 'That document has a malformed drawables section.' };
-    for (const entry of current.drawables) {
-      try {
-        validateDrawable(entry);
-        drawables.push(entry);
-      } catch (err) {
-        return { ok: false, error: `That document contains an invalid drawable: ${err instanceof Error ? err.message : String(err)}` };
-      }
-    }
-  }
-  const retainedPaths: NGPathDrawable[] = [];
-  if (current.retainedPaths !== undefined) {
-    if (!Array.isArray(current.retainedPaths)) return { ok: false, error: 'That document has a malformed retained-paths section.' };
-    for (const entry of current.retainedPaths) {
-      try {
-        validateDrawable(entry);
-        if (entry.kind !== 'path') throw new Error('retained entry is not a path');
-        retainedPaths.push(entry);
-      } catch (err) {
-        return { ok: false, error: `That document contains an invalid retained path: ${err instanceof Error ? err.message : String(err)}` };
-      }
-    }
-  }
+  const drawablesRead = readDrawables(current.drawables, 'drawables');
+  if (typeof drawablesRead === 'string') return { ok: false, error: drawablesRead };
+  const drawables = drawablesRead;
+  const retainedRead = readRetained(current.retainedPaths);
+  if (typeof retainedRead === 'string') return { ok: false, error: retainedRead };
+  const retainedPaths = retainedRead;
+  const pagesRead = readPages(current.pages);
+  if (typeof pagesRead === 'string') return { ok: false, error: pagesRead };
+  const pages = pagesRead;
   const scene = current.scene as string;
   const layers = readLayers(current.layers);
+  const activePageId = typeof current.activePageId === 'string'
+    && pages.some((page) => page.id === current.activePageId)
+    ? current.activePageId
+    : pages[0].id;
   return {
     ok: true,
     doc: {
@@ -243,6 +386,9 @@ export function parseNativeDocument(text: string): NativeParseResult {
       page: readPage(current.page),
       view: readView(current.view) ?? readSceneView(scene),
       scene,
+      pages,
+      activePageId,
+      printSetup: readPrintSetup(current.printSetup),
     },
   };
 }

@@ -3,6 +3,8 @@
 // (File → Export / Import / drop). Paper's project.exportSVG writes a
 // viewBox the size of the viewport; importSVG then plants a clip-mask
 // rectangle of those bounds, which looks like a selected page frame.
+import { readGuideRecords, type GuideRecord } from './guides';
+import { readPrintSetup, type PrintSetup } from './printSetup';
 
 type Item = any;
 
@@ -33,6 +35,10 @@ export interface ScenePayload {
   view?: SceneView;
   layers?: SceneLayer[];
   activeLayerId?: string;
+  /** Optional extras (guides + print setup) carried since Tier Two.
+   * Absent in older payloads; readers treat absence as "none". */
+  guides?: GuideRecord[];
+  printSetup?: PrintSetup;
 }
 
 function sceneViewOf(value: unknown): SceneView | null {
@@ -121,6 +127,7 @@ export function encodeSceneDocument(
   layers: Array<{ id: string; name: string }>,
   view?: SceneView | null,
   activeLayerId?: string | null,
+  extras?: { guides?: readonly GuideRecord[]; printSetup?: PrintSetup | null },
 ): string {
   const groups = new Map<string, unknown[]>();
   for (const layer of layers) groups.set(layer.id, []);
@@ -139,7 +146,31 @@ export function encodeSceneDocument(
   if (activeLayerId) payload.activeLayerId = activeLayerId;
   const stored = view ? sceneViewOf(view) : null;
   if (stored) payload.view = stored;
+  if (extras?.guides && extras.guides.length > 0) {
+    payload.guides = extras.guides.map((guide) => ({ ...guide }));
+  }
+  if (extras?.printSetup) payload.printSetup = extras.printSetup;
   return JSON.stringify(payload);
+}
+
+/** Guides stored with a scene payload; empty for older payloads. */
+export function readSceneGuides(json: string): GuideRecord[] {
+  try {
+    const parsed = JSON.parse(json) as Partial<ScenePayload>;
+    return readGuideRecords(parsed.guides);
+  } catch {
+    return [];
+  }
+}
+
+/** Print setup stored with a scene payload, or null when absent. */
+export function readScenePrintSetup(json: string): PrintSetup | null {
+  try {
+    const parsed = JSON.parse(json) as Partial<ScenePayload>;
+    return readPrintSetup(parsed.printSetup);
+  } catch {
+    return null;
+  }
 }
 
 /** Active layer record id stored with a v2 scene, or null. */

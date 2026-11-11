@@ -85,7 +85,7 @@ test('legacy grouped panel layout becomes one ordered sequence', () => {
   assert.deepEqual(sectionOrder(new PanelsManager(mem).order), [
     'fillControls', 'strokeControls', 'textControls', 'swatchesControls', 'historyControls',
     'circleFrameControls', 'rectFrameControls', 'combinatoricsControls',
-    'repeatControls', 'layersControls', 'arrangeControls',
+    'repeatControls', 'layersControls', 'pagesControls', 'arrangeControls',
     'snappingControls', 'gridControls',
   ]);
 });
@@ -120,6 +120,7 @@ test('application menus cover file, edit, image, document, services, operations,
   assert.deepEqual(byId.file.items.map((item) => item.commandId), [
     'open-gallery', 'new-document', 'save-gallery', 'rename-document', 'save-file', 'open-file',
     'export-raster', 'export-vector', 'import',
+    'print', 'print-selection',
     'settings',
   ]);
   assert.deepEqual(
@@ -231,6 +232,8 @@ test('operations menu groups dialog entries and carries rail shortcuts and icons
     'export-raster': 'export',
     'export-vector': 'export',
     import: 'import',
+    print: 'export',
+    'print-selection': 'export',
     settings: 'settings',
   });
 });

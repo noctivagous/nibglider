@@ -121,6 +121,39 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
   const labeledHSet = new Set(labeledH);
   const labeledVSet = new Set(labeledV);
 
+  // Dragging out of a ruler track creates a guide on that axis and
+  // drags it with the pointer (Tier Two, Slice 5). `anchor` is the
+  // project coordinate at the track's leading edge; both placements
+  // share the math because the track element's own rect absorbs the
+  // offset. Exact placement is also available in the Pages panel.
+  const startGuideDrag = (axis: 'x' | 'y', anchor: number) => (
+    event: React.PointerEvent<HTMLDivElement>,
+  ): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    const track = event.currentTarget.getBoundingClientRect();
+    const along = (clientX: number, clientY: number): number => (
+      axis === 'x' ? clientX - track.left : clientY - track.top
+    );
+    const position = anchor + along(event.clientX, event.clientY) / pxPerPt;
+    const ok = axis === 'x'
+      ? engine.beginGuideDragFromRulerAt('x', position, 0)
+      : engine.beginGuideDragFromRulerAt('y', 0, position);
+    if (!ok) return;
+    const move = (e: PointerEvent): void => {
+      const pos = anchor + along(e.clientX, e.clientY) / pxPerPt;
+      if (axis === 'x') engine.dragGuideToCoords(pos, 0);
+      else engine.dragGuideToCoords(0, pos);
+    };
+    const up = (): void => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      engine.endGuideDrag();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   if (placement === 'page' && page) {
     const frame = pageFrameTracks(
       { centerX: state.centerX, centerY: state.centerY, viewWidth: state.viewWidth, viewHeight: state.viewHeight },
@@ -134,12 +167,14 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
         <div
           className="pruler-track-h frame"
           style={{ left: frame.top.left, top: frame.top.top, width: frame.top.width }}
+          onPointerDown={startGuideDrag('x', page.x)}
         >
           {renderTicks(true, page.width * pxPerPt, (p) => (p - page.x) * pxPerPt, page.width, page.x, 0, labeledHSet, page.x)}
         </div>
         <div
           className="pruler-track-v frame"
           style={{ left: frame.left.left, top: frame.left.top, height: frame.left.height }}
+          onPointerDown={startGuideDrag('y', page.y)}
         >
           {renderTicks(false, page.height * pxPerPt, (p) => (p - page.y) * pxPerPt, page.height, page.y, 0, labeledVSet, page.y)}
         </div>
@@ -153,10 +188,10 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
   return (
     <div id="pageRuler" ref={wrapRef} aria-hidden="true">
       {renderGuides(labeledH, labeledV)}
-      <div className="pruler-track-h">
+      <div className="pruler-track-h" onPointerDown={startGuideDrag('x', viewLeft)}>
         {renderTicks(true, topLen, (p) => RULER + (p - viewLeft) * pxPerPt, rect.width, rect.x, RULER, labeledHSet, rect.x)}
       </div>
-      <div className="pruler-track-v">
+      <div className="pruler-track-v" onPointerDown={startGuideDrag('y', viewTop)}>
         {renderTicks(false, leftLen, (p) => RULER + (p - viewTop) * pxPerPt, rect.height, rect.y, RULER, labeledVSet, rect.y)}
       </div>
       <div className="pruler-corner">{unit}</div>

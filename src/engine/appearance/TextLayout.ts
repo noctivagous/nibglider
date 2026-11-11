@@ -135,23 +135,38 @@ export class TextLayout {
   }
 
   layoutBodyLines(spec: TextSpec, maxWidth: number, content?: string): string[] {
-    const words = (content ?? spec.content).split(/\s+/).filter(Boolean);
+    return this.layoutBodyParagraphs(spec, maxWidth, content).flat();
+  }
+
+  /** Wrap content paragraph by paragraph. Paragraphs split on line
+   * breaks; each wraps independently with tracked advance widths, so
+   * paragraph spacing in createBodyTextFor lands between real
+   * paragraphs instead of flattening them away. */
+  layoutBodyParagraphs(spec: TextSpec, maxWidth: number, content?: string): string[][] {
+    const tracking = spec.letterSpacing ?? 0;
     const size = Math.max(4, spec.fontSize);
-    const widthOf = (s: string): number => this.metrics.advance(s, spec.fontFamily, size, spec.fontWeight);
-    const lines: string[] = [];
-    let cur = '';
-    for (const w of words) {
-      const trial = cur ? `${cur} ${w}` : w;
-      if (cur && widthOf(trial) > maxWidth) {
-        lines.push(cur);
-        cur = w;
-      } else {
-        cur = trial;
+    const widthOf = (s: string): number => this.metrics.advance(s, spec.fontFamily, size, spec.fontWeight, tracking);
+    const paragraphs = (content ?? spec.content).split(/\n+/);
+    const wrapped: string[][] = [];
+    for (const paragraph of paragraphs) {
+      const words = paragraph.split(/\s+/).filter(Boolean);
+      const lines: string[] = [];
+      let cur = '';
+      for (const w of words) {
+        const trial = cur ? `${cur} ${w}` : w;
+        if (cur && widthOf(trial) > maxWidth) {
+          lines.push(cur);
+          cur = w;
+        } else {
+          cur = trial;
+        }
       }
+      if (cur) lines.push(cur);
+      if (lines.length === 0) lines.push(' ');
+      wrapped.push(lines);
     }
-    if (cur) lines.push(cur);
-    if (lines.length === 0) lines.push(' ');
-    return lines;
+    if (wrapped.length === 0) wrapped.push([' ']);
+    return wrapped;
   }
 
   createBodyTextFor(boundary: Item, content?: string): Item | null {
@@ -160,16 +175,27 @@ export class TextLayout {
     const bounds = boundary.bounds;
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
     const size = Math.max(4, spec.fontSize);
-    const lines = this.layoutBodyLines(spec, Math.max(8, bounds.width * 0.75), content);
+    const paragraphs = this.layoutBodyParagraphs(spec, Math.max(8, bounds.width * 0.75), content);
     const leading = Math.max(0.8, spec.leading || 1.2) * size;
+    const paragraphSpacing = Math.max(0, spec.paragraphSpacing ?? 0);
+    const lineCount = paragraphs.reduce((sum, p) => sum + p.length, 0);
+    const totalHeight = (lineCount - 1) * leading + (paragraphs.length - 1) * paragraphSpacing;
     const group: Item = new scope.Group();
-    const startY = bounds.center.y - ((lines.length - 1) * leading) / 2;
-    lines.forEach((line, i) => {
-      const pt: Item = new scope.PointText(new scope.Point(bounds.center.x, startY + i * leading));
-      pt.content = line;
-      this.styleTextItem(pt, spec);
-      pt.data.textKind = 'body';
-      group.addChild(pt);
+    let y = bounds.center.y - totalHeight / 2;
+    paragraphs.forEach((lines, pi) => {
+      for (const line of lines) {
+        if ((spec.letterSpacing ?? 0) !== 0) {
+          this.addTrackedBodyLine(group, line, bounds.center.x, y, spec, size);
+        } else {
+          const pt: Item = new scope.PointText(new scope.Point(bounds.center.x, y));
+          pt.content = line;
+          this.styleTextItem(pt, spec);
+          pt.data.textKind = 'body';
+          group.addChild(pt);
+        }
+        y += leading;
+      }
+      if (pi < paragraphs.length - 1) y += paragraphSpacing;
     });
     if (boundary.closed !== false) {
       const mask: Item = boundary.clone();
@@ -179,6 +205,33 @@ export class TextLayout {
     group.data.isShapeText = true;
     group.data.textKind = 'body';
     return group;
+  }
+
+  /** One body line as per-glyph PointText items: Paper has no
+   * letter-spacing, so tracked lines place each glyph at its tracked
+   * advance. The anchor mirrors the whole-line path — the line's
+   * Paper point is bounds-center x, aligned per justification. */
+  private addTrackedBodyLine(
+    group: Item, line: string, anchorX: number, y: number, spec: TextSpec, size: number,
+  ): void {
+    const scope = this.scope;
+    const tracking = spec.letterSpacing ?? 0;
+    const width = this.metrics.advance(line, spec.fontFamily, size, spec.fontWeight, tracking);
+    let x = spec.justification === 'center'
+      ? anchorX - width / 2
+      : spec.justification === 'right' ? anchorX - width : anchorX;
+    for (const ch of line) {
+      const w = this.metrics.advance(ch, spec.fontFamily, size, spec.fontWeight);
+      if (ch !== ' ') {
+        const pt: Item = new scope.PointText(new scope.Point(x, y));
+        pt.content = ch;
+        this.styleTextItem(pt, spec);
+        pt.justification = 'left';
+        pt.data.textKind = 'body';
+        group.addChild(pt);
+      }
+      x += w + tracking;
+    }
   }
 
   createBoundaryText(boundary: Item, content?: string, line2?: string): Item | null {
@@ -222,7 +275,7 @@ export class TextLayout {
       let lastTan: number | null = null;
       for (const ch of text) {
         const w = ch === ' ' ? size * 0.4 : this.metrics.advance(ch, spec.fontFamily, size, spec.fontWeight);
-        const step = w + cfg.circumferenceGap;
+        const step = w + cfg.circumferenceGap + (spec.letterSpacing ?? 0);
         if (d + step > start + length) break;
         if (ch === ' ') { d += step; continue; }
         const mid = d + w / 2;
@@ -342,7 +395,7 @@ export class TextLayout {
 
   private displayGlyphStep(ch: string, spec: TextSpec, size: number): number {
     const width = ch === ' ' ? size * 0.4 : this.metrics.advance(ch, spec.fontFamily, size, spec.fontWeight);
-    return width + this.config().circumferenceGap;
+    return width + this.config().circumferenceGap + (spec.letterSpacing ?? 0);
   }
 
   private addDisplayGlyphs(

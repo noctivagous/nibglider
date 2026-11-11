@@ -159,6 +159,9 @@ const ENTRIES: SettingEntry[] = [
   hex('stroke.color', (e) => e.globalStrokeColor, (e, v) => e.setStrokeColor(v)),
   en('stroke.cap', ['butt', 'round', 'square'], (e) => e.globalStrokeCap, (e, v) => e.setStrokeCap(v as never)),
   en('stroke.join', ['miter', 'round', 'bevel'], (e) => e.globalStrokeJoin, (e, v) => e.setStrokeJoin(v as never)),
+  en('stroke.arrowStart', ['none', 'triangle', 'barb', 'dot'], (e) => e.globalArrowStart, (e, v) => e.setArrowStart(v as never)),
+  en('stroke.arrowEnd', ['none', 'triangle', 'barb', 'dot'], (e) => e.globalArrowEnd, (e, v) => e.setArrowEnd(v as never)),
+  num('draw.freehandTension', (e) => e.freehandTension, (e, v) => e.setFreehandTension(v)),
   // Stroke alignment is hidden. Leave it out of the snapshot so a stored
   // inside/outside cannot override the center default.
   num('stroke.miter', (e) => e.globalMiterLimit, (e, v) => e.setMiterLimit(v)),
@@ -191,6 +194,11 @@ const ENTRIES: SettingEntry[] = [
   bool('repeat.rectKeys', (e) => e.repeatRectKeys, (e, v) => e.setRepeatRectKeys(v)),
   bool('repeat.circleKeys', (e) => e.repeatCircleKeys, (e, v) => e.setRepeatCircleKeys(v)),
   bool('repeat.paths', (e) => e.repeatPaths, (e, v) => e.setRepeatPaths(v)),
+  en('repeat.family', ['wallpaper', 'polar', 'frieze'], (e) => e.repeatFamily, (e, v) => e.setRepeatFamily(v as never)),
+  en('repeat.wallpaperGroup', ['p1', 'p2', 'pm', 'pg', 'cm', 'pmm', 'pmg', 'pgg', 'cmm', 'p4', 'p4m', 'p4g', 'p3', 'p3m1', 'p31m', 'p6', 'p6m'], (e) => e.repeatWallpaperGroup, (e, v) => e.setRepeatWallpaperGroup(v as never)),
+  en('repeat.friezeGroup', ['p1111', 'p11g', 'p1m1', 'pm11', 'p112', 'p2mg', 'p2mm'], (e) => e.repeatFriezeGroup, (e, v) => e.setRepeatFriezeGroup(v as never)),
+  num('repeat.symmetryCount', (e) => e.repeatSymmetryCount, (e, v) => e.setRepeatSymmetryCount(v)),
+  bool('repeat.polarReflect', (e) => e.repeatPolarReflect, (e, v) => e.setRepeatPolarReflect(v)),
   en('ruler.placement', ['viewer', 'page'], (e) => e.rulerPlacement, (e, v) => e.setRulerPlacement(v as never)),
   bool('ruler.guides', (e) => e.rulerGuides, (e, v) => e.setRulerGuides(v)),
   bool('page.fill', (e) => e.pageFill, (e, v) => e.setPageFill(v)),
@@ -243,6 +251,24 @@ const ENTRIES: SettingEntry[] = [
   bool('text.italic', (e) => e.globalText.italic, (e, v) => e.setTextItalic(v)),
   en('text.justification', ['left', 'center', 'right'], (e) => e.globalText.justification, (e, v) => e.setTextJustification(v as never)),
   num('text.leading', (e) => e.globalText.leading, (e, v) => e.setTextLeading(v)),
+  num('text.letterSpacing', (e) => e.globalText.letterSpacing, (e, v) => e.setTextLetterSpacing(v)),
+  num('text.paragraphSpacing', (e) => e.globalText.paragraphSpacing, (e, v) => e.setTextParagraphSpacing(v)),
+  {
+    // User-added fonts: the family list persists; URL fonts reload
+    // from their URL, file fonts are remembered by name only (their
+    // bytes are session-only by design).
+    key: 'text.userFonts',
+    save: (e) => e.userFontSettings(),
+    load: (e, raw) => {
+      if (!Array.isArray(raw)) return;
+      const list = raw.filter((entry): entry is { family: string; source: 'file' | 'url'; url?: string } => (
+        !!entry && typeof entry === 'object'
+        && typeof (entry as { family?: unknown }).family === 'string'
+        && ((entry as { source?: unknown }).source === 'file' || (entry as { source?: unknown }).source === 'url')
+      ));
+      e.restoreUserFonts(list);
+    },
+  },
   bool('text.modeEnabled', (e) => e.textModeEnabled, (e, v) => e.setTextModeEnabled(v)),
   en('text.mode', ['display', 'body'], (e) => e.textMode, (e, v) => e.setTextMode(v as never)),
   en('text.flow', ['interior', 'exterior'], (e) => e.displayFlow, (e, v) => e.setDisplayFlow(v as never)),

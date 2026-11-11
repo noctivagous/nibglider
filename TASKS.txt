@@ -58,16 +58,21 @@ for the Export menu items.  enable the PDF export and import.
 
 PRINTING AND DOCUMENT SIZE
 
-[  ] Page Setup vs. Document Size.
+[DONE Tier Two Slice 5] Page Setup vs. Document Size.
 We will separate printer page setup
 from Document Size, but if the user
 has checked the option "Preview Printer Page Setup"
 in the File Menu, then it will show margins
 and crop marks.  Separate Page Setup 
 section in the menu.
+(Done: Document > Page Setup… dialog — paper presets, orientation,
+margins, crop-marks + preview toggles; preview draws the printable
+rect and crop marks on the guide layer; setup persists in the file.)
 
-[  ] File Menu:  Print > Print Selection. if selection of objects,
+[DONE Tier Two Slice 5] File Menu:  Print > Print Selection. if selection of objects,
 prints frame.
+(Done: File > Print… and File > Print Selection…; selection print
+hides everything else for the print pass and restores on afterprint.)
 
 [  ] Export Frame should have command select dropdown that
 includes Print.
@@ -129,6 +134,12 @@ OUTLINED PATH
 An outlined path can be a mode of the path and this mode
 should be reflected in the flyout popover over the preview box
 of the.
+[Partially done, Tier Two Slice 7: Operations > Path > Stroke to
+Outline converts selected stroked paths into the live
+NGOutlinedStrokePath model mode (spine stays the retained truth,
+rendered as filled band geometry) — engine.strokeToOutlineSelection,
+also a button in the Stroke flyout. Not yet done: reflecting the
+outlined mode in the path flyout popover over the preview box.]
 
 KEYS TABLE GUI WIDGET
 [x] make flag, set to on: omit undo,redo, copy, paste items from key table widget
@@ -424,7 +435,10 @@ to the cursor from the field that changes the value.  This line will extend
 from a square subcontrol to the right of the right stepper, so that it can be
 manually clicked.
 
-[ ] REPEAT section in panel with toggle switch.
+[x] REPEAT section in panel with toggle switch. (Shipped: the
+Repeat panel section carries the live-draw toggle; Tier Two
+Slice 9a added the symmetry-repeat controls — family
+wallpaper/polar/frieze, group, count, reflect — with Apply.)
 It will affect live drawing and preview.  
 To begin with, we will have a grid repeat.  If you draw something,
 it will repeat in real time that object.  You can repeat it in the center
@@ -659,11 +673,17 @@ loaded objects.
 
 REPEAT
 
-[ ] repeat grid - select shape > loaded object  
+[x] repeat grid - select shape > loaded object (Tier Two Slice 9a:
+   Operations > Repeat Grid applies the wallpaper p1 symmetry
+   repeat to the selection; live drawing keys 1-4 already adjust
+   rows/cols for the draw-time repeat.)
    live drawing keys: 1 and 2 keys will adjust row count
    live drawing keys: 3 and 4 keys will adjust col. count
 
-[ ] repeat circle - select shape > loaded object
+[x] repeat circle - select shape > loaded object (Tier Two
+   Slice 9a: Operations > Repeat Circle applies the polar
+   symmetry repeat; the Repeat panel exposes wallpaper / polar /
+   frieze families with their symmetry groups.)
 
 [ ] Repeat Lines - spacing, angle
 

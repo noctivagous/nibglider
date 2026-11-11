@@ -87,6 +87,14 @@ export interface KeyboardHost {
   polyLineKC(): void;
   splinePointKC(): void;
   roundedPointKC(): void;
+  bowedPointKC(facing: 'left' | 'right'): void;
+  arcThreePointKC(): void;
+  lineKC(): void;
+  ellipseKC(): void;
+  arcKC(): void;
+  setFreehandArmed(on: boolean): void;
+  freehandArmed(): boolean;
+  strokeToOutlineSelection(): number;
   compositePathEnabled(): boolean;
   circleKC(mode: string): void;
   radialStampKC(): void;
@@ -388,6 +396,30 @@ export class KeyboardController {
         return;
       case 'rounded-point':
         host.roundedPointKC();
+        return;
+      case 'bowed-point':
+        host.bowedPointKC('left');
+        return;
+      case 'bowed-point-flip':
+        host.bowedPointKC('right');
+        return;
+      case 'arc-three-point':
+        host.arcThreePointKC();
+        return;
+      case 'tool-line':
+        host.lineKC();
+        return;
+      case 'tool-ellipse':
+        host.ellipseKC();
+        return;
+      case 'tool-arc':
+        host.arcKC();
+        return;
+      case 'tool-freehand':
+        host.setFreehandArmed(!host.freehandArmed());
+        return;
+      case 'stroke-to-outline':
+        host.strokeToOutlineSelection();
         return;
       case 'circle-diameter':
         host.circleKC('diameter');

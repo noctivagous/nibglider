@@ -30,6 +30,8 @@ import { svgToPdfBlob } from './engine/document/pdfExport';
 import ContextMenu from './components/ContextMenu';
 import SettingsWindow from './components/SettingsWindow';
 import PrintifySettingsDialog from './components/PrintifySettingsDialog';
+import PageSetupDialog from './components/PageSetupDialog';
+import ImageTraceDialog from './components/ImageTraceDialog';
 import DocumentInfoWindow from './components/DocumentInfoWindow';
 import DocumentSettingsWindow from './components/DocumentSettingsWindow';
 import DocumentSizeWindow from './components/DocumentSizeWindow';
@@ -79,6 +81,7 @@ const MENU_COMMANDS: Set<string> = new Set([
   ...IMPORT_COMMANDS,
   ...EXPORT_COMMANDS,
   'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
+  'print', 'print-selection', 'page-setup',
   'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-fill-and-stroke',
   'tutorial-adding-text', 'tutorial-grouping-and-ordering', 'tutorial-saving-and-exporting',
   'help-getting-started', 'help-keys-reference',
@@ -104,10 +107,13 @@ const MENU_COMMANDS: Set<string> = new Set([
   'circle-shape-kite',
   'snap-grid', 'snap-path', 'snap-points', 'snap-angle', 'snap-length', 'snap-aspect',
   'text-mode-display', 'text-mode-body',
-  'scale-dialog', 'rotate-dialog',
+  'scale-dialog', 'rotate-dialog', 'text-convert-outlines', 'stroke-to-outline',
+  'repeat-grid', 'repeat-circle', 'repeat-apply',
+  'tool-line', 'tool-ellipse', 'tool-arc', 'tool-freehand',
   'image-place', 'image-replace', 'image-info',
   'image-scale-half', 'image-scale-double', 'image-fit-view',
   'image-grayscale', 'image-flatten', 'image-convert-png', 'image-convert-jpeg',
+  'image-trace', 'image-crop-frame', 'image-mask-shape', 'image-remove-mask', 'image-remove-crop',
   'image-filters',
 ]);
 
@@ -384,6 +390,12 @@ export default function App() {
   }, [gallery.currentName]);
 
   const runVectorExport = useCallback((scope: ExportScopeId) => {
+    if (vectorFormat === 'dxf') {
+      const output = engine.exportScopeDXF(scope);
+      if (!output) return;
+      downloadText(exportFileName(exportFileStem(), scope, 'dxf'), output.dxf, 'application/dxf');
+      return;
+    }
     const output = engine.exportScopeSVG(scope);
     if (!output) return;
     if (vectorFormat === 'pdf') {
@@ -401,6 +413,14 @@ export default function App() {
   const runRasterExport = useCallback((scope: ExportScopeId) => {
     if (rasterFormat === 'jpg') {
       setJpgScope(scope);
+      return;
+    }
+    if (rasterFormat === 'webp') {
+      void (async (): Promise<void> => {
+        const output = await engine.exportScopeWEBP(scope, { quality: 92, scale: 1, background: null });
+        if (!output) return;
+        downloadBlob(exportFileName(exportFileStem(), scope, 'webp'), output.blob);
+      })();
       return;
     }
     if (rasterFormat !== 'png') return;
@@ -424,6 +444,7 @@ export default function App() {
       return;
     }
     if (commandId === 'settings') gui.openWindow('settings');
+    else if (commandId === 'page-setup') gui.openWindow('page-setup');
     else if (commandId === 'printify-settings') gui.openWindow('printify-settings');
     else if (commandId === 'document-settings') gui.openWindow('document-settings');
     else if (commandId === 'canvas-size') gui.openWindow('document-size');
@@ -466,6 +487,15 @@ export default function App() {
     else if (commandId === 'point-corner') engine.pointEditConvertSelected('corner');
     else if (commandId === 'point-close') engine.pointEditClosePath();
     else if (commandId === 'point-join') engine.pointEditJoin();
+    else if (commandId === 'text-convert-outlines') engine.convertSelectedTextToOutlines();
+    else if (commandId === 'stroke-to-outline') engine.strokeToOutlineSelection();
+    else if (commandId === 'repeat-grid') engine.applyRepeatGrid();
+    else if (commandId === 'repeat-circle') engine.applyRepeatCircle();
+    else if (commandId === 'repeat-apply') engine.applySymmetryRepeat();
+    else if (commandId === 'tool-line') engine.lineKC();
+    else if (commandId === 'tool-ellipse') engine.ellipseKC();
+    else if (commandId === 'tool-arc') engine.arcKC();
+    else if (commandId === 'tool-freehand') engine.setFreehandArmed(!engine.freehandArmed);
     else if (commandId === 'align-left') engine.alignSelection('left', 'selection');
     else if (commandId === 'align-center-x') engine.alignSelection('centerX', 'selection');
     else if (commandId === 'align-right') engine.alignSelection('right', 'selection');
@@ -515,6 +545,11 @@ export default function App() {
     else if (commandId === 'image-place') { imageFileModeRef.current = 'place'; imageFileInputRef.current?.click(); }
     else if (commandId === 'image-replace') { imageFileModeRef.current = 'replace'; imageFileInputRef.current?.click(); }
     else if (commandId === 'image-info') engine.noteSelectedRasterInfo();
+    else if (commandId === 'image-trace') gui.openWindow('image-trace');
+    else if (commandId === 'image-crop-frame') engine.cropSelectedImageToShapeFrame();
+    else if (commandId === 'image-mask-shape') engine.maskSelectedImageWithShape();
+    else if (commandId === 'image-remove-mask') engine.removeSelectedImageMask();
+    else if (commandId === 'image-remove-crop') engine.removeSelectedImageCrop();
     else if (commandId === 'image-scale-half') engine.scaleSelectedRasters(0.5);
     else if (commandId === 'image-scale-double') engine.scaleSelectedRasters(2);
     else if (commandId === 'image-fit-view') engine.fitSelectedRastersToView();
@@ -612,7 +647,7 @@ export default function App() {
       options: [
         { value: 'png', label: 'PNG' },
         { value: 'jpg', label: 'JPG' },
-        { value: 'webp', label: 'WEBP', disabled: true, title: 'Not available yet' },
+        { value: 'webp', label: 'WEBP' },
       ],
     },
     'export-vector': {
@@ -621,14 +656,14 @@ export default function App() {
       options: [
         { value: 'svg', label: 'SVG' },
         { value: 'pdf', label: 'PDF' },
-        { value: 'dxf', label: 'DXF', disabled: true, title: 'Not available yet' },
+        { value: 'dxf', label: 'DXF' },
       ],
     },
   };
   const handleExportSegment = useCallback((commandId: string, value: string) => {
-    if (commandId === 'export-raster' && (value === 'png' || value === 'jpg')) {
+    if (commandId === 'export-raster' && (value === 'png' || value === 'jpg' || value === 'webp')) {
       setRasterFormat(value);
-    } else if (commandId === 'export-vector' && (value === 'svg' || value === 'pdf')) {
+    } else if (commandId === 'export-vector' && (value === 'svg' || value === 'pdf' || value === 'dxf')) {
       setVectorFormat(value);
     }
   }, []);
@@ -653,7 +688,7 @@ export default function App() {
   };
   // Image menu rows (except Place) need a selected raster; without one
   // they render disabled, like Export's selection scope without a selection.
-  const hasRasterSelection = engine.hasSelectedRaster();
+  const hasRasterSelection = engine.hasSelectedRaster() || engine.hasSelectedImage();
   const enabledMenuCommands = hasRasterSelection
     ? MENU_COMMANDS
     : new Set([...MENU_COMMANDS].filter((id) => id === 'image-place' || !id.startsWith('image-')));
@@ -916,6 +951,12 @@ export default function App() {
       {ui.openWindowId === 'printify-settings' && (
         <PrintifySettingsDialog engine={engine} onClose={() => gui.closeWindow()} />
       )}
+      {ui.openWindowId === 'page-setup' && (
+        <PageSetupDialog engine={engine} onClose={() => gui.closeWindow()} />
+      )}
+      {ui.openWindowId === 'image-trace' && (
+        <ImageTraceDialog engine={engine} onClose={() => gui.closeWindow()} />
+      )}
       {ui.openWindowId === 'document-info' && (
         <DocumentInfoWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
       )}
@@ -958,6 +999,7 @@ export default function App() {
               engine={engine}
               panels={panels}
               onOpenDocumentSettings={() => gui.openWindow('document-settings')}
+              onOpenPageSetup={() => gui.openWindow('page-setup')}
             />
           </div>
           <StatusOverlay

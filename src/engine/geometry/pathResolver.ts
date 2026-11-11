@@ -51,7 +51,9 @@ export function resolvePath(path: NGPath, options: SamplingOptions = {}): Resolv
     segments: sampleBSpline(path.points, path.closed, options).map((point) => ({
       point, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 },
     })) };
-  if (path.mode !== 'bezier') throw new GeometryResolutionError(`Interpolation for ${path.mode} is not implemented yet`);
+  if (path.mode === 'smoothedPolyline') return { kind: 'path', closed: path.closed,
+    segments: smoothPolylineSegments(path.points, path.closed, path.tension) };
+  if (path.mode !== 'bezier') throw new GeometryResolutionError(`Interpolation for ${(path as NGPath).mode} is not implemented yet`);
   const paths = path.contours.map((contour) => ({
     kind: 'path' as const, closed: contour.closed,
     segments: structuredClone(contour.segments),
@@ -59,6 +61,47 @@ export function resolvePath(path: NGPath, options: SamplingOptions = {}): Resolv
   // Even a single contour may rely on even-odd winding (self intersections).
   if (paths.length === 1 && path.fillRule === 'nonzero') return paths[0];
   return { kind: 'compoundPath', paths, fillRule: path.fillRule };
+}
+
+/**
+ * Catmull-Rom smoothing of a polyline into cubic segments (the
+ * smoothedPolyline resolution, Tier Two Slice 7). Tension 0 is the
+ * classic Catmull-Rom spline through every point; tension 1 removes
+ * the handles entirely (the raw polyline). Handles scale by
+ * (1 - tension) / 6 of the neighbouring-point difference, the
+ * standard CR-to-Bézier conversion. Open polylines duplicate their
+ * endpoints as phantom neighbours; closed ones wrap.
+ */
+export function smoothPolylineSegments(
+  points: Vec2[],
+  closed: boolean,
+  tension: number,
+): BezierSegment[] {
+  const pts = points.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+  if (pts.length === 0) return [];
+  if (pts.length === 1) return [{ point: { ...pts[0] }, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } }];
+  const t = Number.isFinite(tension) ? Math.max(0, Math.min(1, tension)) : 0;
+  const k = (1 - t) / 6;
+  const at = (i: number): Vec2 => {
+    if (closed) return pts[((i % pts.length) + pts.length) % pts.length];
+    return pts[Math.max(0, Math.min(pts.length - 1, i))];
+  };
+  // Handles are offsets from their anchor: Pi's tangent is the
+  // neighbour difference (P[i+1] - P[i-1]) * k, applied as +tangent
+  // for handleOut and -tangent for handleIn.
+  const segments: BezierSegment[] = pts.map((point) => ({
+    point: { ...point }, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 },
+  }));
+  const z = (v: number): number => (v === 0 ? 0 : v); // avoid -0 handles
+  for (let i = 0; i < pts.length; i++) {
+    const prev = at(i - 1);
+    const next = at(i + 1);
+    const dx = (next.x - prev.x) * k;
+    const dy = (next.y - prev.y) * k;
+    segments[i].handleOut = { x: z(dx), y: z(dy) };
+    segments[i].handleIn = { x: z(-dx), y: z(-dy) };
+  }
+  return segments;
 }
 
 function polygon(vertices: Vec2[]): ResolvedVectorGeometry {

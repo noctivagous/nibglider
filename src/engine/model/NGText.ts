@@ -7,4 +7,8 @@ export interface NGText {
   italic: boolean;
   layout: 'display' | 'body' | 'path';
   pathId?: string;
+  /** Tracking in points, added after each glyph (may be negative). */
+  letterSpacing?: number;
+  /** Extra points after each paragraph in body layout. */
+  paragraphSpacing?: number;
 }

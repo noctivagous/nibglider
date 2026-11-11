@@ -85,6 +85,13 @@ export interface TextSpec {
   justification: TextJustification;
   /** Leading as a multiple of the font size. */
   leading: number;
+  /** Tracking: extra points of advance after each glyph (may be
+   * negative for tight setting). Applied in layout math, in
+   * per-glyph display/body rendering, and in outline conversion. */
+  letterSpacing: number;
+  /** Extra points of vertical space after each paragraph (a
+   * paragraph ends at a blank line in body text). */
+  paragraphSpacing: number;
 }
 
 /** Text Mode content: flowing display type vs. contained body type. */

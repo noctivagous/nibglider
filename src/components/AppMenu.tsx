@@ -301,6 +301,24 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M5 5 h14 M12 5 v14" />
     </MenuGlyph>
   ),
+  text: (
+    <MenuGlyph>
+      <path d="M5 5 h14 M12 5 v14" />
+      <path d="M8 19 h8" strokeDasharray="2.5 2" />
+    </MenuGlyph>
+  ),
+  path: (
+    <MenuGlyph>
+      <path d="M4 20 C7 10 11 18 14 9 C16 4 19 6 20 4" />
+      <circle cx="4" cy="20" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="20" cy="4" r="1.4" fill="currentColor" stroke="none" />
+    </MenuGlyph>
+  ),
+  stroke: (
+    <MenuGlyph>
+      <path d="M4 18 L20 6" strokeWidth="3.5" />
+    </MenuGlyph>
+  ),
   'repeat-grid': (
     <MenuGlyph>
       <rect x="4" y="4" width="6" height="6" />

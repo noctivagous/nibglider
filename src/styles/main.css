@@ -5748,7 +5748,13 @@ kbd,
 .pruler-track-v {
   position: absolute;
   background: rgba(13, 17, 22, 0.72);
+  /* Tracks accept pointer input: dragging out of a ruler creates a
+     guide (Tier Two, Slice 5); the rest of the overlay falls through. */
+  pointer-events: auto;
 }
+
+.pruler-track-h { cursor: ew-resize; }
+.pruler-track-v { cursor: ns-resize; }
 
 .pruler-track-h {
   left: 22px;

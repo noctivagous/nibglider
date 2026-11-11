@@ -32,6 +32,11 @@ export interface CombinatoricsHost {
   layerChildren(): Item[];
   capture(): Snap;
   commit(label: string, snap: Snap, placed: Item[]): void;
+  /** Slice 8: when the selection pairs a placed image with a shape,
+   * the combine rewrites the image's mask instead of boolean-ing
+   * pixels. Returns true when it handled the operation (including
+   * its own history recording). */
+  imageCombine?(mode: CombineMode, items: Item[]): boolean;
   retain(item: Item): void;
   updateTextContent(): void;
   notify(): void;
@@ -65,6 +70,13 @@ export class CombinatoricsManager {
 
   combineSelection(mode: CombineMode): void {
     const host = this.host;
+    // Booleans against a placed image adjust its mask, never its
+    // pixels (Slice 8 decided rule) — the host routes those pairs.
+    if (host.imageCombine && host.imageCombine(mode, host.selectedItems())) {
+      host.updateTextContent();
+      host.notify();
+      return;
+    }
     if (!this.canCombineSelection()) {
       host.setCombineNote(SELECT_NOTE);
       host.updateTextContent();

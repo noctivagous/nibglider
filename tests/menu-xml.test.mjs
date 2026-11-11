@@ -18,7 +18,10 @@ const WIRED_COMMANDS = [
   'align-left', 'align-center-x', 'align-right', 'align-top', 'align-center-y', 'align-bottom',
   'align-doc-left', 'align-doc-center-x', 'align-doc-right', 'align-doc-top', 'align-doc-center-y', 'align-doc-bottom',
   'distribute-horizontal', 'distribute-vertical', 'flip-horizontal', 'flip-vertical',
-  'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
+  'settings', 'document-settings', 'canvas-size', 'page-setup', 'tutorial', 'reset-settings', 'empty-canvas',
+  'print', 'print-selection', 'text-convert-outlines',
+  'repeat-grid', 'repeat-circle',
+  'tool-line', 'tool-ellipse', 'tool-arc', 'tool-freehand',
   'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-fill-and-stroke',
   'tutorial-adding-text', 'tutorial-grouping-and-ordering', 'tutorial-saving-and-exporting',
   'help-getting-started', 'help-keys-reference',
@@ -43,14 +46,14 @@ const WIRED_COMMANDS = [
   'image-place', 'image-replace', 'image-info',
   'image-scale-half', 'image-scale-double', 'image-fit-view',
   'image-grayscale', 'image-flatten', 'image-convert-png', 'image-convert-jpeg',
+  'image-trace', 'image-crop-frame', 'image-mask-shape', 'image-remove-mask', 'image-remove-crop',
   'image-filters',
 ];
 const PLACEHOLDER_COMMANDS = [
   'page-size', 'length-unit', 'reset-zoom', 'select',
   'export-raster', 'export-vector', 'import',
   'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
-  'image-transform', 'image-raster', 'image-trace',
-  'repeat-grid', 'repeat-circle',
+  'image-transform', 'image-raster', 'draw-tools',
   'cut', 'copy', 'paste', 'select-all',
 ];
 
@@ -133,17 +136,18 @@ test('operations holds repeat and dialogs, modes holds the mode parents; layers 
   assert.deepEqual(byId.operations.items.map((item) => item.commandId), [
     'hdr-operations-1', 'repeat-grid', 'repeat-circle',
     'hdr-operations-2', 'scale-dialog', 'rotate-dialog',
-    'hdr-operations-3', 'align-left', 'align-center-x', 'align-right', 'align-top', 'align-center-y', 'align-bottom',
-    'hdr-operations-4', 'align-doc-left', 'align-doc-center-x', 'align-doc-right', 'align-doc-top', 'align-doc-center-y', 'align-doc-bottom',
-    'hdr-operations-5', 'distribute-horizontal', 'distribute-vertical',
-    'hdr-operations-6', 'flip-horizontal', 'flip-vertical',
+    'hdr-operations-3', 'text-convert-outlines',
+    'hdr-operations-4', 'align-left', 'align-center-x', 'align-right', 'align-top', 'align-center-y', 'align-bottom',
+    'hdr-operations-5', 'align-doc-left', 'align-doc-center-x', 'align-doc-right', 'align-doc-top', 'align-doc-center-y', 'align-doc-bottom',
+    'hdr-operations-6', 'distribute-horizontal', 'distribute-vertical',
+    'hdr-operations-7', 'flip-horizontal', 'flip-vertical',
   ]);
   assert.deepEqual(
     byId.operations.items.filter((item) => item.header).map((item) => item.label),
-    ['Repeat', 'With dialog', 'Align', 'Align to Document', 'Distribute', 'Flip'],
+    ['Repeat', 'With dialog', 'Text', 'Align', 'Align to Document', 'Distribute', 'Flip'],
   );
   assert.deepEqual(byId.modes.items.map((item) => item.commandId), [
-    'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
+    'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode', 'draw-tools',
   ]);
   assert.equal(byId.modes.items.some((item) => item.header), false);
   const opsText = JSON.stringify(byId.operations);
@@ -277,12 +281,13 @@ test('image menu groups place/selection/arrange around transform and raster subm
     'image-filters',
     'hdr-image-1', 'image-place', 'image-replace',
     'hdr-image-2', 'image-info',
+    'hdr-image-3', 'image-crop-frame', 'image-mask-shape', 'image-remove-mask', 'image-remove-crop',
     'image-transform', 'image-raster',
-    'hdr-image-3', 'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
+    'hdr-image-4', 'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
   ]);
   assert.deepEqual(
     image.items.filter((item) => item.header).map((item) => item.label),
-    ['Place', 'Selection', 'Arrange'],
+    ['Place', 'Selection', 'Crop & Mask', 'Arrange'],
   );
   const byId = Object.fromEntries(image.items.map((item) => [item.commandId, item]));
   assert.deepEqual(byId['image-transform'].children.map((child) => child.commandId), [

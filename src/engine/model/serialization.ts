@@ -163,10 +163,12 @@ export function validateDrawable(value: unknown): asserts value is NGDrawable {
     case 'path': validatePath(d.source, 'drawable.source'); return;
     case 'shape': validateShape(d.source, 'drawable.source'); return;
     case 'text': {
-      const t = record(d.source, 'drawable.source', ['content', 'fontFamily', 'fontSize', 'fontWeight', 'italic', 'layout', 'pathId']);
+      const t = record(d.source, 'drawable.source', ['content', 'fontFamily', 'fontSize', 'fontWeight', 'italic', 'layout', 'pathId', 'letterSpacing', 'paragraphSpacing']);
       string(t.content, 'text.content', false); string(t.fontFamily, 'text.fontFamily'); positive(t.fontSize, 'text.fontSize'); string(t.fontWeight, 'text.fontWeight'); bool(t.italic, 'text.italic'); choice(t.layout, 'text.layout', ['display', 'body', 'path']);
       if (t.pathId !== undefined) string(t.pathId, 'text.pathId');
       if (t.layout === 'path') string(t.pathId, 'text.pathId');
+      if (t.letterSpacing !== undefined) number(t.letterSpacing, 'text.letterSpacing');
+      if (t.paragraphSpacing !== undefined) number(t.paragraphSpacing, 'text.paragraphSpacing', 0);
       return;
     }
     case 'image': {

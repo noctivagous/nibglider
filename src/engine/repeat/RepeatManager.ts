@@ -13,6 +13,7 @@ import {
   type RepeatDirection,
 } from '../geometry/RepeatGeometry';
 import type { DrawingSession } from '../drawing/DrawingSession';
+import { copyTransforms, type SymmetryRepeatSpec } from './symmetry';
 
 type Item = any;
 
@@ -208,6 +209,40 @@ export class RepeatManager {
         }
       }
       if (copies.length >= REPEAT_COPY_CAP) break;
+    }
+    return copies;
+  }
+
+  /**
+   * Selection-level symmetry repeat (Slice 9a): clone each source
+   * under every copy transform of the spec. Clones land in the
+   * source's parent (Paper clone semantics); the caller retains
+   * them and records the single history entry.
+   */
+  applySymmetry(spec: SymmetryRepeatSpec, sources: Item[]): Item[] {
+    const transforms = copyTransforms(spec);
+    if (!transforms.length || !sources.length) return [];
+    const scope = this.host.scope();
+    const copies: Item[] = [];
+    outer: for (const source of sources) {
+      for (const t of transforms) {
+        if (copies.length >= REPEAT_COPY_CAP) break outer;
+        let clone: Item = null;
+        try {
+          clone = source.clone();
+        } catch {
+          continue;
+        }
+        if (!clone) continue;
+        try {
+          clone.transform(new scope.Matrix(t.a, t.b, t.c, t.d, t.tx, t.ty));
+        } catch {
+          try { clone.remove(); } catch { /* detached */ }
+          continue;
+        }
+        clone.selected = false;
+        copies.push(clone);
+      }
     }
     return copies;
   }

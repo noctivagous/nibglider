@@ -22,6 +22,8 @@
       <option command="import-pdf" label="PDF" icon="import" />
       <option command="import-raster" label="Raster / Bitmap" icon="import" />
     </item>
+    <item command="print" label="Print…" icon="export" />
+    <item command="print-selection" label="Print Selection…" icon="export" />
     <item command="settings" icon="settings" />
   </menu>
   <menu id="edit" title="Edit">
@@ -47,6 +49,12 @@
     <group label="Selection">
       <item command="image-info" label="Image info" icon="toggle-status" />
     </group>
+    <group label="Crop &amp; Mask">
+      <item command="image-crop-frame" label="Crop to selected shape's frame" icon="image" />
+      <item command="image-mask-shape" label="Mask with selected shape" icon="image" />
+      <item command="image-remove-mask" label="Remove image mask" icon="image" />
+      <item command="image-remove-crop" label="Remove image crop" icon="image" />
+    </group>
     <item command="image-transform" label="Transform" icon="scale-dialog">
       <option command="image-scale-half" label="Scale to 50%" icon="scale-dialog" />
       <option command="image-scale-double" label="Scale to 200%" icon="scale-dialog" />
@@ -58,7 +66,7 @@
       <option command="image-flatten" label="Flatten transparency" icon="image-flatten" />
       <option command="image-convert-png" label="Convert to PNG" icon="export" />
       <option command="image-convert-jpeg" label="Convert to JPEG" icon="export" />
-      <option command="image-trace" label="Trace to vector (future)" icon="image-trace" />
+      <option command="image-trace" label="Trace to vector…" icon="image-trace" />
     </item>
     <group label="Arrange">
       <item command="bring-to-front" label="Bring to front" icon="bring-to-front" />
@@ -70,6 +78,7 @@
   <menu id="document" title="Document and Settings">
     <item command="canvas-size" icon="page-size" />
     <item command="document-settings" label="Document Settings" icon="settings" />
+    <item command="page-setup" label="Page Setup…" icon="page-size" />
     <item command="page-size" icon="page-size" />
     <item command="length-unit" label="Length unit" icon="length-unit">
       <option command="length-unit-pt" label="Points (pt)" />
@@ -86,12 +95,15 @@
   </menu>
   <menu id="operations" title="Operations">
     <group label="Repeat">
-      <item command="repeat-grid" label="Repeat grid (future)" icon="repeat-grid" />
-      <item command="repeat-circle" label="Repeat circle (future)" icon="repeat-circle" />
+      <item command="repeat-grid" label="Repeat Grid — wallpaper (p1)" icon="repeat-grid" />
+      <item command="repeat-circle" label="Repeat Circle — polar" icon="repeat-circle" />
     </group>
     <group label="With dialog">
       <item command="scale-dialog" label="Scale…" icon="scale-dialog" />
       <item command="rotate-dialog" label="Rotate…" icon="rotate-dialog" />
+    </group>
+    <group label="Text">
+      <item command="text-convert-outlines" label="Convert Text to Outlines" icon="text" />
     </group>
     <group label="Align">
       <item command="align-left" label="Left" />
@@ -164,6 +176,12 @@
     <item command="text-mode" label="Text mode" icon="text-mode">
       <option command="text-mode-display" label="Display" icon="textmode-display" />
       <option command="text-mode-body" label="Body" icon="textmode-body" />
+    </item>
+    <item command="draw-tools" label="Draw" icon="path">
+      <option command="tool-line" label="Line (2 clicks)" icon="stroke" />
+      <option command="tool-ellipse" label="Ellipse (3 clicks)" icon="shape-circle" />
+      <option command="tool-arc" label="Arc (3 points)" icon="shape-sector" />
+      <option command="tool-freehand" label="Freehand / Pencil (drag)" icon="path" />
     </item>
   </menu>
   <menu id="layers" title="Layers and Objects">

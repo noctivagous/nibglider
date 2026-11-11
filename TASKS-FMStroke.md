@@ -101,11 +101,13 @@ Defaults are proposed so work can start; flag any you want changed.
   (`PathTool.active`) and the base layout returns on finish/cancel.
   A manual layout switcher (for future Grid Paint / Repeat layouts
   from `TASKS.txt`) is built in Phase 5, not now.
-- [ ] **D2 — Default path mode.** FM keys only make sense in
+- [x] **D2 — Default path mode.** FM keys only make sense in
   `ngComposite`. Default: keep `legacy` as the global default;
   starting a path from the spline layout implies `ngComposite`.
   Changing the global default is a separate, explicit decision.
-- [ ] **D3 — Rounded-corner length semantics.** FM stamps
+  (Followed by Tier Two Slice 9b: bowed/arc keys act only in
+  ngComposite mode; the global default is unchanged.)
+- [x] **D3 — Rounded-corner length semantics.** FM stamps
   `roundedCornerSegmentLength` (default 25, a trim length along each
   leg, halved when a leg is short). NibGlider stores a tangent-arc
   `radius` (default 12) and already caps trims at half-leg. Default:
@@ -339,17 +341,19 @@ Pure, Paper-free; this is where the "not implemented" throw goes away.
   apex repeated 2×/3× for `corneredApex` rounded/hard. Degenerate
   chord (≤ 1pt in FM; use the existing `1e-9` discipline — decide
   and document) emits just the peak.
-- [ ] 3.2 Bowed segment (arc mode, `isArc: true`) and standalone
+- [x] 3.2 Bowed segment (arc mode, `isArc: true`) and standalone
   three-point arc: circle through (start, through, end)
   (FM `makeArcFromThreePoints`), sampled as cubic(s) like the
   existing rounded-corner arc branch. Handle collinear/coincident
   triples by falling back to a line — never NaN, never throw
-  during live preview.
-- [ ] 3.3 Wire both into `expandCompositePoints` as new
+  during live preview. (Tier Two Slice 9b, 2026-11-10: three-point
+  arc + outgoing-'arc' semicircle done via simpleGeometry's
+  arcThroughPoints/arcSegments; collinear falls back to lines.)
+- [x] 3.3 Wire both into `expandCompositePoints` as new
   `CenterlineCommand` handling without breaking the existing
   run-splitting (line segments, corner commands, periodic seam).
   Bowed/arc segments are segment-level: they replace the spline run
-  between their two vertices only.
+  between their two vertices only. (Tier Two Slice 9b.)
 - [ ] 3.4 Closed paths: bow/arc on the seam segment (last → first)
   works; a bowed segment into a rounded corner still gets its
   entry/exit trims.
@@ -404,6 +408,33 @@ Files: [PathDrawingSession.ts](/Users/jpratt/Developer/nibglider/src/engine/draw
 
 **Gate:** a scripted key sequence builds a semantic path using
 every FM key, and `snapshot()` matches the expected point list.
+
+**Tier Two Slice 9b completion note (2026-11-10).** The core of
+Phases 3–4 landed, with deliberate simplifications vs. this plan:
+`expandCompositePoints` no longer throws — bowed segments resolve
+to an exact quadratic-peak cubic (peak at the chord midpoint,
+`bowOffset` absolute pt or a 25%-of-chord default, `bowFacing`
+left/right), three-point arcs resolve through
+`arcThroughPoints`/`arcSegments` with a collinear line fallback,
+and an `arc` outgoing segment resolves as the semicircle on its
+chord. The drawing session deposits both: `B` / `Shift+B` stamp a
+bowed point (facing A/B) and `.` runs the arc state machine under
+the app's stamp-previous convention (pressing `.` at the end point
+arcs through the previous point; any next point key commits the
+end; finishing mid-arc completes the arc at the final point in
+`snapshot()`, and ending exactly on the through point abandons it,
+mirroring FM's unfinished-arc fallback). Engine `*KC` entry
+points, PathTool methods, host interface, keymap commands/caps,
+and tests (`tests/fmstroke-completion.test.mjs`) are in.
+NOT done: Phase 1's swappable keyboard-layout registry (the new
+keys are ordinary KEY_COMMANDS entries — the layout system did
+not fall out of this slice), Phase 2's 9-field `NGBowedParams`
+(the model's existing `bowOffset`/`bowFacing` carry the bow;
+peak-location/multiplier/dual-peak parameters remain future),
+the hard/rounded bowed key pair (one `bowedLine` kind, repeats=2),
+3.4's seam-crossing arc triples (they fall back to ordinary
+vertices; bowed seam segments do work), 4.4's switch-rounding
+key, and 4.5's erase-last key.
 
 ## Phase 5 — Wiring: dispatch, board, status, settings
 

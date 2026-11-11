@@ -119,6 +119,43 @@ export class PathTool {
   roundedKey(): void { this.key('roundedCorner', true); }
   splineKey(): void { this.key('bSpline', false); }
 
+  /** B / Shift+B (TASKS-FMStroke D4): bowed-line point, composite
+   * mode only (D2: legacy mode keeps its existing keys). */
+  bowedKey(facing: 'left' | 'right'): void {
+    const host = this.host;
+    if (!host || host.pathDrawingMode() !== 'ngComposite') return;
+    const session = host.session;
+    if (!session.mousePt || session.isDrawingShape || session.isDrawingQuad) return;
+    const fresh = !this.composite;
+    if (fresh) this.point('bowedLine', session.mousePt);
+    else this.composite?.commitBowed(session.mousePt, facing);
+    if (fresh) this.composite?.stampBowed(facing);
+    this.request();
+    session.path = this.preview;
+    session.isDrawingPath = true;
+    host.updateTextContent();
+    host.notify();
+  }
+
+  /** Period key: three-point arc. First press commits the through
+   * point; the next point key commits the end. Composite only. */
+  arcKey(): void {
+    const host = this.host;
+    if (!host || host.pathDrawingMode() !== 'ngComposite') return;
+    const session = host.session;
+    if (!session.mousePt || session.isDrawingShape || session.isDrawingQuad) return;
+    if (!this.composite) {
+      this.point('bSpline', session.mousePt);
+    } else {
+      this.composite.commitArcThrough(session.mousePt);
+      this.request();
+    }
+    session.path = this.preview;
+    session.isDrawingPath = true;
+    host.updateTextContent();
+    host.notify();
+  }
+
   /** Stamp the composite session and record it. Returns false when this is not the active composite tool. */
   stampComposite(closed: boolean): boolean {
     if (!this.active || !this.host) return false;

@@ -71,14 +71,14 @@ test('parse rejects junk, newer versions, and invalid drawables', () => {
   assert.equal(noScene.ok, false);
 });
 
-test('migration: a v0 draft (no version, no model sections) opens as v1', () => {
+test('migration: a v0 draft (no version, no model sections) opens at the current version', () => {
   const { scope, engine } = makeEngine();
   depositCircle(scope, engine);
   const scene = engine.exportScene();
   const v0 = JSON.stringify({ format: NATIVE_FORMAT, name: 'Draft', scene });
   const parsed = parseNativeDocument(v0);
   assert.equal(parsed.ok, true);
-  assert.equal(parsed.doc.version, 1);
+  assert.equal(parsed.doc.version, NATIVE_VERSION);
   assert.equal(parsed.doc.name, 'Draft');
   assert.deepEqual(parsed.doc.drawables, []);
   assert.ok(parsed.doc.layers.length >= 1, 'layers recovered from the scene');

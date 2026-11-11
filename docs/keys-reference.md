@@ -26,6 +26,9 @@ The mouse steers the cursor. Keys do the clicking: a key press places a point, s
 | F | `sharp-point` | Sharp path point |
 | G | `spline-point` | Spline path point |
 | H | `rounded-point` | Rounded composite path corner |
+| B | `bowed-point` | Bowed line point, facing A (composite paths) |
+| ⇧B | `bowed-point-flip` | Bowed line point, facing B (composite paths) |
+| . | `arc-three-point` | Arc by three points: press at the end point to arc through the previous point (composite paths) |
 | P | `type-text` | Type text at cursor |
 | J | `tension-down` | Decrease spline tension |
 | K | `tension-up` | Increase spline tension |
