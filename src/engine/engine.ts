@@ -3763,7 +3763,7 @@ export class NibGliderEngine {
   }
 
   // --- Native document files -------------------------------------------
-  // The .nibglider.json envelope (document/NativeDocument.ts): the NG
+  // The .nibglider envelope (document/NativeDocument.ts): the NG
   // model sections (drawables, retained paths, layers, page, view)
   // ride on the scene payload that carries the live geometry.
 

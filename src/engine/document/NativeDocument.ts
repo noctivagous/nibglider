@@ -1,6 +1,6 @@
 // The native NibGlider document file: the NG model on disk.
 //
-// A .nibglider.json file is a JSON envelope carrying everything a
+// A .nibglider file is a JSON envelope carrying everything a
 // document is: its catalog drawables (validated with the model
 // serialization validators), its retained Bézier path sources, its
 // layers, page settings and view — plus the nibglider-scene payload
@@ -35,7 +35,7 @@ import { readPrintSetup, type PrintSetup } from './printSetup';
 
 export const NATIVE_FORMAT = 'nibglider-document';
 export const NATIVE_VERSION = 2;
-export const NATIVE_FILE_EXTENSION = '.nibglider.json';
+export const NATIVE_FILE_EXTENSION = '.nibglider';
 
 export interface NativeLayerRecord {
   id: string;

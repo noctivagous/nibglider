@@ -1,4 +1,4 @@
-// Native document files (Slice 3): the .nibglider.json envelope —
+// Native document files (Slice 3): the .nibglider envelope —
 // build/parse/migrate/validate, engine round trips (layers,
 // retained Bézier sources, catalog model), legacy scene bodies stay
 // openable, gallery bodies wrap for export, and the SVG round trip
@@ -49,8 +49,8 @@ test('native envelope: build, serialize, parse round trip', () => {
   const parsed = parseNativeDocument(text);
   assert.equal(parsed.ok, true);
   assert.deepEqual(parsed.doc, doc);
-  assert.equal(nativeFileName('My Poster'), 'My Poster.nibglider.json');
-  assert.equal(nativeFileName('a/b:c'), 'a-b-c.nibglider.json');
+  assert.equal(nativeFileName('My Poster'), 'My Poster.nibglider');
+  assert.equal(nativeFileName('a/b:c'), 'a-b-c.nibglider');
 });
 
 test('parse rejects junk, newer versions, and invalid drawables', () => {

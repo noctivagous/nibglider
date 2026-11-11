@@ -4977,7 +4977,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       <input
         ref={openFileInputRef}
         type="file"
-        accept=".json,.nibglider.json,application/json"
+        accept=".nibglider,.nibglider.json,.json,application/json"
         hidden
         aria-hidden="true"
         tabIndex={-1}
