@@ -89,6 +89,10 @@ export interface KeyboardHost {
   roundedPointKC(): void;
   bowedPointKC(facing: 'left' | 'right'): void;
   arcThreePointKC(): void;
+  switchRoundingKC(): void;
+  eraseLastPointKC(): void;
+  /** Active keyboard layout id (layout registry, Slice 14). */
+  keyboardLayoutId(): string;
   lineKC(): void;
   ellipseKC(): void;
   arcKC(): void;
@@ -278,6 +282,7 @@ export class KeyboardController {
       liveAdjustApplies: host.liveAdjustApplies(),
       isCompositePath: host.compositePathEnabled(),
       isTransformMode: host.isTransformMode(),
+      activeLayoutId: host.keyboardLayoutId(),
     };
   }
 
@@ -405,6 +410,12 @@ export class KeyboardController {
         return;
       case 'arc-three-point':
         host.arcThreePointKC();
+        return;
+      case 'switch-rounding':
+        host.switchRoundingKC();
+        return;
+      case 'erase-last-point':
+        host.eraseLastPointKC();
         return;
       case 'tool-line':
         host.lineKC();

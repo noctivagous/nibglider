@@ -140,6 +140,10 @@ import {
 import { EngineContext } from './EngineContext';
 import { createDrawingHost, createKeyboardHost, createPointerHost } from './hosts';
 import { modifiersOf } from './input/ModifierStateTracker';
+import { fbm1 } from './geometry/noise';
+import { fitPolylineWithError, reducePolyline } from './geometry/polylineFit';
+import { douglasPeucker, douglasPeuckerClosed } from './geometry/douglasPeucker';
+import { concaveHull } from './geometry/concaveHull';
 import { PathTool } from './drawing/PathTool';
 import { CircleTool } from './drawing/CircleTool';
 import { RectangleTool } from './drawing/RectangleTool';
@@ -217,12 +221,20 @@ import {
   basisForWallpaper,
   copyTransforms,
   FRIEZE_GROUPS,
+  repeatOutcome,
   WALLPAPER_GROUPS,
+  type Affine,
   type FriezeGroupId,
   type RepeatFamilyName,
   type SymmetryRepeatSpec,
   type WallpaperGroupId,
 } from './repeat/symmetry';
+import {
+  isReplicationRecord,
+  type ReplicationRecord,
+} from './repeat/replication';
+import type { Progression } from './repeat/symmetry';
+import type { LiveFrame } from './repeat/RepeatManager';
 import type { RepeatAnchor, RepeatDirection } from './geometry/RepeatGeometry';
 import { clampRepeatCount, isRepeatAnchor, isRepeatDirection } from './geometry/RepeatGeometry';
 import { LayerManager } from './document/LayerManager';
@@ -529,6 +541,29 @@ export class NibGliderEngine {
   repeatFriezeGroup: FriezeGroupId = 'p11g';
   repeatSymmetryCount = 6;
   repeatPolarReflect = false;
+  // Live symmetry (Slice 10, revised): the Repeat panel's
+  // descriptor can be armed to preview and deposit while drawing.
+  liveSymmetryArmed = false;
+  repeatPolarMode: 'division' | 'degrees' = 'division';
+  repeatPolarStepDeg = 50;
+  repeatMotifOffsetDeg = 0;
+  repeatStationMode: 'division' | 'spacing' | 'progression' = 'division';
+  repeatAlongSpacing = 40;
+  repeatAlongOrientationDeg = 0;
+  /** Name of the Progressions outcome the polar fields were last
+   * filled from ('whorl' | 'phyllotaxis'); display only — editing
+   * any underlying field clears it (the configuration is custom). */
+  repeatOutcomeName: string | null = null;
+  polarRadiusProgression: Progression | null = null;
+  polarScaleProgression: Progression | null = null;
+  alongGapProgression: Progression | null = null;
+  /** Reference path for live path-relative families. */
+  private liveGuide: { points: Vec2[]; closed: boolean } | null = null;
+  private pendingLiveSpec: SymmetryRepeatSpec | null = null;
+  // Path-following repeat parameter (Slice 10).
+  repeatAlongAlign = true;
+  /** Live symmetry transforms captured for a composite deposit. */
+  private pendingLiveTransforms: Affine[] | null = null;
   private repeatManager!: RepeatManager;
 
   // --- Snapping flags ---
@@ -1046,7 +1081,9 @@ export class NibGliderEngine {
         rectKeys: this.repeatRectKeys,
         circleKeys: this.repeatCircleKeys,
         paths: this.repeatPaths,
+        symmetryArmed: this.liveSymmetryArmed,
       }),
+      liveDescriptor: (frame) => this.liveDescriptorForFrame(frame),
       addToActive: (item) => this.layers.addToActive(item),
       place: (item) => this.placeDeposited(item, { front: true }),
       setRows: (rows) => this.setRepeatRows(rows),
@@ -4374,51 +4411,170 @@ export class NibGliderEngine {
     this.notify();
   }
 
+  /** Flatten a path item to a world-space polyline for the
+   * path-following repeat families (longest subpath wins). */
+  private sampleGuidePath(item: AnyItem): { points: Array<{ x: number; y: number }>; closed: boolean } | null {
+    const paths: AnyItem[] = [];
+    const collect = (it: AnyItem): void => {
+      if (!it) return;
+      if (it.className === 'Path') paths.push(it);
+      for (const child of it.children ?? []) collect(child);
+    };
+    collect(item);
+    let best: AnyItem = null;
+    let bestLength = 0;
+    for (const path of paths) {
+      let length = 0;
+      try { length = path.length; } catch { continue; }
+      if (length > bestLength) { best = path; bestLength = length; }
+    }
+    if (!best || !(bestLength > 0)) return null;
+    const count = Math.max(24, Math.min(400, Math.ceil(bestLength / 3)));
+    const points: Array<{ x: number; y: number }> = [];
+    for (let i = 0; i < count; i++) {
+      try {
+        const local = best.getPointAt((bestLength * i) / count);
+        const world = best.localToGlobal(local);
+        points.push({ x: world.x, y: world.y });
+      } catch { return null; }
+    }
+    return { points, closed: !!best.closed };
+  }
+
   /** The symmetry spec implied by the panel state and the current
    * selection's bounds, or null without a usable selection. */
   repeatSpecForSelection(): SymmetryRepeatSpec | null {
+    return this.symmetrySelection()?.spec ?? null;
+  }
+
+  /** Build the descriptor for a family from the panel state,
+   * anchored on a frame (a selection's bounds, a live draw's
+   * bounds, or a stored source's bounds). The single construction
+   * path behind apply, live preview/deposit, and regenerate, so
+   * all three agree. `guide` supplies the reference path for the
+   * path-relative families; null there means no descriptor. */
+  private buildRepeatSpec(
+    family: RepeatFamilyName,
+    anchor: { origin: { x: number; y: number }; center: { x: number; y: number }; width: number; height: number },
+    pivot: { x: number; y: number },
+    guide: { points: Array<{ x: number; y: number }>; closed: boolean } | null,
+  ): SymmetryRepeatSpec | null {
+    switch (family) {
+      case 'wallpaper': {
+        const basis = basisForWallpaper(this.repeatWallpaperGroup, anchor.width, anchor.height);
+        return {
+          family: 'wallpaper',
+          group: this.repeatWallpaperGroup,
+          origin: { ...anchor.origin },
+          basisA: basis.basisA,
+          basisB: basis.basisB,
+          cols: this.repeatCols,
+          rows: this.repeatRows,
+          motifOffsetDeg: this.repeatMotifOffsetDeg,
+        };
+      }
+      case 'frieze':
+        return {
+          family: 'frieze',
+          group: this.repeatFriezeGroup,
+          origin: { ...anchor.origin },
+          step: { x: anchor.width, y: 0 },
+          count: this.repeatSymmetryCount,
+          motifOffsetDeg: this.repeatMotifOffsetDeg,
+        };
+      case 'polar':
+        return {
+          family: 'polar',
+          center: { ...anchor.center },
+          count: this.repeatSymmetryCount,
+          reflect: this.repeatPolarReflect,
+          mode: this.repeatPolarMode,
+          stepDeg: this.repeatPolarStepDeg,
+          motifOffsetDeg: this.repeatMotifOffsetDeg,
+          progressions: this.progressionList([this.polarRadiusProgression, this.polarScaleProgression]),
+          outcome: this.repeatOutcomeName ?? undefined,
+        };
+      case 'alongStroke': {
+        if (!guide) return null;
+        return {
+          family: 'alongStroke',
+          guide: guide.points.map((p) => ({ ...p })),
+          closed: guide.closed,
+          stationMode: this.repeatStationMode,
+          count: this.repeatSymmetryCount,
+          spacing: this.repeatAlongSpacing,
+          pivot: { ...pivot },
+          alignToTangent: this.repeatAlongAlign,
+          orientationOffsetDeg: this.repeatAlongOrientationDeg,
+          progressions: this.progressionList([this.alongGapProgression]),
+        };
+      }
+      case 'normals': {
+        if (!guide) return null;
+        return {
+          family: 'normals',
+          guide: guide.points.map((p) => ({ ...p })),
+          closed: guide.closed,
+          stations: this.repeatSymmetryCount,
+          pivot: { ...pivot },
+        };
+      }
+    }
+  }
+
+  private progressionList(entries: Array<Progression | null>): Progression[] | undefined {
+    const list = entries.filter((entry): entry is Progression => !!entry).map((entry) => ({ ...entry }));
+    return list.length > 0 ? list : undefined;
+  }
+
+  /** Spec + the items it copies. For the path-following families
+   * the guide is the last selected path; the other items repeat
+   * along/across it (a lone path repeats along/across itself). */
+  private symmetrySelection(): { spec: SymmetryRepeatSpec; sources: AnyItem[] } | null {
     const sources = this.selectedItems.filter((item) => item && !this.isNonContentItem(item));
     if (sources.length === 0) return null;
-    const first = sources[0];
+    let guide: { points: Array<{ x: number; y: number }>; closed: boolean } | null = null;
+    let useSources = sources;
+    if (this.repeatFamily === 'alongStroke' || this.repeatFamily === 'normals') {
+      const guides = new Map<AnyItem, { points: Array<{ x: number; y: number }>; closed: boolean }>();
+      for (const item of sources) {
+        const sampled = this.sampleGuidePath(item);
+        if (sampled) guides.set(item, sampled);
+      }
+      const guideItem = [...sources].reverse().find((item) => guides.has(item));
+      if (!guideItem) return null;
+      guide = guides.get(guideItem)!;
+      const rest = sources.filter((item) => item !== guideItem);
+      useSources = rest.length > 0 ? rest : [guideItem];
+    }
+    const first = useSources[0];
     const b = first.bounds;
     if (!b || !(b.width > 0) || !(b.height > 0)) return null;
-    if (this.repeatFamily === 'polar') {
-      const center = this.selection.collectiveCenter(sources);
-      return {
-        family: 'polar',
-        center: { x: center.x, y: center.y },
-        count: this.repeatSymmetryCount,
-        reflect: this.repeatPolarReflect,
-      };
-    }
-    if (this.repeatFamily === 'frieze') {
-      return {
-        family: 'frieze',
-        group: this.repeatFriezeGroup,
+    const center = this.selection.collectiveCenter(useSources);
+    const spec = this.buildRepeatSpec(
+      this.repeatFamily,
+      {
         origin: { x: b.x, y: b.y },
-        step: { x: b.width, y: 0 },
-        count: this.repeatSymmetryCount,
-      };
-    }
-    const basis = basisForWallpaper(this.repeatWallpaperGroup, b.width, b.height);
-    return {
-      family: 'wallpaper',
-      group: this.repeatWallpaperGroup,
-      origin: { x: b.x, y: b.y },
-      basisA: basis.basisA,
-      basisB: basis.basisB,
-      cols: this.repeatCols,
-      rows: this.repeatRows,
-    };
+        center: { x: center.x, y: center.y },
+        width: b.width,
+        height: b.height,
+      },
+      { x: b.center.x, y: b.center.y },
+      guide,
+    );
+    if (!spec) return null;
+    return { spec, sources: useSources };
   }
 
   /** Apply a symmetry repeat to the selected items: transformed
    * clones through the scene/history machinery, ONE undo entry. */
   applySymmetryRepeat(spec?: SymmetryRepeatSpec): number {
     if (this.isLiveDrawing) return 0;
-    const useSpec = spec ?? this.repeatSpecForSelection();
+    const built = spec ? null : this.symmetrySelection();
+    const useSpec = spec ?? built?.spec;
     if (!useSpec) return 0;
-    const sources = this.selectedItems.filter((item) => item && !this.isNonContentItem(item));
+    const sources = built?.sources
+      ?? this.selectedItems.filter((item) => item && !this.isNonContentItem(item));
     if (sources.length === 0) return 0;
     const snap = this.captureDeposit();
     const copies = this.repeatManager.applySymmetry(useSpec, sources);
@@ -4428,6 +4584,9 @@ export class NibGliderEngine {
       try { this.scene.retainClone(source, copies[i], (item) => this.shapePartOf(item)); } catch { /* unretained sources clone plainly */ }
     }
     if (copies.length === 0) return 0;
+    // Applied deposits store the descriptor on the source too
+    // (Slice 10, revised point 4): Regenerate replays it later.
+    this.tagReplication(sources, copies, perSource, useSpec);
     this.recordSceneCommand('Repeat', snap.before, snap.selected, copies, snap.retained);
     this.updateTextContent();
     this.notify();
@@ -4454,6 +4613,381 @@ export class NibGliderEngine {
     const count = this.applySymmetryRepeat();
     this.repeatFamily = savedFamily;
     return count;
+  }
+
+  // --- Live symmetry + retained descriptors (Slice 10, revised) --
+  // One Repeat system: the panel's family + parameters define a
+  // symmetry descriptor (buildRepeatSpec). Armed, that descriptor
+  // previews live during drawing and deposits source + copies in
+  // one undo entry; applied, it deposits the same way. Every
+  // deposit stores the descriptor on the source as its retained
+  // replication record (native model v3); Regenerate replays it —
+  // or the panel's current parameters when they target the same
+  // family — replacing the old copies; Expand detaches it.
+
+  setLiveSymmetryArmed(v: boolean): void {
+    if (v === this.liveSymmetryArmed) return;
+    this.liveSymmetryArmed = v;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatPolarMode(v: 'division' | 'degrees'): void {
+    if (v !== 'division' && v !== 'degrees') return;
+    if (v === this.repeatPolarMode) return;
+    this.repeatPolarMode = v;
+    this.repeatOutcomeName = null;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatPolarStepDeg(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0.1, Math.min(360, v));
+    if (next === this.repeatPolarStepDeg) return;
+    this.repeatPolarStepDeg = next;
+    this.repeatOutcomeName = null;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatMotifOffsetDeg(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(-360, Math.min(360, v));
+    if (next === this.repeatMotifOffsetDeg) return;
+    this.repeatMotifOffsetDeg = next;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatStationMode(v: 'division' | 'spacing' | 'progression'): void {
+    if (v !== 'division' && v !== 'spacing' && v !== 'progression') return;
+    if (v === this.repeatStationMode) return;
+    this.repeatStationMode = v;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatAlongSpacing(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(1, Math.min(2000, v));
+    if (next === this.repeatAlongSpacing) return;
+    this.repeatAlongSpacing = next;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatAlongOrientationDeg(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(-360, Math.min(360, v));
+    if (next === this.repeatAlongOrientationDeg) return;
+    this.repeatAlongOrientationDeg = next;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setRepeatAlongAlign(v: boolean): void {
+    this.repeatAlongAlign = v;
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** Store a progression for a target, or clear it with null.
+   * Values are validated, never repaired silently beyond finiteness. */
+  private setProgression(
+    target: 'radius' | 'scale' | 'gap',
+    value: { kind: 'arithmetic' | 'geometric'; start: number; step: number } | null,
+  ): void {
+    const next: Progression | null = value && (value.kind === 'arithmetic' || value.kind === 'geometric')
+      && Number.isFinite(value.start) && Number.isFinite(value.step)
+      ? { target, kind: value.kind, start: value.start, step: value.step }
+      : null;
+    if (target === 'radius') this.polarRadiusProgression = next;
+    else if (target === 'scale') this.polarScaleProgression = next;
+    else this.alongGapProgression = next;
+    if (target !== 'gap') this.repeatOutcomeName = null;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setPolarRadiusProgression(v: { kind: 'arithmetic' | 'geometric'; start: number; step: number } | null): void {
+    this.setProgression('radius', v);
+  }
+
+  setPolarScaleProgression(v: { kind: 'arithmetic' | 'geometric'; start: number; step: number } | null): void {
+    this.setProgression('scale', v);
+  }
+
+  setAlongGapProgression(v: { kind: 'arithmetic' | 'geometric'; start: number; step: number } | null): void {
+    this.setProgression('gap', v);
+    if (v) this.repeatStationMode = 'progression';
+  }
+
+  /** Fill the polar + progression fields from a named outcome
+   * (Whorl / Phyllotaxis). The fields stay the source of truth;
+   * the outcome name is kept for display until a field is edited. */
+  applyRepeatOutcome(id: string): void {
+    const outcome = repeatOutcome(id);
+    if (!outcome) return;
+    this.repeatFamily = 'polar';
+    this.repeatPolarMode = 'degrees';
+    this.repeatPolarStepDeg = outcome.stepDeg;
+    this.repeatSymmetryCount = outcome.count;
+    this.polarRadiusProgression = { target: 'radius', ...outcome.growth };
+    this.polarScaleProgression = outcome.scale ? { target: 'scale', ...outcome.scale } : null;
+    this.repeatOutcomeName = outcome.id;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** RepeatManager host: the armed descriptor around the live
+   * draw's frame. For the path-relative families the reference
+   * path is the chosen (or auto-captured selected) guide; without
+   * one there is no live preview yet. */
+  liveDescriptorForFrame(frame: LiveFrame): SymmetryRepeatSpec | null {
+    let guide: { points: Array<{ x: number; y: number }>; closed: boolean } | null = null;
+    if (this.repeatFamily === 'alongStroke' || this.repeatFamily === 'normals') {
+      if (!this.liveGuide) this.captureLiveGuideFromSelection(false);
+      guide = this.liveGuide;
+      if (!guide) return null;
+    }
+    return this.buildRepeatSpec(this.repeatFamily, frame, frame.center, guide);
+  }
+
+  /** Choose the reference path for live path-relative repeats from
+   * the current selection (the last selected path). */
+  captureLiveGuideFromSelection(announce = true): boolean {
+    const candidate = [...this.selectedItems].reverse()
+      .find((item) => item && !this.isNonContentItem(item) && !this.isGuideItem(item));
+    if (!candidate) return false;
+    const sampled = this.sampleGuidePath(candidate);
+    if (!sampled) return false;
+    this.liveGuide = sampled;
+    if (announce) {
+      this.repeatManager.refreshPreview();
+      this.updateTextContent();
+      this.notify();
+    }
+    return true;
+  }
+
+  liveGuidePathChosen(): boolean {
+    return !!this.liveGuide;
+  }
+
+  clearLiveGuidePath(): void {
+    this.liveGuide = null;
+    this.repeatManager.refreshPreview();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** The key linking a replication source to its copies: its
+   * drawable id when it has one, else a per-item key minted on the
+   * source the first time it is tagged. */
+  private replicationKeyOf(item: AnyItem): string {
+    const existing = item?.data?.drawableId ?? item?.data?.replicationKey;
+    if (typeof existing === 'string' && existing) return existing;
+    const key = crypto.randomUUID();
+    if (item?.data) item.data.replicationKey = key;
+    return key;
+  }
+
+  /** Tag a deposit (live or applied): the source keeps the
+   * retained record — the full symmetry descriptor — and each copy
+   * points back at the source's key. The record also mirrors onto
+   * the source's catalog drawable when it has one, so it is part of
+   * the native document model, not only scene data. Copy→source
+   * attribution slices the copies per source; at the shared
+   * 200-copy cap with several sources that attribution can drift
+   * for the last source, which only affects which copies a
+   * regenerate of that source sweeps. */
+  private tagReplication(
+    sources: AnyItem[], copies: AnyItem[], transformsPerSource: number,
+    spec: SymmetryRepeatSpec | null,
+  ): void {
+    if (!spec || copies.length === 0 || transformsPerSource <= 0) return;
+    const record: ReplicationRecord = { version: 2, spec: structuredClone(spec) };
+    sources.forEach((source, i) => {
+      if (!source?.data) return;
+      const key = this.replicationKeyOf(source);
+      source.data.replication = structuredClone(record);
+      const mine = copies.slice(i * transformsPerSource, (i + 1) * transformsPerSource);
+      for (const copy of mine) {
+        if (copy?.data) copy.data.replicationOf = key;
+      }
+      try {
+        const id = this.scene.drawableIdOf(source);
+        const drawable = id ? this.scene.drawableOf(id) : null;
+        if (id && drawable && drawable.replication !== record) {
+          this.scene.bindDrawable({ ...drawable, replication: structuredClone(record) }, source);
+        }
+      } catch { /* Unbound sources keep the record in scene data. */ }
+    });
+  }
+
+  /** The replication record carried by the current selection (via a
+   * source or one of its copies), or null. For the Repeat panel. */
+  selectionReplication(): ReplicationRecord | null {
+    const found = this.replicationSourcesForSelection();
+    return found.length > 0 ? found[0].record : null;
+  }
+
+  /** Resolve selected sources (items carrying a record, plus the
+   * sources of any selected copies) for regenerate/expand. */
+  private replicationSourcesForSelection(): Array<{ source: AnyItem; key: string; record: ReplicationRecord }> {
+    const out: Array<{ source: AnyItem; key: string; record: ReplicationRecord }> = [];
+    const seen = new Set<string>();
+    const content = this.contentItems();
+    for (const item of this.selectedItems) {
+      if (!item) continue;
+      if (isReplicationRecord(item.data?.replication)) {
+        const key = this.replicationKeyOf(item);
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push({ source: item, key, record: item.data.replication });
+        }
+        continue;
+      }
+      const of = item.data?.replicationOf;
+      if (typeof of === 'string') {
+        const source = content.find((candidate) => candidate !== item
+          && isReplicationRecord(candidate.data?.replication)
+          && this.replicationKeyOf(candidate) === of);
+        if (source && !seen.has(of)) {
+          seen.add(of);
+          out.push({ source, key: of, record: source.data.replication });
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Regenerate the copies of each selected replication source from
+   * its stored descriptor. When the Repeat panel is set to the
+   * record's family, the panel's current parameters rebuild the
+   * descriptor around the source (that is how parameters are
+   * adjusted — progressions and outcomes included); otherwise the
+   * stored descriptor replays as-is. For path-relative families the
+   * stored guide path is reused. Old copies are removed and the
+   * stored record is updated; everything lands as ONE undo entry,
+   * so copies are replaced, never duplicated.
+   */
+  regenerateReplication(): number {
+    if (this.isLiveDrawing) return 0;
+    const targets = this.replicationSourcesForSelection();
+    if (targets.length === 0) return 0;
+    const snap = this.captureDeposit();
+    const content = this.contentItems();
+    let made = 0;
+    const placedAll: AnyItem[] = [];
+    for (const { source, key, record } of targets) {
+      for (const item of content) {
+        if (item !== source && item.data?.replicationOf === key) {
+          try { item.remove(); } catch { /* already gone */ }
+        }
+      }
+      let spec: SymmetryRepeatSpec = record.spec;
+      const bounds = source.bounds;
+      if (!bounds) continue;
+      if (this.repeatFamily === record.spec.family) {
+        const stored = record.spec;
+        const guide = stored.family === 'alongStroke' || stored.family === 'normals'
+          ? { points: stored.guide, closed: stored.closed }
+          : this.liveGuide;
+        const built = this.buildRepeatSpec(
+          record.spec.family,
+          {
+            origin: { x: bounds.x, y: bounds.y },
+            center: { x: bounds.center.x, y: bounds.center.y },
+            width: Math.max(1, bounds.width),
+            height: Math.max(1, bounds.height),
+          },
+          { x: bounds.center.x, y: bounds.center.y },
+          guide,
+        );
+        if (built) spec = built;
+      }
+      const copies = this.repeatManager.applySymmetry(spec, [source]);
+      for (const copy of copies) {
+        try { this.scene.retainClone(source, copy, (item) => this.shapePartOf(item)); } catch { /* plain copy */ }
+        if (copy?.data) copy.data.replicationOf = key;
+      }
+      const next: ReplicationRecord = { version: 2, spec: structuredClone(spec) };
+      if (source.data) source.data.replication = structuredClone(next);
+      try {
+        const id = this.scene.drawableIdOf(source);
+        const drawable = id ? this.scene.drawableOf(id) : null;
+        if (id && drawable) this.scene.bindDrawable({ ...drawable, replication: structuredClone(next) }, source);
+      } catch { /* Scene data still carries the record. */ }
+      made += copies.length;
+      placedAll.push(...copies);
+    }
+    this.scene.pruneRecords();
+    if (made > 0) this.recordSceneCommand('Regenerate repeat', snap.before, snap.selected, placedAll, snap.retained);
+    this.updateTextContent();
+    this.notify();
+    return made;
+  }
+
+  /**
+   * Expand replication: copies become ordinary items and the
+   * source's record is detached. This changes only item data (no
+   * items are added or removed), so it is not a history entry.
+   */
+  expandReplication(): number {
+    const targets = this.replicationSourcesForSelection();
+    if (targets.length === 0) return 0;
+    const content = this.contentItems();
+    for (const { source, key } of targets) {
+      if (source.data) {
+        delete source.data.replication;
+        delete source.data.replicationKey;
+      }
+      for (const item of content) {
+        if (item.data?.replicationOf === key) delete item.data.replicationOf;
+      }
+      try {
+        const id = this.scene.drawableIdOf(source);
+        const drawable = id ? this.scene.drawableOf(id) : null;
+        if (id && drawable?.replication) {
+          const cleared = { ...drawable };
+          delete cleared.replication;
+          this.scene.bindDrawable(cleared, source);
+        }
+      } catch { /* Scene data is already cleared. */ }
+    }
+    this.updateTextContent();
+    this.notify();
+    return targets.length;
+  }
+
+  /** DrawingHost hook: capture the armed live symmetry transforms
+   * (and their descriptor) before a composite finish clears the
+   * session. */
+  captureLiveRepeatTransforms(): void {
+    this.pendingLiveTransforms = this.repeatManager.beginDepositTransforms();
+    this.pendingLiveSpec = this.repeatManager.takeDepositSpec();
+  }
+
+  /** DrawingHost hook: place the live symmetry copies for a
+   * composite deposit item and tag the descriptor record. */
+  liveRepeatCopiesFor(item: AnyItem): AnyItem[] {
+    const transforms = this.pendingLiveTransforms ?? this.repeatManager.beginDepositTransforms();
+    const spec = this.pendingLiveSpec ?? this.repeatManager.takeDepositSpec();
+    this.pendingLiveTransforms = null;
+    this.pendingLiveSpec = null;
+    if (!transforms || transforms.length === 0 || !item) return [];
+    const copies = this.repeatManager.finishDepositTransformed([item], transforms);
+    this.tagReplication([item], copies, transforms.length, spec);
+    return copies;
   }
 
   /** Rebuild repeat preview clones for the live draw; safe to call anytime. */
@@ -5838,6 +6372,53 @@ export class NibGliderEngine {
     this.compositePathTool.setCornerRadius(radius);
     this.updateTextContent();
     this.notify();
+  }
+
+  /** Bow parameters stamped onto bowed points at deposit (Slice 14,
+   * TASKS-FMStroke Phase 5.3). Stored through the settings registry. */
+  get bowAmplitude(): number { return this.compositePathTool.bowParams.amplitude; }
+  setBowAmplitude(value: number): void {
+    if (!Number.isFinite(value) || value < 0) return;
+    this.compositePathTool.setBowParams({ amplitude: value });
+    this.updateTextContent();
+    this.notify();
+  }
+  get bowAmplitudeIsPercent(): boolean { return this.compositePathTool.bowParams.amplitudeIsPercent; }
+  setBowAmplitudeIsPercent(on: boolean): void {
+    this.compositePathTool.setBowParams({ amplitudeIsPercent: !!on });
+    this.updateTextContent();
+    this.notify();
+  }
+  get bowPeakLocation(): number { return this.compositePathTool.bowParams.peakLocation; }
+  setBowPeakLocation(value: number): void {
+    if (!Number.isFinite(value) || value < 0 || value > 1) return;
+    this.compositePathTool.setBowParams({ peakLocation: value });
+    this.updateTextContent();
+    this.notify();
+  }
+  get bowIsArc(): boolean { return this.compositePathTool.bowParams.isArc; }
+  setBowIsArc(on: boolean): void {
+    this.compositePathTool.setBowParams({ isArc: !!on });
+    this.updateTextContent();
+    this.notify();
+  }
+  /** The live session's rounding selection (status display). */
+  get compositeRoundingMode(): string { return this.compositePathTool.roundingMode; }
+
+  /** Manual keyboard-layout choice: 'auto' follows D1 (the spline
+   * layout activates while composite mode is on / a composite
+   * session is live); 'base'/'spline' pin a layout when not drawing
+   * a composite path. */
+  keyboardLayoutChoice: 'auto' | 'base' | 'spline' = 'auto';
+  setKeyboardLayoutChoice(choice: string): void {
+    if (choice !== 'auto' && choice !== 'base' && choice !== 'spline') return;
+    this.keyboardLayoutChoice = choice;
+    this.updateTextContent();
+    this.notify();
+  }
+  activeKeyboardLayoutId(): string {
+    if (this.compositePathTool.active || this.pathDrawingMode === 'ngComposite') return 'spline';
+    return this.keyboardLayoutChoice === 'auto' ? 'base' : this.keyboardLayoutChoice;
   }
 
   getRetainedPathDrawable(id: string): NGPathDrawable | null {
@@ -7694,6 +8275,8 @@ export class NibGliderEngine {
     this.quadTool.cancel();
     this.cancelSimpleTool();
     this.cancelFreehand();
+    this.pendingLiveTransforms = null;
+    this.pendingLiveSpec = null;
     this.repeatManager.clearPreview();
     // Clears anything a tool did not claim, and resets live scale/rotation.
     this.drawing.cancel();
@@ -7992,9 +8575,14 @@ export class NibGliderEngine {
     const snap = this.captureDeposit();
     const deposited: Array<AnyItem | null> = [];
     if (this.isDrawingPath && this.path) {
-      const offsets = this.repeatManager.beginDeposit();
+      const transforms = this.repeatManager.beginDepositTransforms();
+      const offsets = transforms ? [] : this.repeatManager.beginDeposit();
       const base = this.compositePathTool.finishLegacy().filter((item) => !!item);
-      deposited.push(...base, ...this.repeatManager.finishDeposit(base, offsets));
+      const copies = transforms
+        ? this.repeatManager.finishDepositTransformed(base, transforms)
+        : this.repeatManager.finishDeposit(base, offsets);
+      if (transforms) this.tagReplication(base, copies, transforms.length, this.repeatManager.takeDepositSpec());
+      deposited.push(...base, ...copies);
     } else if (this.isDrawingShape) deposited.push(...this.endShapeAsStroke());
     else if (this.isDrawingQuad && this.quadPath) deposited.push(this.quadTool.finish());
     const placed = deposited.map((item) => (item ? this.withArrowheads(item) : item));
@@ -8007,6 +8595,8 @@ export class NibGliderEngine {
   roundedPointKC(): void { this.compositePathTool.roundedKey(); }
   bowedPointKC(facing: 'left' | 'right'): void { this.compositePathTool.bowedKey(facing); }
   arcThreePointKC(): void { this.compositePathTool.arcKey(); }
+  switchRoundingKC(): void { this.compositePathTool.switchRoundingKey(); }
+  eraseLastPointKC(): void { this.compositePathTool.eraseLastKey(); }
   splinePointKC(): void { this.compositePathTool.splineKey(); }
 
   completeShapeWithSpline(): void { this.compositePathTool.completeWithSpline(); }
@@ -8475,6 +9065,417 @@ export class NibGliderEngine {
     return placed.length;
   }
 
+  // --- Noise displacement (Slice 11) -------------------------------
+  // Seeded gradient noise pushes a path's sampled points along
+  // their normals; the displaced samples are refitted to cubics
+  // through the shared polyline fit, so curves stay curves and
+  // closed paths stay closed. Apply-as-geometry: the parameters
+  // and seed are recorded on the resulting item's data
+  // (noiseDisplacement), so the operation is reproducible, and the
+  // replacement lands as ONE undo entry.
+
+  noiseAmplitude = 12;
+  noiseScale = 60;
+  noiseSeed = 1;
+  noisePreviewOn = false;
+  private noisePreviewItems: AnyItem[] = [];
+
+  setNoiseAmplitude(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0, Math.min(200, v));
+    if (next === this.noiseAmplitude) return;
+    this.noiseAmplitude = next;
+    this.refreshNoisePreview();
+    this.notify();
+  }
+
+  setNoiseScale(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(5, Math.min(1000, v));
+    if (next === this.noiseScale) return;
+    this.noiseScale = next;
+    this.refreshNoisePreview();
+    this.notify();
+  }
+
+  setNoiseSeed(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0, Math.min(999999, Math.round(v)));
+    if (next === this.noiseSeed) return;
+    this.noiseSeed = next;
+    this.refreshNoisePreview();
+    this.notify();
+  }
+
+  setNoisePreview(on: boolean): void {
+    this.noisePreviewOn = on;
+    this.refreshNoisePreview();
+    this.notify();
+  }
+
+  private noiseParams(): { amplitude: number; scale: number; seed: number } {
+    return { amplitude: this.noiseAmplitude, scale: this.noiseScale, seed: this.noiseSeed };
+  }
+
+  /** Sample one Paper path densely, displace each sample along its
+   * normal by the seeded noise at its arc position, and refit. */
+  private displacedSegments(
+    path: AnyItem,
+    params: { amplitude: number; scale: number; seed: number },
+  ): BezierSegment[] | null {
+    let length = 0;
+    try { length = path.length; } catch { return null; }
+    if (!(length > 0)) return null;
+    const closed = !!path.closed;
+    const steps = Math.max(8, Math.min(1200, Math.ceil(length / 3)));
+    const points: Array<{ x: number; y: number }> = [];
+    const count = closed ? steps : steps + 1;
+    for (let i = 0; i < count; i++) {
+      const offset = Math.min(length, (length * i) / steps);
+      let point: AnyItem = null;
+      let tangent: AnyItem = null;
+      try {
+        point = path.getPointAt(offset);
+        tangent = path.getTangentAt(offset);
+      } catch { return null; }
+      if (!point || !tangent) return null;
+      const d = params.amplitude * fbm1(params.seed, offset / params.scale, 3);
+      points.push({ x: point.x + (-tangent.y) * d, y: point.y + tangent.x * d });
+    }
+    return reducePolyline(points, closed, 0.35);
+  }
+
+  /** Clone a path item and rebuild every subpath's segments
+   * through `rebuild` (style and data ride along). Shared by the
+   * noise, simplify, and fit operations. Null when no subpath
+   * could be rebuilt. */
+  private rebuildPathClone(
+    item: AnyItem,
+    rebuild: (path: AnyItem) => BezierSegment[] | null,
+  ): AnyItem | null {
+    let clone: AnyItem = null;
+    try { clone = item.clone(); } catch { return null; }
+    if (!clone) return null;
+    const paths: AnyItem[] = clone.className === 'CompoundPath' ? [...(clone.children ?? [])] : [clone];
+    let changed = false;
+    for (const path of paths) {
+      if (path?.className !== 'Path') continue;
+      const fitted = rebuild(path);
+      if (!fitted || fitted.length === 0) continue;
+      try {
+        path.removeSegments();
+        for (const seg of fitted) {
+          path.add(new this.scope.Segment(
+            new this.scope.Point(seg.point.x, seg.point.y),
+            new this.scope.Point(seg.handleIn.x, seg.handleIn.y),
+            new this.scope.Point(seg.handleOut.x, seg.handleOut.y),
+          ));
+        }
+        changed = true;
+      } catch { /* Keep the cloned geometry for this subpath. */ }
+    }
+    if (!changed) {
+      try { clone.remove(); } catch { /* detached */ }
+      return null;
+    }
+    return clone;
+  }
+
+  /** Replace items with built replacements at their stack
+   * positions, as ONE undo entry under `label`. Shared by the
+   * path-geometry operations. Returns the placed replacements. */
+  private replaceItems(
+    targets: AnyItem[],
+    label: string,
+    buildOne: (item: AnyItem) => AnyItem | null,
+  ): AnyItem[] {
+    const snap = this.captureDeposit();
+    const placed: AnyItem[] = [];
+    for (const item of targets) {
+      const converted = buildOne(item);
+      if (!converted) continue;
+      const parent = item.parent;
+      const index = typeof item.index === 'number' ? item.index : undefined;
+      if (parent && index !== undefined && converted.parent !== parent) {
+        try { parent.insertChild(index, converted); } catch { this.layers.addToActive(converted); }
+      }
+      try { this.scene.retain(converted); } catch { /* Geometry still lands. */ }
+      try { item.remove(); } catch { /* Already gone. */ }
+      placed.push(converted);
+    }
+    if (placed.length > 0) {
+      this.selection.restore(placed);
+      this.recordSceneCommand(label, snap.before, snap.selected, placed, snap.retained);
+    }
+    return placed;
+  }
+
+  /** A displaced clone of a path item, or null when nothing could
+   * be displaced. The clone records the parameters in its data for
+   * reproducibility. */
+  private displacedClone(
+    item: AnyItem,
+    params: { amplitude: number; scale: number; seed: number },
+  ): AnyItem | null {
+    const clone = this.rebuildPathClone(item, (path) => this.displacedSegments(path, params));
+    if (clone?.data) {
+      clone.data.noiseDisplacement = { version: 1, amplitude: params.amplitude, scale: params.scale, seed: params.seed };
+    }
+    return clone;
+  }
+
+  /** Show the displaced result as guide items over the selection.
+   * Rebuilt whenever a parameter changes while preview is on; the
+   * guides never enter content, history, or files. */
+  refreshNoisePreview(): void {
+    this.clearNoisePreview();
+    if (!this.noisePreviewOn) return;
+    const targets = this.topLevelSelected().filter((item) => (
+      item?.className === 'Path' || item?.className === 'CompoundPath'
+    ));
+    for (const item of targets) {
+      const clone = this.displacedClone(item, this.noiseParams());
+      if (!clone) continue;
+      clone.guide = true;
+      clone.selected = false;
+      this.noisePreviewItems.push(clone);
+    }
+  }
+
+  clearNoisePreview(): void {
+    for (const item of this.noisePreviewItems) {
+      try { item.remove(); } catch { /* already gone */ }
+    }
+    this.noisePreviewItems = [];
+  }
+
+  /** Displace every selected path by the current noise parameters.
+   * One undo entry; the source items are replaced by their
+   * displaced versions. Returns how many items were displaced. */
+  applyNoiseDisplacement(): number {
+    const targets = this.topLevelSelected().filter((item) => (
+      item?.className === 'Path' || item?.className === 'CompoundPath'
+    ));
+    if (targets.length === 0) return 0;
+    this.clearNoisePreview();
+    const params = this.noiseParams();
+    const placed = this.replaceItems(targets, 'Noise displacement', (item) => this.displacedClone(item, params));
+    this.updateTextContent();
+    this.notify();
+    return placed.length;
+  }
+
+  // --- Fit & simplify (Slice 12) -----------------------------------
+  // Simplify reduces a path to a Douglas–Peucker polyline at a
+  // user tolerance (shared DP module; the tracer uses the same
+  // code). Fit converts a polyline or smoothed polyline into an
+  // editable Bézier path through the Schneider fit and reports
+  // the achieved error. Both replace the source in ONE undo entry
+  // and leave a feedback line for the panel.
+
+  simplifyTolerance = 2;
+  fitTolerance = 1;
+  /** Result line of the last fit/simplify operation, for the panel. */
+  pathOpFeedback = '';
+
+  setSimplifyTolerance(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0.05, Math.min(100, v));
+    if (next === this.simplifyTolerance) return;
+    this.simplifyTolerance = next;
+    this.notify();
+  }
+
+  setFitTolerance(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0.05, Math.min(100, v));
+    if (next === this.fitTolerance) return;
+    this.fitTolerance = next;
+    this.notify();
+  }
+
+  /** The points a fit/simplify runs on: a purely linear path
+   * contributes its own vertices (exact); a curved path is sampled
+   * densely along its length. */
+  private pathInputPoints(path: AnyItem): { points: Array<{ x: number; y: number }>; closed: boolean } | null {
+    const segments = path?.segments;
+    if (!segments || segments.length === 0) return null;
+    const closed = !!path.closed;
+    const linear = segments.every((seg: AnyItem) => (
+      Math.hypot(seg.handleIn?.x ?? 0, seg.handleIn?.y ?? 0) < 1e-9
+      && Math.hypot(seg.handleOut?.x ?? 0, seg.handleOut?.y ?? 0) < 1e-9
+    ));
+    if (linear) {
+      return { points: segments.map((seg: AnyItem) => ({ x: seg.point.x, y: seg.point.y })), closed };
+    }
+    let length = 0;
+    try { length = path.length; } catch { return null; }
+    if (!(length > 0)) return null;
+    const steps = Math.max(8, Math.min(2000, Math.ceil(length / 2)));
+    const points: Array<{ x: number; y: number }> = [];
+    const count = closed ? steps : steps + 1;
+    for (let i = 0; i < count; i++) {
+      try {
+        const p = path.getPointAt(Math.min(length, (length * i) / steps));
+        if (p) points.push({ x: p.x, y: p.y });
+      } catch { return null; }
+    }
+    return points.length >= 2 ? { points, closed } : null;
+  }
+
+  private selectedPathItems(): AnyItem[] {
+    return this.topLevelSelected().filter((item) => (
+      item?.className === 'Path' || item?.className === 'CompoundPath'
+    ));
+  }
+
+  /** Simplify every selected path at the current tolerance. */
+  simplifySelectionPaths(): number {
+    const targets = this.selectedPathItems();
+    if (targets.length === 0) return 0;
+    const tolerance = this.simplifyTolerance;
+    let before = 0;
+    let after = 0;
+    const placed = this.replaceItems(targets, 'Simplify path', (item) => {
+      const clone = this.rebuildPathClone(item, (path) => {
+        const input = this.pathInputPoints(path);
+        if (!input || input.points.length < 3) return null;
+        const kept = input.closed
+          ? douglasPeuckerClosed(input.points, tolerance)
+          : douglasPeucker(input.points, tolerance);
+        if (kept.length < 2 || kept.length >= input.points.length) return null;
+        before += input.points.length;
+        after += kept.length;
+        return kept.map((p) => ({ point: { ...p }, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } }));
+      });
+      if (clone?.data) clone.data.simplifyRecord = { version: 1, tolerance };
+      return clone;
+    });
+    if (placed.length > 0) {
+      this.pathOpFeedback = `Simplified ${placed.length} path${placed.length === 1 ? '' : 's'} — ${before} points became ${after}.`;
+    }
+    this.updateTextContent();
+    this.notify();
+    return placed.length;
+  }
+
+  /** Fit Bézier curves to every selected path/polyline at the
+   * current tolerance; the feedback line reports the achieved
+   * error of the fit. */
+  fitBeziersSelection(): number {
+    const targets = this.selectedPathItems();
+    if (targets.length === 0) return 0;
+    const tolerance = this.fitTolerance;
+    let before = 0;
+    let after = 0;
+    let maxError = 0;
+    const placed = this.replaceItems(targets, 'Fit curves', (item) => {
+      let itemError = 0;
+      const clone = this.rebuildPathClone(item, (path) => {
+        const input = this.pathInputPoints(path);
+        if (!input || input.points.length < 3) return null;
+        const fitted = fitPolylineWithError(input.points, input.closed, tolerance);
+        if (fitted.segments.length === 0 || fitted.segments.length >= input.points.length) return null;
+        before += input.points.length;
+        after += fitted.segments.length;
+        itemError = Math.max(itemError, fitted.maxError);
+        return fitted.segments;
+      });
+      if (clone?.data) {
+        clone.data.fitRecord = { version: 1, tolerance, maxError: itemError };
+        maxError = Math.max(maxError, itemError);
+      }
+      return clone;
+    });
+    if (placed.length > 0) {
+      this.pathOpFeedback = `Fit ${placed.length} path${placed.length === 1 ? '' : 's'} — ${before} points became ${after} anchors, largest error ${maxError.toFixed(2)}.`;
+    }
+    this.updateTextContent();
+    this.notify();
+    return placed.length;
+  }
+
+  // --- Concave hull (Slice 13) -------------------------------------
+  // The hull of the selection's anchor points: paths contribute
+  // their anchors (in world coordinates), other items their bounds
+  // corners. The result is a NEW closed path in one undo entry;
+  // the sources stay untouched. Concaveness 0..1 maps onto the
+  // kNN hull's neighbour count k (1 -> k=3, tightest; 0 -> k=40,
+  // near the convex hull), quadratically so the tight end — where
+  // the hull changes fastest — gets finer control.
+
+  hullConcaveness = 0.6;
+
+  setHullConcaveness(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0, Math.min(1, v));
+    if (next === this.hullConcaveness) return;
+    this.hullConcaveness = next;
+    this.notify();
+  }
+
+  /** World-space anchor/vertex points of the current selection. */
+  private selectionAnchorPoints(): Array<{ x: number; y: number }> {
+    const points: Array<{ x: number; y: number }> = [];
+    const collectPath = (path: AnyItem): void => {
+      for (const seg of path.segments ?? []) {
+        try {
+          const world = path.localToGlobal(new this.scope.Point(seg.point.x, seg.point.y));
+          points.push({ x: world.x, y: world.y });
+        } catch { /* skip unreadable anchors */ }
+      }
+    };
+    const visit = (item: AnyItem): void => {
+      if (!item || this.isNonContentItem(item)) return;
+      if (item.className === 'Path') { collectPath(item); return; }
+      if (item.className === 'CompoundPath') {
+        for (const child of item.children ?? []) if (child?.className === 'Path') collectPath(child);
+        return;
+      }
+      const children = item.children ?? [];
+      if (children.length > 0) { for (const child of children) visit(child); return; }
+      const b = item.bounds;
+      if (b) {
+        points.push(
+          { x: b.topLeft.x, y: b.topLeft.y }, { x: b.topRight.x, y: b.topRight.y },
+          { x: b.bottomRight.x, y: b.bottomRight.y }, { x: b.bottomLeft.x, y: b.bottomLeft.y },
+        );
+      }
+    };
+    for (const item of this.topLevelSelected()) visit(item);
+    return points;
+  }
+
+  /** Build the concave hull of the selection's anchor points as a
+   * new closed path. Returns 1 when a hull was deposited. */
+  concaveHullSelection(): number {
+    const points = this.selectionAnchorPoints();
+    if (points.length < 3) return 0;
+    const k = Math.round(3 + (1 - this.hullConcaveness) * (1 - this.hullConcaveness) * 37);
+    const hull = concaveHull(points, k);
+    if (!hull || hull.length < 3) {
+      this.pathOpFeedback = 'No hull could be drawn around those points.';
+      this.notify();
+      return 0;
+    }
+    const snap = this.captureDeposit();
+    const item = new this.scope.Path({
+      segments: hull.map((p) => new this.scope.Point(p.x, p.y)),
+      closed: true,
+    });
+    this.applyCurrentStyles(item);
+    item.closed = true;
+    if (item.data) {
+      item.data.concaveHullRecord = { version: 1, concaveness: this.hullConcaveness, neighbours: k, anchors: points.length };
+    }
+    this.layers.addToActive(item);
+    this.recordSceneCommand('Concave hull', snap.before, snap.selected, [item], snap.retained);
+    this.pathOpFeedback = `Concave hull — ${hull.length} points around ${points.length} anchors.`;
+    this.updateTextContent();
+    this.notify();
+    return 1;
+  }
+
   // --- Live-drawing key remaps ---
   // Reserved number-key slots for future live bindings (repeat counts,
   // parametric modes). Digit0 is bound: the Radial Stamp radius lock.
@@ -8585,13 +9586,19 @@ export class NibGliderEngine {
   }
 
   endShapeAsStroke(): AnyItem[] {
-    // Snapshot repeat offsets before finish clears the live session.
-    const offsets = this.repeatManager.beginDeposit();
+    // Snapshot repeat offsets/transforms before finish clears the
+    // live session.
+    const transforms = this.repeatManager.beginDepositTransforms();
+    const offsets = transforms ? [] : this.repeatManager.beginDeposit();
     let base: AnyItem[] = [];
     if (this.circleTool.active) base = this.circleTool.finish();
     else if (this.rectangleTool.active) base = this.rectangleTool.finish();
     const placed = base.filter((item) => !!item);
-    return [...placed, ...this.repeatManager.finishDeposit(placed, offsets)];
+    const copies = transforms
+      ? this.repeatManager.finishDepositTransformed(placed, transforms)
+      : this.repeatManager.finishDeposit(placed, offsets);
+    if (transforms) this.tagReplication(placed, copies, transforms.length, this.repeatManager.takeDepositSpec());
+    return [...placed, ...copies];
   }
 
   createRegularPolygon(center: AnyItem, radius: number, sides: number, rotationAngle = 0, radiusMode = 'circumradius'): AnyItem {
@@ -8963,6 +9970,10 @@ export class NibGliderEngine {
       drawingPath: this.isDrawingPath,
       composite: this.compositePathTool.active,
       cornerRadius: this.compositeCornerRadius,
+      keyboardLayout: this.activeKeyboardLayoutId() === 'spline' ? 'Spline' : 'Base',
+      roundingMode: this.compositeRoundingMode,
+      bowAmplitude: this.bowAmplitude,
+      bowAmplitudeIsPercent: this.bowAmplitudeIsPercent,
       splineTension: this.splineTension,
       drawingShape: this.isDrawingShape,
       shapeType: this.shapeType,

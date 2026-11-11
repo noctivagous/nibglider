@@ -64,6 +64,9 @@ export class DrawableRenderer {
         child.children?.forEach(tag);
       };
       tag(item);
+      // A catalog source's live-replication record rides on the
+      // rendered root item so Regenerate can find it after a reload.
+      if (drawable.replication) item.data.replication = structuredClone(drawable.replication);
       layer.addChild(item);
       this.items.get(drawable.id)?.remove();
       this.items.set(drawable.id, item);

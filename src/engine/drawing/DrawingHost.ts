@@ -58,6 +58,12 @@ export interface DrawingHost {
   place(item: Item, opts?: PlaceOptions): Item | null;
   depositExportFrame(rect: { x: number; y: number; width: number; height: number }): Item | null;
   capture(): DepositSnap;
+  /** Live replication (Slice 10): snapshot the armed live symmetry
+   * transforms before a finish clears the session. */
+  captureLiveRepeat(): void;
+  /** Build (and place) the live symmetry copies for a deposited
+   * item; consumes the captured transforms. */
+  liveRepeatCopies(item: Item): Item[];
   commit(label: string, snap: DepositSnap, placed: Item[], retain?: boolean): void;
   isRetained(shape: Item): boolean;
   bezierSource(item: Item): any;

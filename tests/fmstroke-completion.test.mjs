@@ -7,6 +7,11 @@ let seq = 0;
 const pt = (x, y, kind = 'bSpline', outgoing) => ({
   id: `p${++seq}`, x, y, kind, ...(outgoing ? { outgoing } : {}),
 });
+// Full 9-field bow record (Slice 14 model), absolute amplitude.
+const bowRec = (facing, amplitude) => ({
+  facing, amplitude, amplitudeIsPercent: false, peakLocation: 0.5,
+  peakLocationMultiplier: 1, isArc: false, dualDistance: 0, corneredApex: 'none',
+});
 const composite = (points, closed = false) => ({ id: 'c', mode: 'ngComposite', closed, points });
 
 function samplesOf(path) {
@@ -15,7 +20,7 @@ function samplesOf(path) {
 
 test('bowed segment bows to the facing side by its offset', () => {
   const left = samplesOf(composite([
-    pt(0, 0, 'bowedLine', { kind: 'bowedLine', bowOffset: 20, bowFacing: 'left' }),
+    pt(0, 0, 'bowedLine', { kind: 'bowedLine', bow: bowRec('A', 20) }),
     pt(100, 0),
   ]));
   const minY = Math.min(...left.map((p) => p.y));
@@ -24,7 +29,7 @@ test('bowed segment bows to the facing side by its offset', () => {
   assert.equal(left[left.length - 1].y, 0);
 
   const right = samplesOf(composite([
-    pt(0, 0, 'bowedLine', { kind: 'bowedLine', bowOffset: 20, bowFacing: 'right' }),
+    pt(0, 0, 'bowedLine', { kind: 'bowedLine', bow: bowRec('B', 20) }),
     pt(100, 0),
   ]));
   const maxY = Math.max(...right.map((p) => p.y));
@@ -33,7 +38,7 @@ test('bowed segment bows to the facing side by its offset', () => {
 
 test('bowed segment defaults to a quarter-chord bow', () => {
   const samples = samplesOf(composite([
-    pt(0, 0, 'bowedLine', { kind: 'bowedLine', bowFacing: 'left' }),
+    pt(0, 0, 'bowedLine', { kind: 'bowedLine' }),
     pt(80, 0),
   ]));
   const minY = Math.min(...samples.map((p) => p.y));
@@ -98,7 +103,7 @@ test('drawing session deposits bowed and arc points that resolve', () => {
   bowed.commitBowed({ x: 100, y: 0 }, 'right');
   const snap = bowed.snapshot();
   assert.equal(snap.points[0].kind, 'bowedLine');
-  assert.equal(snap.points[0].outgoing.bowFacing, 'right');
+  assert.equal(snap.points[0].outgoing.bow.facing, 'B');
   const samples = samplesOf(snap);
   assert.ok(Math.max(...samples.map((p) => p.y)) > 10, 'deposited bow renders');
 });

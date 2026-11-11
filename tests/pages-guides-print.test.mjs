@@ -116,8 +116,8 @@ test('DocumentManager: duplicate, move, remove pages with names', () => {
 
 // --- native format v2 --------------------------------------------------------
 
-test('native v2: pages and print setup round trip; v1 file migrates', () => {
-  assert.equal(NATIVE_VERSION, 2);
+test('native v4: pages and print setup round trip; v1 file migrates', () => {
+  assert.equal(NATIVE_VERSION, 4);
   const scene = '{"format":"nibglider-scene","version":2,"items":[]}';
   const pageRecord = (id, name) => ({
     id, name,
@@ -137,7 +137,7 @@ test('native v2: pages and print setup round trip; v1 file migrates', () => {
     activePageId: 'page-2',
     printSetup: { ...defaultPrintSetup(), cropMarks: true },
   });
-  assert.equal(doc.version, 2);
+  assert.equal(doc.version, 4);
   const parsed = parseNativeDocument(serializeNativeDocument(doc));
   assert.equal(parsed.ok, true);
   assert.deepEqual(parsed.doc, doc);

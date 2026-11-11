@@ -7,6 +7,7 @@
 // Holes come out as their own contours; the caller fills the set
 // with the even-odd rule so counters punch through.
 import type { Vec2 } from '../model/geometryResolution';
+import { douglasPeuckerClosed } from '../geometry/douglasPeucker';
 
 export interface BitmapInput {
   /** RGBA bytes, row-major, width*height*4 long. */
@@ -146,43 +147,6 @@ function signedArea(points: Vec2[]): number {
   return sum / 2;
 }
 
-/** Douglas–Peucker simplification of a closed polygon. */
-function simplifyClosed(points: Vec2[], tolerance: number): Vec2[] {
-  if (tolerance <= 0 || points.length <= 3) return points;
-  // Open the ring at its first point and simplify as a polyline
-  // whose ends meet: run DP on the doubled-start chain.
-  const chain = [...points, points[0]];
-  const keep = new Uint8Array(chain.length);
-  keep[0] = 1;
-  keep[chain.length - 1] = 1;
-  const stack: Array<[number, number]> = [[0, chain.length - 1]];
-  while (stack.length > 0) {
-    const [lo, hi] = stack.pop() as [number, number];
-    if (hi <= lo + 1) continue;
-    const a = chain[lo];
-    const b = chain[hi];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.hypot(dx, dy);
-    let maxDist = 0;
-    let maxIdx = -1;
-    for (let i = lo + 1; i < hi; i++) {
-      const p = chain[i];
-      const dist = len > 1e-9
-        ? Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / len
-        : Math.hypot(p.x - a.x, p.y - a.y);
-      if (dist > maxDist) { maxDist = dist; maxIdx = i; }
-    }
-    if (maxIdx >= 0 && maxDist > tolerance) {
-      keep[maxIdx] = 1;
-      stack.push([lo, maxIdx], [maxIdx, hi]);
-    }
-  }
-  const out: Vec2[] = [];
-  for (let i = 0; i < chain.length - 1; i++) if (keep[i]) out.push(chain[i]);
-  return out.length >= 3 ? out : points;
-}
-
 /**
  * Trace a bitmap into polygon contours in PIXEL coordinates
  * (origin at the bitmap's top-left, y down). Contours smaller than
@@ -217,7 +181,7 @@ export function traceBitmap(bitmap: BitmapInput, options: TraceOptions): TraceCo
   const loops = joinSegments(segments).filter((raw) => Math.abs(signedArea(raw)) >= minArea);
   const contours: TraceContour[] = [];
   for (const raw of loops) {
-    const points = simplifyClosed(raw, smoothing);
+    const points = douglasPeuckerClosed(raw, smoothing);
     if (points.length < 3) continue;
     // A loop whose first point sits inside another loop is a hole.
     // Normalize winding: outers positive, holes negative (y-down).

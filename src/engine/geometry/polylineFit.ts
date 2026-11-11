@@ -299,3 +299,67 @@ function cubicSecond(curve: [Vec2, Vec2, Vec2, Vec2], t: number): Vec2 {
   const q1 = { x: 6 * (curve[3].x - 2 * curve[2].x + curve[1].x), y: 6 * (curve[3].y - 2 * curve[2].y + curve[1].y) };
   return { x: (1 - t) * q0.x + t * q1.x, y: (1 - t) * q0.y + t * q1.y };
 }
+
+/** The fitted curve chain as control-point quadruples: segment i
+ * runs from segments[i] (with its handleOut) to segments[i+1]
+ * (with its handleIn), wrapping for closed fits. */
+function fittedCurves(segments: BezierSegment[], closed: boolean): Array<[Vec2, Vec2, Vec2, Vec2]> {
+  const curves: Array<[Vec2, Vec2, Vec2, Vec2]> = [];
+  const spans = closed ? segments.length : segments.length - 1;
+  for (let i = 0; i < spans; i++) {
+    const from = segments[i];
+    const to = segments[(i + 1) % segments.length];
+    curves.push([
+      from.point,
+      { x: from.point.x + from.handleOut.x, y: from.point.y + from.handleOut.y },
+      { x: to.point.x + to.handleIn.x, y: to.point.y + to.handleIn.y },
+      to.point,
+    ]);
+  }
+  return curves;
+}
+
+/**
+ * Fit and report the achieved error (Slice 12): the largest
+ * distance from any input sample to the fitted curve set, measured
+ * exactly against the cubics (sampled densely, then refined by
+ * Newton steps — the same machinery the fit itself uses). The
+ * Fit operation shows this number to the user, and tests assert
+ * it stays within the requested tolerance's reach.
+ */
+export function fitPolylineWithError(
+  points: Vec2[], closed: boolean, tolerance = 0.1,
+): { segments: BezierSegment[]; maxError: number } {
+  const segments = reducePolyline(points, closed, tolerance);
+  if (segments.length === 0 || points.length === 0) return { segments, maxError: 0 };
+  const curves = fittedCurves(segments, closed);
+  if (curves.length === 0) {
+    // A lone anchor: error is the farthest input sample from it.
+    let maxError = 0;
+    for (const p of points) {
+      maxError = Math.max(maxError, Math.hypot(p.x - segments[0].point.x, p.y - segments[0].point.y));
+    }
+    return { segments, maxError };
+  }
+  let maxError = 0;
+  for (const p of points) {
+    let best = Infinity;
+    for (const curve of curves) {
+      // Coarse scan, then Newton refinement from the best sample.
+      let bestT = 0;
+      let bestD = Infinity;
+      for (let s = 0; s <= 16; s++) {
+        const t = s / 16;
+        const q = cubicAt(curve, t);
+        const d = Math.hypot(q.x - p.x, q.y - p.y);
+        if (d < bestD) { bestD = d; bestT = t; }
+      }
+      const refined = newton(curve, p, bestT);
+      const q = cubicAt(curve, refined);
+      best = Math.min(best, Math.hypot(q.x - p.x, q.y - p.y));
+      if (best <= 1e-9) break;
+    }
+    if (best > maxError) maxError = best;
+  }
+  return { segments, maxError };
+}

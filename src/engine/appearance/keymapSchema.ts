@@ -113,6 +113,12 @@ export function buildKeymapRows(snap: StatusSnapshot): KeymapRow[] {
       rows.push(row(['sharp-point'], 'Sharp point'));
       rows.push(row(['spline-point'], 'B-spline point'));
       rows.push(row(['rounded-point'], `Rounded corner (${snap.cornerRadius}pt)`));
+      // Spline-layout rows (Slice 14): shown only while the spline
+      // layout is active, i.e. while a composite path is drawing.
+      rows.push(row(['bowed-point', 'bowed-point-flip'], 'Bowed line point (Shift flips the facing)'));
+      rows.push(row(['arc-three-point'], 'Arc by three points'));
+      rows.push(row(['switch-rounding'], `Switch rounding (now: ${snap.roundingMode ?? 'arc'})`));
+      rows.push(row(['erase-last-point'], 'Erase last point'));
       rows.push(row(['finish-r'], 'Close shape'));
       rows.push(row(['finish-a'], 'End drawing'));
       rows.push(row(['cancel'], 'Cancel drawing'));

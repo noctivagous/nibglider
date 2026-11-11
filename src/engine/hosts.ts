@@ -55,6 +55,8 @@ export function createDrawingHost(engine: Surface): DrawingHost {
     place: (item, opts) => engine.placeDeposited(item, opts),
     depositExportFrame: (rect) => engine.placeExportFrameItem(rect),
     capture: () => engine.captureDeposit(),
+    captureLiveRepeat: () => engine.captureLiveRepeatTransforms(),
+    liveRepeatCopies: (item) => engine.liveRepeatCopiesFor(item),
     commit: (label: string, snap: { before: Item[]; selected: Item[]; retained: Map<string, unknown> }, placed: Item[], retain?: boolean) => {
       engine.recordSceneCommand(label, snap.before, snap.selected, placed, retain ? snap.retained : undefined);
     },
@@ -222,6 +224,9 @@ export function createKeyboardHost(engine: Surface): KeyboardHost {
     roundedPointKC: () => engine.roundedPointKC(),
     bowedPointKC: (facing) => engine.bowedPointKC(facing),
     arcThreePointKC: () => engine.arcThreePointKC(),
+    switchRoundingKC: () => engine.switchRoundingKC(),
+    eraseLastPointKC: () => engine.eraseLastPointKC(),
+    keyboardLayoutId: () => engine.activeKeyboardLayoutId(),
     lineKC: () => engine.lineKC(),
     ellipseKC: () => engine.ellipseKC(),
     arcKC: () => engine.arcKC(),

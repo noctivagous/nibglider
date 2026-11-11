@@ -1,7 +1,7 @@
 // Owns polyline, spline, and composite-path sessions. Composite semantics,
 // sampling, and Paper construction stay in PathDrawingSession, the path
 // resolver, and PathRenderer. Callers place returned geometry through the host.
-import type { NGCompositePath } from '../model/NGPath';
+import { BOWED_DEFAULTS, type NGBowedParams, type NGCompositePath } from '../model/NGPath';
 import type { Vec2 } from '../model/geometryResolution';
 import type { DrawingHost } from './DrawingHost';
 import { PathDrawingSession, type CompositePointKind } from './PathDrawingSession';
@@ -18,6 +18,15 @@ export class PathTool {
   private readonly updated: (item: paper.Path) => void;
   private readonly scheduler?: FrameScheduler;
   private radius = 12;
+  private bowSettings: Omit<NGBowedParams, 'facing'> = {
+    amplitude: BOWED_DEFAULTS.amplitude,
+    amplitudeIsPercent: BOWED_DEFAULTS.amplitudeIsPercent,
+    peakLocation: BOWED_DEFAULTS.peakLocation,
+    peakLocationMultiplier: BOWED_DEFAULTS.peakLocationMultiplier,
+    isArc: BOWED_DEFAULTS.isArc,
+    dualDistance: BOWED_DEFAULTS.dualDistance,
+    corneredApex: BOWED_DEFAULTS.corneredApex,
+  };
 
   constructor(scope: paper.PaperScope, updated: (item: paper.Path) => void, scheduler?: FrameScheduler) {
     this.scope = scope; this.updated = updated; this.scheduler = scheduler;
@@ -36,9 +45,19 @@ export class PathTool {
     this.radius = radius; this.composite?.setCornerRadius(radius); this.request();
   }
 
+  /** Bow parameter snapshot for subsequently stamped bowed points. */
+  get bowParams(): Omit<NGBowedParams, 'facing'> { return { ...this.bowSettings }; }
+  setBowParams(params: Partial<Omit<NGBowedParams, 'facing'>>): void {
+    this.bowSettings = { ...this.bowSettings, ...params };
+    this.composite?.setBowParams(params);
+  }
+  /** The live session's rounding selection, when one is drawing. */
+  get roundingMode(): string { return this.composite?.roundingMode ?? 'arc'; }
+
   point(kind: CompositePointKind, point: Vec2): void {
     if (!this.composite) {
       this.composite = new PathDrawingSession(crypto.randomUUID(), point, kind, this.radius);
+      this.composite.setBowParams(this.bowSettings);
       this.renderer = new PathRenderer(this.scope, this.updated, this.scheduler);
     } else this.composite.commit(kind, point);
     this.request();
@@ -137,6 +156,28 @@ export class PathTool {
     host.notify();
   }
 
+  /** Backslash key: cycle the corner rounding (arc → bSpline →
+   * bevel) for subsequently deposited rounded points. Composite only. */
+  switchRoundingKey(): void {
+    const host = this.host;
+    if (!host || host.pathDrawingMode() !== 'ngComposite' || !this.composite) return;
+    this.composite.cycleRounding();
+    this.request();
+    host.updateTextContent();
+    host.notify();
+  }
+
+  /** Z while drawing: erase the last committed point, keeping the
+   * trailing point live. Composite only. */
+  eraseLastKey(): void {
+    const host = this.host;
+    if (!host || host.pathDrawingMode() !== 'ngComposite' || !this.composite) return;
+    if (!this.composite.eraseLast()) return;
+    this.request();
+    host.updateTextContent();
+    host.notify();
+  }
+
   /** Period key: three-point arc. First press commits the through
    * point; the next point key commits the end. Composite only. */
   arcKey(): void {
@@ -181,6 +222,7 @@ export class PathTool {
   finishIntoScene(close: boolean): void {
     const host = this.host;
     if (!host || !this.active) return;
+    host.captureLiveRepeat();
     const origin = this.origin;
     const mouse = host.session.mousePt;
     const nearStart = origin && mouse && Math.hypot(mouse.x - origin.x, mouse.y - origin.y) <= host.endpointTolerance();
@@ -426,9 +468,10 @@ export class PathTool {
         host.retainResult(placed, source);
       }
     }
+    const copies = placed ? host.liveRepeatCopies(placed) : [];
     this.retainNewResults(snap.before);
     host.pruneRecords();
-    host.commit(label, snap, placed ? [placed] : [], true);
+    host.commit(label, snap, placed ? [placed, ...copies] : [], true);
     host.updateTextContent();
     host.notify();
   }

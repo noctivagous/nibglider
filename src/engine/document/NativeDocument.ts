@@ -34,7 +34,7 @@ import { readGuideRecords, type GuideRecord } from './guides';
 import { readPrintSetup, type PrintSetup } from './printSetup';
 
 export const NATIVE_FORMAT = 'nibglider-document';
-export const NATIVE_VERSION = 2;
+export const NATIVE_VERSION = 4;
 export const NATIVE_FILE_EXTENSION = '.nibglider';
 
 export interface NativeLayerRecord {
@@ -246,9 +246,52 @@ function migrate1to2(raw: Record<string, unknown>): Record<string, unknown> {
   return { ...raw, version: 2, pages: [page], activePageId: 'page-1', printSetup: null };
 }
 
+/** v2 → v3: schema-only change — drawables may carry the optional
+ * live-replication record (Slice 10). Nothing moves; absence of the
+ * field is the v2 meaning. */
+function migrate2to3(raw: Record<string, unknown>): Record<string, unknown> {
+  return { ...raw, version: 3 };
+}
+
+/** v3 → v4: the interim bowOffset/bowFacing pair on composite-path
+ * segments becomes the full 9-field bow record (Slice 14). Tier Two
+ * semantics are preserved exactly: a present bowOffset was an
+ * absolute point offset; an absent one meant 25% of the chord;
+ * 'left'/'right' facing becomes 'A'/'B'. The walk is structural —
+ * any outgoing record carrying the old keys is rewritten wherever
+ * it sits (drawable sources, retained paths, outlined-stroke
+ * spines). */
+function migrate3to4(raw: Record<string, unknown>): Record<string, unknown> {
+  const convert = (node: unknown): void => {
+    if (Array.isArray(node)) { node.forEach(convert); return; }
+    if (!node || typeof node !== 'object') return;
+    const rec = node as Record<string, unknown>;
+    if ('bowOffset' in rec || 'bowFacing' in rec) {
+      const offset = typeof rec.bowOffset === 'number' ? rec.bowOffset : undefined;
+      rec.bow = {
+        facing: rec.bowFacing === 'right' ? 'B' : 'A',
+        amplitude: offset ?? 25,
+        amplitudeIsPercent: offset === undefined,
+        peakLocation: 0.5,
+        peakLocationMultiplier: 1,
+        isArc: false,
+        dualDistance: 0,
+        corneredApex: 'none',
+      };
+      delete rec.bowOffset;
+      delete rec.bowFacing;
+    }
+    Object.values(rec).forEach(convert);
+  };
+  convert(raw);
+  return { ...raw, version: 4 };
+}
+
 const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string, unknown>> = {
   0: migrate0to1,
   1: migrate1to2,
+  2: migrate2to3,
+  3: migrate3to4,
 };
 
 function readDrawables(value: unknown, section: string): NGDrawable[] | string {

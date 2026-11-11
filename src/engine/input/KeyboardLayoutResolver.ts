@@ -2,7 +2,7 @@
 // Reads only the keymap, immutable modifiers, platform, and a KeyState snapshot.
 // It never mutates engine state or registers browser listeners.
 import {
-  KEY_CAPS, KEY_VARIANTS, physicalKey, type KeyCap, type KeyCommandVariant,
+  capsForLayout, keyVariantsForLayout, KEY_VARIANTS_BY_LAYOUT, physicalKey, type KeyCap, type KeyCommandVariant,
   type KeyState, type KeyboardPlatform,
 } from './keymap';
 import type { ModifierSnapshot } from './ModifierStateTracker';
@@ -17,7 +17,10 @@ export function resolveKeyVariants(
   // while typing (the controller branches first), so no command resolves —
   // keeping the on-screen caps and chord rows honest.
   if (state.isTypingText) return variants;
-  for (const variant of KEY_VARIANTS) {
+  // Dispatch and display resolve through the active layout's variant
+  // list — the same list, so the board can never promise a key the
+  // dispatcher would not run (layout registry, Slice 14).
+  for (const variant of keyVariantsForLayout(state.activeLayoutId)) {
     if (variant.code !== code) continue;
     if (variant.chord.shift !== modifiers.shift || variant.chord.alt !== modifiers.alt ||
       variant.chord.control !== modifiers.control || variant.chord.meta !== modifiers.meta) continue;
@@ -72,10 +75,15 @@ export function resolveKeyCap(
 export function resolveKeyboardLayout(
   modifiers: ModifierSnapshot, platform: KeyboardPlatform, state: KeyState,
 ): ResolvedKeyCap[] {
-  return KEY_CAPS.map((cap) => resolveKeyCap(cap, modifiers, platform, state));
+  return capsForLayout(state.activeLayoutId).map((cap) => resolveKeyCap(cap, modifiers, platform, state));
 }
 
 export function eventCode(event: KeyboardEvent): string {
   if (event.code) return event.code;
-  return KEY_VARIANTS.find((variant) => physicalKey(variant.code) === event.key.toLowerCase())?.code ?? '';
+  const key = event.key.toLowerCase();
+  for (const variants of Object.values(KEY_VARIANTS_BY_LAYOUT)) {
+    const code = variants.find((variant) => physicalKey(variant.code) === key)?.code;
+    if (code) return code;
+  }
+  return '';
 }

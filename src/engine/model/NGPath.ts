@@ -18,10 +18,33 @@ export interface NGCornerParams {
   rounding: 'arc' | 'bSpline' | 'bevel';
   radius: number;
 }
+/**
+ * The full bowed-line parameter record (TASKS-FMStroke Phase 2),
+ * superseding the interim bowOffset/bowFacing pair. Facing 'A' bows to
+ * the left of travel, 'B' to the right (Floating Marker's facing
+ * convention). Amplitude is a percentage of the chord when
+ * amplitudeIsPercent, else absolute points. The peak sits at
+ * peakLocation × peakLocationMultiplier along the chord. dualDistance
+ * straddles the peak into two peaks when nonzero. corneredApex repeats
+ * the peak control (B-spline multiplicity): 'rounded' ×2, 'hard' ×3.
+ */
+export interface NGBowedParams {
+  facing: 'A' | 'B';
+  amplitude: number;
+  amplitudeIsPercent: boolean;
+  peakLocation: number;
+  peakLocationMultiplier: number;
+  isArc: boolean;
+  dualDistance: number;
+  corneredApex: 'none' | 'rounded' | 'hard';
+}
+
 export interface NGSegmentParams {
   kind: 'inherit' | 'line' | 'bSpline' | 'bowedLine' | 'arc';
-  bowOffset?: number;
-  bowFacing?: 'left' | 'right';
+  /** Present on bowedLine segments stamped by a drawing session. An
+   * absent bow resolves with BOWED_DEFAULTS (the Tier Two behaviour:
+   * quarter-chord bow to the left, peak at the midpoint). */
+  bow?: NGBowedParams;
 }
 export interface NGPathPoint extends Vec2 {
   id: string;
@@ -67,3 +90,16 @@ export interface NGOutlinedStrokePath {
   position: 'center' | 'inside' | 'outside';
 }
 export type NGPath = NGBezierPath | NGCompositePath | NGBSplinePath | NGSmoothedPolyline | NGOutlinedStrokePath;
+
+/** Bow parameters for a bowed segment that carries none (Tier Two's
+ * shipped behaviour) and the base a drawing session stamps from. */
+export const BOWED_DEFAULTS: NGBowedParams = {
+  facing: 'A',
+  amplitude: 25,
+  amplitudeIsPercent: true,
+  peakLocation: 0.5,
+  peakLocationMultiplier: 1,
+  isArc: false,
+  dualDistance: 0,
+  corneredApex: 'none',
+};

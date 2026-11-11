@@ -3,6 +3,7 @@
 // non-plain objects are rejected so Paper items cannot become document truth.
 import type { NGDrawable } from './NGDrawable';
 import type { NGPath } from './NGPath';
+import { isReplicationRecord } from '../repeat/replication';
 
 export class ModelValidationError extends Error {
   constructor(message: string) { super(message); this.name = 'ModelValidationError'; }
@@ -100,16 +101,33 @@ export function validatePath(value: unknown, path = 'path'): asserts value is NG
       choice(c.rounding, `${name}.corner.rounding`, ['arc', 'bSpline', 'bevel']); number(c.radius, `${name}.corner.radius`, 0);
     }
     if (q.outgoing !== undefined) {
-      const o = record(q.outgoing, `${name}.outgoing`, ['kind', 'bowOffset', 'bowFacing']);
+      const o = record(q.outgoing, `${name}.outgoing`, ['kind', 'bow']);
       choice(o.kind, `${name}.outgoing.kind`, ['inherit', 'line', 'bSpline', 'bowedLine', 'arc']);
-      if (o.bowOffset !== undefined) { requireValue(o.kind === 'bowedLine', name, 'bowedLine segment for bowOffset'); number(o.bowOffset, `${name}.bowOffset`); }
-      if (o.bowFacing !== undefined) { requireValue(o.kind === 'bowedLine', name, 'bowedLine segment for bowFacing'); choice(o.bowFacing, `${name}.bowFacing`, ['left', 'right']); }
+      if (o.bow !== undefined) {
+        requireValue(o.kind === 'bowedLine', name, 'bowedLine segment for bow');
+        // Phase 2.4: ranges are rejected, never repaired.
+        const b = record(o.bow, `${name}.bow`, ['facing', 'amplitude', 'amplitudeIsPercent', 'peakLocation', 'peakLocationMultiplier', 'isArc', 'dualDistance', 'corneredApex']);
+        choice(b.facing, `${name}.bow.facing`, ['A', 'B']);
+        number(b.amplitude, `${name}.bow.amplitude`, 0);
+        bool(b.amplitudeIsPercent, `${name}.bow.amplitudeIsPercent`);
+        number(b.peakLocation, `${name}.bow.peakLocation`, 0, 1);
+        number(b.peakLocationMultiplier, `${name}.bow.peakLocationMultiplier`, 0, 2);
+        bool(b.isArc, `${name}.bow.isArc`);
+        number(b.dualDistance, `${name}.bow.dualDistance`, 0, 1);
+        choice(b.corneredApex, `${name}.bow.corneredApex`, ['none', 'rounded', 'hard']);
+      }
     }
+    // Arc pairing stays strict in persisted paths (Phase 2.3). In a
+    // closed path the pair may wrap the array seam: a start in the
+    // last slot pairs with an end in the first (and vice versa).
+    const closedPath = (p as { closed?: unknown }).closed === true;
     if (q.kind === 'arcByThreeStart') {
-      requireValue(i + 1 < semantic.length && (semantic[i + 1] as Record<string, unknown>)?.kind === 'arcByThreeEnd', name, 'paired adjacent arc end');
+      const next = semantic[i + 1] ?? (closedPath ? semantic[0] : undefined);
+      requireValue((next as Record<string, unknown>)?.kind === 'arcByThreeEnd', name, 'paired adjacent arc end');
     }
     if (q.kind === 'arcByThreeEnd') {
-      requireValue(i > 0 && (semantic[i - 1] as Record<string, unknown>)?.kind === 'arcByThreeStart', name, 'paired adjacent arc start');
+      const prev = semantic[i - 1] ?? (closedPath ? semantic[semantic.length - 1] : undefined);
+      requireValue((prev as Record<string, unknown>)?.kind === 'arcByThreeStart', name, 'paired adjacent arc start');
     }
   });
 }
@@ -152,10 +170,13 @@ function validateShape(value: unknown, path: string): void {
 }
 
 export function validateDrawable(value: unknown): asserts value is NGDrawable {
-  const d = record(value, 'drawable', ['id', 'kind', 'layerId', 'transform', 'opacity', 'visible', 'locked', 'name', 'styleId', 'source']);
+  const d = record(value, 'drawable', ['id', 'kind', 'layerId', 'transform', 'opacity', 'visible', 'locked', 'name', 'styleId', 'source', 'replication']);
   string(d.id, 'drawable.id'); string(d.layerId, 'drawable.layerId');
   if (d.name !== undefined) string(d.name, 'drawable.name', false);
   if (d.styleId !== undefined) string(d.styleId, 'drawable.styleId');
+  if (d.replication !== undefined) {
+    requireValue(isReplicationRecord(d.replication), 'drawable.replication', 'replication record (version 2, a symmetry descriptor)');
+  }
   const transform = record(d.transform, 'drawable.transform', ['a', 'b', 'c', 'd', 'tx', 'ty']);
   for (const key of ['a', 'b', 'c', 'd', 'tx', 'ty']) number(transform[key], `drawable.transform.${key}`);
   number(d.opacity, 'drawable.opacity', 0, 1); bool(d.visible, 'drawable.visible'); bool(d.locked, 'drawable.locked');

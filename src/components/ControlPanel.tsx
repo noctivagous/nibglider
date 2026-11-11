@@ -54,9 +54,13 @@ import type { RepeatAnchor, RepeatDirection } from '../engine/geometry/RepeatGeo
 import {
   FRIEZE_GROUP_IDS,
   FRIEZE_GROUPS,
+  FRIEZE_ORBIFOLD,
+  REPEAT_OUTCOMES,
   WALLPAPER_GROUP_IDS,
   WALLPAPER_GROUPS,
+  WALLPAPER_ORBIFOLD,
   type FriezeGroupId,
+  type Progression,
   type RepeatFamilyName,
   type WallpaperGroupId,
 } from '../engine/repeat/symmetry';
@@ -1574,6 +1578,142 @@ function StrokeParams({
           </button>
         </span>
       </div>
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label htmlFor="noiseAmplitudeInput">Noise size</label>
+          <NumericStepper
+            id="noiseAmplitudeInput"
+            value={engine.noiseAmplitude}
+            min={0}
+            max={200}
+            step={1}
+            ariaLabel="Noise size"
+            title="How far the noise pushes the path sideways"
+            onCommit={(n) => engine.setNoiseAmplitude(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label htmlFor="noiseScaleInput">Noise scale</label>
+          <NumericStepper
+            id="noiseScaleInput"
+            value={engine.noiseScale}
+            min={5}
+            max={1000}
+            step={5}
+            ariaLabel="Noise scale"
+            title="How quickly the noise changes along the path — smaller is rougher"
+            onCommit={(n) => engine.setNoiseScale(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label htmlFor="noiseSeedInput">Noise seed</label>
+          <NumericStepper
+            id="noiseSeedInput"
+            value={engine.noiseSeed}
+            min={0}
+            max={999999}
+            step={1}
+            ariaLabel="Noise seed"
+            title="The same seed and path always give the same result"
+            onCommit={(n) => engine.setNoiseSeed(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={engine.noisePreviewOn}
+              onChange={(e) => engine.setNoisePreview(e.target.checked)}
+            />
+            Preview
+          </label>
+          <button
+            type="button"
+            onClick={() => engine.applyNoiseDisplacement()}
+            title="Push the selected paths sideways with seeded noise (one undo step)"
+          >
+            Apply noise
+          </button>
+        </span>
+      </div>
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label htmlFor="simplifyToleranceInput">Simplify within</label>
+          <NumericStepper
+            id="simplifyToleranceInput"
+            value={engine.simplifyTolerance}
+            min={0.05}
+            max={100}
+            step={0.5}
+            ariaLabel="Simplify tolerance"
+            title="Points that stay within this distance of the simplified path are dropped"
+            onCommit={(n) => engine.setSimplifyTolerance(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label>Simplify</label>
+          <button
+            type="button"
+            onClick={() => engine.simplifySelectionPaths()}
+            title="Reduce the selected paths to fewer points (one undo step)"
+          >
+            Simplify path
+          </button>
+        </span>
+        <span className="param-item">
+          <label htmlFor="fitToleranceInput">Fit within</label>
+          <NumericStepper
+            id="fitToleranceInput"
+            value={engine.fitTolerance}
+            min={0.05}
+            max={100}
+            step={0.25}
+            ariaLabel="Fit tolerance"
+            title="Largest error you accept between the fitted curves and the path"
+            onCommit={(n) => engine.setFitTolerance(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label>Fit</label>
+          <button
+            type="button"
+            onClick={() => engine.fitBeziersSelection()}
+            title="Convert the selected paths to editable Bézier curves (one undo step)"
+          >
+            Fit curves
+          </button>
+        </span>
+      </div>
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label htmlFor="hullConcavenessInput">Hull tightness</label>
+          <NumericStepper
+            id="hullConcavenessInput"
+            value={engine.hullConcaveness}
+            min={0}
+            max={1}
+            step={0.05}
+            ariaLabel="Hull tightness"
+            title="How closely the hull follows gaps and bays in the selected points — 1 follows them closely, 0 stays near the convex hull"
+            onCommit={(n) => engine.setHullConcaveness(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label>Hull</label>
+          <button
+            type="button"
+            onClick={() => engine.concaveHullSelection()}
+            title="Draw a new closed path around the selected items' anchor points (one undo step)"
+          >
+            Concave hull
+          </button>
+        </span>
+      </div>
+      {engine.pathOpFeedback ? (
+        <div className="flyout-trio-row">
+          <span className="param-item">{engine.pathOpFeedback}</span>
+        </div>
+      ) : null}
       </div>
     </div>
   );
@@ -2466,6 +2606,76 @@ function activeCombineLabel(
 ): string {
   const active = activeCombineMode(mode, tool);
   return COMBINE_OPTIONS.find((opt) => opt.value === active)?.label ?? 'Combinatorics';
+}
+
+/** One progression editor (Amendment C): a target named in words,
+ * a kind, and Start / Difference-or-Ratio fields. Checking the box
+ * turns the progression on with editable defaults; every field
+ * edit goes straight back to the engine, so the live preview and
+ * the next deposit follow at once. */
+function ProgressionFields(props: {
+  idPrefix: string;
+  label: string;
+  value: Progression | null;
+  onChange: (v: { kind: 'arithmetic' | 'geometric'; start: number; step: number } | null) => void;
+}) {
+  const { idPrefix, label, value, onChange } = props;
+  const current = value ?? { kind: 'arithmetic' as const, start: 0, step: 1 };
+  return (
+    <>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={!!value}
+          onChange={(e) => onChange(e.target.checked ? { ...current } : null)}
+        />
+        {label}
+      </label>
+      {value ? (
+        <>
+          <span className="param-item">
+            <label htmlFor={`${idPrefix}KindSelect`}>Sequence</label>
+            <select
+              id={`${idPrefix}KindSelect`}
+              value={value.kind}
+              onChange={(e) => onChange({ ...value, kind: e.target.value as 'arithmetic' | 'geometric' })}
+            >
+              <option value="arithmetic">Arithmetic (add each time)</option>
+              <option value="geometric">Geometric (multiply each time)</option>
+            </select>
+          </span>
+          <span className="param-item">
+            <label htmlFor={`${idPrefix}StartStepper`}>Start</label>
+            <NumericStepper
+              id={`${idPrefix}StartStepper`}
+              size="compact"
+              value={value.start}
+              min={-1000}
+              max={1000}
+              step={1}
+              ariaLabel={`${label} start`}
+              title={`${label} start`}
+              onCommit={(n) => onChange({ ...value, start: n })}
+            />
+          </span>
+          <span className="param-item">
+            <label htmlFor={`${idPrefix}StepStepper`}>{value.kind === 'arithmetic' ? 'Difference' : 'Ratio'}</label>
+            <NumericStepper
+              id={`${idPrefix}StepStepper`}
+              size="compact"
+              value={value.step}
+              min={-100}
+              max={100}
+              step={value.kind === 'arithmetic' ? 1 : 0.05}
+              ariaLabel={value.kind === 'arithmetic' ? `${label} difference` : `${label} ratio`}
+              title={value.kind === 'arithmetic' ? `${label} difference` : `${label} ratio`}
+              onCommit={(n) => onChange({ ...value, step: n })}
+            />
+          </span>
+        </>
+      ) : null}
+    </>
+  );
 }
 
 function RepeatPreview() {
@@ -4657,7 +4867,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             </span>
           </div>
           <div className="flyout-seg">
-            <div className="flyout-title">Symmetry repeat (selection)</div>
+            <div className="flyout-title">Symmetry repeat</div>
             <span className="param-item">
               <label htmlFor="repeatFamilySelect">Family</label>
               <select
@@ -4668,6 +4878,8 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
                 <option value="wallpaper">Wallpaper</option>
                 <option value="polar">Polar</option>
                 <option value="frieze">Frieze</option>
+                <option value="alongStroke">Along stroke</option>
+                <option value="normals">Normals reflector</option>
               </select>
             </span>
             {engine.repeatFamily === 'wallpaper' ? (
@@ -4679,7 +4891,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
                   onChange={(e) => engine.setRepeatWallpaperGroup(e.target.value as WallpaperGroupId)}
                 >
                   {WALLPAPER_GROUP_IDS.map((id) => (
-                    <option key={id} value={id}>{WALLPAPER_GROUPS[id].label}</option>
+                    <option key={id} value={id} title={WALLPAPER_GROUPS[id].label}>{WALLPAPER_ORBIFOLD[id]}</option>
                   ))}
                 </select>
               </span>
@@ -4693,7 +4905,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
                   onChange={(e) => engine.setRepeatFriezeGroup(e.target.value as FriezeGroupId)}
                 >
                   {FRIEZE_GROUP_IDS.map((id) => (
-                    <option key={id} value={id}>{FRIEZE_GROUPS[id].label}</option>
+                    <option key={id} value={id} title={FRIEZE_GROUPS[id].label}>{FRIEZE_ORBIFOLD[id]}</option>
                   ))}
                 </select>
               </span>
@@ -4716,15 +4928,117 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             ) : (
               <span className="param-item">Wallpaper uses Rows / Columns above.</span>
             )}
-            {engine.repeatFamily === 'polar' ? (
-              <label className="check-row">
-                <input
-                  type="checkbox"
-                  checked={engine.repeatPolarReflect}
-                  onChange={(e) => engine.setRepeatPolarReflect(e.target.checked)}
+            {engine.repeatFamily === 'wallpaper' || engine.repeatFamily === 'frieze' || engine.repeatFamily === 'polar' ? (
+              <span className="param-item">
+                <label htmlFor="repeatMotifOffsetStepper">Turn motif by (°)</label>
+                <NumericStepper
+                  id="repeatMotifOffsetStepper"
+                  size="compact"
+                  value={engine.repeatMotifOffsetDeg}
+                  min={-360}
+                  max={360}
+                  step={5}
+                  ariaLabel="Motif orientation offset in degrees"
+                  title="Rotate the motif inside its cell before the group steps apply"
+                  onCommit={(n) => engine.setRepeatMotifOffsetDeg(n)}
                 />
-                Reflect (dihedral)
-              </label>
+              </span>
+            ) : null}
+            {engine.repeatFamily === 'polar' ? (
+              <>
+                <span className="param-item">
+                  <label htmlFor="repeatPolarModeSelect">Arrange copies</label>
+                  <select
+                    id="repeatPolarModeSelect"
+                    value={engine.repeatPolarMode}
+                    onChange={(e) => engine.setRepeatPolarMode(e.target.value as 'division' | 'degrees')}
+                  >
+                    <option value="division">By division</option>
+                    <option value="degrees">By degrees</option>
+                  </select>
+                </span>
+                {engine.repeatPolarMode === 'degrees' ? (
+                  <span className="param-item">
+                    <label htmlFor="repeatPolarStepStepper">Step (°)</label>
+                    <NumericStepper
+                      id="repeatPolarStepStepper"
+                      size="compact"
+                      value={engine.repeatPolarStepDeg}
+                      min={1}
+                      max={360}
+                      step={1}
+                      ariaLabel="Step angle in degrees"
+                      title="Angle between copies; it does not have to divide the circle"
+                      onCommit={(n) => engine.setRepeatPolarStepDeg(n)}
+                    />
+                  </span>
+                ) : null}
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={engine.repeatPolarReflect}
+                    onChange={(e) => engine.setRepeatPolarReflect(e.target.checked)}
+                  />
+                  Reflect (dihedral)
+                </label>
+              </>
+            ) : null}
+            {engine.repeatFamily === 'alongStroke' ? (
+              <>
+                <span className="param-item">
+                  <label htmlFor="repeatStationModeSelect">Place copies</label>
+                  <select
+                    id="repeatStationModeSelect"
+                    value={engine.repeatStationMode}
+                    onChange={(e) => engine.setRepeatStationMode(e.target.value as 'division' | 'spacing' | 'progression')}
+                  >
+                    <option value="division">By division</option>
+                    <option value="spacing">By spacing</option>
+                    <option value="progression">By progression</option>
+                  </select>
+                </span>
+                {engine.repeatStationMode === 'spacing' ? (
+                  <span className="param-item">
+                    <label htmlFor="repeatAlongSpacingStepper">Spacing</label>
+                    <NumericStepper
+                      id="repeatAlongSpacingStepper"
+                      size="compact"
+                      value={engine.repeatAlongSpacing}
+                      min={1}
+                      max={2000}
+                      step={5}
+                      ariaLabel="Spacing along the path"
+                      title="Distance between copies along the path"
+                      onCommit={(n) => engine.setRepeatAlongSpacing(n)}
+                    />
+                  </span>
+                ) : null}
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={engine.repeatAlongAlign}
+                    onChange={(e) => engine.setRepeatAlongAlign(e.target.checked)}
+                  />
+                  Turn copies with the path
+                </label>
+                <span className="param-item">
+                  <label htmlFor="repeatAlongOrientationStepper">Turn copies by (°)</label>
+                  <NumericStepper
+                    id="repeatAlongOrientationStepper"
+                    size="compact"
+                    value={engine.repeatAlongOrientationDeg}
+                    min={-360}
+                    max={360}
+                    step={5}
+                    ariaLabel="Copy orientation offset in degrees"
+                    title="Extra turn for each copy, on top of the path direction"
+                    onCommit={(n) => engine.setRepeatAlongOrientationDeg(n)}
+                  />
+                </span>
+              </>
+            ) : null}
+            {(engine.repeatFamily === 'alongStroke' || engine.repeatFamily === 'normals') ? (
+              <span className="param-item">Pick a path in the selection to repeat along; the last picked path is the guide.</span>
             ) : null}
             <span className="param-item">
               <button
@@ -4735,6 +5049,115 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
                 Apply repeat to selection
               </button>
             </span>
+            {engine.selectionReplication() ? (
+              <span className="param-item">
+                <button
+                  type="button"
+                  onClick={() => engine.regenerateReplication()}
+                  title="Rebuild the copies of the selected repeat from its stored settings (one undo step)"
+                >
+                  Regenerate repeat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => engine.expandReplication()}
+                  title="Keep the copies as ordinary items and detach the stored repeat settings"
+                >
+                  Expand repeat
+                </button>
+              </span>
+            ) : null}
+          </div>
+          <div className="flyout-seg">
+            <div className="flyout-title">Live repeat</div>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={engine.liveSymmetryArmed}
+                onChange={(e) => engine.setLiveSymmetryArmed(e.target.checked)}
+              />
+              Repeat live while drawing
+            </label>
+            {(engine.repeatFamily === 'alongStroke' || engine.repeatFamily === 'normals') ? (
+              <>
+                <span className="param-item">
+                  {engine.liveGuidePathChosen()
+                    ? 'Copies follow the guide path you picked.'
+                    : 'Select a path first — your drawing is then placed along or across it.'}
+                </span>
+                <span className="param-item">
+                  <button
+                    type="button"
+                    onClick={() => engine.captureLiveGuideFromSelection()}
+                    title="Use the selected path as the guide for live repeats"
+                  >
+                    Use selected path as guide
+                  </button>
+                  {engine.liveGuidePathChosen() ? (
+                    <button
+                      type="button"
+                      onClick={() => engine.clearLiveGuidePath()}
+                      title="Stop following a guide path"
+                    >
+                      Clear guide
+                    </button>
+                  ) : null}
+                </span>
+              </>
+            ) : (
+              <span className="param-item">While you draw, the shape above repeats with the family settings. Finishing the shape keeps the copies.</span>
+            )}
+          </div>
+          <div className="flyout-seg">
+            <div className="flyout-title">Progressions</div>
+            {engine.repeatFamily === 'wallpaper' || engine.repeatFamily === 'frieze' ? (
+              <span className="param-item">Progressions do not apply to wallpaper and frieze repeats — changing copies one by one would break the symmetry group.</span>
+            ) : null}
+            {engine.repeatFamily === 'polar' ? (
+              <>
+                <span className="param-item">
+                  <label>Start from</label>
+                  {REPEAT_OUTCOMES.map((outcome) => (
+                    <button
+                      key={outcome.id}
+                      type="button"
+                      onClick={() => engine.applyRepeatOutcome(outcome.id)}
+                      title={`Fill the polar and progression fields for a ${outcome.label.toLowerCase()}`}
+                    >
+                      {outcome.label}
+                    </button>
+                  ))}
+                </span>
+                <span className="param-item">
+                  {engine.repeatOutcomeName
+                    ? `You are using the ${REPEAT_OUTCOMES.find((o) => o.id === engine.repeatOutcomeName)?.label ?? ''} settings. Change any field to make it your own.`
+                    : 'Pick Whorl or Phyllotaxis, or set the fields yourself.'}
+                </span>
+                <ProgressionFields
+                  idPrefix="repeatRadiusProgression"
+                  label="Distance from centre"
+                  value={engine.polarRadiusProgression}
+                  onChange={(v) => engine.setPolarRadiusProgression(v)}
+                />
+                <ProgressionFields
+                  idPrefix="repeatScaleProgression"
+                  label="Size"
+                  value={engine.polarScaleProgression}
+                  onChange={(v) => engine.setPolarScaleProgression(v)}
+                />
+              </>
+            ) : null}
+            {engine.repeatFamily === 'alongStroke' ? (
+              <ProgressionFields
+                idPrefix="repeatGapProgression"
+                label="Spacing"
+                value={engine.alongGapProgression}
+                onChange={(v) => engine.setAlongGapProgression(v)}
+              />
+            ) : null}
+            {engine.repeatFamily === 'normals' ? (
+              <span className="param-item">Progressions do not apply to the normals reflector — every copy is a mirror of the same size.</span>
+            ) : null}
           </div>
           <div className="flyout-seg">
             <div className="flyout-title">Paths</div>

@@ -29,6 +29,8 @@ export interface KeyState {
   isCompositePath?: boolean;
   /** Conventional transform controls (Ctrl/Cmd+T) are showing. */
   isTransformMode?: boolean;
+  /** Active keyboard layout id (see KEYBOARD_LAYOUTS). Absent = base. */
+  activeLayoutId?: string;
 }
 
 export interface KeyCommand {
@@ -439,36 +441,6 @@ export const KEY_COMMANDS: KeyCommand[] = [
     exclusive: true,
   },
   {
-    id: 'bowed-point',
-    action: 'bowed-point',
-    keycap: 'B',
-    group: 'neutral',
-    help: 'Bowed line point (composite paths)',
-    match: (e) => letter('b')(e) && !e.shiftKey,
-    available: (s) => !!s.isCompositePath && !s.isDrawingShape && !s.isDrawingQuad,
-    exclusive: true,
-  },
-  {
-    id: 'bowed-point-flip',
-    action: 'bowed-point-flip',
-    keycap: '⇧B',
-    group: 'neutral',
-    help: 'Bowed line point, facing flipped (composite paths)',
-    match: (e) => letter('b')(e) && e.shiftKey,
-    available: (s) => !!s.isCompositePath && !s.isDrawingShape && !s.isDrawingQuad,
-    exclusive: true,
-  },
-  {
-    id: 'arc-three-point',
-    action: 'arc-three-point',
-    keycap: '.',
-    group: 'neutral',
-    help: 'Arc by three points: press at the end point to arc through the previous point; the next point key finishes it (composite paths)',
-    match: (e) => e.key === '.',
-    available: (s) => !!s.isCompositePath && !s.isDrawingShape && !s.isDrawingQuad,
-    exclusive: true,
-  },
-  {
     id: 'circle-diameter',
     action: 'circle-diameter',
     keycap: 'M',
@@ -722,6 +694,89 @@ export const KEY_COMMANDS: KeyCommand[] = [
   },
 ];
 
+/**
+ * Swappable keyboard layouts (TASKS-FMStroke Phase 1, Slice 14). A
+ * layout is named data: the commands it adds or overrides plus the
+ * caps it overrides. Layout commands win on their caps; unmatched
+ * caps fall back to the base layout, so the base command set stays
+ * live underneath every layout. Reservation (Phase 1.1): A is always
+ * End and Q is always Cancel in every layout — no layout command may
+ * claim KeyA or KeyQ, so those base commands always resolve.
+ */
+export interface KeyboardLayoutDef {
+  id: string;
+  label: string;
+  /** Commands this layout adds; they precede the base commands when
+   * this layout's variants are compiled, so they win shared caps. */
+  commands: KeyCommand[];
+  /** Cap overrides/additions, merged over KEY_CAPS by cap id. */
+  caps: KeyCap[];
+}
+
+const compositeReady = (s: KeyState): boolean =>
+  !!s.isCompositePath && !s.isDrawingShape && !s.isDrawingQuad;
+const compositeDrawing = (s: KeyState): boolean =>
+  compositeReady(s) && s.isDrawingPath;
+
+/** The spline (FMStroke) layout's commands. These keys used to be
+ * hard-coded KEY_COMMANDS entries; they resolve through the layout
+ * registry now. The layout activates automatically while composite
+ * mode is on (D1); see engine.activeKeyboardLayoutId. */
+export const SPLINE_COMMANDS: KeyCommand[] = [
+  {
+    id: 'bowed-point',
+    action: 'bowed-point',
+    keycap: 'B',
+    group: 'neutral',
+    help: 'Bowed line point (composite paths)',
+    match: (e) => letter('b')(e) && !e.shiftKey,
+    available: compositeReady,
+    exclusive: true,
+  },
+  {
+    id: 'bowed-point-flip',
+    action: 'bowed-point-flip',
+    keycap: '⇧B',
+    group: 'neutral',
+    help: 'Bowed line point, facing flipped (composite paths)',
+    match: (e) => letter('b')(e) && e.shiftKey,
+    available: compositeReady,
+    exclusive: true,
+  },
+  {
+    id: 'arc-three-point',
+    action: 'arc-three-point',
+    keycap: '.',
+    group: 'neutral',
+    help: 'Arc by three points: press at the end point to arc through the previous point; the next point key finishes it (composite paths)',
+    match: (e) => e.key === '.',
+    available: compositeReady,
+    exclusive: true,
+  },
+  {
+    id: 'switch-rounding',
+    action: 'switch-rounding',
+    keycap: '\\',
+    group: 'neutral',
+    help: 'Switch corner rounding: arc, spline, or bevel, for the next rounded points',
+    match: (e) => e.code === 'Backslash' && !e.shiftKey && !e.altKey && !meta(e),
+    available: compositeDrawing,
+    exclusive: true,
+  },
+  {
+    id: 'erase-last-point',
+    action: 'erase-last-point',
+    keycap: 'Z',
+    group: 'neutral',
+    help: 'Erase last point',
+    // Z is Pan-lock in the base layout, but Pan-lock is idle-only,
+    // so the cap is free while drawing (the TASKS-FMStroke audit).
+    match: (e) => !meta(e) && !e.shiftKey && letter('z')(e),
+    available: compositeDrawing,
+    exclusive: true,
+  },
+];
+
 // Settings metadata attached to the command that owns the behavior.
 // Each popover edits how its tool draws (not what the panel sections
 // draw). Path keys, Circle by Diameter, Circle by Radius, and Rect by Diagonal have
@@ -732,13 +787,15 @@ const KEY_SETTINGS_LINKS: Record<string, { settingsId: string; settingsSummary: 
   'rounded-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
   'bowed-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
   'bowed-point-flip': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
+  'switch-rounding': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
+  'erase-last-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
   'arc-three-point': { settingsId: 'path-tool', settingsSummary: 'Path mode and rounded corners' },
   'circle-diameter': { settingsId: 'circle-diameter-tool', settingsSummary: 'Circle polygon fit' },
   'circle-radius': { settingsId: 'circle-radius-tool', settingsSummary: 'Circle radius start' },
   'rect-diagonal': { settingsId: 'rect-diagonal-tool', settingsSummary: 'Rect diagonal extent' },
 };
 
-for (const cmd of KEY_COMMANDS) {
+for (const cmd of [...KEY_COMMANDS, ...SPLINE_COMMANDS]) {
   const link = KEY_SETTINGS_LINKS[cmd.id];
   if (!link) continue;
   cmd.settingsId = link.settingsId;
@@ -792,13 +849,46 @@ export const KEY_CAPS: KeyCap[] = [
   { id: 'Space', dataKey: 'spacebar', commandId: 'drag-lock', row: 'space', className: 'keyboardkey spacebarKey OtherKey enabledButton selectionButton', legend: 'DRAG LOCK' },
 ];
 
+/** The layout registry. Base is today's keymap, unchanged; the
+ * spline layout adds the FMStroke session keys on top of it. */
+export const KEYBOARD_LAYOUTS: KeyboardLayoutDef[] = [
+  { id: 'base', label: 'Base', commands: KEY_COMMANDS, caps: [] },
+  {
+    id: 'spline',
+    label: 'Spline',
+    commands: SPLINE_COMMANDS,
+    caps: [
+      { id: 'Backslash', dataKey: '\\', commandId: 'switch-rounding', row: 'q', className: 'keyboardkey  backslashKey drawingButton', legend: 'ROUNDING<br/>TYPE' },
+    ],
+  },
+];
+
+export function keyboardLayoutById(id: string | undefined): KeyboardLayoutDef {
+  return KEYBOARD_LAYOUTS.find((l) => l.id === id) ?? KEYBOARD_LAYOUTS[0];
+}
+
+/** The cap set a layout renders: base caps with the layout's
+ * overrides merged in by cap id. Base returns KEY_CAPS itself. */
+export function capsForLayout(id: string | undefined): KeyCap[] {
+  const layout = keyboardLayoutById(id);
+  if (!layout.caps.length) return KEY_CAPS;
+  const overrides = new Map(layout.caps.map((cap) => [cap.id, cap]));
+  const merged = KEY_CAPS.map((cap) => overrides.get(cap.id) ?? cap);
+  for (const cap of layout.caps) if (!KEY_CAPS.some((c) => c.id === cap.id)) merged.push(cap);
+  return merged;
+}
+
 export function commandById(id: string): KeyCommand | undefined {
-  return KEY_COMMANDS.find((c) => c.id === id);
+  for (const layout of KEYBOARD_LAYOUTS) {
+    const found = layout.commands.find((c) => c.id === id);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 export function keyGroupForLabel(label: string): StatusKeyGroup {
   const k = label.toLowerCase();
-  const cmd = KEY_COMMANDS.find(
+  const cmd = KEYBOARD_LAYOUTS.flatMap((l) => l.commands).find(
     (c) => !c.alias && c.keycap.toLowerCase() === k,
   );
   return cmd?.group ?? 'neutral';
@@ -901,7 +991,7 @@ export function nudgeStep(chord: Pick<ModifierChord, 'shift' | 'alt'>): number {
 
 const PUNCTUATION: Record<string, string> = {
   BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'",
-  Comma: ',', Slash: '/', Space: ' ', Digit0: '0', Minus: '-', Equal: '=',
+  Comma: ',', Period: '.', Slash: '/', Space: ' ', Digit0: '0', Minus: '-', Equal: '=',
 };
 export function physicalKey(code: string): string {
   return PUNCTUATION[code] ?? (code.startsWith('Key') ? code.slice(3).toLowerCase() : code);
@@ -922,8 +1012,8 @@ export interface KeyCommandVariant {
   };
 }
 
-function presentation(command: KeyCommand, code: string, state: KeyState, chord: ModifierSnapshot, platform: KeyboardPlatform) {
-  const cap = KEY_CAPS.find((cap) => cap.commandId === command.id);
+function presentation(command: KeyCommand, code: string, state: KeyState, chord: ModifierSnapshot, platform: KeyboardPlatform, caps: KeyCap[] = KEY_CAPS) {
+  const cap = caps.find((cap) => cap.commandId === command.id);
   let legend = cap?.legend || command.help.toUpperCase();
   let description = command.help;
   const dir = code === 'BracketLeft' || code === 'Semicolon' ? -1 : 1;
@@ -1013,33 +1103,55 @@ export function adjustActionForCommand(id: string): AdjustAction | undefined {
   return ADJUST_ACTIONS.find((a) => a.commandIds.includes(id));
 }
 
-// Compile existing ordered commands into exact typed physical chords. Both
+// Compile ordered commands into exact typed physical chords. Both
 // dispatch and presentation consume this registry. No browser Event is needed
 // to resolve a layout, and Option-produced characters cannot move a keycap.
 // Only commands that require a primary modifier may claim browser shortcuts.
-export const KEY_VARIANTS: KeyCommandVariant[] = [];
-const variantCodes = [...new Set([
-  ...KEY_CAPS.map((cap) => cap.id), 'Digit0', 'Minus', 'Equal', 'Escape', 'Backspace',
-  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
-])];
-for (const command of KEY_COMMANDS) {
-  const adjust = adjustActionForCommand(command.id);
-  const when = adjust ? adjust.when
-    : command.action === 'nudge' ? (state: KeyState) => idle(state) && state.selectedCount > 0
-    : command.id === 'radial-lock' ? (state: KeyState) => state.isDrawingShape && state.shapeType === 'circle_radial_stamp'
-    : command.available;
-  for (const code of variantCodes) {
-    for (let bits = 0; bits < 16; bits++) {
-      const chord = Object.freeze({ shift: !!(bits & 1), alt: !!(bits & 2), control: !!(bits & 4), meta: !!(bits & 8) });
-      const event = { code, key: physicalKey(code), shiftKey: chord.shift, altKey: chord.alt, ctrlKey: chord.control, metaKey: chord.meta } as KeyboardEvent;
-      if (!command.match(event)) continue;
-      if (chord.control || chord.meta) {
-        // Unregistered primary chords must retain browser/native behavior.
-        if (chord.alt || (chord.control && chord.meta) || command.match({ ...event, ctrlKey: false, metaKey: false } as KeyboardEvent)) continue;
+// Compilation is per layout (Phase 1.5): the base list is exactly what
+// it was before layouts existed, and each other layout compiles its own
+// commands ahead of the base set over its merged caps — same size class
+// as the base compile, paid once per registered layout at startup.
+function compileKeyVariants(commands: KeyCommand[], caps: KeyCap[]): KeyCommandVariant[] {
+  const variants: KeyCommandVariant[] = [];
+  const variantCodes = [...new Set([
+    ...caps.map((cap) => cap.id), 'Digit0', 'Minus', 'Equal', 'Escape', 'Backspace',
+    'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+  ])];
+  for (const command of commands) {
+    const adjust = adjustActionForCommand(command.id);
+    const when = adjust ? adjust.when
+      : command.action === 'nudge' ? (state: KeyState) => idle(state) && state.selectedCount > 0
+      : command.id === 'radial-lock' ? (state: KeyState) => state.isDrawingShape && state.shapeType === 'circle_radial_stamp'
+      : command.available;
+    for (const code of variantCodes) {
+      for (let bits = 0; bits < 16; bits++) {
+        const chord = Object.freeze({ shift: !!(bits & 1), alt: !!(bits & 2), control: !!(bits & 4), meta: !!(bits & 8) });
+        const event = { code, key: physicalKey(code), shiftKey: chord.shift, altKey: chord.alt, ctrlKey: chord.control, metaKey: chord.meta } as KeyboardEvent;
+        if (!command.match(event)) continue;
+        if (chord.control || chord.meta) {
+          // Unregistered primary chords must retain browser/native behavior.
+          if (chord.alt || (chord.control && chord.meta) || command.match({ ...event, ctrlKey: false, metaKey: false } as KeyboardEvent)) continue;
+        }
+        variants.push({ code, chord, commandId: command.id, command, when,
+          present: (state, modifiers, platform) => presentation(command, code, state, modifiers, platform, caps),
+        });
       }
-      KEY_VARIANTS.push({ code, chord, commandId: command.id, command, when,
-        present: (state, modifiers, platform) => presentation(command, code, state, modifiers, platform),
-      });
     }
   }
+  return variants;
+}
+
+export const KEY_VARIANTS: KeyCommandVariant[] = compileKeyVariants(KEY_COMMANDS, KEY_CAPS);
+
+/** Variant lists per layout id; 'base' is KEY_VARIANTS itself. */
+export const KEY_VARIANTS_BY_LAYOUT: Record<string, KeyCommandVariant[]> = { base: KEY_VARIANTS };
+for (const layout of KEYBOARD_LAYOUTS) {
+  if (layout.id === 'base') continue;
+  KEY_VARIANTS_BY_LAYOUT[layout.id] = compileKeyVariants(
+    [...layout.commands, ...KEY_COMMANDS], capsForLayout(layout.id),
+  );
+}
+
+export function keyVariantsForLayout(id: string | undefined): KeyCommandVariant[] {
+  return KEY_VARIANTS_BY_LAYOUT[id ?? 'base'] ?? KEY_VARIANTS;
 }
