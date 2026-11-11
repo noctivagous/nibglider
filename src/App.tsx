@@ -12,6 +12,7 @@ import {
   EXPORT_COMMANDS,
   FILE_COMMANDS,
   IMPORT_COMMANDS,
+  PRINTIFY_COMMANDS,
   exportFileName,
   exportScopeOf,
   type ExportScopeId,
@@ -29,7 +30,7 @@ import JpgExportDialog from './components/JpgExportDialog';
 import { svgToPdfBlob } from './engine/document/pdfExport';
 import ContextMenu from './components/ContextMenu';
 import SettingsWindow from './components/SettingsWindow';
-import PrintifySettingsDialog from './components/PrintifySettingsDialog';
+import AboutDialog from './components/AboutDialog';
 import PageSetupDialog from './components/PageSetupDialog';
 import ImageTraceDialog from './components/ImageTraceDialog';
 import DocumentInfoWindow from './components/DocumentInfoWindow';
@@ -39,7 +40,6 @@ import OnscreenKeyboard from './components/OnscreenKeyboard';
 import CanvasScrollbars from './components/CanvasScrollbars';
 import PageRuler from './components/PageRuler';
 import TutorialOverlay from './components/TutorialOverlay';
-import WidgetHandle from './components/WidgetHandle';
 import StatusOverlay from './components/StatusOverlay';
 import ExportFramePopover from './components/ExportFramePopover';
 import InterlacePopover from './components/InterlacePopover';
@@ -63,7 +63,6 @@ import {
 } from './tutorial/completionDetectors';
 import { parseTutorialText } from './tutorial/tutorialLoader';
 import {
-  clearNibGliderSettings,
   markTutorialCompleted,
   markTutorialDismissed,
   shouldAutoShowTutorial,
@@ -80,23 +79,27 @@ const MENU_COMMANDS: Set<string> = new Set([
   ...FILE_COMMANDS,
   ...IMPORT_COMMANDS,
   ...EXPORT_COMMANDS,
-  'settings', 'document-settings', 'canvas-size', 'tutorial', 'reset-settings', 'empty-canvas',
+  ...PRINTIFY_COMMANDS,
+  'reset-zoom', 'zoom-in', 'zoom-out', 'fit-page', 'fit-artwork', 'fit-selection',
+  'find-replace',
+  'ruler-viewer', 'ruler-page', 'ruler-off', 'show-grid', 'show-guides', 'guide-snapping',
+  'settings', 'document-settings', 'canvas-size', 'pages-guides', 'tutorial', 'empty-canvas',
+  'about', 'tutorials',
   'print', 'print-selection', 'page-setup',
   'tutorial-demo-rectangle', 'tutorial-fix-a-shape', 'tutorial-fill-and-stroke',
   'tutorial-adding-text', 'tutorial-grouping-and-ordering', 'tutorial-saving-and-exporting',
   'help-getting-started', 'help-keys-reference',
-  'printify-settings',
   'undo', 'redo',
-  'cut', 'copy', 'paste', 'select-all',
+  'cut', 'copy', 'paste', 'paste-in-place', 'select-all', 'select-none',
   'toggle-panel', 'toggle-keyboard', 'toggle-status',
   'length-unit-pt', 'length-unit-inch', 'length-unit-cm',
   'bring-to-front', 'send-to-back', 'bring-forward', 'send-backward', 'duplicate-selection',
-  'group', 'ungroup-selection', 'delete-selection', 'transform-mode',
+  'group', 'ungroup-selection', 'delete-selection', 'transform-mode', 'lock-selection', 'hide-selection',
   'point-edit', 'point-select', 'point-split', 'point-delete', 'point-smooth', 'point-corner', 'point-close', 'point-join',
   'align-left', 'align-center-x', 'align-right', 'align-top', 'align-center-y', 'align-bottom',
   'align-doc-left', 'align-doc-center-x', 'align-doc-right', 'align-doc-top', 'align-doc-center-y', 'align-doc-bottom',
   'distribute-horizontal', 'distribute-vertical', 'flip-horizontal', 'flip-vertical',
-  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-crop', 'combinatorics-cut', 'combinatorics-interlace',
+  'combinatorics-none', 'combinatorics-union', 'combinatorics-subtract', 'combinatorics-intersect', 'combinatorics-exclude', 'combinatorics-crop', 'combinatorics-cut', 'combinatorics-interlace',
   'interlace', 'interlace-group', 'remove-from-interlace',
   'rect-shape-rectangle', 'rect-shape-circle', 'rect-shape-polygon', 'rect-shape-supershape',
   'rect-shape-trapezoid', 'rect-shape-parallelogram', 'rect-shape-rightTriangle',
@@ -443,9 +446,16 @@ export default function App() {
       else runVectorExport(exportScope);
       return;
     }
+    if (commandId === 'export-printify-area') {
+      void engine.uploadSelectedPrintifyAreaToPrintify();
+      return;
+    }
+    if (commandId === 'export-printify-product') {
+      void engine.createSelectedPrintifyProductOnPrintify();
+      return;
+    }
     if (commandId === 'settings') gui.openWindow('settings');
     else if (commandId === 'page-setup') gui.openWindow('page-setup');
-    else if (commandId === 'printify-settings') gui.openWindow('printify-settings');
     else if (commandId === 'document-settings') gui.openWindow('document-settings');
     else if (commandId === 'canvas-size') gui.openWindow('document-size');
     else if (commandId === 'tutorial') startTutorial();
@@ -458,12 +468,28 @@ export default function App() {
     else if (commandId === 'copy') engine.copySelection();
     else if (commandId === 'paste') void engine.pasteFromSystemClipboard();
     else if (commandId === 'select-all') engine.selectAll();
-    else if (commandId === 'reset-settings') {
-      try {
-        clearNibGliderSettings(localStorage);
-      } catch { /* Storage can be unavailable in private browsing. */ }
-      window.location.reload();
-    } else if (commandId === 'empty-canvas') engine.newDocument();
+    else if (commandId === 'reset-zoom') engine.resetZoom();
+    else if (commandId === 'zoom-in') engine.zoomIn();
+    else if (commandId === 'zoom-out') engine.zoomOut();
+    else if (commandId === 'fit-page') engine.fitPage();
+    else if (commandId === 'fit-artwork') engine.fitArtwork();
+    else if (commandId === 'fit-selection') engine.fitSelection();
+    else if (commandId === 'ruler-viewer') engine.setRulerPlacement('viewer');
+    else if (commandId === 'ruler-page') engine.setRulerPlacement('page');
+    else if (commandId === 'ruler-off') engine.setRulerPlacement('off');
+    else if (commandId === 'show-grid') engine.setGridEnabled(!engine.isGridEnabled);
+    else if (commandId === 'show-guides') engine.setGuidesVisible(!engine.guidesVisible);
+    else if (commandId === 'guide-snapping') engine.setGuideSnapping(!engine.guideSnapping);
+    else if (commandId === 'empty-canvas') engine.newDocument();
+    else if (commandId === 'paste-in-place') void engine.pasteInPlaceFromClipboard();
+    else if (commandId === 'select-none') engine.clearOutSelection();
+    else if (commandId === 'lock-selection') engine.lockSelection();
+    else if (commandId === 'hide-selection') engine.hideSelection();
+    else if (commandId === 'about') gui.openWindow('about');
+    else if (commandId === 'pages-guides') {
+      gui.setControlsVisible(true);
+      controlPanelRef.current?.focusSection('pagesControls');
+    }
     else if (commandId === 'toggle-panel') gui.toggleControls();
     else if (commandId === 'toggle-keyboard') gui.toggleKeyboard();
     else if (commandId === 'toggle-status') gui.toggleStatus();
@@ -540,6 +566,7 @@ export default function App() {
     else if (commandId === 'snap-aspect') engine.setAspectSnappingEnabled(!engine.isAspectSnappingEnabled);
     else if (commandId === 'text-mode-display') engine.setTextMode('display');
     else if (commandId === 'text-mode-body') engine.setTextMode('body');
+    else if (commandId === 'find-replace') controlPanelRef.current?.openFindReplace();
     else if (commandId === 'scale-dialog') controlPanelRef.current?.openOperationDialog('scale');
     else if (commandId === 'rotate-dialog') controlPanelRef.current?.openOperationDialog('rotate');
     else if (commandId === 'image-place') { imageFileModeRef.current = 'place'; imageFileInputRef.current?.click(); }
@@ -618,6 +645,10 @@ export default function App() {
     ...(ui.statusVisible ? ['toggle-status'] : []),
     ...(ui.filtersVisible ? ['image-filters'] : []),
     `length-unit-${engine.lengthUnit}`,
+    `ruler-${engine.rulerPlacement}`,
+    ...(engine.isGridEnabled ? ['show-grid'] : []),
+    ...(engine.guidesVisible ? ['show-guides'] : []),
+    ...(engine.guideSnapping ? ['guide-snapping'] : []),
     `combinatorics-${engine.combineMode}`,
     `rect-shape-${engine.rectangleInnerShapeType}`,
     `circle-shape-${engine.circleInnerShapeType}`,
@@ -910,7 +941,7 @@ export default function App() {
     : contextMenuDef;
   const contextEnabled = engine.selectedItems.length > 0
     ? MENU_COMMANDS
-    : new Set([...MENU_COMMANDS].filter((id) => id !== 'bring-to-front' && id !== 'send-to-back' && id !== 'bring-forward' && id !== 'send-backward' && id !== 'transform-mode' && id !== 'interlace' && id !== 'interlace-group'));
+    : new Set([...MENU_COMMANDS].filter((id) => id !== 'bring-to-front' && id !== 'send-to-back' && id !== 'bring-forward' && id !== 'send-backward' && id !== 'transform-mode' && id !== 'interlace' && id !== 'interlace-group' && id !== 'cut' && id !== 'copy' && id !== 'duplicate-selection' && id !== 'delete-selection' && id !== 'group' && id !== 'ungroup-selection' && id !== 'lock-selection' && id !== 'hide-selection' && !id.startsWith('point-')));
 
   return (
     <div id="mainLayout">
@@ -948,8 +979,8 @@ export default function App() {
       {ui.openWindowId === 'settings' && (
         <SettingsWindow engine={engine} gui={gui} windowId={ui.openWindowId} />
       )}
-      {ui.openWindowId === 'printify-settings' && (
-        <PrintifySettingsDialog engine={engine} onClose={() => gui.closeWindow()} />
+      {ui.openWindowId === 'about' && (
+        <AboutDialog onClose={() => gui.closeWindow()} />
       )}
       {ui.openWindowId === 'page-setup' && (
         <PageSetupDialog engine={engine} onClose={() => gui.closeWindow()} />
@@ -1030,7 +1061,6 @@ export default function App() {
               } as CSSProperties
             }
           >
-            <WidgetHandle widget="keyboard" label="On-screen keyboard" />
             <OnscreenKeyboard
               engine={engine}
               activeCode={activeCode}

@@ -84,6 +84,50 @@ test('layer and viewport managers preserve active layer, cursor zoom, pan, and z
   } finally { s.project.remove(); }
 });
 
+test('viewport fit frames a rect with margin, centers it, and clamps zoom', () => {
+  const s = scope(); // 400 x 300 px view
+  try {
+    const viewport = new ViewportManager(s);
+    // 200x100 rect with the default 48px margin: usable 304x204, so the
+    // width binds at 304/200 = 1.52.
+    assert.equal(viewport.fitToRect({ x: 0, y: 0, width: 200, height: 100 }), true);
+    assert.ok(Math.abs(viewport.zoom - 1.52) < 1e-9);
+    assert.ok(Math.abs(viewport.center.x - 100) < 1e-6);
+    assert.ok(Math.abs(viewport.center.y - 50) < 1e-6);
+    // A huge rect clamps to min zoom; a tiny one to max zoom.
+    assert.equal(viewport.fitToRect({ x: -5000, y: -5000, width: 10000, height: 10000 }), true);
+    assert.ok(Math.abs(viewport.zoom - 0.1) < 1e-9, 'clamps to min zoom');
+    assert.equal(viewport.fitToRect({ x: 5, y: 5, width: 1, height: 1 }), true);
+    assert.ok(Math.abs(viewport.zoom - 16) < 1e-9, 'clamps to max zoom');
+    assert.ok(Math.abs(viewport.center.x - 5.5) < 1e-6);
+    assert.ok(Math.abs(viewport.center.y - 5.5) < 1e-6);
+    // Degenerate and missing rects are refused without moving the view.
+    assert.equal(viewport.fitToRect(null), false);
+    assert.equal(viewport.fitToRect({ x: 0, y: 0, width: -1, height: 10 }), false);
+  } finally { s.project.remove(); }
+});
+
+test('engine fit commands frame page, artwork, and selection', () => {
+  const s = scope(); const engine = new NibGliderEngine(s, () => {});
+  try {
+    assert.equal(engine.fitPage(), false, 'no page set yet');
+    engine.setPageDimensions(400, 300);
+    assert.equal(engine.fitPage(), true);
+    assert.ok(Math.abs(s.view.center.x) < 1e-6 && Math.abs(s.view.center.y) < 1e-6);
+    const rect = new s.Path.Rectangle({ from: [0, 0], to: [40, 30] });
+    assert.equal(engine.fitArtwork(), true);
+    assert.ok(Math.abs(s.view.center.x - 20) < 1e-6 && Math.abs(s.view.center.y - 15) < 1e-6);
+    engine.clearOutSelection();
+    assert.equal(engine.fitSelection(), false, 'nothing selected');
+    engine.addItemToSelection(rect);
+    assert.equal(engine.fitSelection(), true);
+    assert.ok(Math.abs(s.view.center.x - 20) < 1e-6 && Math.abs(s.view.center.y - 15) < 1e-6);
+    engine.zoomIn(); assert.ok(s.view.zoom > 1);
+    const zoomed = s.view.zoom;
+    engine.zoomOut(); assert.ok(s.view.zoom < zoomed);
+  } finally { s.project.remove(); }
+});
+
 test('cmd/ctrl - and = step viewport zoom, cmd/ctrl 0 resets to 100%', () => {
   const s = scope(); const engine = new NibGliderEngine(s, () => {});
   const chord = (code, key, mods) => ({

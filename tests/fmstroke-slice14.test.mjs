@@ -180,7 +180,7 @@ test('native v3 files migrate bowOffset/bowFacing into the bow record', () => {
   };
   const absolute = parseNativeDocument(v3Text([drawable({ kind: 'bowedLine', bowOffset: 20, bowFacing: 'right' })]));
   assert.equal(absolute.ok, true);
-  assert.equal(absolute.doc.version, 4);
+  assert.equal(absolute.doc.version, 6);
   assert.deepEqual(absolute.doc.drawables[0].source.points[0].outgoing.bow, {
     facing: 'B', amplitude: 20, amplitudeIsPercent: false, peakLocation: 0.5,
     peakLocationMultiplier: 1, isArc: false, dualDistance: 0, corneredApex: 'none',

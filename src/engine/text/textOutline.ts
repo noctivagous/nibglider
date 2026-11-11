@@ -71,6 +71,15 @@ function contoursOf(scope: any, commands: Cmd[]): Item[] {
   return paths.filter((p) => p.segments && p.segments.length >= 2);
 }
 
+export interface OutlineOptions {
+  /** Extra points of advance after each space. */
+  wordSpacing?: number;
+  /** Lowercase letters outline as capitals at SMALL_CAPS_SCALE. */
+  smallCaps?: boolean;
+}
+
+export const SMALL_CAPS_SCALE = 0.75;
+
 /**
  * Outline a single line of text. Returns null when the font yields
  * no contours (empty/space-only content). Spaces still advance.
@@ -81,21 +90,26 @@ export function outlineText(
   text: string,
   size: number,
   letterSpacing = 0,
+  options: OutlineOptions = {},
 ): OutlineResult | null {
   const px = Math.max(4, size);
   const scale = px / font.unitsPerEm;
   const tracking = Number.isFinite(letterSpacing) ? letterSpacing : 0;
+  const wordSpacing = Number.isFinite(options.wordSpacing) ? Math.max(0, options.wordSpacing ?? 0) : 0;
   const contours: Item[] = [];
   let x = 0;
   let prev: opentype.Glyph | null = null;
   for (const ch of text) {
-    const glyph = font.charToGlyph(ch);
-    if (prev) x += font.getKerningValue(prev, glyph) * scale;
+    const small = options.smallCaps === true && ch.toLowerCase() === ch && ch.toUpperCase() !== ch;
+    const glyph = font.charToGlyph(small ? ch.toUpperCase() : ch);
+    const glyphPx = small ? px * SMALL_CAPS_SCALE : px;
+    const glyphScale = glyphPx / font.unitsPerEm;
+    if (prev && !small) x += font.getKerningValue(prev, glyph) * scale;
     if (ch !== ' ') {
-      const path = glyph.getPath(x, 0, px);
+      const path = glyph.getPath(x, 0, glyphPx);
       contours.push(...contoursOf(scope, path.commands as Cmd[]));
     }
-    x += (glyph.advanceWidth ?? 0) * scale + tracking;
+    x += (glyph.advanceWidth ?? 0) * glyphScale + tracking + (ch === ' ' ? wordSpacing : 0);
     prev = glyph;
   }
   const width = Math.max(0, x - (text.length > 0 ? tracking : 0));

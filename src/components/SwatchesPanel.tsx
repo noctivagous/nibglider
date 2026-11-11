@@ -3,26 +3,41 @@
 // it as fill (to the selection when there is one, else the current
 // fill colour); Shift+click applies it as stroke. Alt+click a
 // document swatch removes it. The eyedropper samples fill/stroke
-// from the next canvas click. Palette state lives in ui/swatches.ts
-// (localStorage-persisted); this component mirrors it in state.
-import { useState } from 'react';
+// from the next canvas click.
+//
+// Slice 20: the document palette is document state — it lives on
+// the engine and travels in the .nibglider file (native v6).
+// Opening a document that carries no palette imports the legacy
+// localStorage palette (ui/swatches.ts) once, via the engine's
+// seed. Recent colours stay global (localStorage).
+import { useEffect, useState } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
 import {
   DEFAULT_PALETTE,
   addDocumentSwatch,
   loadDocumentPalette,
   loadRecentColors,
+  normalizeSwatchColor,
   pushRecentColor,
   removeDocumentSwatch,
 } from '../ui/swatches';
 
 export default function SwatchesPanel({ engine }: { engine: NibGliderEngine }) {
-  const [documentPalette, setDocumentPalette] = useState<string[]>(() => loadDocumentPalette());
   const [recents, setRecents] = useState<string[]>(() => loadRecentColors());
+  const [hexDraft, setHexDraft] = useState('');
+  const [hexError, setHexError] = useState(false);
+  const documentPalette = engine.documentPalette;
+
+  // Once per opened document: a document without its own palette
+  // inherits the legacy localStorage palette.
+  const fileKey = engine.currentFileName;
+  useEffect(() => {
+    engine.seedDocumentPaletteFromLegacy(loadDocumentPalette());
+  }, [engine, fileKey]);
 
   const apply = (color: string, event: { shiftKey: boolean; altKey: boolean }, inDocument: boolean): void => {
     if (event.altKey && inDocument) {
-      setDocumentPalette((prev) => removeDocumentSwatch(prev, color));
+      engine.setDocumentPalette(removeDocumentSwatch(documentPalette, color));
       return;
     }
     if (event.shiftKey) engine.setStrokeColor(color);
@@ -50,10 +65,27 @@ export default function SwatchesPanel({ engine }: { engine: NibGliderEngine }) {
       )
   );
 
-  const addCurrent = (): void => {
+  const keepFill = (): void => {
     const paint = engine.selectionPaint();
     const color = paint?.fillColor ?? engine.globalFillColor;
-    if (color) setDocumentPalette((prev) => addDocumentSwatch(prev, color));
+    if (color) engine.setDocumentPalette(addDocumentSwatch(documentPalette, color));
+  };
+
+  const keepStroke = (): void => {
+    const paint = engine.selectionPaint();
+    const color = paint?.strokeColor ?? engine.globalStrokeColor;
+    if (color) engine.setDocumentPalette(addDocumentSwatch(documentPalette, color));
+  };
+
+  const keepHex = (): void => {
+    const color = normalizeSwatchColor(hexDraft);
+    if (!color) {
+      setHexError(true);
+      return;
+    }
+    setHexError(false);
+    engine.setDocumentPalette(addDocumentSwatch(documentPalette, color));
+    setHexDraft('');
   };
 
   return (
@@ -71,10 +103,34 @@ export default function SwatchesPanel({ engine }: { engine: NibGliderEngine }) {
           type="button"
           className="swatches-tool"
           title="Keep the current fill colour in the document palette"
-          onClick={addCurrent}
+          onClick={keepFill}
         >
           + Keep fill
         </button>
+        <button
+          type="button"
+          className="swatches-tool"
+          title="Keep the current stroke colour in the document palette"
+          onClick={keepStroke}
+        >
+          + Keep stroke
+        </button>
+      </div>
+      <div className="swatches-row">
+        <input
+          type="text"
+          className="swatches-hex"
+          value={hexDraft}
+          placeholder="#rrggbb"
+          aria-label="Hex colour to keep"
+          title={hexError ? 'Enter a hex colour like #3a7bd5' : 'Type a hex colour and press Add'}
+          onChange={(e) => { setHexDraft(e.target.value); setHexError(false); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') keepHex(); }}
+        />
+        <button type="button" className="swatches-tool" onClick={keepHex}>
+          Add
+        </button>
+        {hexError ? <span className="swatches-hex-error">Not a hex colour</span> : null}
       </div>
       <div className="swatches-label">Document palette</div>
       {grid(documentPalette, true, 'No kept colours yet — “+ Keep fill” adds the current fill.')}

@@ -43,6 +43,17 @@ export class UndoManager {
     return top ? top.label : null;
   }
 
+  /** Read-only history view for the History panel: every entry in
+   * chronological order (undone entries trail the position), and
+   * the current position (the count of applied entries). */
+  entries(): { labels: string[]; position: number } {
+    const labels = this.undoStack.map((cmd) => cmd.label);
+    for (let i = this.redoStack.length - 1; i >= 0; i -= 1) {
+      labels.push(this.redoStack[i].label);
+    }
+    return { labels, position: this.undoStack.length };
+  }
+
   redoLabel(): string | null {
     const top = this.redoStack[this.redoStack.length - 1];
     return top ? top.label : null;

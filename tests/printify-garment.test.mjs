@@ -186,6 +186,11 @@ test('garment deposit, select, update, and delete manage the group lifecycle wit
 test('garment areas scope artwork and export null headless', async () => {
   const { s, e, cleanup } = engine();
   try {
+    assert.equal(e.selectedPrintifyArea(), null);
+    assert.equal(await e.uploadSelectedPrintifyAreaToPrintify(), false);
+    assert.match(e.lastDropNote, /select one garment area/);
+    assert.equal(await e.createSelectedPrintifyProductOnPrintify(), false);
+    assert.match(e.lastDropNote, /select a garment/);
     depositCircle(s, e);
     const id = e.depositPrintifyGarment({
       ...garmentSpec(),

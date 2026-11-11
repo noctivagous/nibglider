@@ -30,6 +30,7 @@ export class HistoryManager {
   canUndo(): boolean { return this.stack.canUndo(); }
   canRedo(): boolean { return this.stack.canRedo(); }
   undoLabel(): string | null { return this.stack.undoLabel(); }
+  entries(): { labels: string[]; position: number } { return this.stack.entries(); }
   redoLabel(): string | null { return this.stack.redoLabel(); }
   undo(): void { this.cancelMoveGesture(); this.stack.undo(); this.refreshCentroids(); }
   redo(): void { this.cancelMoveGesture(); this.stack.redo(); this.refreshCentroids(); }

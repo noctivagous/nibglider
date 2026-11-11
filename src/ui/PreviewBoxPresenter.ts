@@ -10,6 +10,7 @@ const COMBINE_PREVIEW_LABELS: Record<CombineMode, string> = {
   union: 'Union',
   subtract: 'Subtract',
   intersect: 'Intersect',
+  exclude: 'Exclude',
   crop: 'Crop',
   cut: 'Cut',
   interlace: 'Interlace',

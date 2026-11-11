@@ -116,8 +116,8 @@ test('DocumentManager: duplicate, move, remove pages with names', () => {
 
 // --- native format v2 --------------------------------------------------------
 
-test('native v4: pages and print setup round trip; v1 file migrates', () => {
-  assert.equal(NATIVE_VERSION, 4);
+test('native v6: pages and print setup round trip; v1 file migrates', () => {
+  assert.equal(NATIVE_VERSION, 6);
   const scene = '{"format":"nibglider-scene","version":2,"items":[]}';
   const pageRecord = (id, name) => ({
     id, name,
@@ -137,7 +137,7 @@ test('native v4: pages and print setup round trip; v1 file migrates', () => {
     activePageId: 'page-2',
     printSetup: { ...defaultPrintSetup(), cropMarks: true },
   });
-  assert.equal(doc.version, 4);
+  assert.equal(doc.version, 6);
   const parsed = parseNativeDocument(serializeNativeDocument(doc));
   assert.equal(parsed.ok, true);
   assert.deepEqual(parsed.doc, doc);
@@ -247,6 +247,35 @@ test('engine: guides add/move/lock/remove, snap the cursor, survive scene round 
   assert.deepEqual(fresh.engine.listGuides().map((g) => g.position), [140]);
   assert.equal(engine.removeGuide(guide.id), true);
   assert.equal(engine.listGuides().length, 0);
+});
+
+test('engine: guide visibility and guide snapping are independent toggles', () => {
+  const { scope, engine } = makeEngine();
+  engine.addGuide('x', 100);
+  // Default: visible and snapping.
+  assert.equal(engine.guidesVisible, true);
+  assert.equal(engine.guideSnapping, true);
+  engine.mousePt = new scope.Point(103, 40);
+  engine.applyPointSnapping(new scope.Point(103, 40));
+  assert.equal(engine.mousePt.x, 100, 'point snaps onto the guide');
+  // Snapping off: the point stays put; the guide still exists and shows.
+  engine.setGuideSnapping(false);
+  engine.mousePt = new scope.Point(103, 40);
+  engine.applyPointSnapping(new scope.Point(103, 40));
+  assert.equal(engine.mousePt.x, 103, 'no snap while guide snapping is off');
+  assert.equal(engine.listGuides().length, 1);
+  // Visibility off: guides still exist and still snap (snapping back on),
+  // but cannot be grabbed on canvas.
+  engine.setGuideSnapping(true);
+  engine.setGuidesVisible(false);
+  assert.equal(engine.listGuides().length, 1, 'hidden guides still exist');
+  engine.mousePt = new scope.Point(103, 40);
+  engine.applyPointSnapping(new scope.Point(103, 40));
+  assert.equal(engine.mousePt.x, 100, 'hidden guides still snap');
+  assert.equal(engine.beginGuideDragAt(new scope.Point(100, 40)), false, 'hidden guides cannot be grabbed');
+  engine.setGuidesVisible(true);
+  assert.equal(engine.beginGuideDragAt(new scope.Point(100, 40)), true, 'visible guides can be grabbed again');
+  engine.endGuideDrag();
 });
 
 test('engine: guide drag from ruler creates and moves a guide', () => {

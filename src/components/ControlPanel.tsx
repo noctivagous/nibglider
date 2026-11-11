@@ -32,6 +32,7 @@ import { useGallerySnapshot } from '../ui/useGallerySnapshot';
 import CustomSelect, { type CustomSelectOption } from './CustomSelect';
 import DocumentGallery, { type GalleryMode } from './DocumentGallery';
 import NewDocumentDialog, { type NewDocumentSpec } from './NewDocumentDialog';
+import FindReplaceDialog from './FindReplaceDialog';
 import PdfImportDialog from './PdfImportDialog';
 import LayersPanel from './LayersPanel';
 import PagesPanel from './PagesPanel';
@@ -66,7 +67,6 @@ import {
 } from '../engine/repeat/symmetry';
 import KeymapWidget from './KeymapWidget';
 import ConfigSummaryBox from './ConfigSummaryBox';
-import WidgetHandle from './WidgetHandle';
 import FontFamilySelect, { type FontFamilyGroup } from './FontFamilySelect';
 import NumericStepper from './NumericStepper';
 import type {
@@ -431,8 +431,7 @@ const SNAP_DEFAULTS: Record<string, boolean> = {
 
 const HISTORY_SEG_DEFAULTS: Record<string, boolean> = {
   undoRedo: true,
-  grouping: true,
-  history: false,
+  history: true,
 };
 
 function loadBoolRecord(
@@ -975,6 +974,170 @@ function OrientationSeg({
           </svg>
         </button>
       ))}
+    </div>
+  );
+}
+
+// Path Operations (Slice 20): the reshape operations that used to
+// live inside the Stroke flyout. The Stroke section keeps paint
+// only; these buttons disable when the selection cannot take them.
+function PathOpsParams({ engine }: { engine: NibGliderEngine }) {
+  const ops = engine.pathOpAvailability();
+  return (
+    <div className="panelParameters">
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label>Outline</label>
+          <button
+            type="button"
+            disabled={!ops.strokeOutline}
+            onClick={() => engine.strokeToOutlineSelection()}
+            title="Convert the selected stroked paths to their outlined filled form"
+          >
+            Stroke to Outline
+          </button>
+        </span>
+      </div>
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label htmlFor="noiseAmplitudeInput">Noise size</label>
+          <NumericStepper
+            id="noiseAmplitudeInput"
+            value={engine.noiseAmplitude}
+            min={0}
+            max={200}
+            step={1}
+            ariaLabel="Noise size"
+            title="How far the noise pushes the path sideways"
+            onCommit={(n) => engine.setNoiseAmplitude(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label htmlFor="noiseScaleInput">Noise scale</label>
+          <NumericStepper
+            id="noiseScaleInput"
+            value={engine.noiseScale}
+            min={5}
+            max={1000}
+            step={5}
+            ariaLabel="Noise scale"
+            title="How quickly the noise changes along the path — smaller is rougher"
+            onCommit={(n) => engine.setNoiseScale(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label htmlFor="noiseSeedInput">Noise seed</label>
+          <NumericStepper
+            id="noiseSeedInput"
+            value={engine.noiseSeed}
+            min={0}
+            max={999999}
+            step={1}
+            ariaLabel="Noise seed"
+            title="The same seed and path always give the same result"
+            onCommit={(n) => engine.setNoiseSeed(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={engine.noisePreviewOn}
+              onChange={(e) => engine.setNoisePreview(e.target.checked)}
+            />
+            Preview
+          </label>
+          <button
+            type="button"
+            disabled={!ops.noise}
+            onClick={() => engine.applyNoiseDisplacement()}
+            title="Push the selected paths sideways with seeded noise (one undo step)"
+          >
+            Apply noise
+          </button>
+        </span>
+      </div>
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label htmlFor="simplifyToleranceInput">Simplify within</label>
+          <NumericStepper
+            id="simplifyToleranceInput"
+            value={engine.simplifyTolerance}
+            min={0.05}
+            max={100}
+            step={0.5}
+            ariaLabel="Simplify tolerance"
+            title="Points that stay within this distance of the simplified path are dropped"
+            onCommit={(n) => engine.setSimplifyTolerance(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label>Simplify</label>
+          <button
+            type="button"
+            disabled={!ops.simplify}
+            onClick={() => engine.simplifySelectionPaths()}
+            title="Reduce the selected paths to fewer points (one undo step)"
+          >
+            Simplify path
+          </button>
+        </span>
+        <span className="param-item">
+          <label htmlFor="fitToleranceInput">Fit within</label>
+          <NumericStepper
+            id="fitToleranceInput"
+            value={engine.fitTolerance}
+            min={0.05}
+            max={100}
+            step={0.25}
+            ariaLabel="Fit tolerance"
+            title="Largest error you accept between the fitted curves and the path"
+            onCommit={(n) => engine.setFitTolerance(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label>Fit</label>
+          <button
+            type="button"
+            disabled={!ops.fit}
+            onClick={() => engine.fitBeziersSelection()}
+            title="Convert the selected paths to editable Bézier curves (one undo step)"
+          >
+            Fit curves
+          </button>
+        </span>
+      </div>
+      <div className="flyout-trio-row">
+        <span className="param-item">
+          <label htmlFor="hullConcavenessInput">Hull tightness</label>
+          <NumericStepper
+            id="hullConcavenessInput"
+            value={engine.hullConcaveness}
+            min={0}
+            max={1}
+            step={0.05}
+            ariaLabel="Hull tightness"
+            title="How closely the hull follows gaps and bays in the selected points — 1 follows them closely, 0 stays near the convex hull"
+            onCommit={(n) => engine.setHullConcaveness(n)}
+          />
+        </span>
+        <span className="param-item">
+          <label>Hull</label>
+          <button
+            type="button"
+            disabled={!ops.hull}
+            onClick={() => engine.concaveHullSelection()}
+            title="Draw a new closed path around the selected items' anchor points (one undo step)"
+          >
+            Concave hull
+          </button>
+        </span>
+      </div>
+      {engine.pathOpFeedback ? (
+        <div className="flyout-trio-row">
+          <span className="param-item">{engine.pathOpFeedback}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1567,153 +1730,7 @@ function StrokeParams({
             ))}
           </select>
         </span>
-        <span className="param-item">
-          <label>Outline</label>
-          <button
-            type="button"
-            onClick={() => engine.strokeToOutlineSelection()}
-            title="Convert the selected stroked paths to their outlined filled form"
-          >
-            Stroke to Outline
-          </button>
-        </span>
       </div>
-      <div className="flyout-trio-row">
-        <span className="param-item">
-          <label htmlFor="noiseAmplitudeInput">Noise size</label>
-          <NumericStepper
-            id="noiseAmplitudeInput"
-            value={engine.noiseAmplitude}
-            min={0}
-            max={200}
-            step={1}
-            ariaLabel="Noise size"
-            title="How far the noise pushes the path sideways"
-            onCommit={(n) => engine.setNoiseAmplitude(n)}
-          />
-        </span>
-        <span className="param-item">
-          <label htmlFor="noiseScaleInput">Noise scale</label>
-          <NumericStepper
-            id="noiseScaleInput"
-            value={engine.noiseScale}
-            min={5}
-            max={1000}
-            step={5}
-            ariaLabel="Noise scale"
-            title="How quickly the noise changes along the path — smaller is rougher"
-            onCommit={(n) => engine.setNoiseScale(n)}
-          />
-        </span>
-        <span className="param-item">
-          <label htmlFor="noiseSeedInput">Noise seed</label>
-          <NumericStepper
-            id="noiseSeedInput"
-            value={engine.noiseSeed}
-            min={0}
-            max={999999}
-            step={1}
-            ariaLabel="Noise seed"
-            title="The same seed and path always give the same result"
-            onCommit={(n) => engine.setNoiseSeed(n)}
-          />
-        </span>
-        <span className="param-item">
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={engine.noisePreviewOn}
-              onChange={(e) => engine.setNoisePreview(e.target.checked)}
-            />
-            Preview
-          </label>
-          <button
-            type="button"
-            onClick={() => engine.applyNoiseDisplacement()}
-            title="Push the selected paths sideways with seeded noise (one undo step)"
-          >
-            Apply noise
-          </button>
-        </span>
-      </div>
-      <div className="flyout-trio-row">
-        <span className="param-item">
-          <label htmlFor="simplifyToleranceInput">Simplify within</label>
-          <NumericStepper
-            id="simplifyToleranceInput"
-            value={engine.simplifyTolerance}
-            min={0.05}
-            max={100}
-            step={0.5}
-            ariaLabel="Simplify tolerance"
-            title="Points that stay within this distance of the simplified path are dropped"
-            onCommit={(n) => engine.setSimplifyTolerance(n)}
-          />
-        </span>
-        <span className="param-item">
-          <label>Simplify</label>
-          <button
-            type="button"
-            onClick={() => engine.simplifySelectionPaths()}
-            title="Reduce the selected paths to fewer points (one undo step)"
-          >
-            Simplify path
-          </button>
-        </span>
-        <span className="param-item">
-          <label htmlFor="fitToleranceInput">Fit within</label>
-          <NumericStepper
-            id="fitToleranceInput"
-            value={engine.fitTolerance}
-            min={0.05}
-            max={100}
-            step={0.25}
-            ariaLabel="Fit tolerance"
-            title="Largest error you accept between the fitted curves and the path"
-            onCommit={(n) => engine.setFitTolerance(n)}
-          />
-        </span>
-        <span className="param-item">
-          <label>Fit</label>
-          <button
-            type="button"
-            onClick={() => engine.fitBeziersSelection()}
-            title="Convert the selected paths to editable Bézier curves (one undo step)"
-          >
-            Fit curves
-          </button>
-        </span>
-      </div>
-      <div className="flyout-trio-row">
-        <span className="param-item">
-          <label htmlFor="hullConcavenessInput">Hull tightness</label>
-          <NumericStepper
-            id="hullConcavenessInput"
-            value={engine.hullConcaveness}
-            min={0}
-            max={1}
-            step={0.05}
-            ariaLabel="Hull tightness"
-            title="How closely the hull follows gaps and bays in the selected points — 1 follows them closely, 0 stays near the convex hull"
-            onCommit={(n) => engine.setHullConcaveness(n)}
-          />
-        </span>
-        <span className="param-item">
-          <label>Hull</label>
-          <button
-            type="button"
-            onClick={() => engine.concaveHullSelection()}
-            title="Draw a new closed path around the selected items' anchor points (one undo step)"
-          >
-            Concave hull
-          </button>
-        </span>
-      </div>
-      {engine.pathOpFeedback ? (
-        <div className="flyout-trio-row">
-          <span className="param-item">{engine.pathOpFeedback}</span>
-        </div>
-      ) : null}
       </div>
     </div>
   );
@@ -1966,6 +1983,13 @@ const TEXT_JUSTIFY_OPTIONS: Array<{ value: TextJustification; label: string; ico
   { value: 'right', label: 'Right', icon: 'M2 3 H14 M6 7 H14 M2 11 H14' },
 ];
 
+/** Body Align group adds Justify; display/on-edge keeps the three
+ * above (Justify behaves as Left there). */
+const BODY_JUSTIFY_OPTIONS: Array<{ value: TextJustification; label: string; icon: string }> = [
+  ...TEXT_JUSTIFY_OPTIONS,
+  { value: 'justify', label: 'Justify', icon: 'M2 3 H14 M2 7 H14 M2 11 H14' },
+];
+
 function TextPreviewBox({ spec, large }: { spec: TextSpec; large?: boolean }) {
   // The flyout preview reflects the Size slider; clamped to the 96px
   // preview well so the sample stays legible instead of clipping away.
@@ -2093,10 +2117,12 @@ function TextParams({
   engine,
   spec,
   kind,
+  onFindReplace,
 }: {
   engine: NibGliderEngine;
   spec: TextSpec;
   kind: 'display' | 'body' | null;
+  onFindReplace?: () => void;
 }) {
   // Editing an existing object: creation-only controls (Kind, Flow,
   // Orientation, Spline, rings, Line 2) hide, and mode-dependent rows follow
@@ -2107,6 +2133,10 @@ function TextParams({
   const glyphOrientation = engine.glyphOrientation;
   const splineTextPlacement = engine.splineTextPlacement;
   const [tab, setTab] = useState<'style' | 'type'>('style');
+  const [styleName, setStyleName] = useState('Body');
+  const [newStyleName, setNewStyleName] = useState('');
+  const textStyleList = engine.textStyles();
+  const selectedStyle = textStyleList.find((s) => s.name === styleName) ?? textStyleList[0];
   const userFonts = engine.userFonts();
   const fontGroups: FontFamilyGroup[] = userFonts.length > 0
     ? [...TEXT_FONT_GROUPS, {
@@ -2341,14 +2371,25 @@ function TextParams({
       ) : null}
       <span className="param-item">
         <label htmlFor="textContentInput">Text</label>
-        <input
-          type="text"
-          id="textContentInput"
-          className="flyout-text-input"
-          value={spec.content}
-          aria-label="Text content"
-          onChange={(e) => engine.setTextContent(e.target.value)}
-        />
+        {mode === 'body' ? (
+          <textarea
+            id="textContentInput"
+            className="flyout-text-input"
+            rows={4}
+            value={spec.content}
+            aria-label="Text content"
+            onChange={(e) => engine.setTextContent(e.target.value)}
+          />
+        ) : (
+          <input
+            type="text"
+            id="textContentInput"
+            className="flyout-text-input"
+            value={spec.content}
+            aria-label="Text content"
+            onChange={(e) => engine.setTextContent(e.target.value)}
+          />
+        )}
       </span>
       {editingObject ? null : (
       <span className="param-item">
@@ -2433,18 +2474,115 @@ function TextParams({
             >
               <span style={{ fontStyle: 'italic' }}>Italic</span>
             </button>
+            <button
+              type="button"
+              title="Underline"
+              className={spec.underline ? 'active' : undefined}
+              onClick={() => engine.setTextUnderline(!spec.underline)}
+            >
+              <span style={{ textDecoration: 'underline' }}>Underline</span>
+            </button>
+            <button
+              type="button"
+              title="Strikethrough"
+              className={spec.strikethrough ? 'active' : undefined}
+              onClick={() => engine.setTextStrikethrough(!spec.strikethrough)}
+            >
+              <span style={{ textDecoration: 'line-through' }}>Strike</span>
+            </button>
           </div>
         </span>
       </div>
+      <span className="param-item">
+        <label>Case</label>
+        <div className="seg-ctrl seg-text" role="group" aria-label="Case transform">
+          {(
+            [
+              { value: 'none', label: 'As typed', title: 'Keep the text as typed' },
+              { value: 'upper', label: 'UPPER', title: 'Lay the text out in capitals' },
+              { value: 'smallCaps', label: 'Small caps', title: 'Lowercase letters as smaller capitals; whole-line text falls back to UPPER' },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              title={opt.title}
+              className={spec.caseTransform === opt.value ? 'active' : undefined}
+              onClick={() => engine.setTextCaseTransform(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </span>
+      <span className="param-item">
+        <label>Style preset</label>
+        <span>
+          <select
+            aria-label="Text style"
+            value={selectedStyle?.name ?? ''}
+            onChange={(e) => setStyleName(e.target.value)}
+          >
+            {textStyleList.map((s) => (
+              <option key={s.name} value={s.name}>{s.builtIn ? s.name : `${s.name} (yours)`}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={!selectedStyle}
+            title="Restyle the selected text (one undo step); with no selection, set the creation style"
+            onClick={() => { if (selectedStyle) engine.applyTextStyle(selectedStyle.name); }}
+          >
+            Apply
+          </button>
+          <button
+            type="button"
+            disabled={!selectedStyle || selectedStyle.builtIn}
+            title={selectedStyle?.builtIn ? 'Built-in styles cannot be deleted' : 'Delete this style'}
+            onClick={() => { if (selectedStyle) engine.deleteTextStyle(selectedStyle.name); }}
+          >
+            Delete
+          </button>
+        </span>
+        <span>
+          <input
+            type="text"
+            placeholder="New style name"
+            aria-label="New style name"
+            value={newStyleName}
+            onChange={(e) => setNewStyleName(e.target.value)}
+          />
+          <button
+            type="button"
+            disabled={!newStyleName.trim()}
+            title="Save the current text settings as a style (kept in app settings, shared by all documents)"
+            onClick={() => {
+              if (engine.saveCurrentTextStyle(newStyleName)) {
+                setStyleName(newStyleName.trim());
+                setNewStyleName('');
+              }
+            }}
+          >
+            Save current as style
+          </button>
+        </span>
+      </span>
+      <span className="param-item">
+        <button type="button" onClick={() => onFindReplace?.()}>
+          Find &amp; Replace…
+        </button>
+      </span>
       {mode === 'body' ? (
         <span className="param-item">
           <label>Align</label>
           <div className="seg-ctrl" role="group" aria-label="Text alignment">
-            {TEXT_JUSTIFY_OPTIONS.map((opt) => (
+            {BODY_JUSTIFY_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
-                title={opt.label}
+                title={opt.value === 'justify'
+                  ? 'Justify: body lines spread to the full measure (the last line of each paragraph stays left). On display text, Justify behaves as Left.'
+                  : opt.label}
                 aria-label={opt.label}
                 className={spec.justification === opt.value ? 'active' : undefined}
                 onClick={() => engine.setTextJustification(opt.value)}
@@ -2485,6 +2623,29 @@ function TextParams({
         unit="pt"
         formatValue={(v) => v.toFixed(1)}
         onChange={(n) => engine.setTextLetterSpacing(n)}
+      />
+      <ParamSlider
+        id="textWordSpacingSlider"
+        label="Word space"
+        value={spec.wordSpacing}
+        min={0}
+        max={20}
+        step={0.5}
+        decimals={1}
+        unit="pt"
+        formatValue={(v) => v.toFixed(1)}
+        onChange={(n) => engine.setTextWordSpacing(n)}
+      />
+      <ParamSlider
+        id="textBaselineShiftSlider"
+        label="Baseline shift"
+        value={spec.baselineShift}
+        min={-20}
+        max={40}
+        step={1}
+        unit="pt"
+        formatValue={(v) => String(Math.round(v))}
+        onChange={(n) => engine.setTextBaselineShift(n)}
       />
       {mode === 'body' ? (
         <ParamSlider
@@ -2551,6 +2712,17 @@ const COMBINE_OPTIONS: Array<{
     label: 'Intersect',
     tip: 'Intersect: keep the overlap of base + tool',
     icon: <path d="M6 3.4 A3.6 3.6 0 0 1 6 10.6 A3.6 3.6 0 0 1 6 3.4 Z M10 3.4 A3.6 3.6 0 0 0 10 10.6 A3.6 3.6 0 0 0 10 3.4 Z" />,
+  },
+  {
+    value: 'exclude',
+    label: 'Exclude',
+    tip: 'Exclude: keep the parts of base + tool that do not overlap (XOR)',
+    icon: (
+      <>
+        <path d="M6 3.4 A3.6 3.6 0 1 0 6 10.6 A3.6 3.6 0 0 0 10 6.99 A3.6 3.6 0 1 0 6 3.4 Z" />
+        <path d="M10 3.4 A3.6 3.6 0 1 1 10 10.6 A3.6 3.6 0 0 1 6 7.01 A3.6 3.6 0 1 1 10 3.4 Z" />
+      </>
+    ),
   },
   {
     value: 'crop',
@@ -2732,6 +2904,14 @@ function CombinePreview({
     );
   } else if (mode === 'intersect') {
     body = <path d="M26 8 A8 8 0 0 1 26 24 A8 8 0 0 1 26 8 Z M38 8 A8 8 0 0 0 38 24 A8 8 0 0 0 38 8 Z" />;
+  } else if (mode === 'exclude') {
+    // Two crescents: everything except the shared lens.
+    body = (
+      <>
+        <path d="M26 8 A8 8 0 1 0 26 24 A8 8 0 0 0 38 16 A8 8 0 1 0 26 8 Z" />
+        <path d="M38 8 A8 8 0 1 1 38 24 A8 8 0 0 1 26 16 A8 8 0 1 1 38 8 Z" />
+      </>
+    );
   } else if (mode === 'crop') {
     body = (
       <>
@@ -2764,12 +2944,10 @@ function CombinePreview({
 function HistoryButtons({
   engine,
   showUndoRedo = true,
-  showGrouping = true,
   showHistory = true,
 }: {
   engine: NibGliderEngine;
   showUndoRedo?: boolean;
-  showGrouping?: boolean;
   showHistory?: boolean;
 }) {
   const undoTitle = engine.canUndo()
@@ -2778,12 +2956,6 @@ function HistoryButtons({
   const redoTitle = engine.canRedo()
     ? `Redo ${engine.redoLabel() ?? ''} (${primaryShortcut('Z', true)})`
     : 'Nothing to redo';
-  const groupTitle = engine.canGroupSelection()
-    ? `Group selection (${primaryShortcut('G')})`
-    : 'Select 2+ shapes to group';
-  const ungroupTitle = engine.canUngroupSelection()
-    ? `Ungroup selection (${primaryShortcut('G', true)})`
-    : 'Select a group to ungroup';
   const historyReadout = showHistory ? (
     <span className="history-readout" role="status" title="Latest undo and redo entries">
       {engine.canUndo()
@@ -2844,56 +3016,44 @@ function HistoryButtons({
         </button>
       </div>
       ) : null}
-      {showGrouping ? (
-      <div className="seg-ctrl" role="group" aria-label="Group and ungroup">
-        <button
-          type="button"
-          title={groupTitle}
-          aria-label="Group selection"
-          disabled={!engine.canGroupSelection()}
-          onClick={() => engine.groupSelection()}
-        >
-          <svg
-            viewBox="0 0 16 14"
-            width="18"
-            height="16"
-            aria-hidden="true"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="2" y="4.5" width="6" height="6" />
-            <rect x="8" y="3.5" width="6" height="6" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          title={ungroupTitle}
-          aria-label="Ungroup selection"
-          disabled={!engine.canUngroupSelection()}
-          onClick={() => engine.ungroupSelected()}
-        >
-          <svg
-            viewBox="0 0 16 14"
-            width="18"
-            height="16"
-            aria-hidden="true"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="1.5" y="4.5" width="5" height="6" />
-            <rect x="9.5" y="4.5" width="5" height="6" />
-          </svg>
-        </button>
-      </div>
-      ) : null}
       {historyReadout}
     </>
+  );
+}
+
+// The History section's entry list (Slice 20): every undoable step
+// in order, entries past the current position dimmed (they are the
+// redo future). Clicking an entry walks undo/redo to that point as
+// one user action.
+function HistoryList({ engine }: { engine: NibGliderEngine }) {
+  const { labels, position } = engine.historyEntries();
+  if (labels.length === 0) {
+    return (
+      <div className="history-list">
+        <span className="history-list-empty">Nothing yet — your edits will appear here.</span>
+      </div>
+    );
+  }
+  return (
+    <ol className="history-list">
+      {labels.map((label, i) => {
+        const undone = i >= position;
+        const current = i === position - 1;
+        return (
+          <li key={i}>
+            <button
+              type="button"
+              className={`history-list-entry${undone ? ' is-undone' : ''}${current ? ' is-current' : ''}`}
+              aria-current={current || undefined}
+              title={undone ? `Redo to here: ${label}` : `Undo back to here: ${label}`}
+              onClick={() => engine.jumpToHistoryPosition(i + 1)}
+            >
+              {label}
+            </button>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -3096,6 +3256,11 @@ const GRID_TYPE_OPTIONS: CustomSelectOption[] = [
   { value: 'diamond', label: 'Diamond', image: <GridThumb kind="diamond" /> },
 ];
 
+const GRID_STYLE_OPTIONS: CustomSelectOption[] = [
+  { value: 'dots', label: 'Dots' },
+  { value: 'lines', label: 'Lines' },
+];
+
 const REPEAT_ANCHOR_OPTIONS: CustomSelectOption[] = [
   { value: 'cell-center', label: 'Cell centers' },
   { value: 'intersection', label: 'Intersections' },
@@ -3154,6 +3319,10 @@ const RECT_OPTION_TREE: CustomSelectOption[] = [
 export interface ControlPanelHandle {
   dispatchFileCommand: (command: FileCommand | ImportCommand) => void;
   openOperationDialog: (kind: 'scale' | 'rotate') => void;
+  openFindReplace: () => void;
+  /** Restore + expand a panel section and scroll it into view
+   * (the Document menu's Pages & Guides item). */
+  focusSection: (id: string) => void;
 }
 
 const ControlPanel = forwardRef<ControlPanelHandle, {
@@ -3467,6 +3636,8 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   // New Document dialog: opened from File > New, applies the chosen canvas
   // size on confirm (dirty guard included) instead of wiping immediately.
   const [newDocOpen, setNewDocOpen] = useState(false);
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+  const openFindReplace = useCallback(() => setFindReplaceOpen(true), []);
   const importInputRef = useRef<HTMLInputElement>(null);
   const importKindRef = useRef<ImportCommand>('import-svg');
   const [pdfImport, setPdfImport] = useState<{ name: string; bytes: Uint8Array } | null>(null);
@@ -3689,10 +3860,17 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     }
     setOpDialog({ kind, draft: 0, applied: 0 });
   }, [engine, dismissSelects]);
+  const focusSection = useCallback((id: string) => {
+    panels.restoreSection(id);
+    if (panels.collapsed[id]) panels.toggleCollapse(id);
+    requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: 'nearest' });
+    });
+  }, [panels]);
   useImperativeHandle(
     ref,
-    () => ({ dispatchFileCommand, openOperationDialog }),
-    [dispatchFileCommand, openOperationDialog],
+    () => ({ dispatchFileCommand, openOperationDialog, openFindReplace, focusSection }),
+    [dispatchFileCommand, openOperationDialog, openFindReplace, focusSection],
   );
   const handleImportFile = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
@@ -3741,7 +3919,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     },
     [engine],
   );
-  // Document and Settings menu: document controls only. Section restore
+  // Document menu: document controls only. Section restore
   // and settings reset live in the Sections and Debug menus below.
   // Selection state: when items are selected the Stroke/Fill panels
   // reflect the selection (first selected item) instead of the globals.
@@ -3838,8 +4016,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           {(
             [
               { key: 'undoRedo', label: 'Undo/Redo' },
-              { key: 'grouping', label: 'Grouping' },
-              { key: 'history', label: 'History' },
+              { key: 'history', label: 'History list' },
             ] as const
           ).map((item) => (
             <button
@@ -3985,7 +4162,6 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           endDrag();
         }}
       >
-      <WidgetHandle widget="sections" label="Panel sections" />
       {rowBreakNodes}
       {dragPlaceholderNode}
       {isRemoved('strokeControls') ? null : (
@@ -4296,7 +4472,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             onMenuMouseEnter={cancelHoverClose}
             onMenuMouseLeave={scheduleHoverClose}
           >
-            <TextParams engine={engine} spec={textSpec} kind={editableKind} />
+            <TextParams engine={engine} spec={textSpec} kind={editableKind} onFindReplace={openFindReplace} />
           </ShapeParamsFlyout>
         </header>
       </PanelSection>
@@ -4592,10 +4768,10 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           <HistoryButtons
             engine={engine}
             showUndoRedo={historySegs.undoRedo !== false}
-            showGrouping={historySegs.grouping !== false}
             showHistory={historySegs.history !== false}
           />
         </header>
+        {historySegs.history !== false ? <HistoryList engine={engine} /> : null}
       </PanelSection>
       )}
       {isRemoved('layersControls') ? null : (
@@ -4675,6 +4851,33 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         <ArrangePanel engine={engine} />
       </PanelSection>
       )}
+      {isRemoved('pathOpsControls') ? null : (
+      <PanelSection
+        id="pathOpsControls"
+        label="Path Operations"
+        icon={
+          <TitleIcon>
+            <path d="M2.5 11.5 C5 5, 8 12, 10.5 5.5 L13.5 9" />
+            <circle cx="2.5" cy="11.5" r="1.1" />
+            <circle cx="13.5" cy="9" r="1.1" />
+          </TitleIcon>
+        }
+        collapsed={!!collapsedMap['pathOpsControls']}
+        {...sectionProps('pathOpsControls')}
+      >
+        <header className="pane-titlebar titlebar-single">
+          <SectionTitleButton sectionId="pathOpsControls" title="Path Operations" menuOpen={iconMenu?.id === 'pathOpsControls'} onOpen={toggleIconMenu}><span className="pane-title">
+            <TitleIcon>
+              <path d="M2.5 11.5 C5 5, 8 12, 10.5 5.5 L13.5 9" />
+              <circle cx="2.5" cy="11.5" r="1.1" />
+              <circle cx="13.5" cy="9" r="1.1" />
+            </TitleIcon>
+            <span className="pane-title-text">Path Operations</span></span>
+          </SectionTitleButton>
+        </header>
+        <PathOpsParams engine={engine} />
+      </PanelSection>
+      )}
       {isRemoved('gridControls') ? null : (
       <PanelSection
         id="gridControls"
@@ -4745,6 +4948,61 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             onCommit={(n) => engine.setGridSpacing(n)}
           />
         </header>
+        <div className="grid-body">
+          <div className="grid-body-row">
+            <label htmlFor="gridSubdivisionsStepper">Subdivisions</label>
+            <NumericStepper
+              id="gridSubdivisionsStepper"
+              size="compact"
+              value={engine.gridSubdivisions}
+              min={1}
+              max={10}
+              step={1}
+              ariaLabel="Grid subdivisions"
+              title="Minor dots at the spacing divided by this number (1 = off)"
+              onCommit={(n) => engine.setGridSubdivisions(n)}
+            />
+          </div>
+          <div className="grid-body-row">
+            <label htmlFor="gridStyleSelect">Style</label>
+            <CustomSelect
+              id="gridStyleSelect"
+              ariaLabel="Grid style"
+              value={engine.gridStyle}
+              options={GRID_STYLE_OPTIONS}
+              onChange={(v) => engine.setGridStyle(v as 'dots' | 'lines')}
+              openOnHover
+              onHoverOpen={handleSelectHoverOpen}
+              forceCloseKey={selectCloseKey}
+            />
+          </div>
+          <div className="grid-body-row">
+            <label htmlFor="gridColorWell">Colour</label>
+            <input
+              type="color"
+              id="gridColorWell"
+              className="titlebar-well"
+              value={engine.gridColor}
+              title="Grid colour"
+              onChange={(e) => engine.setGridColor(e.target.value)}
+            />
+          </div>
+          <div className="grid-body-row">
+            <label htmlFor="gridOpacityStepper">Opacity</label>
+            <NumericStepper
+              id="gridOpacityStepper"
+              size="compact"
+              value={Math.round(engine.gridOpacity * 100)}
+              min={0}
+              max={100}
+              step={5}
+              unit="%"
+              ariaLabel="Grid opacity in percent"
+              title="Grid opacity"
+              onCommit={(n) => engine.setGridOpacity(n / 100)}
+            />
+          </div>
+        </div>
       </PanelSection>
       )}
       {isRemoved('repeatControls') ? null : (
@@ -5434,6 +5692,12 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           defaultName={nextUntitledFrom(gallery.docs)}
           onConfirm={handleNewDocumentConfirm}
           onClose={() => setNewDocOpen(false)}
+        />
+      ) : null}
+      {findReplaceOpen ? (
+        <FindReplaceDialog
+          engine={engine}
+          onClose={() => setFindReplaceOpen(false)}
         />
       ) : null}
     </div>

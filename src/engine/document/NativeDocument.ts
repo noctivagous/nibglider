@@ -22,6 +22,17 @@
 //        guides), an `activePageId`, and a document `printSetup`.
 //        The v1 top-level sections remain, mirroring the ACTIVE
 //        page, so a v1 reader still opens the page you were on.
+//   v3 — drawables may carry the live-replication record.
+//   v4 — composite segments carry the full bow record.
+//   v5 — a document `display` section: grid enabled/type/spacing/
+//        subdivisions/style/colour/opacity and the page fill
+//        (toggle + colour) and page side ticks move from global app
+//        settings into the document. Absence means "no opinion":
+//        the reader keeps its current values.
+//   v6 — layer records may carry presentation state (visible /
+//        locked / opacity; absent = visible, unlocked, opaque) and
+//        the document carries a `palette` of kept swatch colours
+//        (null = the document has no palette of its own).
 // Tested from tests/native-document.test.mjs and
 // tests/pages-guides-print.test.mjs.
 import { validateDrawable } from '../model/serialization';
@@ -34,12 +45,44 @@ import { readGuideRecords, type GuideRecord } from './guides';
 import { readPrintSetup, type PrintSetup } from './printSetup';
 
 export const NATIVE_FORMAT = 'nibglider-document';
-export const NATIVE_VERSION = 4;
+export const NATIVE_VERSION = 6;
 export const NATIVE_FILE_EXTENSION = '.nibglider';
 
 export interface NativeLayerRecord {
   id: string;
   name: string;
+  /** Layer presentation state (v6); absent = visible, unlocked, 1. */
+  visible?: boolean;
+  locked?: boolean;
+  opacity?: number;
+}
+
+/** A layer record as written to disk: state fields ride only when
+ * the record carries them, so pre-v6 shapes stay byte-identical. */
+function layerOut(layer: NativeLayerRecord): NativeLayerRecord {
+  const out: NativeLayerRecord = { id: layer.id, name: layer.name };
+  if (typeof layer.visible === 'boolean') out.visible = layer.visible;
+  if (typeof layer.locked === 'boolean') out.locked = layer.locked;
+  if (typeof layer.opacity === 'number' && Number.isFinite(layer.opacity)) out.opacity = layer.opacity;
+  return out;
+}
+
+/** Normalize a stored palette: lowercase #rrggbb colours, deduped,
+ * capped; null when the value is not a palette at all. */
+export function readPalette(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue;
+    const text = entry.trim().toLowerCase();
+    const short = /^#([0-9a-f]{3})$/.exec(text);
+    const color = short
+      ? `#${short[1][0]}${short[1][0]}${short[1][1]}${short[1][1]}${short[1][2]}${short[1][2]}`
+      : /^#[0-9a-f]{6}$/.test(text) ? text : null;
+    if (color && !out.includes(color)) out.push(color);
+    if (out.length >= 48) break;
+  }
+  return out;
 }
 
 export interface NativePageSettings {
@@ -47,6 +90,22 @@ export interface NativePageSettings {
   heightPt: number | null;
   orientation: string | null;
   unit: string;
+}
+
+/** Per-document display settings (v5): the grid and the page sheet's
+ * presentation. Previously global app settings; a document's values
+ * win on open, and absence leaves the reader's values alone. */
+export interface NativeDisplaySettings {
+  gridEnabled: boolean;
+  gridType: string;
+  gridSpacing: number;
+  gridSubdivisions: number;
+  gridStyle: string;
+  gridColor: string;
+  gridOpacity: number;
+  pageFill: boolean;
+  pageFillColor: string;
+  pageSideTicks: boolean;
 }
 
 /** One page of a v2 document: a complete scene of its own, with its
@@ -89,6 +148,11 @@ export interface NativeDocumentFile {
   activePageId: string | null;
   /** Printer page setup, separate from Document Size (v2). */
   printSetup: PrintSetup | null;
+  /** Per-document display settings (v5); null when the file has none. */
+  display: NativeDisplaySettings | null;
+  /** The document's kept swatch colours (v6); null when the
+   * document has no palette of its own. */
+  palette: string[] | null;
 }
 
 export interface NativeDocumentParts {
@@ -104,6 +168,8 @@ export interface NativeDocumentParts {
   pages?: NativePageRecord[];
   activePageId?: string | null;
   printSetup?: PrintSetup | null;
+  display?: NativeDisplaySettings | null;
+  palette?: string[] | null;
 }
 
 /** The single page record a pre-v2 document amounts to. */
@@ -120,7 +186,7 @@ export function synthesizedPage(parts: {
     id: 'page-1',
     name: 'Page 1',
     page: parts.page,
-    layers: parts.layers.map((layer) => ({ id: layer.id, name: layer.name })),
+    layers: parts.layers.map(layerOut),
     activeLayerId: parts.activeLayerId,
     drawables: parts.drawables,
     retainedPaths: parts.retainedPaths,
@@ -133,7 +199,7 @@ export function buildNativeDocument(parts: NativeDocumentParts): NativeDocumentF
   const pages = parts.pages && parts.pages.length > 0
     ? parts.pages.map((page) => ({
       ...page,
-      layers: page.layers.map((layer) => ({ id: layer.id, name: layer.name })),
+      layers: page.layers.map(layerOut),
       guides: page.guides.map((guide) => ({ ...guide })),
     }))
     : [synthesizedPage(parts)];
@@ -145,7 +211,7 @@ export function buildNativeDocument(parts: NativeDocumentParts): NativeDocumentF
     version: NATIVE_VERSION,
     name: parts.name,
     savedAt: parts.savedAt,
-    layers: parts.layers.map((layer) => ({ id: layer.id, name: layer.name })),
+    layers: parts.layers.map(layerOut),
     activeLayerId: parts.activeLayerId,
     drawables: parts.drawables,
     retainedPaths: parts.retainedPaths,
@@ -155,6 +221,8 @@ export function buildNativeDocument(parts: NativeDocumentParts): NativeDocumentF
     pages,
     activePageId,
     printSetup: parts.printSetup ?? null,
+    display: parts.display ?? null,
+    palette: parts.palette ? readPalette(parts.palette) : null,
   };
 }
 
@@ -182,7 +250,13 @@ function readLayers(value: unknown): NativeLayerRecord[] {
   const layers: NativeLayerRecord[] = [];
   for (const entry of value) {
     if (isRecord(entry) && typeof entry.id === 'string' && typeof entry.name === 'string') {
-      layers.push({ id: entry.id, name: entry.name });
+      const layer: NativeLayerRecord = { id: entry.id, name: entry.name };
+      if (typeof entry.visible === 'boolean') layer.visible = entry.visible;
+      if (typeof entry.locked === 'boolean') layer.locked = entry.locked;
+      if (typeof entry.opacity === 'number' && Number.isFinite(entry.opacity)) {
+        layer.opacity = Math.min(1, Math.max(0, entry.opacity));
+      }
+      layers.push(layer);
     }
   }
   return layers;
@@ -287,12 +361,52 @@ function migrate3to4(raw: Record<string, unknown>): Record<string, unknown> {
   return { ...raw, version: 4 };
 }
 
+/** v4 → v5: the document gains a `display` section (grid + page
+ * presentation). Older files have none: null, which the reader
+ * treats as "keep your current values". */
+function migrate4to5(raw: Record<string, unknown>): Record<string, unknown> {
+  return { ...raw, version: 5, display: raw.display ?? null };
+}
+
+function migrate5to6(raw: Record<string, unknown>): Record<string, unknown> {
+  // Layer state fields are optional-with-defaults and the palette
+  // defaults to null, so a v5 body is already valid v6 data.
+  return { ...raw, version: 6, palette: raw.palette ?? null };
+}
+
 const MIGRATIONS: Record<number, (raw: Record<string, unknown>) => Record<string, unknown>> = {
   0: migrate0to1,
   1: migrate1to2,
   2: migrate2to3,
   3: migrate3to4,
+  4: migrate4to5,
+  5: migrate5to6,
 };
+
+/** Read the v5 display section defensively: wrong-typed fields fall
+ * back to the defaults the engine itself starts from, so a hand-
+ * edited file still opens. Returns null when the section is absent
+ * or not an object. */
+function readDisplay(value: unknown): NativeDisplaySettings | null {
+  if (!isRecord(value)) return null;
+  const bool = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean' ? v : fallback);
+  const num = (v: unknown, fallback: number): number => (
+    typeof v === 'number' && Number.isFinite(v) ? v : fallback
+  );
+  const str = (v: unknown, fallback: string): string => (typeof v === 'string' && v ? v : fallback);
+  return {
+    gridEnabled: bool(value.gridEnabled, false),
+    gridType: str(value.gridType, 'square'),
+    gridSpacing: num(value.gridSpacing, 20),
+    gridSubdivisions: num(value.gridSubdivisions, 1),
+    gridStyle: str(value.gridStyle, 'dots'),
+    gridColor: str(value.gridColor, '#8c9eb8'),
+    gridOpacity: num(value.gridOpacity, 0.55),
+    pageFill: bool(value.pageFill, false),
+    pageFillColor: str(value.pageFillColor, '#29303d'),
+    pageSideTicks: bool(value.pageSideTicks, false),
+  };
+}
 
 function readDrawables(value: unknown, section: string): NGDrawable[] | string {
   const out: NGDrawable[] = [];
@@ -432,6 +546,8 @@ export function parseNativeDocument(text: string): NativeParseResult {
       pages,
       activePageId,
       printSetup: readPrintSetup(current.printSetup),
+      display: readDisplay(current.display),
+      palette: readPalette(current.palette),
     },
   };
 }

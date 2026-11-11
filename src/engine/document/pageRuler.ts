@@ -1,13 +1,14 @@
-// PageRuler tick math: major ticks on grid lines across one measured
-// edge, minors splitting each major cell into quarters. Offsets run
-// from the edge corner (the ruler origin), in points; labels are unit
-// values of the absolute grid coordinate for majors, null for minors.
-// phasePt is the project coordinate of the corner, so edges that start
-// off-grid still land majors on grid lines. Pure and unit-tested from
-// tests/drawing-page.test.mjs; the overlay component only maps offsets
-// to pixels.
+// PageRuler tick math (Tier Four, Slice 17): major ticks at human
+// intervals chosen from the display unit and the current zoom — nice
+// numbers, 1/2/5 × 10^n in the display unit — with minors splitting
+// each major into fifths. Tick placement is independent of the grid.
+// The ruler origin is the page's top-left corner when a page is set:
+// offsets run from the corner and labels read 0 there, increasing
+// along the edge. With no page, labels read absolute coordinates.
+// Pure and unit-tested from tests/drawing-page.test.mjs; the overlay
+// component only maps offsets to pixels.
 import type { LengthUnit } from '../types';
-import { pointsToUnit } from './MeasurementUnits';
+import { pointsToUnit, unitToPoints } from './MeasurementUnits';
 
 export interface RulerTick {
   /** Points from the page corner along the edge. */
@@ -22,7 +23,22 @@ export function tickLabel(offsetPt: number, unit: LengthUnit): string {
   return String(Number(pointsToUnit(offsetPt, unit).toFixed(2)));
 }
 
-const MINOR_DIVISIONS = 4;
+const MINOR_DIVISIONS = 5;
+
+/** The major tick interval, in points: the smallest 1/2/5 × 10^n step
+ * in the display unit that spans at least minLabelPx on screen at
+ * pxPerPt, so labels never crowd. Falls back to a 1-unit step when
+ * the scale is unusable. */
+export function niceRulerIntervalPt(unit: LengthUnit, pxPerPt: number, minLabelPx = 64): number {
+  if (!Number.isFinite(pxPerPt) || !(pxPerPt > 0)) return unitToPoints(1, unit);
+  for (let n = -4; n <= 7; n++) {
+    for (const m of [1, 2, 5]) {
+      const stepPt = unitToPoints(m * 10 ** n, unit);
+      if (stepPt * pxPerPt >= minLabelPx) return stepPt;
+    }
+  }
+  return unitToPoints(5000, unit);
+}
 
 /** What the rulers measure: the page when set, else the artwork
  * bounds, else the visible canvas. Units follow the rect (page unit,
@@ -38,30 +54,20 @@ export function rulerSource(
   return page ? { rect: page, unit: pageUnit } : { rect: fallback, unit: displayUnit };
 }
 
-/** Offsets of labeled majors, thinned so labels keep minLabelPx apart.
+/** Offsets of the labeled majors along an edge. Every major is
+ * labeled (the interval is chosen so labels keep minLabelPx apart).
  * Guide lines reuse this set so lines and labels always agree. */
 export function labeledMajors(
   sizePt: number,
-  spacingPt: number,
+  unit: LengthUnit,
   minLabelPx: number,
   pxPerPt: number,
   phasePt = 0,
+  cornerOrigin = false,
 ): number[] {
-  if (!Number.isFinite(sizePt) || !(sizePt > 0)) return [];
-  if (!Number.isFinite(spacingPt) || !(spacingPt > 0)) return [];
-  if (!Number.isFinite(pxPerPt) || !(pxPerPt > 0)) return [];
-  if (!Number.isFinite(phasePt)) return [];
-  const stride = Math.max(1, Math.ceil(minLabelPx / Math.max(spacingPt * pxPerPt, 1e-9)));
-  const out: number[] = [];
-  const epsilon = spacingPt / 1e6;
-  const firstK = Math.ceil((phasePt - epsilon) / spacingPt) + 0;
-  const lastK = Math.floor((phasePt + sizePt + epsilon) / spacingPt);
-  let index = 0;
-  for (let k = firstK; k <= lastK; k += 1) {
-    if (index % stride === 0) out.push(k * spacingPt - phasePt + 0);
-    index += 1;
-  }
-  return out;
+  return computeRulerTicks(sizePt, unit, pxPerPt, phasePt, cornerOrigin, minLabelPx)
+    .filter((tick) => tick.major)
+    .map((tick) => tick.offsetPt);
 }
 
 export interface FrameView { centerX: number; centerY: number; viewWidth: number; viewHeight: number }
@@ -99,34 +105,52 @@ export function pageFrameTracks(
   };
 }
 
+/**
+ * Ticks along one edge of length sizePt starting at project
+ * coordinate phasePt. Offsets are points from phasePt. With
+ * cornerOrigin the edge is a page edge: a major sits on the corner
+ * (offset 0, label "0") and labels read distance from the corner.
+ * Otherwise majors land on absolute interval multiples and labels
+ * read the absolute coordinate.
+ */
 export function computeRulerTicks(
   sizePt: number,
-  spacingPt: number,
   unit: LengthUnit,
+  pxPerPt: number,
   phasePt = 0,
+  cornerOrigin = false,
+  minLabelPx = 64,
 ): RulerTick[] {
   if (!Number.isFinite(sizePt) || !(sizePt > 0)) return [];
-  if (!Number.isFinite(spacingPt) || !(spacingPt > 0)) return [];
   if (!Number.isFinite(phasePt)) return [];
   pointsToUnit(1, unit); // Validate the unit even for degenerate sizes.
+  const interval = niceRulerIntervalPt(unit, pxPerPt, minLabelPx);
+  const epsilon = interval / 1e6;
+  const round = (v: number): number => Math.round(v * 1e6) / 1e6 + 0;
+  const majors: Array<{ offsetPt: number; label: string }> = [];
+  if (cornerOrigin) {
+    for (let at = 0; at <= sizePt + epsilon; at += interval) {
+      majors.push({ offsetPt: round(at), label: tickLabel(at, unit) });
+    }
+  } else {
+    const firstK = Math.ceil((phasePt - epsilon) / interval) + 0;
+    const lastK = Math.floor((phasePt + sizePt + epsilon) / interval);
+    for (let k = firstK; k <= lastK; k += 1) {
+      majors.push({ offsetPt: round(k * interval - phasePt), label: tickLabel(k * interval, unit) });
+    }
+  }
   const ticks: RulerTick[] = [];
-  const epsilon = spacingPt / 1e6;
-  // ceil/floor of a near-zero negative yields -0; normalize once so
-  // offsets compare cleanly downstream.
-  const firstK = Math.ceil((phasePt - epsilon) / spacingPt) + 0;
-  const lastK = Math.floor((phasePt + sizePt + epsilon) / spacingPt);
-  let prevMajor: number | null = null;
-  for (let k = firstK; k <= lastK; k += 1) {
-    const at = k * spacingPt - phasePt + 0;
-    if (prevMajor !== null) {
+  let prev: number | null = null;
+  for (const major of majors) {
+    if (prev !== null) {
       for (let d = 1; d < MINOR_DIVISIONS; d += 1) {
-        const minor = prevMajor + (d * spacingPt) / MINOR_DIVISIONS;
-        if (minor < prevMajor + epsilon || minor > at - epsilon) continue;
-        ticks.push({ offsetPt: minor, major: false, label: null });
+        const minor = prev + (d * interval) / MINOR_DIVISIONS;
+        if (minor < prev + epsilon || minor > major.offsetPt - epsilon) continue;
+        ticks.push({ offsetPt: round(minor), major: false, label: null });
       }
     }
-    ticks.push({ offsetPt: at, major: true, label: tickLabel(k * spacingPt, unit) });
-    prevMajor = at;
+    ticks.push({ offsetPt: major.offsetPt, major: true, label: major.label });
+    prev = major.offsetPt;
   }
   ticks.sort((a, b) => a.offsetPt - b.offsetPt);
   return ticks;

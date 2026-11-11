@@ -10,7 +10,7 @@
 // container size comes from a ResizeObserver.
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
-import { computeRulerTicks, labeledMajors, pageFrameTracks, rulerSource } from '../engine/document/pageRuler';
+import { computeRulerTicks, labeledMajors, niceRulerIntervalPt, pageFrameTracks, rulerSource } from '../engine/document/pageRuler';
 
 const RULER = 22;
 const SCROLLBAR = 12;
@@ -47,7 +47,29 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
   useWorkspace(engine);
   const wrapRef = useRef<HTMLDivElement>(null);
   const container = useContainer(wrapRef);
+  // Cursor-position indicator: the pointer's container coordinates,
+  // tracked on the window so moves over the canvas and its overlays
+  // both count; each track draws a marker at the matching position.
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const move = (event: PointerEvent): void => {
+      const rect = el.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      setPointer(x >= 0 && y >= 0 && x <= rect.width && y <= rect.height ? { x, y } : null);
+    };
+    const clear = (): void => setPointer(null);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('blur', clear);
+    };
+  }, []);
   const state = engine.getViewState();
+  if (engine.rulerPlacement === 'off') return <div id="pageRuler" ref={wrapRef} aria-hidden="true" />;
   if (!state || !(container.width > 0)) return <div id="pageRuler" ref={wrapRef} aria-hidden="true" />;
   const page = engine.pageRect();
   const pxPerPt = container.width / state.viewWidth;
@@ -57,7 +79,9 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
   const source = rulerSource(page, engine.getPageSettings().unit, fallback, engine.lengthUnit);
   const rect = source.rect;
   const unit = source.unit;
-  const spacing = engine.gridSpacing;
+  // With a page set, rulers measure from the page's top-left corner;
+  // without one they read absolute coordinates (Slice 17).
+  const cornerOrigin = page !== null;
   const placement = page && engine.rulerPlacement === 'page' ? 'page' : 'viewer';
   /** Container px for a project coordinate. */
   const toContainer = (project: number, viewStart: number): number => (project - viewStart) * pxPerPt;
@@ -73,10 +97,10 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
     phasePt: number,
   ): ReactNode => {
     if (!(trackLenPx > 0)) return null;
-    const showMinors = ((spacing / 4) * trackLenPx) / sizePt >= MINOR_MIN_PX;
+    const showMinors = (niceRulerIntervalPt(unit, pxPerPt, LABEL_MIN_PX) / 5) * pxPerPt >= MINOR_MIN_PX;
     return (
       <>
-        {computeRulerTicks(sizePt, spacing, unit, phasePt).map((tick, i) => {
+        {computeRulerTicks(sizePt, unit, pxPerPt, phasePt, cornerOrigin, LABEL_MIN_PX).map((tick, i) => {
           if (!tick.major && !showMinors) return null;
           const pos = toLocal(rectStart + tick.offsetPt);
           if (pos < pad - 1 || pos > pad + trackLenPx + 1) return null;
@@ -116,8 +140,8 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
     );
   };
 
-  const labeledH = labeledMajors(rect.width, spacing, LABEL_MIN_PX, pxPerPt, rect.x);
-  const labeledV = labeledMajors(rect.height, spacing, LABEL_MIN_PX, pxPerPt, rect.y);
+  const labeledH = labeledMajors(rect.width, unit, LABEL_MIN_PX, pxPerPt, rect.x, cornerOrigin);
+  const labeledV = labeledMajors(rect.height, unit, LABEL_MIN_PX, pxPerPt, rect.y, cornerOrigin);
   const labeledHSet = new Set(labeledH);
   const labeledVSet = new Set(labeledV);
 
@@ -164,6 +188,12 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
     return (
       <div id="pageRuler" ref={wrapRef} aria-hidden="true">
         {renderGuides(labeledH, labeledV)}
+        {pointer && pointer.x >= frame.top.left && pointer.x <= frame.top.left + (frame.top.width ?? 0) && (
+          <div className="pruler-cursor-h" style={{ left: `${pointer.x}px`, top: `${frame.top.top}px` }} />
+        )}
+        {pointer && pointer.y >= frame.left.top && pointer.y <= frame.left.top + (frame.left.height ?? 0) && (
+          <div className="pruler-cursor-v" style={{ left: `${frame.left.left}px`, top: `${pointer.y}px` }} />
+        )}
         <div
           className="pruler-track-h frame"
           style={{ left: frame.top.left, top: frame.top.top, width: frame.top.width }}
@@ -188,6 +218,12 @@ export default function PageRuler({ engine }: { engine: NibGliderEngine }) {
   return (
     <div id="pageRuler" ref={wrapRef} aria-hidden="true">
       {renderGuides(labeledH, labeledV)}
+      {pointer && pointer.x >= RULER && pointer.x <= container.width - SCROLLBAR && (
+        <div className="pruler-cursor-h" style={{ left: `${pointer.x}px`, top: 0 }} />
+      )}
+      {pointer && pointer.y >= RULER && pointer.y <= container.height - SCROLLBAR && (
+        <div className="pruler-cursor-v" style={{ left: 0, top: `${pointer.y}px` }} />
+      )}
       <div className="pruler-track-h" onPointerDown={startGuideDrag('x', viewLeft)}>
         {renderTicks(true, topLen, (p) => RULER + (p - viewLeft) * pxPerPt, rect.width, rect.x, RULER, labeledHSet, rect.x)}
       </div>

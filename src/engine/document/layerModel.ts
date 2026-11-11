@@ -3,16 +3,40 @@
 // the panel (LayersPanel) share these shapes and rules.
 // Tested from tests/layers.test.mjs.
 
-/** One document layer. Order in an array is bottom-to-top stacking. */
+/** One document layer. Order in an array is bottom-to-top stacking.
+ * The presentation state (Slice 20) is optional on the record:
+ * absent means the defaults (visible, unlocked, full opacity), so
+ * records written before it existed read unchanged. */
 export interface LayerRecord {
   id: string;
   name: string;
+  visible?: boolean;
+  locked?: boolean;
+  opacity?: number;
 }
 
-export function layerRecord(id: string, name: string): LayerRecord {
+export function layerRecord(
+  id: string,
+  name: string,
+  state?: { visible?: boolean; locked?: boolean; opacity?: number },
+): LayerRecord {
   if (typeof id !== 'string' || id.length === 0) throw new Error('layer id must be non-empty');
   if (typeof name !== 'string' || name.trim().length === 0) throw new Error('layer name must be non-empty');
-  return { id, name };
+  return { id, name, ...(state ?? {}) };
+}
+
+export function layerVisible(record: LayerRecord): boolean {
+  return record.visible !== false;
+}
+
+export function layerLocked(record: LayerRecord): boolean {
+  return record.locked === true;
+}
+
+export function layerOpacity(record: LayerRecord): number {
+  return typeof record.opacity === 'number' && Number.isFinite(record.opacity)
+    ? Math.min(1, Math.max(0, record.opacity))
+    : 1;
 }
 
 /** Name for the next created layer, given the layers already present. */

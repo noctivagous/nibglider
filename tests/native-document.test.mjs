@@ -89,6 +89,49 @@ test('migration: a v0 draft (no version, no model sections) opens at the current
   assert.equal(engine2.currentFileName, 'Draft');
 });
 
+test('v5 display settings round trip through the engine; v4 files keep current values', () => {
+  const { engine } = makeEngine();
+  engine.setGridEnabled(true);
+  engine.setGridType('diamond');
+  engine.setGridSpacing(36);
+  engine.setGridSubdivisions(4);
+  engine.setGridStyle('lines');
+  engine.setGridColor('#ff8800');
+  engine.setGridOpacity(0.25);
+  engine.setPageFill(true);
+  engine.setPageFillColor('#112233');
+  engine.setPageSideTicks(true);
+  const text = engine.exportNativeDocument('Display');
+  const parsed = parseNativeDocument(text);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.doc.version, 6);
+  assert.deepEqual(parsed.doc.display, {
+    gridEnabled: true, gridType: 'diamond', gridSpacing: 36, gridSubdivisions: 4,
+    gridStyle: 'lines', gridColor: '#ff8800', gridOpacity: 0.25,
+    pageFill: true, pageFillColor: '#112233', pageSideTicks: true,
+  });
+  const { engine: fresh } = makeEngine();
+  assert.equal(fresh.openNativeDocumentText(text).ok, true);
+  assert.equal(fresh.isGridEnabled, true);
+  assert.equal(fresh.gridType, 'diamond');
+  assert.equal(fresh.gridSpacing, 36);
+  assert.equal(fresh.gridSubdivisions, 4);
+  assert.equal(fresh.gridStyle, 'lines');
+  assert.equal(fresh.gridColor, '#ff8800');
+  assert.equal(fresh.gridOpacity, 0.25);
+  assert.equal(fresh.pageFill, true);
+  assert.equal(fresh.pageFillColor, '#112233');
+  assert.equal(fresh.pageSideTicks, true);
+  // A v4 body (no display section) opens without touching display state.
+  const v4 = JSON.parse(text);
+  v4.version = 4;
+  delete v4.display;
+  const { engine: legacy } = makeEngine();
+  legacy.setGridSpacing(99);
+  assert.equal(legacy.openNativeDocumentText(JSON.stringify(v4)).ok, true);
+  assert.equal(legacy.gridSpacing, 99, 'no display section: current values kept');
+});
+
 test('engine round trip: layers, active layer, and artwork survive a file', () => {
   const { scope, engine } = makeEngine();
   depositCircle(scope, engine, 100, 100, 40);
@@ -231,4 +274,49 @@ test('stripSvgClips removes imported clip masks recursively', () => {
   assert.equal(group.children.includes(art), true, 'artwork kept');
   const json = encodeSceneItems([group]);
   assert.equal(typeof json, 'string');
+});
+
+test('v6: layer state and document palette round trip; v5 files migrate with defaults', () => {
+  const { engine } = makeEngine();
+  const layerId = engine.listLayers()[0].id;
+  engine.setLayerVisible(layerId, false);
+  engine.setLayerLocked(layerId, true);
+  engine.setLayerOpacity(layerId, 0.4);
+  engine.setDocumentPalette(['#ff0000', '#00ff00']);
+  const text = engine.exportNativeDocument('Stateful');
+  const parsed = parseNativeDocument(text);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.doc.version, 6);
+  assert.deepEqual(parsed.doc.palette, ['#ff0000', '#00ff00']);
+  const layer = parsed.doc.layers[0];
+  assert.equal(layer.visible, false);
+  assert.equal(layer.locked, true);
+  assert.equal(layer.opacity, 0.4);
+
+  const fresh = makeEngine();
+  assert.equal(fresh.engine.openNativeDocumentText(text).ok, true);
+  const restored = fresh.engine.listLayers()[0];
+  assert.equal(restored.visible, false);
+  assert.equal(restored.locked, true);
+  assert.equal(restored.opacity, 0.4);
+  assert.deepEqual(fresh.engine.documentPalette, ['#ff0000', '#00ff00']);
+  assert.equal(fresh.engine.paletteFromDocument, true);
+
+  // A v5 body migrates: palette null, layer state absent (defaults).
+  const v5 = JSON.parse(text);
+  v5.version = 5;
+  delete v5.palette;
+  delete v5.layers[0].visible;
+  delete v5.layers[0].locked;
+  delete v5.layers[0].opacity;
+  for (const page of v5.pages) {
+    delete page.layers[0].visible;
+    delete page.layers[0].locked;
+    delete page.layers[0].opacity;
+  }
+  const migrated = parseNativeDocument(JSON.stringify(v5));
+  assert.equal(migrated.ok, true);
+  assert.equal(migrated.doc.version, 6);
+  assert.equal(migrated.doc.palette, null);
+  assert.equal(migrated.doc.layers[0].visible, undefined);
 });

@@ -3,10 +3,16 @@
   <menu id="file" title="File">
     <item command="open-gallery" icon="open" />
     <item command="new-document" icon="new" />
+    <item command="empty-canvas" label="Clear Canvas" icon="delete" />
     <item command="save-gallery" icon="save" />
     <item command="rename-document" icon="rename" />
     <item command="save-file" label="Save to File…" icon="save" />
     <item command="open-file" label="Open File…" icon="open" />
+    <item command="import" label="Import" icon="import">
+      <option command="import-svg" label="SVG" icon="import" />
+      <option command="import-pdf" label="PDF" icon="import" />
+      <option command="import-raster" label="Raster / Bitmap" icon="import" />
+    </item>
     <item command="export-raster" label="Export Raster" icon="export">
       <option command="export-raster-canvas" label="Document Frame" icon="page-size" />
       <option command="export-raster-viewport" label="Current Viewport Frame" icon="reset-zoom" />
@@ -17,11 +23,11 @@
       <option command="export-vector-viewport" label="Current Viewport Frame" icon="reset-zoom" />
       <option command="export-vector-selection" label="Selected Objects" icon="select-all" />
     </item>
-    <item command="import" label="Import" icon="import">
-      <option command="import-svg" label="SVG" icon="import" />
-      <option command="import-pdf" label="PDF" icon="import" />
-      <option command="import-raster" label="Raster / Bitmap" icon="import" />
+    <item command="export-printify" label="Export Printify" icon="export">
+      <option command="export-printify-area" label="Upload selected garment area" icon="export" />
+      <option command="export-printify-product" label="Upload garment and create product" icon="export" />
     </item>
+    <item command="page-setup" label="Page Setup…" icon="page-size" />
     <item command="print" label="Print…" icon="export" />
     <item command="print-selection" label="Print Selection…" icon="export" />
     <item command="settings" icon="settings" />
@@ -33,12 +39,45 @@
       <item command="cut" icon="cut" shortcut="Primary+X" />
       <item command="copy" icon="copy" shortcut="Primary+C" />
       <item command="paste" icon="paste" shortcut="Primary+V" />
+      <item command="paste-in-place" label="Paste in Place" icon="paste" shortcut="Primary+Shift+V" />
     </group>
     <group label="Selection">
       <item command="duplicate-selection" label="Duplicate selection" icon="duplicate" />
       <item command="delete-selection" label="Delete selection" icon="delete" shortcut="Backspace" />
       <item command="select-all" label="Select all" icon="select-all" shortcut="Primary+A" />
+      <item command="select-none" label="Select None" icon="select-all" />
     </group>
+    <group label="Text">
+      <item command="find-replace" label="Find &amp; Replace…" icon="text" shortcut="Primary+F" />
+    </group>
+  </menu>
+  <menu id="view" title="View">
+    <group label="Zoom">
+      <item command="zoom-in" label="Zoom In" icon="reset-zoom" />
+      <item command="zoom-out" label="Zoom Out" icon="zoom-out" />
+      <item command="reset-zoom" icon="reset-zoom" />
+      <item command="fit-page" label="Fit Page" icon="page-size" />
+      <item command="fit-artwork" label="Fit Artwork" icon="reset-zoom" />
+      <item command="fit-selection" label="Fit Selection" icon="select-all" />
+    </group>
+    <item command="length-unit" label="Length unit" icon="length-unit">
+      <option command="length-unit-pt" label="Points (pt)" />
+      <option command="length-unit-inch" label="Inches" />
+      <option command="length-unit-cm" label="Centimeters (cm)" />
+    </item>
+    <group label="Show">
+      <item command="toggle-panel" icon="toggle-panel" />
+      <item command="toggle-keyboard" icon="toggle-keyboard" />
+      <item command="toggle-status" icon="toggle-status" />
+      <item command="show-grid" label="Show Grid" icon="snap-grid" />
+      <item command="show-guides" label="Show Guides" icon="snap-path" />
+      <item command="guide-snapping" label="Guide Snapping" icon="snapping" />
+    </group>
+    <item command="rulers" label="Rulers" icon="page-size">
+      <option command="ruler-viewer" label="Viewer edges" icon="page-size" />
+      <option command="ruler-page" label="Page frame" icon="page-size" />
+      <option command="ruler-off" label="Off" icon="page-size" />
+    </item>
   </menu>
   <menu id="image" title="Image">
     <item command="image-filters" label="Filters…" icon="filters" />
@@ -75,35 +114,23 @@
       <item command="send-to-back" label="Send to back" icon="send-to-back" />
     </group>
   </menu>
-  <menu id="document" title="Document and Settings">
+  <menu id="document" title="Document">
     <item command="canvas-size" icon="page-size" />
     <item command="document-settings" label="Document Settings" icon="settings" />
-    <item command="page-setup" label="Page Setup…" icon="page-size" />
-    <item command="page-size" icon="page-size" />
-    <item command="length-unit" label="Length unit" icon="length-unit">
-      <option command="length-unit-pt" label="Points (pt)" />
-      <option command="length-unit-inch" label="Inches" />
-      <option command="length-unit-cm" label="Centimeters (cm)" />
-    </item>
-    <item command="reset-zoom" icon="reset-zoom" />
-    <item command="toggle-panel" icon="toggle-panel" />
-    <item command="toggle-keyboard" icon="toggle-keyboard" />
-    <item command="toggle-status" icon="toggle-status" />
+    <item command="pages-guides" label="Pages &amp; Guides" icon="page-size" />
   </menu>
-  <menu id="services" title="Services">
-    <item command="printify-settings" label="Printify…" icon="settings" />
-  </menu>
-  <menu id="operations" title="Operations">
-    <group label="Repeat">
-      <item command="repeat-grid" label="Repeat Grid — wallpaper (p1)" icon="repeat-grid" />
-      <item command="repeat-circle" label="Repeat Circle — polar" icon="repeat-circle" />
+  <menu id="object" title="Object">
+    <group label="Order">
+      <item command="bring-to-front" label="Bring to front" icon="bring-to-front" />
+      <item command="bring-forward" label="Bring forward" icon="bring-to-front" />
+      <item command="send-backward" label="Send backward" icon="send-to-back" />
+      <item command="send-to-back" label="Send to back" icon="send-to-back" />
     </group>
-    <group label="With dialog">
-      <item command="scale-dialog" label="Scale…" icon="scale-dialog" />
-      <item command="rotate-dialog" label="Rotate…" icon="rotate-dialog" />
-    </group>
-    <group label="Text">
-      <item command="text-convert-outlines" label="Convert Text to Outlines" icon="text" />
+    <group label="Group">
+      <item command="group" label="Group selection" icon="group" shortcut="Primary+G" />
+      <item command="ungroup-selection" label="Ungroup selection" icon="ungroup" shortcut="Primary+Shift+G" />
+      <item command="lock-selection" label="Lock Selection" icon="lock" />
+      <item command="hide-selection" label="Hide Selection" icon="hide" />
     </group>
     <group label="Align">
       <item command="align-left" label="Left" />
@@ -128,6 +155,19 @@
     <group label="Flip">
       <item command="flip-horizontal" label="Flip Horizontal" />
       <item command="flip-vertical" label="Flip Vertical" />
+    </group>
+    <group label="With dialog">
+      <item command="scale-dialog" label="Scale…" icon="scale-dialog" />
+      <item command="rotate-dialog" label="Rotate…" icon="rotate-dialog" />
+    </group>
+    <group label="Text">
+      <item command="text-convert-outlines" label="Convert Text to Outlines" icon="text" />
+    </group>
+  </menu>
+  <menu id="operations" title="Repeat">
+    <group label="Repeat">
+      <item command="repeat-grid" label="Repeat Grid — o" icon="repeat-grid" />
+      <item command="repeat-circle" label="Repeat Circle — polar" icon="repeat-circle" />
     </group>
   </menu>
   <menu id="modes" title="Modes">
@@ -161,6 +201,7 @@
       <option command="combinatorics-union" label="Union" icon="combinatorics-union" />
       <option command="combinatorics-subtract" label="Subtract" icon="combinatorics-subtract" />
       <option command="combinatorics-intersect" label="Intersect" icon="combinatorics-intersect" />
+      <option command="combinatorics-exclude" label="Exclude" icon="combinatorics-exclude" />
       <option command="combinatorics-crop" label="Crop" icon="combinatorics-crop" />
       <option command="combinatorics-cut" label="Cut" icon="combinatorics-cut" />
       <option command="combinatorics-interlace" label="Interlace" icon="combinatorics-interlace" />
@@ -185,21 +226,23 @@
     </item>
   </menu>
   <menu id="layers" title="Layers and Objects">
-    <item command="select" label="Select" icon="select" />
-    <group label="Order">
-      <item command="bring-to-front" label="Bring to front" icon="bring-to-front" />
-      <item command="bring-forward" label="Bring forward" icon="bring-to-front" />
-      <item command="send-backward" label="Send backward" icon="send-to-back" />
-      <item command="send-to-back" label="Send to back" icon="send-to-back" />
-    </group>
     <group label="Selection">
       <item command="group" label="Group selection" icon="group" shortcut="Primary+G" />
       <item command="ungroup-selection" label="Ungroup selection" icon="ungroup" shortcut="Primary+Shift+G" />
-      <item command="duplicate-selection" label="Duplicate selection" icon="duplicate" />
-      <item command="delete-selection" label="Delete selection" icon="delete" shortcut="Backspace" />
     </group>
   </menu>
   <menu id="context-object" title="Object">
+    <group label="Clipboard">
+      <item command="cut" icon="cut" shortcut="Primary+X" />
+      <item command="copy" icon="copy" shortcut="Primary+C" />
+      <item command="paste" icon="paste" shortcut="Primary+V" />
+    </group>
+    <group label="Selection">
+      <item command="duplicate-selection" label="Duplicate selection" icon="duplicate" />
+      <item command="delete-selection" label="Delete selection" icon="delete" shortcut="Backspace" />
+      <item command="group" label="Group selection" icon="group" shortcut="Primary+G" />
+      <item command="ungroup-selection" label="Ungroup selection" icon="ungroup" shortcut="Primary+Shift+G" />
+    </group>
     <group label="Order">
       <item command="bring-to-front" label="Bring to front" icon="bring-to-front" />
       <item command="bring-forward" label="Bring forward" icon="bring-to-front" />
@@ -228,18 +271,17 @@
     </group>
   </menu>
   <menu id="help" title="Help">
-    <item command="tutorial" icon="tutorial" />
-    <item command="tutorial-demo-rectangle" label="Tutorial: Watch a Rectangle Draw" icon="tutorial" />
-    <item command="tutorial-fix-a-shape" label="Tutorial: Fix a Shape" icon="tutorial" />
-    <item command="tutorial-fill-and-stroke" label="Tutorial: Fill &amp; Stroke" icon="tutorial" />
-    <item command="tutorial-adding-text" label="Tutorial: Adding Text" icon="tutorial" />
-    <item command="tutorial-grouping-and-ordering" label="Tutorial: Grouping &amp; Ordering" icon="tutorial" />
-    <item command="tutorial-saving-and-exporting" label="Tutorial: Saving &amp; Exporting" icon="tutorial" />
+    <item command="tutorials" label="Tutorials" icon="tutorial">
+      <option command="tutorial" label="Interactive Tutorial" icon="tutorial" />
+      <option command="tutorial-demo-rectangle" label="Tutorial: Watch a Rectangle Draw" icon="tutorial" />
+      <option command="tutorial-fix-a-shape" label="Tutorial: Fix a Shape" icon="tutorial" />
+      <option command="tutorial-fill-and-stroke" label="Tutorial: Fill &amp; Stroke" icon="tutorial" />
+      <option command="tutorial-adding-text" label="Tutorial: Adding Text" icon="tutorial" />
+      <option command="tutorial-grouping-and-ordering" label="Tutorial: Grouping &amp; Ordering" icon="tutorial" />
+      <option command="tutorial-saving-and-exporting" label="Tutorial: Saving &amp; Exporting" icon="tutorial" />
+    </item>
     <item command="help-getting-started" label="Getting Started" icon="tutorial" />
     <item command="help-keys-reference" label="Keys Reference" icon="tutorial" />
-  </menu>
-  <menu id="debug" title="Debug">
-    <item command="reset-settings" label="Reset all settings" icon="reset-settings" />
-    <item command="empty-canvas" label="Empty Canvas of Objects" icon="delete" />
+    <item command="about" label="About NibGlider" icon="tutorial" />
   </menu>
 </menus>

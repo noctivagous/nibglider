@@ -11,8 +11,26 @@
 // Public ops are tested from tests/layers.test.mjs (pure logic in
 // layerModel.ts; registry behaviour here against a Paper scope).
 import {
-  layerRecord, moveLayer, nextLayerName, type LayerRecord,
+  layerLocked, layerOpacity, layerRecord, layerVisible, moveLayer, nextLayerName, type LayerRecord,
 } from './layerModel';
+
+/** Presentation state of a Paper layer, in record shape. */
+function stateOfLayer(layer: paper.Layer): { visible: boolean; locked: boolean; opacity: number } {
+  const item = layer as unknown as { visible?: boolean; locked?: boolean; opacity?: number };
+  return {
+    visible: item.visible !== false,
+    locked: item.locked === true,
+    opacity: typeof item.opacity === 'number' && Number.isFinite(item.opacity) ? item.opacity : 1,
+  };
+}
+
+/** Write a record's presentation state onto its Paper layer. */
+function applyStateToLayer(layer: paper.Layer, record: LayerRecord): void {
+  const item = layer as unknown as { visible: boolean; locked: boolean; opacity: number };
+  item.visible = layerVisible(record);
+  item.locked = layerLocked(record);
+  item.opacity = layerOpacity(record);
+}
 
 export class LayerManager {
   private readonly scope: paper.PaperScope;
@@ -64,6 +82,7 @@ export class LayerManager {
         records.push(layerRecord(
           `paper-layer-${layer.id}`,
           layer.name && layer.name.trim().length > 0 ? layer.name : `Layer ${records.length + 1}`,
+          stateOfLayer(layer as paper.Layer),
         ));
       }
     }
@@ -146,6 +165,32 @@ export class LayerManager {
     return true;
   }
 
+  /** Layer presentation state (Slice 20): the record is the model,
+   * the Paper layer carries the same values so rendering, hit
+   * testing and the panel listing all agree. */
+  setLayerVisible(id: string, visible: boolean): boolean {
+    return this.setLayerState(id, { visible: visible === true });
+  }
+
+  setLayerLocked(id: string, locked: boolean): boolean {
+    return this.setLayerState(id, { locked: locked === true });
+  }
+
+  setLayerOpacity(id: string, opacity: number): boolean {
+    if (!Number.isFinite(opacity)) return false;
+    return this.setLayerState(id, { opacity: Math.min(1, Math.max(0, opacity)) });
+  }
+
+  private setLayerState(id: string, patch: { visible?: boolean; locked?: boolean; opacity?: number }): boolean {
+    const records = this.ensureRegistry();
+    const record = records.find((r) => r.id === id);
+    if (!record) return false;
+    Object.assign(record, patch);
+    const layer = this.paperLayerFor(record);
+    if (layer) applyStateToLayer(layer, record);
+    return true;
+  }
+
   /** Move a layer one step up (towards the top) or down. */
   moveLayerRecord(id: string, dir: 'up' | 'down'): boolean {
     const before = this.ensureRegistry();
@@ -179,6 +224,7 @@ export class LayerManager {
     if (!records.some((r) => r.id === record.id)) records.push(record);
     else records[records.findIndex((r) => r.id === record.id)] = record;
     if (layer.name !== record.name) layer.name = record.name;
+    applyStateToLayer(layer, record);
   }
 
   /** Registry id of the Paper layer a scene decode flagged with the
@@ -212,11 +258,17 @@ export class LayerManager {
       const next: LayerRecord[] = [];
       orderedRecords.forEach((record, i) => {
         const layer = decoded[i];
-        if (layer) next.push(layerRecord(`paper-layer-${layer.id}`, record.name));
+        if (layer) {
+          const adopted = layerRecord(`paper-layer-${layer.id}`, record.name, {
+            visible: record.visible, locked: record.locked, opacity: record.opacity,
+          });
+          next.push(adopted);
+          applyStateToLayer(layer, adopted);
+        }
       });
       for (const [id, layer] of present) {
         if (!next.some((r) => r.id === id) && !decoded.includes(layer)) {
-          next.push(layerRecord(id, layer.name && layer.name.trim() ? layer.name : `Layer ${next.length + 1}`));
+          next.push(layerRecord(id, layer.name && layer.name.trim() ? layer.name : `Layer ${next.length + 1}`, stateOfLayer(layer)));
         }
       }
       this.registry = next.length > 0 ? next : [...present.keys()].map((id, i) => layerRecord(id, `Layer ${i + 1}`));
@@ -224,7 +276,7 @@ export class LayerManager {
       const kept = this.ensureRegistry().filter((record) => present.has(record.id));
       for (const [id, layer] of present) {
         if (!kept.some((r) => r.id === id)) {
-          kept.push(layerRecord(id, layer.name && layer.name.trim() ? layer.name : `Layer ${kept.length + 1}`));
+          kept.push(layerRecord(id, layer.name && layer.name.trim() ? layer.name : `Layer ${kept.length + 1}`, stateOfLayer(layer)));
         }
       }
       this.registry = kept;

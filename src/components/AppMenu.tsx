@@ -256,6 +256,13 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M10.5 8.5 v4 M8.5 10.5 h4" />
     </MenuGlyph>
   ),
+  'zoom-out': (
+    <MenuGlyph>
+      <circle cx="10.5" cy="10.5" r="6" />
+      <path d="M15.5 15.5 L21 21" />
+      <path d="M8.5 10.5 h4" />
+    </MenuGlyph>
+  ),
   'toggle-panel': (
     <MenuGlyph>
       <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -375,10 +382,16 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <rect x="14" y="8" width="8" height="8" />
     </MenuGlyph>
   ),
-  'reset-settings': (
+  lock: (
     <MenuGlyph>
-      <path d="M4 12 a8 8 0 1 0 2.34 5.66" />
-      <path d="M4 20.5 V16 h4.5" />
+      <rect x="5" y="10" width="14" height="9" />
+      <path d="M8 10 V7 a4 4 0 0 1 8 0 v3" />
+    </MenuGlyph>
+  ),
+  hide: (
+    <MenuGlyph>
+      <path d="M3 12 C6 6, 18 6, 21 12 C18 18, 6 18, 3 12 Z" />
+      <path d="M4 20 L20 4" />
     </MenuGlyph>
   ),
   // Shape silhouettes from the panel's Circle/Rect Keys custom selects.
@@ -517,6 +530,12 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M6 3.4 A3.6 3.6 0 0 1 6 10.6 A3.6 3.6 0 0 1 6 3.4 Z M10 3.4 A3.6 3.6 0 0 0 10 10.6 A3.6 3.6 0 0 0 10 3.4 Z" />
     </Thumb1614>
   ),
+  'combinatorics-exclude': (
+    <Thumb1614>
+      <path d="M6 3.4 A3.6 3.6 0 1 0 6 10.6 A3.6 3.6 0 0 0 10 6.99 A3.6 3.6 0 1 0 6 3.4 Z" />
+      <path d="M10 3.4 A3.6 3.6 0 1 1 10 10.6 A3.6 3.6 0 0 1 6 7.01 A3.6 3.6 0 1 1 10 3.4 Z" />
+    </Thumb1614>
+  ),
   'combinatorics-crop': (
     <Thumb1614>
       <circle cx="8" cy="7" r="3.6" strokeDasharray="2 1.4" />
@@ -597,6 +616,12 @@ const TRIGGER_ICONS: Record<string, ReactNode> = {
     <MenuGlyph size={13}>
       <path d="M4 20 l1 -4 L16 5 l3 3 L8 19 Z" />
       <path d="M14 7 l3 3" />
+    </MenuGlyph>
+  ),
+  view: (
+    <MenuGlyph size={13}>
+      <path d="M2.5 12 C5.5 5.5 18.5 5.5 21.5 12 C18.5 18.5 5.5 18.5 2.5 12 Z" />
+      <circle cx="12" cy="12" r="3" />
     </MenuGlyph>
   ),
   image: (

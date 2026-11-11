@@ -1,13 +1,16 @@
 // Arrange panel section (Slice 4): align (to selection or to the
 // document), distribute, and flip for the current selection. Every
 // button runs one engine operation = one history entry. The same
-// commands live in the Operations and context menus.
+// commands live in the Operations and context menus. Slice 20 adds
+// stacking order, quarter-turn rotation, and Group/Ungroup (moved
+// here from the History section).
 import type { NibGliderEngine } from '../engine/engine';
 
 export default function ArrangePanel({ engine }: { engine: NibGliderEngine }) {
   const count = engine.selectedItems.length;
   const none = count === 0;
   const few = count < 3;
+  const reorderable = engine.canReorderSelection();
   const btn = (
     label: string,
     title: string,
@@ -44,6 +47,20 @@ export default function ArrangePanel({ engine }: { engine: NibGliderEngine }) {
         {btn('Dist. V', 'Distribute vertically with equal gaps (needs 3+)', () => engine.distributeSelection('vertical'), few)}
         {btn('Flip H', 'Flip horizontally around the selection centre', () => engine.flipSelection('horizontal'), none)}
         {btn('Flip V', 'Flip vertically around the selection centre', () => engine.flipSelection('vertical'), none)}
+      </div>
+      <div className="arrange-label">Order</div>
+      <div className="arrange-row">
+        {btn('To Front', 'Bring the selection to the front', () => engine.bringSelectionToFront(), !reorderable)}
+        {btn('Forward', 'Bring the selection one step forward', () => engine.bringSelectionForward(), !reorderable)}
+        {btn('Backward', 'Send the selection one step backward', () => engine.sendSelectionBackward(), !reorderable)}
+        {btn('To Back', 'Send the selection to the back', () => engine.sendSelectionToBack(), !reorderable)}
+      </div>
+      <div className="arrange-label">Rotate &amp; group</div>
+      <div className="arrange-row">
+        {btn('90° CW', 'Rotate the selection 90° clockwise', () => engine.rotateSelectionBy(90), none)}
+        {btn('90° CCW', 'Rotate the selection 90° counter-clockwise', () => engine.rotateSelectionBy(-90), none)}
+        {btn('Group', 'Group the selection into one object', () => engine.groupSelection(), !engine.canGroupSelection())}
+        {btn('Ungroup', 'Ungroup the selected group', () => engine.ungroupSelected(), !engine.canUngroupSelection())}
       </div>
       {none && <div className="arrange-empty">Select objects to arrange them.</div>}
     </div>

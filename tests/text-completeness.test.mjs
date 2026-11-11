@@ -224,6 +224,56 @@ test('user fonts: bytes parse, register, list, and persist by name in settings',
   assert.equal(bogus, null, 'garbage bytes refused');
 });
 
+test('outline: word spacing and small caps change advances honestly', () => {
+  const scope = new paper.PaperScope();
+  scope.setup(new scope.Size(400, 400));
+  try {
+    const font = barlow();
+    const plain = outlineText(scope, font, 'H H', 40, 0);
+    const spaced = outlineText(scope, font, 'H H', 40, 0, { wordSpacing: 10 });
+    assert.ok(Math.abs((spaced.width - plain.width) - 10) < 1e-6, 'one space gains the word spacing');
+    const small = outlineText(scope, font, 'h', 40, 0, { smallCaps: true });
+    const cap = outlineText(scope, font, 'H', 30, 0);
+    assert.ok(Math.abs(small.width - cap.width) < 1e-6, 'small-caps h outlines as H at 75% size');
+  } finally { scope.project.remove(); }
+});
+
+test('engine: Slice 18 spec setters round-trip through selectionText', () => {
+  const { scope, engine } = makeEngine();
+  engine.setTextUnderline(true);
+  engine.setTextStrikethrough(true);
+  engine.setTextCaseTransform('smallCaps');
+  engine.setTextBaselineShift(5);
+  engine.setTextWordSpacing(3);
+  engine.setTextJustification('justify');
+  assert.equal(engine.pastePlainText('one two', new scope.Point(60, 60)), true);
+  const selected = engine.selectionText();
+  assert.equal(selected.underline, true);
+  assert.equal(selected.strikethrough, true);
+  assert.equal(selected.caseTransform, 'smallCaps');
+  assert.equal(selected.baselineShift, 5);
+  assert.equal(selected.wordSpacing, 3);
+  assert.equal(selected.justification, 'justify');
+});
+
+test('engine: convert to outlines draws underline as a filled stroke and applies case', () => {
+  const { scope, engine } = makeEngine();
+  engine.textMetrics.register('Barlow Condensed', 'normal', barlow());
+  engine.setTextFontFamily('Barlow Condensed');
+  engine.setTextFontSize(40);
+  engine.setTextCaseTransform('upper');
+  engine.setTextUnderline(true);
+  scope.project.activeLayer.activate();
+  assert.equal(engine.pastePlainText('hi', new scope.Point(100, 100)), true);
+  const result = engine.convertSelectedTextToOutlines();
+  assert.deepEqual(result, { converted: 1, skipped: 0 });
+  const items = engine.allContentItems().filter((i) => i.className === 'Path' || i.className === 'CompoundPath');
+  assert.equal(items.length, 2, 'glyph outlines plus the underline stroke');
+  const rect = items.find((i) => i.className === 'Path');
+  assert.ok(rect, 'underline is a plain filled path');
+  assert.ok(rect.bounds.height < 3 && rect.bounds.width > 20, `underline geometry ${rect.bounds.width}x${rect.bounds.height}`);
+});
+
 test('engine: letter/paragraph spacing setters round-trip through selectionText', () => {
   const { scope, engine } = makeEngine();
   engine.setTextLetterSpacing(2.5);

@@ -65,6 +65,7 @@ export const PANEL_SECTIONS: Array<{ id: string; label: string }> = [
   { id: 'circleFrameControls', label: 'Circle Keys' },
   { id: 'rectFrameControls', label: 'Rect Keys' },
   { id: 'combinatoricsControls', label: 'Combinatorics' },
+  { id: 'pathOpsControls', label: 'Path Operations' },
   { id: 'historyControls', label: 'History' },
   { id: 'gridControls', label: 'Grid' },
   { id: 'snappingControls', label: 'Snapping' },
@@ -76,7 +77,7 @@ export const PANEL_SECTIONS: Array<{ id: string; label: string }> = [
 
 const DEFAULT_SECTION_GROUPS: Record<string, string[]> = {
   paint: ['strokeControls', 'fillControls', 'swatchesControls', 'textControls'],
-  keys: ['circleFrameControls', 'rectFrameControls', 'combinatoricsControls', 'historyControls', 'repeatControls', 'layersControls', 'pagesControls', 'arrangeControls'],
+  keys: ['circleFrameControls', 'rectFrameControls', 'combinatoricsControls', 'pathOpsControls', 'historyControls', 'repeatControls', 'layersControls', 'pagesControls', 'arrangeControls'],
   snap: ['gridControls', 'snappingControls'],
 };
 
@@ -98,7 +99,7 @@ export const MENU_PANEL_SECTIONS: Record<string, string[]> = {
   modes: ['circleFrameControls', 'rectFrameControls', 'combinatoricsControls', 'snappingControls', 'textControls'],
   edit: ['historyControls'],
   layers: ['layersControls'],
-  operations: ['arrangeControls'],
+  object: ['arrangeControls'],
   document: ['swatchesControls'],
 };
 

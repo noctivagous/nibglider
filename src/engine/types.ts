@@ -68,9 +68,15 @@ export type CircleInnerShape =
   | 'rhombus'
   | 'kite';
 
-export type CombineMode = 'union' | 'subtract' | 'intersect' | 'crop' | 'cut' | 'interlace';
+export type CombineMode = 'union' | 'subtract' | 'intersect' | 'exclude' | 'crop' | 'cut' | 'interlace';
 
-export type TextJustification = 'left' | 'center' | 'right';
+export type TextJustification = 'left' | 'center' | 'right' | 'justify';
+
+/** Case treatment applied in layout: 'upper' uppercases the laid-out
+ * string; 'smallCaps' renders lowercase letters as capitals at a
+ * reduced size in per-glyph layout and falls back to 'upper' where
+ * only whole-line layout is available. */
+export type TextCaseTransform = 'none' | 'upper' | 'smallCaps';
 
 export interface TextSpec {
   /** Primary line of text (Display Text, and line 1 of Circumference). */
@@ -82,6 +88,17 @@ export interface TextSpec {
   fontSize: number;
   fontWeight: string;
   italic: boolean;
+  /** Underline: drawn as a stroke in shape-attached text groups and
+   * in outline conversion; live PointText keeps it as data (Paper
+   * has no text decoration), like tracking. */
+  underline: boolean;
+  /** Strikethrough: same rendering story as underline. */
+  strikethrough: boolean;
+  caseTransform: TextCaseTransform;
+  /** Baseline shift in points (−20..+40): positive raises the text. */
+  baselineShift: number;
+  /** Extra points of advance after each space (0..20). */
+  wordSpacing: number;
   justification: TextJustification;
   /** Leading as a multiple of the font size. */
   leading: number;

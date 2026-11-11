@@ -90,6 +90,24 @@ export default function PagesPanel({ engine, onPageSetup }: {
       </ul>
 
       <div className="pages-subhead">Guides (active page)</div>
+      <div className="pages-guide-toggles">
+        <label>
+          <input
+            type="checkbox"
+            checked={engine.guidesVisible}
+            onChange={(e) => engine.setGuidesVisible(e.target.checked)}
+          />
+          Show guides
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={engine.guideSnapping}
+            onChange={(e) => engine.setGuideSnapping(e.target.checked)}
+          />
+          Guide snapping
+        </label>
+      </div>
       <div className="pages-guide-add">
         <select
           value={guideAxis}

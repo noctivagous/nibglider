@@ -6,6 +6,12 @@
 // declarations (type positions only); the runtime value is never imported here.
 import { FontMetrics, weightsForFamily } from './fontMetrics';
 import { outlineText } from './text/textOutline';
+import {
+  BUILT_IN_TEXT_STYLES,
+  sanitizeTextStyle,
+  stylePatch,
+  type TextStyleEntry,
+} from './text/textStyles';
 import { traceBitmap as traceBitmapPixels, type BitmapInput, type TraceOptions } from './image/tracer';
 import {
   isImageMaskGroup,
@@ -105,6 +111,9 @@ import {
 } from './document/printSetup';
 import {
   buildLayerListing,
+  layerLocked,
+  layerOpacity,
+  layerVisible,
   type LayerListing,
   type LayerRecord,
   type ListingObjectInput,
@@ -250,8 +259,11 @@ import {
   isNativeDocumentText,
   nativeFileName,
   parseNativeDocument,
+  readPalette,
   serializeNativeDocument,
+  type NativeDisplaySettings,
   type NativeDocumentFile,
+  type NativeLayerRecord,
   type NativePageRecord,
 } from './document/NativeDocument';
 import {
@@ -287,6 +299,7 @@ import {
   clampShapeAngle as clampShapeAngleValue,
   clampSplineTension,
   clampSupershapeParam,
+  cssHex,
   snapShapeAngle as snapShapeAngleValue,
 } from './input/KeySettingsRegistry';
 import type {
@@ -313,6 +326,7 @@ import type {
   StrokeCap,
   StrokeJoin,
   StrokePosition,
+  TextCaseTransform,
   TextJustification,
   TextMode,
   TextPasteLocation,
@@ -350,6 +364,7 @@ export type {
   StrokeCap,
   StrokeJoin,
   StrokePosition,
+  TextCaseTransform,
   TextJustification,
   TextMode,
   TextPasteLocation,
@@ -379,9 +394,10 @@ export type ExportScope = 'canvas' | 'viewport' | 'selection';
 /** View snapshot for the canvas scrollbars and rulers: center and size
  * in project coordinates, plus the page sheet and the artwork bounds
  * (each null when absent). Null while no view exists. */
-/** Ruler placement: viewer edges (fixed to the canvas container) or the
- * DrawingPage frame (travels with the page). A Document Settings option. */
-export type RulerPlacement = 'viewer' | 'page';
+/** Ruler placement: viewer edges (fixed to the canvas container), the
+ * DrawingPage frame (travels with the page), or off (no rulers). A
+ * Document Settings option, also in the View menu. */
+export type RulerPlacement = 'viewer' | 'page' | 'off';
 
 export interface ViewState {
   centerX: number;
@@ -509,9 +525,20 @@ export class NibGliderEngine {
   /** Hide undo/redo/copy/paste rows from the keys table. On by default. */
   hideCommonKeymapRows = true;
   // --- Grid / cursors ---
+  // Grid and page-display state is per-document from Tier Four
+  // (Slice 17): it serializes into the .nibglider file (format v5),
+  // and a document's values win on open. The field defaults below —
+  // seeded once from any legacy global settings — are what a new
+  // document starts from.
   isGridEnabled = false;
   gridType: GridType = 'square';
   gridSpacing = 20;
+  /** Minor dots at gridSpacing / gridSubdivisions (1 = off, 1..10). */
+  gridSubdivisions = 1;
+  /** Major lattice rendering: dots, or full lines at spacing. */
+  gridStyle: 'dots' | 'lines' = 'dots';
+  gridColor = '#8c9eb8';
+  gridOpacity = 0.55;
   gridLayer: AnyItem = null;
   // Snap indicators live here, not on the artwork layer. See ensureGuideLayer.
   guideLayer: AnyItem = null;
@@ -630,11 +657,19 @@ export class NibGliderEngine {
     fontSize: 24,
     fontWeight: 'normal',
     italic: false,
+    underline: false,
+    strikethrough: false,
+    caseTransform: 'none',
+    baselineShift: 0,
+    wordSpacing: 0,
     justification: 'center',
     leading: 1.2,
     letterSpacing: 0,
     paragraphSpacing: 0,
   };
+  /** User-saved text styles (Slice 19), persisted in app settings
+   * alongside the built-ins from textStyles.ts. */
+  private userTextStyles: TextStyleEntry[] = [];
   // Text Mode: when on, every shape key draws its geometric shape plus
   // text derived from it (Display flows around the boundary, Body fills
   // the interior) instead of the bare shape.
@@ -1323,7 +1358,7 @@ export class NibGliderEngine {
   rulerPlacement: RulerPlacement = 'viewer';
 
   setRulerPlacement(v: RulerPlacement): void {
-    if (v !== 'viewer' && v !== 'page') return;
+    if (v !== 'viewer' && v !== 'page' && v !== 'off') return;
     if (v === this.rulerPlacement) return;
     this.rulerPlacement = v;
     this.updateTextContent(); this.notify();
@@ -1345,6 +1380,20 @@ export class NibGliderEngine {
   setPageFill(v: boolean): void {
     if (v === this.pageFill) return;
     this.pageFill = v;
+    this.drawPage();
+    this.updateTextContent(); this.notify();
+  }
+
+  /** Page fill colour (the Fill toggle paints the sheet with it).
+   * Per-document from Slice 17; the default is the long-standing
+   * slate. Edited in Document Settings' Page tab. */
+  pageFillColor = '#29303d';
+
+  setPageFillColor(v: string): void {
+    const checked = cssHex(v, '');
+    if (checked == null) return;
+    if (checked === this.pageFillColor) return;
+    this.pageFillColor = checked;
     this.drawPage();
     this.updateTextContent(); this.notify();
   }
@@ -1385,6 +1434,7 @@ export class NibGliderEngine {
    * Recenters on the workspace so the page opens centered. */
   newDocument(): void {
     if (this.isLiveDrawing) return;
+    this.adoptDocumentPalette(null);
     const before = this.allContentItems();
     const selectedBefore = [...this.selectedItems];
     if (before.length === 0) { this.centerOnCanvas(); return; }
@@ -2129,6 +2179,71 @@ export class NibGliderEngine {
     })) return null;
     const outline = this.garmentOutlineById(garmentId);
     return outline ? this.liveGarmentRecord(outline) : null;
+  }
+
+  /** The one selected Printify area, for File > Export > Printify.
+   * Returns null unless exactly one area item is selected. */
+  selectedPrintifyArea(): { garmentId: string; position: string } | null {
+    const areas = this.selectedItems.filter(isPrintifyAreaItem);
+    if (areas.length !== 1) return null;
+    try {
+      const garmentId = areas[0].data?.[PRINTIFY_AREA_GARMENT_KEY];
+      const position = areas[0].data?.[PRINTIFY_AREA_POSITION_KEY];
+      if (typeof garmentId !== 'string' || typeof position !== 'string') return null;
+      return { garmentId, position };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Upload the selected garment area to Printify. Progress and failures
+   * are reported through the status overlay note. */
+  async uploadSelectedPrintifyAreaToPrintify(): Promise<boolean> {
+    const selected = this.selectedPrintifyArea();
+    if (!selected) {
+      this.lastDropNote = 'Printify: select one garment area to upload.';
+      this.notify();
+      return false;
+    }
+    try {
+      this.lastDropNote = `Printify: uploading the ${selected.position} area…`;
+      this.notify();
+      await this.uploadPrintifyArea(selected.garmentId, selected.position);
+      this.lastDropNote = `Printify: uploaded the ${selected.position} area.`;
+      this.notify();
+      return true;
+    } catch (err) {
+      this.lastDropNote = `Printify upload failed: ${err instanceof Error ? err.message : String(err)}`;
+      this.notify();
+      return false;
+    }
+  }
+
+  /** Upload every area of the selected garment, then create its product
+   * using the existing Printify shop setting and the garment name. */
+  async createSelectedPrintifyProductOnPrintify(): Promise<boolean> {
+    const record = this.selectedPrintifyGarment();
+    if (!record) {
+      this.lastDropNote = 'Printify: select a garment or one of its areas to create a product.';
+      this.notify();
+      return false;
+    }
+    try {
+      this.lastDropNote = `Printify: uploading ${record.areas.length} garment areas…`;
+      this.notify();
+      const uploads: Record<string, string> = {};
+      for (const area of record.areas) {
+        uploads[area.position] = await this.uploadPrintifyArea(record.id, area.position);
+      }
+      await this.createPrintifyProduct(record.id, uploads, { title: record.name });
+      this.lastDropNote = `Printify: created a product for ${record.name}.`;
+      this.notify();
+      return true;
+    } catch (err) {
+      this.lastDropNote = `Printify product failed: ${err instanceof Error ? err.message : String(err)}`;
+      this.notify();
+      return false;
+    }
   }
 
   updatePrintifyGarment(id: string, patch: { name: string }): boolean {
@@ -3357,7 +3472,13 @@ export class NibGliderEngine {
         orientation: page.orientation,
         unit: page.unit,
       },
-      layers: this.listLayers().map((record) => ({ id: record.id, name: record.name })),
+      layers: this.listLayers().map((record): NativeLayerRecord => {
+        const out: NativeLayerRecord = { id: record.id, name: record.name };
+        if (typeof record.visible === 'boolean') out.visible = record.visible;
+        if (typeof record.locked === 'boolean') out.locked = record.locked;
+        if (typeof record.opacity === 'number') out.opacity = record.opacity;
+        return out;
+      }),
       activeLayerId: this.activeLayerId(),
       drawables,
       retainedPaths,
@@ -3386,6 +3507,17 @@ export class NibGliderEngine {
       }
     }
     this.pageGuides = structuredClone(record.guides ?? []);
+    // Layer presentation state rides the page record (v6): the scene
+    // restore rebuilt the registry in record order, so apply each
+    // record's state to the registry entry at the same position.
+    const registry = this.layers.listLayers();
+    record.layers.forEach((layer, i) => {
+      const target = registry[i];
+      if (!target) return;
+      if (typeof layer.visible === 'boolean') this.layers.setLayerVisible(target.id, layer.visible);
+      if (typeof layer.locked === 'boolean') this.layers.setLayerLocked(target.id, layer.locked);
+      if (typeof layer.opacity === 'number') this.layers.setLayerOpacity(target.id, layer.opacity);
+    });
     this.documentManager.setActivePage(record.id);
     this.renderGuides();
     this.updateTextContent();
@@ -3535,6 +3667,31 @@ export class NibGliderEngine {
 
   listGuides(): GuideRecord[] { return this.pageGuides.map((guide) => ({ ...guide })); }
 
+  /** Guide visibility: hidden guides still exist on the page and are
+   * still listed in the panel; only their canvas lines (and direct
+   * canvas grabs) turn off. Independent of guide snapping. */
+  guidesVisible = true;
+
+  setGuidesVisible(v: boolean): void {
+    const on = !!v;
+    if (on === this.guidesVisible) return;
+    this.guidesVisible = on;
+    this.renderGuides();
+    this.notify();
+  }
+
+  /** Guide snapping: when off, the guide-snap path never moves a point.
+   * Independent of guide visibility — visible guides need not snap, and
+   * hidden guides still snap while this stays on. */
+  guideSnapping = true;
+
+  setGuideSnapping(v: boolean): void {
+    const on = !!v;
+    if (on === this.guideSnapping) return;
+    this.guideSnapping = on;
+    this.notify();
+  }
+
   private nextGuideId(): string {
     let id = '';
     do {
@@ -3599,7 +3756,7 @@ export class NibGliderEngine {
   }
 
   private snapPointToGuides(point: AnyItem): AnyItem {
-    if (!point || this.pageGuides.length === 0) return point;
+    if (!point || !this.guideSnapping || this.pageGuides.length === 0) return point;
     const result = snapToGuides({ x: point.x, y: point.y }, this.pageGuides, this.guideSnapThreshold());
     if (!result.snappedX && !result.snappedY) return point;
     return new this.scope.Point(result.point.x, result.point.y);
@@ -3609,6 +3766,8 @@ export class NibGliderEngine {
    * at the press position and follows dragGuideTo until endGuideDrag. */
   beginGuideDragFromRuler(axis: 'x' | 'y', point: AnyItem): boolean {
     if (!point || !Number.isFinite(axis === 'x' ? point.x : point.y)) return false;
+    // Dragging a new guide out of a ruler is a request to see it.
+    if (!this.guidesVisible) this.setGuidesVisible(true);
     const guide = this.addGuide(axis, axis === 'x' ? point.x : point.y);
     this.guideDrag = { id: guide.id, creating: true };
     return true;
@@ -3628,7 +3787,7 @@ export class NibGliderEngine {
   /** Begin dragging the existing guide nearest a canvas press.
    * Returns true when a guide was grabbed (the press is consumed). */
   beginGuideDragAt(point: AnyItem): boolean {
-    if (!point || this.pageGuides.length === 0) return false;
+    if (!point || !this.guidesVisible || this.pageGuides.length === 0) return false;
     const guide = guideAtPoint({ x: point.x, y: point.y }, this.pageGuides, this.guideSnapThreshold());
     if (!guide) return false;
     this.guideDrag = { id: guide.id, creating: false };
@@ -3685,7 +3844,7 @@ export class NibGliderEngine {
         layer.addChild(line);
         return line;
       };
-      for (const guide of this.pageGuides) {
+      for (const guide of this.guidesVisible ? this.pageGuides : []) {
         if (guide.axis === 'x') {
           drawLine(guide.position, cy - span, guide.position, cy + span, { guideId: guide.id }, guide.locked ? '#8a8f98' : '#2f9be8');
         } else {
@@ -3693,7 +3852,12 @@ export class NibGliderEngine {
         }
       }
       if (this.printSetupState.preview) {
-        const printable = printableRect(this.printSetupState);
+        // The dashed rect and the crop marks describe the same sheet:
+        // the document page. (Before Slice 17 the rect was the printer
+        // paper's printable area while the marks framed the page.)
+        // Without a dimensioned page, fall back to the printable area,
+        // which the marks' paper fallback then matches.
+        const printable = page ?? printableRect(this.printSetupState);
         const rect = new this.scope.Path.Rectangle({
           point: [printable.x, printable.y],
           size: [printable.width, printable.height],
@@ -3804,6 +3968,82 @@ export class NibGliderEngine {
   // model sections (drawables, retained paths, layers, page, view)
   // ride on the scene payload that carries the live geometry.
 
+  /** The per-document display settings as stored in the file (v5). */
+  displaySettingsSnapshot(): NativeDisplaySettings {
+    return {
+      gridEnabled: this.isGridEnabled,
+      gridType: this.gridType,
+      gridSpacing: this.gridSpacing,
+      gridSubdivisions: this.gridSubdivisions,
+      gridStyle: this.gridStyle,
+      gridColor: this.gridColor,
+      gridOpacity: this.gridOpacity,
+      pageFill: this.pageFill,
+      pageFillColor: this.pageFillColor,
+      pageSideTicks: this.pageSideTicks,
+    };
+  }
+
+  // --- Document palette (Slice 20) ---------------------------------
+  // The kept-colours palette is document state: it travels in the
+  // .nibglider file (v6). `paletteTouched` distinguishes a document
+  // that has a palette (even an emptied one) from one that has none
+  // — only the latter imports the legacy localStorage palette, once.
+
+  documentPalette: string[] = [];
+  paletteFromDocument = false;
+  private paletteTouched = false;
+  private legacyPaletteSeeded = false;
+
+  setDocumentPalette(colors: string[]): void {
+    const next = readPalette(colors) ?? [];
+    this.documentPalette = next;
+    this.paletteTouched = true;
+    this.notify();
+  }
+
+  /** Adopt a document's palette on open (null = no palette of its
+   * own: start empty and let the panel offer the legacy import). */
+  private adoptDocumentPalette(palette: string[] | null): void {
+    if (palette) {
+      this.documentPalette = [...palette];
+      this.paletteFromDocument = true;
+      this.paletteTouched = true;
+    } else {
+      this.documentPalette = [];
+      this.paletteFromDocument = false;
+      this.paletteTouched = false;
+    }
+  }
+
+  /** One-time legacy import: the pre-v6 localStorage palette seeds
+   * a document that carries no palette of its own. */
+  seedDocumentPaletteFromLegacy(colors: string[]): void {
+    if (this.legacyPaletteSeeded || this.paletteFromDocument || this.paletteTouched) return;
+    this.legacyPaletteSeeded = true;
+    const legacy = readPalette(colors);
+    if (legacy && legacy.length > 0) {
+      this.documentPalette = legacy;
+      this.paletteTouched = true;
+      this.notify();
+    }
+  }
+
+  /** Apply a document's display settings (on open, the document's
+   * values win). Each setter validates and repaints as needed. */
+  applyDisplaySettings(display: NativeDisplaySettings): void {
+    this.setGridEnabled(display.gridEnabled);
+    this.setGridType(display.gridType as GridType);
+    this.setGridSpacing(display.gridSpacing);
+    this.setGridSubdivisions(display.gridSubdivisions);
+    this.setGridStyle(display.gridStyle as 'dots' | 'lines');
+    this.setGridColor(display.gridColor);
+    this.setGridOpacity(display.gridOpacity);
+    this.setPageFill(display.pageFill);
+    this.setPageFillColor(display.pageFillColor);
+    this.setPageSideTicks(display.pageSideTicks);
+  }
+
   /** Serialize the whole document as a native file body. */
   exportNativeDocument(name: string): string {
     const active = this.snapshotActivePage();
@@ -3836,6 +4076,8 @@ export class NibGliderEngine {
       pages,
       activePageId: active.id,
       printSetup: this.printSetupState,
+      display: this.displaySettingsSnapshot(),
+      palette: this.paletteTouched ? [...this.documentPalette] : null,
     });
     return serializeNativeDocument(doc);
   }
@@ -3894,6 +4136,8 @@ export class NibGliderEngine {
       if (record.id !== activeRecord.id) this.pageSnapshots.set(record.id, structuredClone(record));
     }
     if (doc.printSetup) this.printSetupState = doc.printSetup;
+    if (doc.display) this.applyDisplaySettings(doc.display);
+    this.adoptDocumentPalette(doc.palette);
     if (!this.loadPageRecord(structuredClone(activeRecord), `Open ${doc.name}`)) {
       return { ok: false, error: 'That document’s scene could not be loaded.' };
     }
@@ -4303,6 +4547,45 @@ export class NibGliderEngine {
   setGridType(t: GridType): void {
     if (t !== 'square' && t !== 'diamond') return;
     this.gridType = t;
+    if (this.isGridEnabled) this.drawGrid();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setGridSubdivisions(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(1, Math.min(10, Math.floor(v)));
+    if (next === this.gridSubdivisions) return;
+    this.gridSubdivisions = next;
+    if (this.isGridEnabled) this.drawGrid();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setGridStyle(v: 'dots' | 'lines'): void {
+    if (v !== 'dots' && v !== 'lines') return;
+    if (v === this.gridStyle) return;
+    this.gridStyle = v;
+    if (this.isGridEnabled) this.drawGrid();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setGridColor(v: string): void {
+    const checked = cssHex(v, '');
+    if (checked == null) return;
+    if (checked === this.gridColor) return;
+    this.gridColor = checked;
+    if (this.isGridEnabled) this.drawGrid();
+    this.updateTextContent();
+    this.notify();
+  }
+
+  setGridOpacity(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const next = Math.max(0, Math.min(1, v));
+    if (next === this.gridOpacity) return;
+    this.gridOpacity = next;
     if (this.isGridEnabled) this.drawGrid();
     this.updateTextContent();
     this.notify();
@@ -5266,11 +5549,76 @@ export class NibGliderEngine {
   }
 
   setTextJustification(v: TextJustification): void {
-    if (v !== 'left' && v !== 'center' && v !== 'right') return;
+    if (v !== 'left' && v !== 'center' && v !== 'right' && v !== 'justify') return;
     this.setText({ justification: v });
     this.applyToEditableText((lines) => {
+      // Paper lines carry the value as data; the slack distribution
+      // itself happens in body layout (TextLayout), the one place
+      // lines are wrapped to a measure.
       for (const line of lines) line.justification = v;
     });
+  }
+
+  /** Underline on/off. Live PointText cannot render decoration in
+   * Paper, so selected roots keep the flag as data (root.data) and
+   * it takes visual effect in shape-attached text and on Convert
+   * to Outlines — the same contract as tracking. */
+  setTextUnderline(v: boolean): void {
+    const on = !!v;
+    this.setText({ underline: on });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.underline = on; } catch { /* Best effort. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** Strikethrough on/off: same data/visual contract as underline. */
+  setTextStrikethrough(v: boolean): void {
+    const on = !!v;
+    this.setText({ strikethrough: on });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.strikethrough = on; } catch { /* Best effort. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  setTextCaseTransform(v: TextCaseTransform): void {
+    if (v !== 'none' && v !== 'upper' && v !== 'smallCaps') return;
+    this.setText({ caseTransform: v });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.caseTransform = v; } catch { /* Best effort. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** Baseline shift in points, −20..+40 (positive raises). Data on
+   * selected roots like tracking; visual in shape-attached layout
+   * and outline conversion. */
+  setTextBaselineShift(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const shift = Math.max(-20, Math.min(40, v));
+    this.setText({ baselineShift: shift });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.baselineShift = shift; } catch { /* Best effort. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** Word spacing in points, 0..20: extra advance after each space.
+   * Same storage/visual contract as baseline shift. */
+  setTextWordSpacing(v: number): void {
+    if (!Number.isFinite(v)) return;
+    const spacing = Math.max(0, Math.min(20, v));
+    this.setText({ wordSpacing: spacing });
+    for (const root of this.editableTextRoots()) {
+      try { root.data.wordSpacing = spacing; } catch { /* Best effort. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
   }
 
   setTextLeading(v: number): void {
@@ -5325,6 +5673,20 @@ export class NibGliderEngine {
       const tracking = typeof root.data?.letterSpacing === 'number'
         ? root.data.letterSpacing
         : this.globalText.letterSpacing;
+      // Slice 18 spec data rides on the root like tracking: case,
+      // decorations, baseline shift, word spacing all take their
+      // visual effect here (and in shape-attached layout).
+      const caseTransform = root.data?.caseTransform === 'upper' || root.data?.caseTransform === 'smallCaps'
+        ? root.data.caseTransform
+        : this.globalText.caseTransform;
+      const baselineShift = typeof root.data?.baselineShift === 'number'
+        ? root.data.baselineShift
+        : this.globalText.baselineShift;
+      const wordSpacing = typeof root.data?.wordSpacing === 'number'
+        ? root.data.wordSpacing
+        : this.globalText.wordSpacing;
+      const underline = typeof root.data?.underline === 'boolean' ? root.data.underline : this.globalText.underline;
+      const strikethrough = typeof root.data?.strikethrough === 'boolean' ? root.data.strikethrough : this.globalText.strikethrough;
       const outlines: AnyItem[] = [];
       let rootOk = lines.length > 0;
       for (const line of lines) {
@@ -5341,23 +5703,40 @@ export class NibGliderEngine {
         if (!content.trim()) continue;
         const font = this.textMetrics.fontFor(family, weight);
         if (!font) { rootOk = false; break; }
-        const outlined = outlineText(this.scope, font, content, size, tracking);
+        if (caseTransform === 'upper') content = content.toUpperCase();
+        const outlined = outlineText(this.scope, font, content, size, tracking, {
+          wordSpacing,
+          smallCaps: caseTransform === 'smallCaps',
+        });
         if (!outlined) { rootOk = false; break; }
-        const item = outlined.item;
-        // Paper justifies the line around its point: shift the glyph
-        // space so the outline lands where the line renders.
-        const justification = line.justification;
-        if (justification === 'center') item.translate(new this.scope.Point(-outlined.width / 2, 0));
-        else if (justification === 'right') item.translate(new this.scope.Point(-outlined.width, 0));
-        try {
-          const matrix = line.globalMatrix;
-          if (matrix) item.transform(matrix);
-        } catch { /* Keep the untransformed outline. */ }
-        try {
-          if (line.fillColor) item.fillColor = line.fillColor;
-        } catch { /* Keep the default fill. */ }
-        item.strokeColor = null;
-        outlines.push(item);
+        const lineItems: AnyItem[] = [outlined.item];
+        // Decorations convert as filled strokes in the glyph group:
+        // thin rectangles in glyph space spanning the line width.
+        if ((underline || strikethrough) && outlined.width > 0) {
+          const th = Math.max(0.75, size * 0.055);
+          const rect = (y0: number): AnyItem => new this.scope.Path.Rectangle({
+            from: [0, y0], to: [outlined.width, y0 + th], insert: false,
+          });
+          if (underline) lineItems.push(rect(size * 0.18));
+          if (strikethrough) lineItems.push(rect(-size * 0.33));
+        }
+        for (const item of lineItems) {
+          // Paper justifies the line around its point: shift the glyph
+          // space so the outline lands where the line renders.
+          const justification = line.justification;
+          if (justification === 'center') item.translate(new this.scope.Point(-outlined.width / 2, 0));
+          else if (justification === 'right') item.translate(new this.scope.Point(-outlined.width, 0));
+          if (baselineShift !== 0) item.translate(new this.scope.Point(0, -baselineShift));
+          try {
+            const matrix = line.globalMatrix;
+            if (matrix) item.transform(matrix);
+          } catch { /* Keep the untransformed outline. */ }
+          try {
+            if (line.fillColor) item.fillColor = line.fillColor;
+          } catch { /* Keep the default fill. */ }
+          item.strokeColor = null;
+          outlines.push(item);
+        }
       }
       if (!rootOk || outlines.length === 0) {
         for (const item of outlines) { try { item.remove(); } catch { /* Never placed. */ } }
@@ -5555,13 +5934,280 @@ export class NibGliderEngine {
       fontSize: size,
       fontWeight,
       italic,
-      justification: justification === 'left' || justification === 'right' || justification === 'center'
+      underline: typeof rootData.underline === 'boolean' ? rootData.underline : base.underline,
+      strikethrough: typeof rootData.strikethrough === 'boolean' ? rootData.strikethrough : base.strikethrough,
+      caseTransform: rootData.caseTransform === 'upper' || rootData.caseTransform === 'smallCaps'
+        ? rootData.caseTransform
+        : rootData.caseTransform === 'none' ? 'none' : base.caseTransform,
+      baselineShift: typeof rootData.baselineShift === 'number' ? rootData.baselineShift : base.baselineShift,
+      wordSpacing: typeof rootData.wordSpacing === 'number' ? rootData.wordSpacing : base.wordSpacing,
+      justification: justification === 'left' || justification === 'right' || justification === 'center' || justification === 'justify'
         ? justification
         : base.justification,
       leading: factor !== null ? Math.max(0.8, Math.min(3, factor)) : base.leading,
       letterSpacing: typeof rootData.letterSpacing === 'number' ? rootData.letterSpacing : base.letterSpacing,
       paragraphSpacing: typeof rootData.paragraphSpacing === 'number' ? rootData.paragraphSpacing : base.paragraphSpacing,
     };
+  }
+
+  // --- Text styles (Slice 19) -------------------------------------
+  // Named TextSpec presets in app settings (not per-document: a
+  // style is a tool carried between documents, like added fonts).
+  // Applying to a selected text object restyles it as ONE undo
+  // entry; with no selection it sets the creation spec. A style
+  // never applies content/line2 — those are the document's words.
+
+  textStyles(): Array<TextStyleEntry & { builtIn: boolean }> {
+    return [
+      ...BUILT_IN_TEXT_STYLES.map((s) => ({ name: s.name, spec: { ...s.spec }, builtIn: true })),
+      ...this.userTextStyles.map((s) => ({ name: s.name, spec: { ...s.spec }, builtIn: false })),
+    ];
+  }
+
+  saveCurrentTextStyle(name: string): boolean {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    if (BUILT_IN_TEXT_STYLES.some((s) => s.name === trimmed)) return false;
+    const spec = this.selectionText() ?? { ...this.globalText };
+    const entry: TextStyleEntry = { name: trimmed, spec: { ...spec } };
+    const existing = this.userTextStyles.findIndex((s) => s.name === trimmed);
+    if (existing >= 0) this.userTextStyles[existing] = entry;
+    else this.userTextStyles.push(entry);
+    this.notify();
+    return true;
+  }
+
+  deleteTextStyle(name: string): boolean {
+    const index = this.userTextStyles.findIndex((s) => s.name === name);
+    if (index < 0) return false;
+    this.userTextStyles.splice(index, 1);
+    this.notify();
+    return true;
+  }
+
+  applyTextStyle(name: string): boolean {
+    const entry = this.textStyles().find((s) => s.name === name);
+    if (!entry) return false;
+    const roots = this.editableTextRoots();
+    if (roots.length === 0) {
+      this.setText(stylePatch(entry.spec));
+      return true;
+    }
+    // One undo entry: scene commands only track item set changes,
+    // so an in-place restyle pushes a custom command capturing the
+    // lines' before/after style state (the point-edit pattern).
+    const spec = entry.spec;
+    interface LineState {
+      fontFamily: unknown; fontWeight: unknown; fontSize: unknown;
+      leading: unknown; justification: unknown; italic: boolean;
+    }
+    const DATA_KEYS = [
+      'letterSpacing', 'paragraphSpacing', 'underline', 'strikethrough',
+      'caseTransform', 'baselineShift', 'wordSpacing',
+    ] as const;
+    const capture = (): { lines: Map<AnyItem, LineState>; data: Map<AnyItem, Record<string, unknown>> } => {
+      const lines = new Map<AnyItem, LineState>();
+      const data = new Map<AnyItem, Record<string, unknown>>();
+      for (const root of roots) {
+        const rootData: Record<string, unknown> = {};
+        for (const key of DATA_KEYS) {
+          try { rootData[key] = root.data?.[key]; } catch { /* Unreadable. */ }
+        }
+        data.set(root, rootData);
+        for (const line of this.editableLines(root)) {
+          let italic = false;
+          try { italic = line.data?.italic === true; } catch { /* Not italic. */ }
+          lines.set(line, {
+            fontFamily: line.fontFamily, fontWeight: line.fontWeight,
+            fontSize: line.fontSize, leading: line.leading,
+            justification: line.justification, italic,
+          });
+        }
+      }
+      return { lines, data };
+    };
+    const apply = (state: { lines: Map<AnyItem, LineState>; data: Map<AnyItem, Record<string, unknown>> }): void => {
+      this.applyToEditableText((lines, root) => {
+        for (const line of lines) {
+          const s = state.lines.get(line);
+          if (!s) continue;
+          line.fontFamily = s.fontFamily;
+          line.fontWeight = s.fontWeight;
+          line.fontSize = s.fontSize;
+          line.leading = s.leading;
+          line.justification = s.justification;
+          this.setLineItalic(line, s.italic);
+        }
+        const rootData = state.data.get(root);
+        if (rootData) {
+          try {
+            for (const key of DATA_KEYS) root.data[key] = rootData[key];
+          } catch { /* Best effort. */ }
+        }
+      }, true);
+    };
+    const before = capture();
+    const touched = this.applyToEditableText((lines, root) => {
+      for (const line of lines) {
+        line.fontFamily = spec.fontFamily;
+        line.fontWeight = spec.fontWeight;
+        line.fontSize = spec.fontSize;
+        line.leading = Math.max(0.8, spec.leading || 1.2) * spec.fontSize;
+        line.justification = spec.justification;
+        this.setLineItalic(line, spec.italic);
+      }
+      try {
+        root.data.letterSpacing = spec.letterSpacing;
+        root.data.paragraphSpacing = spec.paragraphSpacing;
+        root.data.underline = spec.underline;
+        root.data.strikethrough = spec.strikethrough;
+        root.data.caseTransform = spec.caseTransform;
+        root.data.baselineShift = spec.baselineShift;
+        root.data.wordSpacing = spec.wordSpacing;
+      } catch { /* Best effort. */ }
+    }, true);
+    if (touched) {
+      const after = capture();
+      this.history.push({
+        label: `Apply text style ${name}`,
+        undo: () => { apply(before); this.notify(); },
+        redo: () => { apply(after); this.notify(); },
+      });
+      this.documentManager.markEdited('scene');
+    }
+    this.notify();
+    return true;
+  }
+
+  /** Settings payload: the user's saved styles (built-ins ship in
+   * code and are never stored). */
+  userTextStyleSettings(): TextStyleEntry[] {
+    return this.userTextStyles.map((s) => ({ name: s.name, spec: { ...s.spec } }));
+  }
+
+  restoreUserTextStyles(list: unknown): void {
+    if (!Array.isArray(list)) return;
+    const out: TextStyleEntry[] = [];
+    for (const raw of list) {
+      const entry = sanitizeTextStyle(raw, this.globalText);
+      if (entry
+        && !BUILT_IN_TEXT_STYLES.some((b) => b.name === entry.name)
+        && !out.some((o) => o.name === entry.name)) {
+        out.push(entry);
+      }
+    }
+    this.userTextStyles = out;
+  }
+
+  // --- Find & Replace in text (Slice 19) ---------------------------
+  // Scope: the standalone text objects on the current page (editable
+  // roots across the page's content layers). Shape-attached text is
+  // regenerated from the creation spec, so it is not searched.
+
+  pageTextObjects(): AnyItem[] {
+    return this.allContentItems().filter((item) => !!item?.data?.editableText);
+  }
+
+  private countOccurrences(haystack: string, needle: string, caseSensitive: boolean): number {
+    if (!needle) return 0;
+    const h = caseSensitive ? haystack : haystack.toLowerCase();
+    const n = caseSensitive ? needle : needle.toLowerCase();
+    let count = 0;
+    let at = h.indexOf(n);
+    while (at >= 0) {
+      count += 1;
+      at = h.indexOf(n, at + n.length);
+    }
+    return count;
+  }
+
+  countTextMatches(query: string, caseSensitive: boolean): number {
+    let total = 0;
+    for (const root of this.pageTextObjects()) {
+      for (const line of this.editableLines(root)) {
+        try { total += this.countOccurrences(String(line.content ?? ''), query, caseSensitive); } catch { /* Skip unreadable lines. */ }
+      }
+    }
+    return total;
+  }
+
+  private replaceInText(
+    content: string, query: string, replacement: string, caseSensitive: boolean, firstOnly: boolean,
+  ): { text: string; count: number } {
+    if (!query) return { text: content, count: 0 };
+    const h = caseSensitive ? content : content.toLowerCase();
+    const n = caseSensitive ? query : query.toLowerCase();
+    let out = '';
+    let from = 0;
+    let count = 0;
+    let at = h.indexOf(n, from);
+    while (at >= 0) {
+      out += content.slice(from, at) + replacement;
+      from = at + n.length;
+      count += 1;
+      if (firstOnly) break;
+      at = h.indexOf(n, from);
+    }
+    out += content.slice(from);
+    return { text: out, count };
+  }
+
+  /** Push one undo entry for a set of in-place line-content edits
+   * (scene commands only track item set changes, so content edits
+   * capture before/after strings — the point-edit pattern). */
+  private recordTextContentEdit(label: string, plans: Array<{ line: AnyItem; before: string; after: string }>): void {
+    const apply = (key: 'before' | 'after'): void => {
+      for (const plan of plans) {
+        try { plan.line.content = plan[key]; } catch { /* Keep the current line. */ }
+      }
+    };
+    apply('after');
+    this.history.push({
+      label,
+      undo: () => { apply('before'); this.notify(); },
+      redo: () => { apply('after'); this.notify(); },
+    });
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** Replace every match on the page as ONE undo entry; returns
+   * the number of replacements (0 records no history). */
+  replaceAllText(query: string, replacement: string, caseSensitive: boolean): number {
+    if (!query) return 0;
+    const plans: Array<{ line: AnyItem; before: string; after: string }> = [];
+    let total = 0;
+    for (const root of this.pageTextObjects()) {
+      for (const line of this.editableLines(root)) {
+        let content = '';
+        try { content = String(line.content ?? ''); } catch { continue; }
+        const result = this.replaceInText(content, query, replacement, caseSensitive, false);
+        if (result.count > 0) {
+          plans.push({ line, before: content, after: result.text });
+          total += result.count;
+        }
+      }
+    }
+    if (total === 0) return 0;
+    this.recordTextContentEdit('Replace all text', plans);
+    return total;
+  }
+
+  /** Replace the first match on the page (one undo entry). */
+  replaceFirstTextMatch(query: string, replacement: string, caseSensitive: boolean): boolean {
+    if (!query) return false;
+    for (const root of this.pageTextObjects()) {
+      for (const line of this.editableLines(root)) {
+        let content = '';
+        try { content = String(line.content ?? ''); } catch { continue; }
+        const result = this.replaceInText(content, query, replacement, caseSensitive, true);
+        if (result.count > 0) {
+          this.recordTextContentEdit('Replace text', [{ line, before: content, after: result.text }]);
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /** Run a mutation over every selected editable root's lines, keeping each
@@ -5993,6 +6639,11 @@ export class NibGliderEngine {
     pt.data.editableText = true;
     pt.data.letterSpacing = spec.letterSpacing;
     pt.data.paragraphSpacing = spec.paragraphSpacing;
+    pt.data.underline = spec.underline;
+    pt.data.strikethrough = spec.strikethrough;
+    pt.data.caseTransform = spec.caseTransform;
+    pt.data.baselineShift = spec.baselineShift;
+    pt.data.wordSpacing = spec.wordSpacing;
     this.setLineItalic(pt, spec.italic);
   }
 
@@ -6188,12 +6839,12 @@ export class NibGliderEngine {
       this.interlace.interlaceSelection(this.interlaceGap);
       return;
     }
-    if (mode !== 'union' && mode !== 'subtract' && mode !== 'intersect' && mode !== 'crop' && mode !== 'cut') return;
+    if (mode !== 'union' && mode !== 'subtract' && mode !== 'intersect' && mode !== 'exclude' && mode !== 'crop' && mode !== 'cut') return;
     this.combinatorics.combineSelection(mode);
   }
 
   setCombineMode(m: CombineMode | 'none'): void {
-    if (m !== 'none' && m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop'
+    if (m !== 'none' && m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'exclude' && m !== 'crop'
       && m !== 'cut' && m !== 'interlace') return;
     if (m !== 'none') this.combineTool = m;
     this.combineMode = m;
@@ -6203,7 +6854,7 @@ export class NibGliderEngine {
   }
 
   setCombineTool(m: CombineMode): void {
-    if (m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'crop' && m !== 'cut' && m !== 'interlace') return;
+    if (m !== 'union' && m !== 'subtract' && m !== 'intersect' && m !== 'exclude' && m !== 'crop' && m !== 'cut' && m !== 'interlace') return;
     if (this.combineTool === m) return;
     this.combineTool = m;
     this.notify();
@@ -6504,11 +7155,18 @@ export class NibGliderEngine {
   updatePreviewBox(): void {}
 
   // --- Grid (drawingProperties.js) ---
-  // Dots, not lines: one small low-alpha dot per lattice point. Diamond is
-  // the square lattice rotated 45° with the same neighbor spacing, so snap
-  // targets coincide with the rendered dots (see snapToGrid).
+  // Dots (or lattice lines) at the grid spacing, with optional minor
+  // subdivision dots; colour and opacity are per-document settings.
+  // Diamond is the square lattice rotated 45° with the same neighbor
+  // spacing, so snap targets coincide with the rendered lattice (see
+  // snapToGrid).
   drawGrid(): void {
-    this.gridRenderer.draw(this.gridType, this.gridSpacing);
+    this.gridRenderer.draw(this.gridType, this.gridSpacing, {
+      subdivisions: this.gridSubdivisions,
+      style: this.gridStyle,
+      color: this.gridColor,
+      opacity: this.gridOpacity,
+    });
     this.gridLayer = this.gridRenderer.gridLayer;
     // Page corner marks and the grid both paint with sendToBack, so
     // restack the grid above the page chrome after every draw.
@@ -6593,7 +7251,7 @@ export class NibGliderEngine {
             size: new scope.Size(page.width, page.height),
             insert: false,
           });
-          sheet.fillColor = new scope.Color(0.16, 0.19, 0.24, 1);
+          sheet.fillColor = new scope.Color(this.pageFillColor);
           sheet.strokeColor = null;
           sheet.guide = true;
           sheet.locked = true;
@@ -6609,10 +7267,11 @@ export class NibGliderEngine {
         }
         if (this.pageSideTicks) {
           const unit = this.drawingPage?.unit ?? 'pt';
-          const spacing = this.gridSpacing;
           const major = 10 / zoom;
           const minor = 6 / zoom;
-          const along = (size: number, phase: number) => computeRulerTicks(size, spacing, unit, phase);
+          // Side ticks measure from the page corner at nice intervals,
+          // like the rulers — not on grid lines.
+          const along = (size: number, phase: number) => computeRulerTicks(size, unit, zoom, phase, true);
           for (const tick of pageEdgeTicks(page, along(page.width, page.x), along(page.height, page.y), major, minor)) {
             const mark: AnyItem = new scope.Path({ insert: false });
             for (const pt of tick.points) mark.add(new scope.Point(pt.x, pt.y));
@@ -6985,6 +7644,31 @@ export class NibGliderEngine {
     this.updateTextContent(); this.notify();
   }
 
+  /** History panel data: entry labels in chronological order and
+   * the current position (entries before it are applied). */
+  historyEntries(): { labels: string[]; position: number } {
+    return this.history.entries();
+  }
+
+  /** Jump the history to a position (0 = empty document state
+   * before the first entry) by walking undo/redo one entry at a
+   * time — the same commands the Undo/Redo buttons run, so every
+   * entry's own guards apply. One user action, several entries. */
+  jumpToHistoryPosition(position: number): void {
+    if (this.isLiveDrawing) return;
+    const { labels } = this.history.entries();
+    const target = Math.max(0, Math.min(labels.length, Math.round(position)));
+    let guard = labels.length + 2;
+    while (guard-- > 0) {
+      const current = this.history.entries().position;
+      if (current === target) break;
+      if (current > target) this.history.undo();
+      else this.history.redo();
+    }
+    this.exitTransformModeIfIdle();
+    this.updateTextContent(); this.notify();
+  }
+
   // Top-level active-layer artwork. Live previews, cursors, and the
   // grid are excluded so a snapshot can never resurrect UI chrome.
   private contentItems(): AnyItem[] {
@@ -7142,7 +7826,7 @@ export class NibGliderEngine {
     }
   }
 
-  pasteSceneJson(json: string, at?: AnyItem): boolean {
+  pasteSceneJson(json: string, at?: AnyItem, inPlace = false): boolean {
     if (this.isLiveDrawing || !isSceneJson(json)) return false;
     const before = this.contentItems();
     const selectedBefore = [...this.selectedItems];
@@ -7153,7 +7837,9 @@ export class NibGliderEngine {
       return false;
     }
     if (placed.length === 0) return false;
-    this.centerPlacedOn(placed, this.pasteTarget(at));
+    // Paste in Place keeps the decoded (source) coordinates instead
+    // of re-centring on the paste target.
+    if (!inPlace) this.centerPlacedOn(placed, this.pasteTarget(at));
     this.selection.restore(placed);
     this.recordSceneCommand(
       placed.length > 1 ? `Paste ${placed.length} items` : 'Paste',
@@ -7406,6 +8092,52 @@ export class NibGliderEngine {
     return internal ? this.pasteSceneJson(internal) : false;
   }
 
+  /** Paste in Place (Edit menu): scene payloads land at the exact
+   * coordinates they were copied from — no cascade, no re-centring.
+   * Non-scene clipboard content has no source position, so it takes
+   * the ordinary paste path. */
+  async pasteInPlaceFromClipboard(): Promise<boolean> {
+    if (this.isLiveDrawing || this.isTypingText) return false;
+    try {
+      const clip = await readSystemClipboard();
+      if (clip.scene && this.pasteSceneJson(clip.scene, undefined, true)) return true;
+    } catch {
+      // Fall through to the internal buffer below.
+    }
+    const internal = this.clipboardSceneJson();
+    if (internal) return this.pasteSceneJson(internal, undefined, true);
+    return this.pasteFromSystemClipboard();
+  }
+
+  // --- Selection lock / hide (Object menu) ---
+
+  /** Lock the selected objects in place (they stay visible; the
+   * Layers panel unlocks per object). Mirrors the panel setters:
+   * not an undo entry. */
+  lockSelection(): void {
+    const items = this.topLevelSelected();
+    if (items.length === 0) return;
+    for (const item of items) {
+      try { item.locked = true; } catch { /* Detached. */ }
+    }
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  /** Hide the selected objects (the Layers panel shows them again
+   * per object). The selection clears — hidden objects are not a
+   * working selection. */
+  hideSelection(): void {
+    const items = this.topLevelSelected();
+    if (items.length === 0) return;
+    for (const item of items) {
+      try { item.visible = false; } catch { /* Detached. */ }
+    }
+    this.clearOutSelection();
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
   /** Drop of an image URL (from text/uri-list): fetch, decode, deposit at
    * the drop point. Failures surface as a drop note, never a throw. */
   async depositImageUrl(url: string, at?: AnyItem): Promise<boolean> {
@@ -7605,6 +8337,10 @@ export class NibGliderEngine {
       this.lastCombineNote = 'Cut does not apply to images — the mask is unchanged.';
       return true;
     }
+    if (mode === 'exclude') {
+      this.lastCombineNote = 'Exclude does not apply to images — the mask is unchanged.';
+      return true;
+    }
     if (mode === 'interlace') return false;
     const result = this.applyImageBoolean(image, mode, tool);
     this.lastCombineNote = result ? '' : 'No result — shapes may not overlap.';
@@ -7677,6 +8413,47 @@ export class NibGliderEngine {
     this.recordSceneCommand('Trace to Vector', snap.before, snap.selected, [item], snap.retained);
     this.updateTextContent(); this.notify();
     return item;
+  }
+
+  // --- Filters card parameters (Slice 20) ---------------------------
+  // The Filters card's working values live here (settings-backed)
+  // so they survive the card closing, instead of dying with the
+  // component. Ranges mirror the card's steppers.
+
+  filterBlurRadius = 1;
+  filterSharpenRadius = 1;
+  filterSharpenAmount = 1;
+  filterBrightness = 0;
+  filterContrastPct = 100;
+
+  setFilterBlurRadius(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.filterBlurRadius = Math.min(10, Math.max(1, Math.round(v)));
+    this.notify();
+  }
+
+  setFilterSharpenRadius(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.filterSharpenRadius = Math.min(10, Math.max(1, Math.round(v)));
+    this.notify();
+  }
+
+  setFilterSharpenAmount(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.filterSharpenAmount = Math.min(3, Math.max(0.1, v));
+    this.notify();
+  }
+
+  setFilterBrightness(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.filterBrightness = Math.min(255, Math.max(-255, Math.round(v)));
+    this.notify();
+  }
+
+  setFilterContrastPct(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.filterContrastPct = Math.min(400, Math.max(10, Math.round(v)));
+    this.notify();
   }
 
   /** Trace the selected image's pixels into vector paths. */
@@ -8081,12 +8858,46 @@ export class NibGliderEngine {
   objectListing(): LayerListing[] {
     const inputs = this.layers.listLayers().map((record) => {
       const layer = this.layers.layerForId(record.id);
+      // Layer state gates its objects' rows (Slice 20): a hidden
+      // layer's objects read as hidden, a locked layer's as locked,
+      // and layer opacity multiplies into each row.
+      const gateVisible = layerVisible(record);
+      const gateLocked = layerLocked(record);
+      const gateOpacity = layerOpacity(record);
       const objects = ((layer?.children ?? []) as AnyItem[])
         .filter((child) => { try { return !this.scene.isNonContentItem(child); } catch { return false; } })
-        .map((child) => this.listingInput(child));
+        .map((child) => {
+          const input = this.listingInput(child);
+          return {
+            ...input,
+            visible: input.visible && gateVisible,
+            locked: input.locked || gateLocked,
+            opacity: input.opacity * gateOpacity,
+          };
+        });
       return { record, objects };
     });
     return buildLayerListing(inputs);
+  }
+
+  // --- Layer presentation state (Slice 20) ---
+
+  setLayerVisible(id: string, visible: boolean): void {
+    if (!this.layers.setLayerVisible(id, visible)) return;
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  setLayerLocked(id: string, locked: boolean): void {
+    if (!this.layers.setLayerLocked(id, locked)) return;
+    this.documentManager.markEdited('scene');
+    this.notify();
+  }
+
+  setLayerOpacity(id: string, opacity: number): void {
+    if (!this.layers.setLayerOpacity(id, opacity)) return;
+    this.documentManager.markEdited('scene');
+    this.notify();
   }
 
   /** Select the object behind a panel row. Locked objects can be
@@ -9008,6 +9819,35 @@ export class NibGliderEngine {
     return group;
   }
 
+  /** Rotate the selection by the given degrees as one undo entry
+   * (the Arrange panel's quarter-turn buttons; the same
+   * TransformManager path the keyboard rotate and Operations
+   * dialog use). */
+  rotateSelectionBy(degrees: number): void {
+    if (this.isLiveDrawing || !Number.isFinite(degrees) || degrees === 0) return;
+    if (this.topLevelSelected().length === 0) return;
+    this.rotateSelection(degrees);
+    this.updateTextContent();
+    this.notify();
+  }
+
+  /** Which path operations the current selection can take (the
+   * Path Operations section's disabled states). Mirrors each op's
+   * own target rules. */
+  pathOpAvailability(): { noise: boolean; simplify: boolean; fit: boolean; hull: boolean; strokeOutline: boolean } {
+    const selected = this.topLevelSelected();
+    const paths = selected.filter((item) => (
+      item?.className === 'Path' || item?.className === 'CompoundPath'
+    ));
+    return {
+      noise: paths.length > 0,
+      simplify: paths.length > 0,
+      fit: paths.length > 0,
+      hull: this.selectionAnchorPoints().length >= 3,
+      strokeOutline: paths.some((item) => item.strokeColor && Number(item.strokeWidth) > 0),
+    };
+  }
+
   // --- Stroke to Outline ------------------------------------------------
   // Converts selected stroked paths into their outlined filled form
   // via the model's NGOutlinedStrokePath: the result stays a live
@@ -9749,8 +10589,35 @@ export class NibGliderEngine {
     this.viewport.stepZoom(dir);
   }
 
-  private resetZoom(): void {
+  resetZoom(): void {
     this.viewport.resetZoom();
+  }
+
+  /** View menu zoom steps (the ⌘/Ctrl +/- keys share stepZoom). */
+  zoomIn(): void { this.stepZoom(1); }
+  zoomOut(): void { this.stepZoom(-1); }
+
+  /** Fit the active page rect into the view. False when no page is set. */
+  fitPage(): boolean {
+    const page = this.pageRect();
+    return page ? this.viewport.fitToRect(page) : false;
+  }
+
+  /** Fit the union of the artwork into the view. */
+  fitArtwork(): boolean {
+    const art = this.artworkRect();
+    return art ? this.viewport.fitToRect(art) : false;
+  }
+
+  /** Fit the current selection's bounds into the view. */
+  fitSelection(): boolean {
+    const items = this.topLevelSelected();
+    if (items.length === 0) return false;
+    const bounds = this.collectiveBounds(items);
+    if (!bounds || !(bounds.width > 0 || bounds.height > 0)) return false;
+    return this.viewport.fitToRect({
+      x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+    });
   }
 
   private lastTrackpadPanAt = 0;

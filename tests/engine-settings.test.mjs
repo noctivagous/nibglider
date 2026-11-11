@@ -70,8 +70,11 @@ function checkMutated(e) {
   assert.equal(e.globalFillType, 'radial');
   assert.equal(e.globalFillEndColor, '#00ff00');
   assert.equal(e.globalFillAngle, 45);
-  assert.equal(e.isGridEnabled, true);
-  assert.equal(e.gridType, 'diamond');
+  // Slice 17: grid state moved into the document — the global
+  // settings round trip no longer carries it, so a fresh engine
+  // keeps its own defaults here.
+  assert.equal(e.isGridEnabled, false);
+  assert.equal(e.gridType, 'square');
   assert.equal(e.angleSnapDegrees, 30);
   assert.equal(e.lengthSnapStep, 25);
   assert.equal(e.lengthUnit, 'cm');

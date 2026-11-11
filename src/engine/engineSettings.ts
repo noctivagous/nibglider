@@ -182,10 +182,8 @@ const ENTRIES: SettingEntry[] = [
   num('fill.angle', (e) => e.globalFillAngle, (e, v) => e.setFillAngle(v)),
   num('fill.inner', (e) => e.globalFillInner, (e, v) => e.setFillInner(v)),
   bool('fill.enabled', (e) => e.fillEnabled, (e, v) => e.setFillEnabled(v)),
-  // Grid and snapping.
-  bool('grid.enabled', (e) => e.isGridEnabled, (e, v) => e.setGridEnabled(v)),
-  en('grid.type', ['square', 'diamond'], (e) => e.gridType, (e, v) => e.setGridType(v as never)),
-  num('grid.spacing', (e) => e.gridSpacing, (e, v) => e.setGridSpacing(v)),
+  // Snapping. (Grid DISPLAY state is per-document from Tier Four
+  // Slice 17 — see LEGACY_LOAD_ONLY below.)
   bool('repeat.enabled', (e) => e.isRepeatEnabled, (e, v) => e.setRepeatEnabled(v)),
   num('repeat.rows', (e) => e.repeatRows, (e, v) => e.setRepeatRows(v)),
   num('repeat.cols', (e) => e.repeatCols, (e, v) => e.setRepeatCols(v)),
@@ -213,10 +211,10 @@ const ENTRIES: SettingEntry[] = [
   num('pathops.simplifyTolerance', (e) => e.simplifyTolerance, (e, v) => e.setSimplifyTolerance(v)),
   num('pathops.fitTolerance', (e) => e.fitTolerance, (e, v) => e.setFitTolerance(v)),
   num('pathops.hullConcaveness', (e) => e.hullConcaveness, (e, v) => e.setHullConcaveness(v)),
-  en('ruler.placement', ['viewer', 'page'], (e) => e.rulerPlacement, (e, v) => e.setRulerPlacement(v as never)),
+  en('ruler.placement', ['viewer', 'page', 'off'], (e) => e.rulerPlacement, (e, v) => e.setRulerPlacement(v as never)),
   bool('ruler.guides', (e) => e.rulerGuides, (e, v) => e.setRulerGuides(v)),
-  bool('page.fill', (e) => e.pageFill, (e, v) => e.setPageFill(v)),
-  bool('page.sideTicks', (e) => e.pageSideTicks, (e, v) => e.setPageSideTicks(v)),
+  bool('guides.visible', (e) => e.guidesVisible, (e, v) => e.setGuidesVisible(v)),
+  bool('guides.snapping', (e) => e.guideSnapping, (e, v) => e.setGuideSnapping(v)),
   // Keys table widget.
   bool('keymap.hideCommon', (e) => e.hideCommonKeymapRows, (e, v) => e.setHideCommonKeymapRows(v)),
   bool('snap.grid', (e) => e.isGridSnappingEnabled, (e, v) => e.setGridSnappingEnabled(v)),
@@ -268,10 +266,23 @@ const ENTRIES: SettingEntry[] = [
   num('text.fontSize', (e) => e.globalText.fontSize, (e, v) => e.setTextFontSize(v)),
   str('text.fontWeight', (e) => e.globalText.fontWeight, (e, v) => e.setTextFontWeight(v)),
   bool('text.italic', (e) => e.globalText.italic, (e, v) => e.setTextItalic(v)),
-  en('text.justification', ['left', 'center', 'right'], (e) => e.globalText.justification, (e, v) => e.setTextJustification(v as never)),
+  bool('text.underline', (e) => e.globalText.underline, (e, v) => e.setTextUnderline(v)),
+  bool('text.strikethrough', (e) => e.globalText.strikethrough, (e, v) => e.setTextStrikethrough(v)),
+  en('text.caseTransform', ['none', 'upper', 'smallCaps'], (e) => e.globalText.caseTransform, (e, v) => e.setTextCaseTransform(v as never)),
+  num('text.baselineShift', (e) => e.globalText.baselineShift, (e, v) => e.setTextBaselineShift(v)),
+  num('text.wordSpacing', (e) => e.globalText.wordSpacing, (e, v) => e.setTextWordSpacing(v)),
+  en('text.justification', ['left', 'center', 'right', 'justify'], (e) => e.globalText.justification, (e, v) => e.setTextJustification(v as never)),
   num('text.leading', (e) => e.globalText.leading, (e, v) => e.setTextLeading(v)),
   num('text.letterSpacing', (e) => e.globalText.letterSpacing, (e, v) => e.setTextLetterSpacing(v)),
   num('text.paragraphSpacing', (e) => e.globalText.paragraphSpacing, (e, v) => e.setTextParagraphSpacing(v)),
+  {
+    // Text styles (Slice 19): app-level presets, carried between
+    // documents like user fonts. Built-ins ship in code; only the
+    // user's own styles are stored.
+    key: 'text.styles',
+    save: (e) => e.userTextStyleSettings(),
+    load: (e, raw) => { e.restoreUserTextStyles(raw); },
+  },
   {
     // User-added fonts: the family list persists; URL fonts reload
     // from their URL, file fonts are remembered by name only (their
@@ -304,14 +315,34 @@ const ENTRIES: SettingEntry[] = [
   ], (e) => e.typeCursorAnchor, (e, v) => e.setTypeCursorAnchor(v as never)),
   en('text.typeAnchorBottom', ['baseline', 'descender'], (e) => e.typeCursorBottomEdge, (e, v) => e.setTypeCursorBottomEdge(v as never)),
   // Modes.
-  en('combine.mode', ['none', 'union', 'subtract', 'intersect', 'crop', 'cut', 'interlace'], (e) => e.combineMode, (e, v) => e.setCombineMode(v as never)),
-  en('combine.tool', ['union', 'subtract', 'intersect', 'crop', 'cut', 'interlace'], (e) => e.combineTool, (e, v) => e.setCombineTool(v as never)),
+  en('combine.mode', ['none', 'union', 'subtract', 'intersect', 'exclude', 'crop', 'cut', 'interlace'], (e) => e.combineMode, (e, v) => e.setCombineMode(v as never)),
+  en('combine.tool', ['union', 'subtract', 'intersect', 'exclude', 'crop', 'cut', 'interlace'], (e) => e.combineTool, (e, v) => e.setCombineTool(v as never)),
+  num('filters.blurRadius', (e) => e.filterBlurRadius, (e, v) => e.setFilterBlurRadius(v)),
+  num('filters.sharpenRadius', (e) => e.filterSharpenRadius, (e, v) => e.setFilterSharpenRadius(v)),
+  num('filters.sharpenAmount', (e) => e.filterSharpenAmount, (e, v) => e.setFilterSharpenAmount(v)),
+  num('filters.brightness', (e) => e.filterBrightness, (e, v) => e.setFilterBrightness(v)),
+  num('filters.contrastPct', (e) => e.filterContrastPct, (e, v) => e.setFilterContrastPct(v)),
   num('combine.interlaceGap', (e) => e.interlaceGap, (e, v) => e.setInterlaceGap(v)),
   en('quad.mapping', ['bilinear', 'projective'], (e) => e.quadMapping, (e, v) => e.setQuadMapping(v as QuadMapping)),
   bool('quad.perspectiveCircle', (e) => e.perspectiveCircle, (e, v) => e.setPerspectiveCircle(v)),
   // Printify: the shop id persists; the token stays memory-only and is
   // never a settings entry.
   str('printify.shopId', (e) => e.printifyShopId, (e, v) => e.setPrintifyShopId(v)),
+];
+
+/**
+ * Display settings that were global before Tier Four (Slice 17) and
+ * are per-document now (native format v5). They are LOAD-ONLY: a
+ * stored blob from before the move seeds the engine's starting
+ * values — the defaults a new document begins from — but snapshots
+ * never write them back, so from here on they live in documents.
+ */
+const LEGACY_LOAD_ONLY: SettingEntry[] = [
+  bool('grid.enabled', (e) => e.isGridEnabled, (e, v) => e.setGridEnabled(v)),
+  en('grid.type', ['square', 'diamond'], (e) => e.gridType, (e, v) => e.setGridType(v as never)),
+  num('grid.spacing', (e) => e.gridSpacing, (e, v) => e.setGridSpacing(v)),
+  bool('page.fill', (e) => e.pageFill, (e, v) => e.setPageFill(v)),
+  bool('page.sideTicks', (e) => e.pageSideTicks, (e, v) => e.setPageSideTicks(v)),
 ];
 
 export function snapshotEngineSettings(engine: NibGliderEngine): Record<string, unknown> {
@@ -321,7 +352,7 @@ export function snapshotEngineSettings(engine: NibGliderEngine): Record<string, 
 }
 
 export function applyEngineSettings(engine: NibGliderEngine, values: Record<string, unknown>): void {
-  for (const entry of ENTRIES) {
+  for (const entry of [...ENTRIES, ...LEGACY_LOAD_ONLY]) {
     if (!(entry.key in values)) continue;
     try {
       entry.load(engine, values[entry.key]);

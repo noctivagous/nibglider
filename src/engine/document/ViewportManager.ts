@@ -50,6 +50,37 @@ export class ViewportManager {
     return this.setZoom(this.zoom * (direction > 0 ? 1.25 : 1 / 1.25));
   }
   resetZoom(): boolean { return this.setZoom(1); }
+  /** Fit a project-coordinate rect into the view with a screen-pixel
+   * margin on every side, zoom clamped to the usual range. The center
+   * is set exactly on the rect: the artwork-reachability clamp does not
+   * apply, because the caller named the rect to frame (a page may hold
+   * little or no artwork). Degenerate axes are ignored; a point rect
+   * fits at max zoom. */
+  fitToRect(
+    rect: { x: number; y: number; width: number; height: number } | null,
+    marginPx = 48,
+  ): boolean {
+    const view = this.scope.view;
+    if (!view || !rect) return false;
+    const { x, y, width, height } = rect;
+    if (![x, y, width, height].every(Number.isFinite)) return false;
+    if (width < 0 || height < 0) return false;
+    // Screen pixels = project-space view size times the current zoom
+    // (view.size reports project units in headless Paper, so bounds is
+    // the reliable source in both environments).
+    const viewPxW = view.bounds.width * this.zoom;
+    const viewPxH = view.bounds.height * this.zoom;
+    if (!(viewPxW > 0) || !(viewPxH > 0)) return false;
+    const usableW = Math.max(1, viewPxW - marginPx * 2);
+    const usableH = Math.max(1, viewPxH - marginPx * 2);
+    let next = this.maxZoom;
+    if (width > 0) next = Math.min(next, usableW / width);
+    if (height > 0) next = Math.min(next, usableH / height);
+    view.zoom = this.clamp(next);
+    view.center = new this.scope.Point(x + width / 2, y + height / 2);
+    this.changed();
+    return true;
+  }
   zoomForWheel(deltaY: number, viewPoint: paper.Point): boolean {
     if (!Number.isFinite(deltaY) || deltaY === 0) return false;
     return this.zoomByFactor(Math.exp(-deltaY * 0.002), viewPoint);

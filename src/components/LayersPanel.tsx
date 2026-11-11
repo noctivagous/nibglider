@@ -5,10 +5,14 @@
 // visible / locked / opacity controls wired to the engine's
 // per-object setters — the NGDrawable fields the model has always
 // carried, applied to the live Paper items. Layer rows create,
-// delete, rename, reorder and activate layers. Group children are
-// indented under their group with an expand/collapse toggle.
+// delete, rename, reorder and activate layers, and (Slice 20)
+// carry the same visible / locked / opacity controls for the
+// layer itself; layer state gates its objects' rows and the live
+// Paper layer. Group children are indented under their group with
+// an expand/collapse toggle.
 import { useState } from 'react';
 import type { NibGliderEngine } from '../engine/engine';
+import { layerLocked, layerOpacity, layerVisible } from '../engine/document/layerModel';
 
 export default function LayersPanel({ engine }: { engine: NibGliderEngine }) {
   const listing = engine.objectListing();
@@ -62,6 +66,36 @@ export default function LayersPanel({ engine }: { engine: NibGliderEngine }) {
               </span>
             )}
             <span className="layers-layer-buttons">
+              <button
+                type="button"
+                title={layerVisible(record) ? 'Hide layer' : 'Show layer'}
+                aria-pressed={layerVisible(record)}
+                onClick={(e) => { e.stopPropagation(); engine.setLayerVisible(record.id, !layerVisible(record)); }}
+              >
+                {layerVisible(record) ? '◉' : '○'}
+              </button>
+              <button
+                type="button"
+                title={layerLocked(record) ? 'Unlock layer' : 'Lock layer'}
+                aria-pressed={layerLocked(record)}
+                onClick={(e) => { e.stopPropagation(); engine.setLayerLocked(record.id, !layerLocked(record)); }}
+              >
+                {layerLocked(record) ? '🔒' : '🔓'}
+              </button>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(layerOpacity(record) * 100)}
+                title="Layer opacity %"
+                aria-label="Layer opacity percent"
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  const pct = Number(e.target.value);
+                  if (Number.isFinite(pct)) engine.setLayerOpacity(record.id, pct / 100);
+                }}
+              />
               <button type="button" title="Move layer up" onClick={(e) => { e.stopPropagation(); engine.moveLayer(record.id, 'up'); }}>↑</button>
               <button type="button" title="Move layer down" onClick={(e) => { e.stopPropagation(); engine.moveLayer(record.id, 'down'); }}>↓</button>
               <button
