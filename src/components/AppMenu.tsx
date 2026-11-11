@@ -370,6 +370,96 @@ const MENU_ICONS: Record<string, ReactNode> = {
       <path d="M4 5 l8 6 8 -6 M4 10 l8 6 8 -6" />
     </MenuGlyph>
   ),
+  'bring-forward': (
+    <MenuGlyph>
+      <path d="M4 14 l8 -6 8 6 M5 20 h14" />
+    </MenuGlyph>
+  ),
+  'send-backward': (
+    <MenuGlyph>
+      <path d="M4 10 l8 6 8 -6 M5 4 h14" />
+    </MenuGlyph>
+  ),
+  'align-left': (
+    <MenuGlyph>
+      <path d="M4 3 v18 M8 7 h9 M8 12 h6 M8 17 h8" />
+    </MenuGlyph>
+  ),
+  'align-center-x': (
+    <MenuGlyph>
+      <path d="M12 3 v18 M6 7 h12 M8 12 h8 M7 17 h10" />
+    </MenuGlyph>
+  ),
+  'align-right': (
+    <MenuGlyph>
+      <path d="M20 3 v18 M7 7 h10 M11 12 h6 M9 17 h8" />
+    </MenuGlyph>
+  ),
+  'align-top': (
+    <MenuGlyph>
+      <path d="M3 4 h18 M7 4 v9 M12 4 v6 M17 4 v11" />
+    </MenuGlyph>
+  ),
+  'align-center-y': (
+    <MenuGlyph>
+      <path d="M3 12 h18 M7 5 v14 M12 8 v8 M17 6 v12" />
+    </MenuGlyph>
+  ),
+  'align-bottom': (
+    <MenuGlyph>
+      <path d="M3 20 h18 M7 20 V9 M12 20 v-6 M17 20 V7" />
+    </MenuGlyph>
+  ),
+  'align-doc-left': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M9 8 h6 M9 13 h4" />
+    </MenuGlyph>
+  ),
+  'align-doc-center-x': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M8 8 h8 M10 13 h4" />
+    </MenuGlyph>
+  ),
+  'align-doc-right': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M10 8 h6 M12 13 h4" />
+    </MenuGlyph>
+  ),
+  'align-doc-top': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M9 8 v5 M14 8 v3" />
+    </MenuGlyph>
+  ),
+  'align-doc-center-y': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M9 7 v10 M14 9 v6" />
+    </MenuGlyph>
+  ),
+  'align-doc-bottom': (
+    <MenuGlyph>
+      <path d="M5 3 h14 v18 H5 z M9 17 V9 M14 17 v-4" />
+    </MenuGlyph>
+  ),
+  'distribute-horizontal': (
+    <MenuGlyph>
+      <path d="M5 5 v14 M12 5 v14 M19 5 v14" />
+    </MenuGlyph>
+  ),
+  'distribute-vertical': (
+    <MenuGlyph>
+      <path d="M5 5 h14 M5 12 h14 M5 19 h14" />
+    </MenuGlyph>
+  ),
+  'flip-horizontal': (
+    <MenuGlyph>
+      <path d="M12 4 v16 M8 9 l-4 3 4 3 M16 9 l4 3 -4 3" />
+    </MenuGlyph>
+  ),
+  'flip-vertical': (
+    <MenuGlyph>
+      <path d="M4 12 h16 M9 8 l3 -4 3 4 M9 16 l3 4 3 -4" />
+    </MenuGlyph>
+  ),
   group: (
     <MenuGlyph>
       <rect x="3" y="10" width="9" height="9" />

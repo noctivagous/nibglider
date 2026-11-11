@@ -120,42 +120,42 @@
     <item command="pages-guides" label="Pages &amp; Guides" icon="page-size" />
   </menu>
   <menu id="object" title="Object">
-    <group label="Order">
-      <item command="bring-to-front" label="Bring to front" icon="bring-to-front" />
-      <item command="bring-forward" label="Bring forward" icon="bring-to-front" />
-      <item command="send-backward" label="Send backward" icon="send-to-back" />
-      <item command="send-to-back" label="Send to back" icon="send-to-back" />
-    </group>
+    <item command="order" label="Order">
+      <option command="bring-to-front" label="Bring to front" icon="bring-to-front" />
+      <option command="bring-forward" label="Bring forward" icon="bring-forward" />
+      <option command="send-backward" label="Send backward" icon="send-backward" />
+      <option command="send-to-back" label="Send to back" icon="send-to-back" />
+    </item>
     <group label="Group">
       <item command="group" label="Group selection" icon="group" shortcut="Primary+G" />
       <item command="ungroup-selection" label="Ungroup selection" icon="ungroup" shortcut="Primary+Shift+G" />
       <item command="lock-selection" label="Lock Selection" icon="lock" />
       <item command="hide-selection" label="Hide Selection" icon="hide" />
     </group>
-    <group label="Align">
-      <item command="align-left" label="Left" />
-      <item command="align-center-x" label="Centre" />
-      <item command="align-right" label="Right" />
-      <item command="align-top" label="Top" />
-      <item command="align-center-y" label="Middle" />
-      <item command="align-bottom" label="Bottom" />
-    </group>
-    <group label="Align to Document">
-      <item command="align-doc-left" label="Left" />
-      <item command="align-doc-center-x" label="Centre" />
-      <item command="align-doc-right" label="Right" />
-      <item command="align-doc-top" label="Top" />
-      <item command="align-doc-center-y" label="Middle" />
-      <item command="align-doc-bottom" label="Bottom" />
-    </group>
-    <group label="Distribute">
-      <item command="distribute-horizontal" label="Horizontally" />
-      <item command="distribute-vertical" label="Vertically" />
-    </group>
-    <group label="Flip">
-      <item command="flip-horizontal" label="Flip Horizontal" />
-      <item command="flip-vertical" label="Flip Vertical" />
-    </group>
+    <item command="align" label="Align">
+      <option command="align-left" label="Left" icon="align-left" />
+      <option command="align-center-x" label="Centre" icon="align-center-x" />
+      <option command="align-right" label="Right" icon="align-right" />
+      <option command="align-top" label="Top" icon="align-top" />
+      <option command="align-center-y" label="Middle" icon="align-center-y" />
+      <option command="align-bottom" label="Bottom" icon="align-bottom" />
+    </item>
+    <item command="align-to-document" label="Align to Document">
+      <option command="align-doc-left" label="Left" icon="align-doc-left" />
+      <option command="align-doc-center-x" label="Centre" icon="align-doc-center-x" />
+      <option command="align-doc-right" label="Right" icon="align-doc-right" />
+      <option command="align-doc-top" label="Top" icon="align-doc-top" />
+      <option command="align-doc-center-y" label="Middle" icon="align-doc-center-y" />
+      <option command="align-doc-bottom" label="Bottom" icon="align-doc-bottom" />
+    </item>
+    <item command="distribute" label="Distribute">
+      <option command="distribute-horizontal" label="Horizontally" icon="distribute-horizontal" />
+      <option command="distribute-vertical" label="Vertically" icon="distribute-vertical" />
+    </item>
+    <item command="flip" label="Flip">
+      <option command="flip-horizontal" label="Flip Horizontal" icon="flip-horizontal" />
+      <option command="flip-vertical" label="Flip Vertical" icon="flip-vertical" />
+    </item>
     <group label="With dialog">
       <item command="scale-dialog" label="Scale…" icon="scale-dialog" />
       <item command="rotate-dialog" label="Rotate…" icon="rotate-dialog" />

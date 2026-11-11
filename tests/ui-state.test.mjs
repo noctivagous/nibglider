@@ -149,11 +149,18 @@ test('application menus cover file, edit, view, image, document, object, repeat,
   // Object control lives in the Object menu, not Repeat.
   assert.ok(!byId.operations.items.some((item) => item.commandId === 'group'));
   assert.ok(!byId.operations.items.some((item) => item.commandId === 'delete-selection'));
+  // FLAGGED EDIT (layout fix): the Order commands live under the Order
+  // flyout now; the Group commands stay as direct rows.
   for (const id of [
-    'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
     'group', 'ungroup-selection', 'lock-selection', 'hide-selection',
   ]) {
     assert.ok(byId.object.items.some((item) => item.commandId === id), `object menu lists ${id}`);
+  }
+  const orderParent = byId.object.items.find((item) => item.commandId === 'order');
+  for (const id of [
+    'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
+  ]) {
+    assert.ok(orderParent?.children.some((child) => child.commandId === id), `object menu lists ${id}`);
   }
   // Layers keeps Group/Ungroup only; the duplicated Order/Duplicate/
   // Delete rows are gone.
@@ -220,12 +227,17 @@ test('menu panel sections map to known panel sections', () => {
 test('object menu groups dialog entries and carries rail shortcuts and icons', () => {
   const byId = Object.fromEntries(APPLICATION_MENUS.map((menu) => [menu.id, menu]));
   const ops = byId.object.items.map((item) => item.commandId);
-  // Scale/Rotate sit under a "With dialog" group header, mirroring the rail.
-  assert.deepEqual(ops.slice(30, 33), ['hdr-object-7', 'scale-dialog', 'rotate-dialog']);
-  // Flip precedes the dialog group; Convert Text to Outlines ends the menu.
-  assert.deepEqual(ops.slice(28, 30), ['flip-horizontal', 'flip-vertical']);
+  // FLAGGED EDIT (layout fix): the variant sets became flyout parents (see
+  // menus.xml), so the flat list is shorter and "With dialog" is the second
+  // header. Scale/Rotate still sit under it, mirroring the rail.
+  assert.deepEqual(ops.slice(10, 13), ['hdr-object-2', 'scale-dialog', 'rotate-dialog']);
+  // The Flip flyout precedes the dialog group; Convert Text to Outlines
+  // ends the menu.
+  const flipParent = byId.object.items.find((item) => item.commandId === 'flip');
+  assert.deepEqual(flipParent.children.map((child) => child.commandId), ['flip-horizontal', 'flip-vertical']);
+  assert.equal(ops.indexOf('flip'), 9);
   assert.equal(ops[ops.length - 1], 'text-convert-outlines');
-  const dialogHeader = byId.object.items.find((item) => item.commandId === 'hdr-object-7');
+  const dialogHeader = byId.object.items.find((item) => item.commandId === 'hdr-object-2');
   assert.equal(dialogHeader.header, true);
   assert.equal(dialogHeader.label, 'With dialog');
   // Shortcuts match the vertical rail's Operations/Layers menus.

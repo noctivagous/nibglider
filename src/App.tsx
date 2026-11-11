@@ -52,7 +52,7 @@ import { CONTEXT_MENU_ID, MENU_PANEL_SECTIONS, PanelsManager, hideMenuSection, s
 import { WidgetLayout } from './ui/WidgetLayout';
 import { writePreviewPaths } from './ui/PreviewBoxPresenter';
 import { TutorialRunner } from './tutorial/TutorialRunner';
-import { DemonstrationPlayer, type DemoHooks, type DemoWorkspace } from './tutorial/demonstrationPlayer';
+import { DemonstrationPlayer, prepareDemoWorkspace, type DemoHooks, type DemoWorkspace } from './tutorial/demonstrationPlayer';
 import { getTutorialTargetRect } from './tutorial/TargetResolver';
 import { readParam, writeParam } from './engine/input/ParamAddress';
 import {
@@ -250,6 +250,21 @@ export default function App() {
     }),
     [engine, gui, panels],
   );
+
+  // Every step gets its declared workspace on entry, not just steps whose
+  // demo is played: apply the step's preconditions (idempotent) and open
+  // the panel section the step points at, so what the bubble names is on
+  // screen and usable before the user is asked to act on it.
+  const stepTarget = tutorialSnap.tutorial?.steps[tutorialSnap.stepIndex]?.target;
+  const stepPreconditions = tutorialSnap.tutorial?.steps[tutorialSnap.stepIndex]?.preconditions;
+  useEffect(() => {
+    if (tutorialSnap.status !== 'active') return;
+    const ws = demoWorkspace();
+    prepareDemoWorkspace(stepPreconditions, ws);
+    if (stepTarget?.startsWith('section-')) {
+      ws.expandSections([stepTarget.slice('section-'.length)]);
+    }
+  }, [tutorialSnap.status, tutorialSnap.stepIndex, stepTarget, stepPreconditions, demoWorkspace]);
 
   const demoHooks = useCallback(
     (): DemoHooks => ({

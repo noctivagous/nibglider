@@ -61,6 +61,8 @@ const PLACEHOLDER_COMMANDS = [
   'export-raster', 'export-vector', 'export-printify', 'import',
   'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode',
   'image-transform', 'image-raster', 'draw-tools', 'tutorials',
+  // Object menu flyout parents (layout fix): they only open their flyout.
+  'order', 'align', 'align-to-document', 'distribute', 'flip',
   'cut', 'copy', 'paste', 'select-all',
 ];
 
@@ -148,20 +150,37 @@ test('repeat holds the Conway-labelled presets, object holds arrange and dialogs
   );
   const repeatById = Object.fromEntries(byId.operations.items.map((item) => [item.commandId, item]));
   assert.equal(repeatById['repeat-grid'].label, 'Repeat Grid — o');
+  // FLAGGED EDIT (layout fix): the flat Object menu was 1302px tall and ran
+  // off the bottom of the screen. The variant sets (Order, Align, Align to
+  // Document, Distribute, Flip) are now flyout parents in the upper part of
+  // the menu; every command survives as an option, pinned below.
   assert.deepEqual(byId.object.items.map((item) => item.commandId), [
-    'hdr-object-1', 'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
-    'hdr-object-2', 'group', 'ungroup-selection', 'lock-selection', 'hide-selection',
-    'hdr-object-3', 'align-left', 'align-center-x', 'align-right', 'align-top', 'align-center-y', 'align-bottom',
-    'hdr-object-4', 'align-doc-left', 'align-doc-center-x', 'align-doc-right', 'align-doc-top', 'align-doc-center-y', 'align-doc-bottom',
-    'hdr-object-5', 'distribute-horizontal', 'distribute-vertical',
-    'hdr-object-6', 'flip-horizontal', 'flip-vertical',
-    'hdr-object-7', 'scale-dialog', 'rotate-dialog',
-    'hdr-object-8', 'text-convert-outlines',
+    'order',
+    'hdr-object-1', 'group', 'ungroup-selection', 'lock-selection', 'hide-selection',
+    'align', 'align-to-document', 'distribute', 'flip',
+    'hdr-object-2', 'scale-dialog', 'rotate-dialog',
+    'hdr-object-3', 'text-convert-outlines',
   ]);
   assert.deepEqual(
     byId.object.items.filter((item) => item.header).map((item) => item.label),
-    ['Order', 'Group', 'Align', 'Align to Document', 'Distribute', 'Flip', 'With dialog', 'Text'],
+    ['Group', 'With dialog', 'Text'],
   );
+  const objectById = Object.fromEntries(byId.object.items.map((item) => [item.commandId, item]));
+  assert.deepEqual(objectById.order.children.map((child) => child.commandId), [
+    'bring-to-front', 'bring-forward', 'send-backward', 'send-to-back',
+  ]);
+  assert.deepEqual(objectById.align.children.map((child) => child.commandId), [
+    'align-left', 'align-center-x', 'align-right', 'align-top', 'align-center-y', 'align-bottom',
+  ]);
+  assert.deepEqual(objectById['align-to-document'].children.map((child) => child.commandId), [
+    'align-doc-left', 'align-doc-center-x', 'align-doc-right', 'align-doc-top', 'align-doc-center-y', 'align-doc-bottom',
+  ]);
+  assert.deepEqual(objectById.distribute.children.map((child) => child.commandId), [
+    'distribute-horizontal', 'distribute-vertical',
+  ]);
+  assert.deepEqual(objectById.flip.children.map((child) => child.commandId), [
+    'flip-horizontal', 'flip-vertical',
+  ]);
   assert.deepEqual(byId.modes.items.map((item) => item.commandId), [
     'rect-shape', 'circle-shape', 'combinatorics', 'snapping', 'text-mode', 'draw-tools',
   ]);
