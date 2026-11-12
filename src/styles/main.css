@@ -5504,10 +5504,10 @@ kbd,
   padding: 12px 14px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 24px rgba(0, 0, 0, 0.5);
   font-family: var(--font-tech-label);
-  /* Parked-corner moves (demo footprint, resize, step change) glide instead
-     of jumping. Legacy right/bottom placements still snap; left/top and
-     transform are the animated properties. */
-  transition: left 0.35s ease, top 0.35s ease, transform 0.35s ease;
+  /* Parked-corner moves glide. Transform is not animated: the centered
+     slides use a translate, and animating it at the same time as left/top
+     pulls the card back the way it came. */
+  transition: left 0.35s ease, top 0.35s ease, right 0.35s ease, bottom 0.35s ease;
 }
 @media (prefers-reduced-motion: reduce) {
   .tutorial-bubble {

@@ -15,7 +15,7 @@ import {
   BUBBLE_DEFAULT_WIDTH,
   BUBBLE_ESTIMATED_HEIGHT,
   chooseParkCorner,
-  cornerPosition,
+  cornerBoxStyle,
   demoFootprint,
 } from '../tutorial/bubbleParking';
 import type { TutorialStep } from '../tutorial/tutorialSchema';
@@ -59,8 +59,14 @@ function waitingHint(step: TutorialStep): string | null {
 }
 
 /** Steps that perform on the canvas park the bubble instead of floating it
- * over the work area: live demos, canvas targets, and explicit anchor/avoid. */
+ * over the work area: live demos, canvas targets, and explicit anchor/avoid.
+ * A step that says placement "center" and names no corner stays centered.
+ * That is the reading position for the first two intro slides: parking
+ * them sends the card to a corner and back again as the reader moves
+ * between those slides. A later canvas step that must leave the drawing
+ * clear names an anchor, and that anchor still parks. */
 function needsParking(step: TutorialStep): boolean {
+  if (step.bubble.placement === 'center' && !step.bubble.anchor) return false;
   return (
     (step.demo?.length ?? 0) > 0 ||
     step.target === 'canvas' ||
@@ -229,9 +235,9 @@ export default function TutorialOverlay({
   void tick;
   const layout: ParkLayout = measure(step);
 
-  // True bubble height for exact corner placement. The width is fixed by
-  // CSS, so observing the bubble's own box also picks up content growth
-  // (e.g. demo narration appearing mid-step) and re-parks the bubble.
+  // True bubble height for beside-target placement. Parked corners pin to
+  // a screen edge instead, so narration changing this height does not
+  // slide the card.
   useEffect(() => {
     const el = bubbleRef.current;
     if (!el) return;
@@ -272,25 +278,25 @@ export default function TutorialOverlay({
   }, [stepIndex, stepTargetId]);
 
   const parked = needsParking(step);
-  const parkPos = useMemo(() => {
+  // Corner choice uses a fixed card size, not the live height. Narration
+  // text changing the card's height must not flip the corner or slide a
+  // bottom-pinned card up and down during a demo.
+  const parkStyle = useMemo(() => {
     if (!parked) return null;
     const avoid = [...layout.footprint, ...layout.named, ...layout.chrome];
     if (step.target === 'canvas' && layout.canvas) avoid.push(layout.canvas);
     const corner = chooseParkCorner(
       { width: layout.vw, height: layout.vh },
-      { width: BUBBLE_DEFAULT_WIDTH, height: bubbleH },
+      { width: BUBBLE_DEFAULT_WIDTH, height: BUBBLE_ESTIMATED_HEIGHT },
       avoid,
       step.bubble.anchor,
     );
-    return cornerPosition(corner, { width: layout.vw, height: layout.vh }, {
-      width: BUBBLE_DEFAULT_WIDTH,
-      height: bubbleH,
-    });
-  }, [parked, layout, bubbleH, step]);
+    return cornerBoxStyle(corner, { width: layout.vw, height: layout.vh });
+  }, [parked, layout, step]);
 
   const rect = layout.target;
   const pos = parked
-    ? { centered: false as const, left: parkPos?.left ?? GAP, top: parkPos?.top ?? GAP }
+    ? { centered: false as const, ...parkStyle }
     : bubbleStyle(rect, step.bubble.placement, bubbleH);
   const hint = waitingHint(step);
   const isLast = stepIndex + 1 >= stepCount;

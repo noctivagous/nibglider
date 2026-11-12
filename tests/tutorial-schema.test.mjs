@@ -194,6 +194,12 @@ test('intro tutorial follows the demo-then-try structure with the welcome slide 
   assert.ok(keyClick.demo?.some((a) => a.kind === 'press-key' && a.key === 'i'));
   assert.ok(keyClick.demo?.some((a) => a.kind === 'press-key' && a.key === 'q'));
   assert.ok(keyClick.preconditions);
+  // The first two slides stay centered: no corner anchor to park them.
+  assert.equal(keyClick.bubble.placement, 'center');
+  assert.equal(keyClick.bubble.anchor, undefined);
+  const twoEdges = byId['watch-two-edges'];
+  const uPresses = twoEdges.demo.filter((a) => a.kind === 'press-key' && a.key === 'u');
+  assert.equal(uPresses.length, 3);
   assert.deepEqual(byId['shape-selector'].expect, {
     kind: 'setting-is',
     settingsId: 'rect',

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   BUBBLE_PARK_GAP,
   chooseParkCorner,
+  cornerBoxStyle,
   cornerPosition,
   demoFootprint,
   overlapArea,
@@ -26,6 +27,24 @@ test('corner slots sit inside the viewport with gap margins', () => {
     left: VIEW.width - SIZE.width - BUBBLE_PARK_GAP,
     top: VIEW.height - SIZE.height - BUBBLE_PARK_GAP,
   });
+});
+
+test('corner box style pins the corner edges so height changes do not move the card', () => {
+  assert.deepEqual(cornerBoxStyle('bottom-right', VIEW), { right: BUBBLE_PARK_GAP, bottom: BUBBLE_PARK_GAP });
+  assert.deepEqual(cornerBoxStyle('top-left', VIEW), { left: BUBBLE_PARK_GAP, top: BUBBLE_PARK_GAP });
+  assert.deepEqual(cornerBoxStyle('bottom-left', VIEW), { left: BUBBLE_PARK_GAP, bottom: BUBBLE_PARK_GAP });
+  const tall = { width: 320, height: 400 };
+  const short = { width: 320, height: 180 };
+  assert.deepEqual(cornerBoxStyle('bottom-right', VIEW, tall), cornerBoxStyle('bottom-right', VIEW, short));
+});
+
+test('corner box style falls back to a clamped slot when the viewport is too small', () => {
+  const tiny = { width: 200, height: 200 };
+  const style = cornerBoxStyle('bottom-right', tiny);
+  assert.equal(style.right, undefined);
+  assert.equal(style.bottom, undefined);
+  assert.equal(style.left, BUBBLE_PARK_GAP);
+  assert.equal(style.top, BUBBLE_PARK_GAP);
 });
 
 test('corner slots clamp onscreen when the viewport is smaller than the bubble', () => {

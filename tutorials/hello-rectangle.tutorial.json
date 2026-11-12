@@ -20,12 +20,7 @@
       "bubble": {
         "title": "What is a key-click?",
         "body": "A key-click is a click made with a key instead of the mouse button. You steer the cursor with the mouse, and a key press does the clicking — so the point lands exactly where the cursor sits at the moment of the press, with no mouse-button push nudging it off target. Press Watch demo and watch one key press place a corner.",
-        "placement": "center",
-        "anchor": "bottom-right",
-        "avoid": [
-          "key-i",
-          "key-q"
-        ]
+        "placement": "center"
       },
       "expect": {
         "kind": "none"
@@ -189,7 +184,8 @@
       "bubble": {
         "title": "Place the opposite corner",
         "body": "Steer to the opposite corner and press I again to deposit your rectangle.",
-        "placement": "center"
+        "placement": "center",
+        "anchor": "bottom-right"
       },
       "expect": {
         "kind": "scene-changed"
@@ -200,7 +196,7 @@
       "target": "canvas",
       "bubble": {
         "title": "Watch: rectangle by two edges",
-        "body": "Press Watch demo: the program steers the cursor itself and presses U twice to draw a rectangle from two edges, live on the canvas.",
+        "body": "Press Watch demo: the program steers the cursor itself and presses U three times — both ends of the first edge, then the second edge — to draw a rectangle, live on the canvas.",
         "placement": "center",
         "anchor": "bottom-right",
         "avoid": [
@@ -223,13 +219,13 @@
       "demo": [
         {
           "kind": "narrate",
-          "title": "First edge",
-          "body": "Steering to the first edge."
+          "title": "Start of the first edge",
+          "body": "Steering to one end of the first edge."
         },
         {
           "kind": "move-cursor-xy",
-          "x": 0.35,
-          "y": 0.45,
+          "x": 0.32,
+          "y": 0.38,
           "durationMs": 900
         },
         {
@@ -239,14 +235,30 @@
         },
         {
           "kind": "narrate",
-          "title": "Second edge",
-          "body": "The U key starts Rect by Two Edges. Now steering to the opposite edge."
+          "title": "End of the first edge",
+          "body": "The first U starts Rect by Two Edges. Steering along to the other end of that edge."
         },
         {
           "kind": "move-cursor-xy",
-          "x": 0.65,
-          "y": 0.55,
-          "durationMs": 1200
+          "x": 0.68,
+          "y": 0.38,
+          "durationMs": 1100
+        },
+        {
+          "kind": "press-key",
+          "key": "u",
+          "holdMs": 150
+        },
+        {
+          "kind": "narrate",
+          "title": "The second edge",
+          "body": "The second U locks the first edge. Steering out to where the opposite edge sits."
+        },
+        {
+          "kind": "move-cursor-xy",
+          "x": 0.68,
+          "y": 0.62,
+          "durationMs": 1100
         },
         {
           "kind": "press-key",
@@ -260,7 +272,7 @@
         {
           "kind": "narrate",
           "title": "Done",
-          "body": "The second U press deposits the rectangle, exactly as your own key presses would."
+          "body": "The third U press deposits the rectangle from those two edges."
         }
       ]
     },
@@ -281,9 +293,10 @@
       "id": "try-two-edges-draw",
       "target": "canvas",
       "bubble": {
-        "title": "Place the second edge",
-        "body": "Steer to the second edge and press U again to deposit your rectangle.",
-        "placement": "center"
+        "title": "Finish both edges",
+        "body": "Press U to set the other end of the first edge, steer to the opposite edge, and press U again to deposit the rectangle.",
+        "placement": "center",
+        "anchor": "bottom-right"
       },
       "expect": {
         "kind": "scene-changed"

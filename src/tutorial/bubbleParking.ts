@@ -36,6 +36,29 @@ export const BUBBLE_ESTIMATED_HEIGHT = 260;
 
 const CORNER_ORDER: readonly BubbleCorner[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
+/**
+ * Edges a parked bubble sticks to. A bottom or right corner is pinned to
+ * that screen edge, so a taller card (narration, a hint) grows inward and
+ * the window does not slide. A viewport too small for the card falls back
+ * to the clamped left/top slot.
+ */
+export function cornerBoxStyle(
+  corner: BubbleCorner,
+  viewport: ParkViewport,
+  size: BubbleSize = { width: BUBBLE_DEFAULT_WIDTH, height: BUBBLE_ESTIMATED_HEIGHT },
+  gap: number = BUBBLE_PARK_GAP,
+): { left?: number; right?: number; top?: number; bottom?: number } {
+  const pos = cornerPosition(corner, viewport, size, gap);
+  const onRight = corner === 'top-right' || corner === 'bottom-right';
+  const onBottom = corner === 'bottom-left' || corner === 'bottom-right';
+  const fitsWidth = viewport.width >= size.width + gap * 2;
+  const fitsHeight = viewport.height >= size.height + gap * 2;
+  return {
+    ...(onRight && fitsWidth ? { right: gap } : { left: pos.left }),
+    ...(onBottom && fitsHeight ? { bottom: gap } : { top: pos.top }),
+  };
+}
+
 /** Pixel position of a corner slot, clamped so the bubble stays on screen. */
 export function cornerPosition(
   corner: BubbleCorner,
