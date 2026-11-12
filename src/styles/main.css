@@ -1393,6 +1393,15 @@ textarea,
   border-right: none !important;
 }
 
+#controlPanel .panel-sections-frame {
+  position: relative;
+  flex: 1 1 auto;
+  order: 1;
+  min-width: 0;
+  /* Reserve the floating rail's width so sections never slide under it. */
+  margin-left: var(--rail-width);
+}
+
 #controlPanel .panel-sections {
   position: relative;
   display: flex;
@@ -1403,26 +1412,54 @@ textarea,
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 6px;
-  flex: 1 1 auto;
-  order: 1;
   min-width: 0;
-  /* Bound the grid to the viewport instead of full screen height: extra
-     rows scroll inside the overlay so the canvas and keyboard stay
-     visible. Menus and popovers portal to document.body, so the scroll
-     container never clips them. The cap is a coverage budget, not just
-     a viewport bound: the sections get about half the window height at
-     most, and always leave room for the on-screen keyboard (~185px)
-     plus a working strip of canvas below the overlay — a bare
-     100vh-minus-a-little cap still buried three quarters of the app. */
-  max-height: calc(min(54vh, 100vh - 400px));
-  overflow-y: auto;
-  /* Reserve the floating rail's width so sections never slide under it. */
-  margin-left: var(--rail-width);
-  padding: 0;
+  /* Horizontal docks show two compact rows, then scroll. Menus and
+     popovers portal to document.body, so this scroller never clips them. */
+  max-height: calc(44px * 2 + 6px);
+  overflow-y: scroll;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 0 14px;
   border: none;
   border-radius: 0;
   background: none;
   box-shadow: none;
+}
+
+#controlPanel .panel-sections::-webkit-scrollbar {
+  display: none;
+}
+
+#controlPanel .panel-scrollbar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  z-index: 4;
+}
+
+#controlPanel .panel-scrollbar.is-right {
+  right: 2px;
+}
+
+#controlPanel .panel-scrollbar.is-left {
+  left: 2px;
+}
+
+#controlPanel .panel-scroll-thumb {
+  position: absolute;
+  left: 0;
+  width: 8px;
+  border-radius: 4px;
+  background: #4b5866;
+  cursor: pointer;
+  touch-action: none;
+}
+
+#controlPanel .panel-scroll-thumb:hover {
+  background: #64748b;
 }
 
 /* A manually chosen row boundary stays in place when a card's width changes.
@@ -1591,7 +1628,12 @@ body {
 }
 
 #controlPanel #circleInnerShapeSelect,
-#controlPanel #rectInnerShapeSelect {
+#controlPanel #rectInnerShapeSelect,
+#controlPanel #pathOpSelect,
+#controlPanel #activePageSelect,
+#controlPanel #arrangeToolSelect,
+#controlPanel #gridTypeSelect,
+#controlPanel #activeLayerSelect {
   /* This is the only item allowed to shrink in the keys titlebar. Its
      selected label must never determine the row width or displace the
      preview. */
@@ -1688,7 +1730,14 @@ body {
    preview and stretch sibling cards in the row via align-items:stretch. */
 #controlPanel #circleFrameControls .pane-titlebar.titlebar-single,
 #controlPanel #rectFrameControls .pane-titlebar.titlebar-single,
-#controlPanel #combinatoricsControls .pane-titlebar.titlebar-single {
+#controlPanel #combinatoricsControls .pane-titlebar.titlebar-single,
+#controlPanel #pathOpsControls .pane-titlebar.titlebar-single,
+#controlPanel #swatchesControls .pane-titlebar.titlebar-single,
+#controlPanel #pagesControls .pane-titlebar.titlebar-single,
+#controlPanel #arrangeControls .pane-titlebar.titlebar-single,
+#controlPanel #gridControls .pane-titlebar.titlebar-single,
+#controlPanel #layersControls .pane-titlebar.titlebar-single,
+#controlPanel #historyControls .pane-titlebar.titlebar-single {
   flex-wrap: nowrap;
   min-width: 0;
 }
@@ -1714,10 +1763,22 @@ body {
 #controlPanel .titlebar-single #rectShapePreviewContainer,
 #controlPanel .titlebar-single #combinePreviewContainer,
 #controlPanel .titlebar-single #repeatPreviewContainer,
-#controlPanel .titlebar-single #textPreviewContainer {
+#controlPanel .titlebar-single #textPreviewContainer,
+#controlPanel .titlebar-single #pathOpPreviewContainer,
+#controlPanel .titlebar-single #swatchPreviewContainer,
+#controlPanel .titlebar-single #pagesPreviewContainer,
+#controlPanel .titlebar-single #arrangePreviewContainer,
+#controlPanel .titlebar-single #gridPreviewContainer,
+#controlPanel .titlebar-single #layersPreviewContainer,
+#controlPanel .titlebar-single #historyPreviewContainer {
   width: 84px;
   height: 30px;
   flex: 0 0 84px;
+}
+
+#controlPanel #historyControls .titlebar-single #historyPreviewContainer {
+  width: 136px;
+  flex-basis: 136px;
 }
 
 #controlPanel .titlebar-single #shapePreview,
@@ -1775,7 +1836,14 @@ body {
 
 /* Prefer a one-line titlebar width even when the selected label is short. */
 #controlPanel #circleFrameControls,
-#controlPanel #rectFrameControls {
+#controlPanel #rectFrameControls,
+#controlPanel #pathOpsControls,
+#controlPanel #swatchesControls,
+#controlPanel #pagesControls,
+#controlPanel #arrangeControls,
+#controlPanel #gridControls,
+#controlPanel #layersControls,
+#controlPanel #historyControls {
   flex-wrap: nowrap;
   flex: 0 1 auto;
   width: max-content;
@@ -1811,7 +1879,14 @@ body {
    titlebar minimum above (2 IDs) with an extra class. */
 #controlPanel #circleFrameControls.section-collapsed,
 #controlPanel #rectFrameControls.section-collapsed,
-#controlPanel #combinatoricsControls.section-collapsed {
+#controlPanel #combinatoricsControls.section-collapsed,
+#controlPanel #pathOpsControls.section-collapsed,
+#controlPanel #swatchesControls.section-collapsed,
+#controlPanel #pagesControls.section-collapsed,
+#controlPanel #arrangeControls.section-collapsed,
+#controlPanel #gridControls.section-collapsed,
+#controlPanel #layersControls.section-collapsed,
+#controlPanel #historyControls.section-collapsed {
   flex: 0 0 auto;
   width: auto;
   min-width: 0;
@@ -2032,12 +2107,14 @@ body {
    top highlight and hard drop shadow. The menu portals to
    document.body, so its rules stay unscoped (theme vars live on
    :root). */
-#controlPanel .custom-select {
+#controlPanel .custom-select,
+.shape-params-flyout .custom-select {
   display: inline-flex;
   min-width: 0;
 }
 
-#controlPanel .custom-select-trigger {
+#controlPanel .custom-select-trigger,
+.shape-params-flyout .custom-select-trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2057,23 +2134,28 @@ body {
 }
 
 #controlPanel .custom-select-trigger:hover,
-#controlPanel .custom-select-trigger.open {
+#controlPanel .custom-select-trigger.open,
+.shape-params-flyout .custom-select-trigger:hover,
+.shape-params-flyout .custom-select-trigger.open {
   border-color: #3d4a59;
 }
 
-#controlPanel .custom-select-trigger:focus-visible {
+#controlPanel .custom-select-trigger:focus-visible,
+.shape-params-flyout .custom-select-trigger:focus-visible {
   outline: 2px solid var(--dp-accent);
   outline-offset: 1px;
 }
 
-#controlPanel .custom-select-trigger .cs-trigger-label {
+#controlPanel .custom-select-trigger .cs-trigger-label,
+.shape-params-flyout .custom-select-trigger .cs-trigger-label {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-#controlPanel .custom-select-trigger .cs-image {
+#controlPanel .custom-select-trigger .cs-image,
+.shape-params-flyout .custom-select-trigger .cs-image {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -2082,7 +2164,8 @@ body {
   color: inherit;
 }
 
-#controlPanel .custom-select-trigger .cs-caret {
+#controlPanel .custom-select-trigger .cs-caret,
+.shape-params-flyout .custom-select-trigger .cs-caret {
   flex: none;
   width: 0;
   height: 0;
@@ -2094,7 +2177,8 @@ body {
   transition: transform 0.12s ease;
 }
 
-#controlPanel .custom-select-trigger .cs-caret.open {
+#controlPanel .custom-select-trigger .cs-caret.open,
+.shape-params-flyout .custom-select-trigger .cs-caret.open {
   transform: rotate(180deg);
 }
 
@@ -2107,6 +2191,26 @@ body {
 #controlPanel #rectFrameControls .custom-select-trigger {
   box-shadow: inset 0 0 0 999px rgba(45, 212, 191, 0.16);
   color: #b8e0d8;
+}
+
+#controlPanel #pathOpsControls .custom-select-trigger {
+  box-shadow: inset 0 0 0 999px rgba(163, 196, 138, 0.18);
+  color: #c5d7b4;
+}
+
+#controlPanel #pagesControls .custom-select-trigger {
+  box-shadow: inset 0 0 0 999px rgba(214, 176, 96, 0.18);
+  color: #e6d3a3;
+}
+
+#controlPanel #layersControls .custom-select-trigger {
+  box-shadow: inset 0 0 0 999px rgba(140, 168, 214, 0.18);
+  color: #c5d4f0;
+}
+
+#controlPanel #arrangeControls .custom-select-trigger {
+  box-shadow: inset 0 0 0 999px rgba(167, 139, 250, 0.18);
+  color: #d4c4f5;
 }
 
 #controlPanel #snappingControls .custom-select-trigger {
@@ -2338,10 +2442,26 @@ body {
     0 2px 5px rgba(0, 0, 0, 0.45);
 }
 
+.custom-select-menu.has-cards {
+  max-height: 460px;
+}
+
+.custom-select-menu.has-cards .cs-scroll {
+  max-height: 452px;
+}
+
 .custom-select-menu .cs-item.cs-card:hover,
 .custom-select-menu .cs-item.cs-card.focused {
   border-color: var(--dp-accent);
   color: var(--dp-text-1);
+}
+
+.custom-select-menu .cs-item.cs-card.selected {
+  border-color: var(--dp-accent);
+  color: #fff;
+  background:
+    linear-gradient(to bottom, rgba(79, 143, 247, 0.34), rgba(79, 143, 247, 0.12)),
+    linear-gradient(to bottom, #2c3846, #1d2530);
 }
 
 .custom-select-menu .cs-item.cs-card:active {
@@ -3388,6 +3508,70 @@ body {
   color: #eab88a;
 }
 
+#controlPanel #pathOpsControls .pane-titlebar {
+  background: linear-gradient(to bottom, rgba(163, 196, 138, 0.22), rgba(90, 130, 70, 0.18)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #pathOpsControls .pane-icon,
+#controlPanel #pathOpsControls .pane-title-text {
+  color: #c5d7b4;
+}
+
+#controlPanel #swatchesControls .pane-titlebar {
+  background: linear-gradient(to bottom, rgba(214, 140, 186, 0.20), rgba(150, 70, 120, 0.16)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #swatchesControls .pane-icon,
+#controlPanel #swatchesControls .pane-title-text {
+  color: #e7b7d4;
+}
+
+#controlPanel #pagesControls .pane-titlebar {
+  background: linear-gradient(to bottom, rgba(214, 176, 96, 0.20), rgba(150, 110, 40, 0.16)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #pagesControls .pane-icon,
+#controlPanel #pagesControls .pane-title-text {
+  color: #e6d3a3;
+}
+
+#controlPanel #historyControls .pane-titlebar {
+  background: linear-gradient(to bottom, rgba(224, 180, 138, 0.22), rgba(160, 110, 60, 0.16)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #historyControls .pane-icon,
+#controlPanel #historyControls .pane-title-text {
+  color: #e0b48a;
+}
+
+#controlPanel #layersControls .pane-titlebar {
+  background: linear-gradient(to bottom, rgba(140, 168, 214, 0.22), rgba(70, 100, 160, 0.16)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #layersControls .pane-icon,
+#controlPanel #layersControls .pane-title-text {
+  color: #c5d4f0;
+}
+
+#controlPanel #arrangeControls .pane-titlebar {
+  background: linear-gradient(to bottom, rgba(167, 139, 250, 0.22), rgba(109, 80, 190, 0.16)), linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+#controlPanel #arrangeControls .pane-icon,
+#controlPanel #arrangeControls .pane-title-text {
+  color: #d4c4f5;
+}
+
+#controlPanel .pane-inline-label {
+  font-family: var(--font-tech-label);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dp-text-2);
+  white-space: nowrap;
+}
+
 #controlPanel .combine-note {
   font-size: 11px;
   color: var(--dp-text-2);
@@ -3405,6 +3589,7 @@ body {
 }
 
 .shape-params-flyout.tone-combinatorics {
+  width: 420px;
   border-color: rgba(251, 146, 60, 0.55);
   background: linear-gradient(to bottom, rgba(251, 146, 60, 0.20), rgba(194, 94, 20, 0.16)),
     linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
@@ -3416,6 +3601,12 @@ body {
 
 #combinePreviewContainer .combine-preview,
 #repeatPreviewContainer .combine-preview,
+#pathOpPreviewContainer .combine-preview,
+#pagesPreviewContainer .combine-preview,
+#arrangePreviewContainer .combine-preview,
+#gridPreviewContainer .combine-preview,
+#layersPreviewContainer .combine-preview,
+#historyPreviewContainer .combine-preview,
 .shape-params-flyout .combine-preview {
   display: block;
   width: 100%;
@@ -3459,18 +3650,36 @@ body {
 /* Combinatorics titlebar preview box: the selected option name overlaid
    on the graphic, centered horizontally and vertically. Smaller type than
    the flyout so long names (e.g. Interlace) fit the 84x30 well. */
-#combinePreviewContainer {
+#combinePreviewContainer,
+#pathOpPreviewContainer,
+#pagesPreviewContainer,
+#swatchPreviewContainer,
+#arrangePreviewContainer,
+#gridPreviewContainer {
   position: relative;
 }
 
-#combinePreviewContainer .combine-preview-wrap {
+#combinePreviewContainer .combine-preview-wrap,
+#pathOpPreviewContainer .combine-preview-wrap,
+#pagesPreviewContainer .combine-preview-wrap,
+#arrangePreviewContainer .combine-preview-wrap,
+#gridPreviewContainer .combine-preview-wrap,
+#layersPreviewContainer .combine-preview-wrap,
+#historyPreviewContainer .combine-preview-wrap {
   position: relative;
   display: block;
   width: 100%;
   height: 100%;
 }
 
-#combinePreviewContainer .combine-preview-label {
+#combinePreviewContainer .combine-preview-label,
+#pathOpPreviewContainer .combine-preview-label,
+#pagesPreviewContainer .combine-preview-label,
+#swatchPreviewContainer .combine-preview-label,
+#arrangePreviewContainer .combine-preview-label,
+#gridPreviewContainer .combine-preview-label,
+#layersPreviewContainer .combine-preview-label,
+#historyPreviewContainer .combine-preview-label {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -3492,6 +3701,67 @@ body {
   padding: 1px 5px;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   pointer-events: none;
+}
+
+#pathOpPreviewContainer .combine-preview-label,
+.shape-params-flyout.tone-operations .combine-preview-label {
+  color: #c5d7b4;
+}
+
+#pagesPreviewContainer .combine-preview-label,
+.shape-params-flyout.tone-pages .combine-preview-label {
+  color: #e6d3a3;
+}
+
+#swatchPreviewContainer .combine-preview-label,
+.shape-params-flyout.tone-swatches .combine-preview-label {
+  color: #e7b7d4;
+}
+
+#arrangePreviewContainer .combine-preview-label,
+.shape-params-flyout.tone-arrange .combine-preview-label {
+  color: #d4c4f5;
+}
+
+#gridPreviewContainer .combine-preview-label,
+.shape-params-flyout.tone-grid .combine-preview-label {
+  color: #a9b8cc;
+}
+
+#layersPreviewContainer .combine-preview-label,
+.shape-params-flyout.tone-layers .combine-preview-label {
+  color: #c5d4f0;
+}
+
+#historyPreviewContainer .combine-preview-label,
+.shape-params-flyout.tone-history .combine-preview-label {
+  color: #e0b48a;
+}
+
+.swatch-preview-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.swatch-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 1fr;
+  width: 100%;
+  height: 100%;
+  gap: 1px;
+}
+
+.swatch-preview-wrap.is-large .swatch-preview-grid {
+  grid-template-columns: repeat(8, 1fr);
+}
+
+.swatch-preview-chip {
+  display: block;
+  min-width: 0;
+  min-height: 0;
 }
 
 .shape-params-flyout .flyout-text-input {
@@ -3604,8 +3874,8 @@ input#strokeWidthDisplay {
   width: 280px;
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
-  overflow-y: auto;
-  padding: 10px;
+  overflow: hidden;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3617,6 +3887,46 @@ input#strokeWidthDisplay {
   font-family: var(--font-tech-label);
 }
 
+.shape-params-flyout .flyout-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: calc(100vh - 16px);
+  padding: 10px 18px 10px 10px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.shape-params-flyout .flyout-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.shape-params-flyout .flyout-scrollbar {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  bottom: 6px;
+  width: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  z-index: 2;
+}
+
+.shape-params-flyout .flyout-scrollbar .panel-scroll-thumb {
+  position: absolute;
+  left: 0;
+  width: 8px;
+  border-radius: 4px;
+  background: #4b5866;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.shape-params-flyout .flyout-scrollbar .panel-scroll-thumb:hover {
+  background: #64748b;
+}
+
 .shape-params-flyout.tone-circle {
   border-color: rgba(79, 143, 247, 0.55);
   background: linear-gradient(to bottom, rgba(79, 143, 247, 0.22), rgba(47, 111, 224, 0.18)),
@@ -3626,6 +3936,57 @@ input#strokeWidthDisplay {
 .shape-params-flyout.tone-rect {
   border-color: rgba(45, 212, 191, 0.45);
   background: linear-gradient(to bottom, rgba(45, 212, 191, 0.18), rgba(15, 148, 132, 0.16)),
+    linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+.shape-params-flyout.tone-operations,
+.shape-params-flyout.tone-swatches,
+.shape-params-flyout.tone-pages,
+.shape-params-flyout.tone-arrange,
+.shape-params-flyout.tone-layers {
+  width: 340px;
+}
+
+.shape-params-flyout.tone-history {
+  border-color: rgba(224, 180, 138, 0.5);
+  background: linear-gradient(to bottom, rgba(224, 180, 138, 0.20), rgba(160, 110, 60, 0.14)),
+    linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+.shape-params-flyout.tone-layers {
+  width: 420px;
+  border-color: rgba(140, 168, 214, 0.5);
+  background: linear-gradient(to bottom, rgba(140, 168, 214, 0.20), rgba(70, 100, 160, 0.14)),
+    linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+.shape-params-flyout.tone-operations {
+  border-color: rgba(163, 196, 138, 0.5);
+  background: linear-gradient(to bottom, rgba(163, 196, 138, 0.20), rgba(90, 130, 70, 0.14)),
+    linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+.shape-params-flyout.tone-swatches {
+  border-color: rgba(214, 140, 186, 0.5);
+  background: linear-gradient(to bottom, rgba(214, 140, 186, 0.18), rgba(150, 70, 120, 0.14)),
+    linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+.shape-params-flyout.tone-pages {
+  border-color: rgba(214, 176, 96, 0.5);
+  background: linear-gradient(to bottom, rgba(214, 176, 96, 0.18), rgba(150, 110, 40, 0.14)),
+    linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+.shape-params-flyout.tone-arrange {
+  border-color: rgba(167, 139, 250, 0.5);
+  background: linear-gradient(to bottom, rgba(167, 139, 250, 0.20), rgba(109, 80, 190, 0.14)),
+    linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
+}
+
+.shape-params-flyout.tone-grid {
+  border-color: rgba(148, 163, 184, 0.55);
+  background: linear-gradient(to bottom, rgba(148, 163, 184, 0.20), rgba(100, 116, 139, 0.14)),
     linear-gradient(to bottom, #2e3947 0%, #232c37 55%, #1a212b 100%);
 }
 
@@ -3646,6 +4007,26 @@ input#strokeWidthDisplay {
   color: #7fd4c2;
 }
 
+.shape-params-flyout.tone-operations .flyout-title {
+  color: #c5d7b4;
+}
+
+.shape-params-flyout.tone-swatches .flyout-title {
+  color: #e7b7d4;
+}
+
+.shape-params-flyout.tone-pages .flyout-title {
+  color: #e6d3a3;
+}
+
+.shape-params-flyout.tone-arrange .flyout-title {
+  color: #d4c4f5;
+}
+
+.shape-params-flyout.tone-grid .flyout-title {
+  color: #a9b8cc;
+}
+
 .shape-params-flyout .flyout-preview {
   width: 100%;
   height: 96px;
@@ -3661,16 +4042,154 @@ input#strokeWidthDisplay {
   height: 100%;
 }
 
+/* Form fields: the label sits over the control, and a segment lays
+   several fields across one row. A lone note or action spans the row. */
 .shape-params-flyout .panelParameters,
+.shape-params-flyout .flyout-seg,
+.shape-params-flyout .flyout-trio-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+  align-items: end;
+}
+
+.shape-params-flyout .flyout-seg > .flyout-title,
+.shape-params-flyout .flyout-seg > .panelParameters,
+.shape-params-flyout .flyout-seg > .flyout-trio-row,
+.shape-params-flyout .flyout-seg > .check-row,
+.shape-params-flyout .panelParameters > .check-row,
+.shape-params-flyout .param-item:has(> button:only-child),
+.shape-params-flyout .param-item:has(input[type='range']),
+.shape-params-flyout .param-item:has(.flyout-width-row),
+.shape-params-flyout .param-item:not(:has(> label)):not(:has(> select)):not(:has(> .custom-select)):not(:has(> .num-stepper)):not(:has(> .seg-ctrl)) {
+  grid-column: 1 / -1;
+}
+
 .shape-params-flyout .param-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 3px;
   min-width: 0;
 }
 
-.shape-params-flyout .panelParameters {
-  gap: 8px;
+.shape-params-flyout .param-item > label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.shape-params-flyout .param-item > .custom-select,
+.shape-params-flyout .param-item > select,
+.shape-params-flyout .param-item > .num-stepper,
+.shape-params-flyout .param-item > .seg-ctrl {
+  width: 100%;
+  min-width: 0;
+}
+
+.shape-params-flyout .param-item > .custom-select .custom-select-trigger,
+.shape-params-flyout .param-item > select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.shape-params-flyout .param-item > button,
+.shape-params-flyout .swatches-tool,
+.shape-params-flyout .pages-panel button {
+  appearance: none;
+  background: linear-gradient(to bottom, #2b3542, #1f2732);
+  border: 1px solid #0b0e12;
+  border-radius: 5px;
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.shape-params-flyout .param-item > button:disabled,
+.shape-params-flyout .pages-panel button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.shape-params-flyout .swatches-tool.active {
+  background: #2b6cb0;
+  color: #fff;
+}
+
+.shape-params-flyout .swatches-panel,
+.shape-params-flyout .pages-panel {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.shape-params-flyout .pages-panel-actions,
+.shape-params-flyout .pages-guide-add,
+.shape-params-flyout .pages-guide-toggles,
+.shape-params-flyout .pages-row,
+.shape-params-flyout .pages-guide-row,
+.shape-params-flyout .swatches-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.shape-params-flyout .pages-list,
+.shape-params-flyout .pages-guides {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.shape-params-flyout .pages-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shape-params-flyout .pages-row.is-active {
+  background: rgba(214, 176, 96, 0.16);
+}
+
+.shape-params-flyout .pages-subhead,
+.shape-params-flyout .swatches-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dp-text-2);
+  margin: 4px 0 0;
+}
+
+.shape-params-flyout select,
+.shape-params-flyout .swatches-hex,
+.shape-params-flyout .pages-panel input,
+.shape-params-flyout .pages-panel select {
+  background: var(--dp-bg-1);
+  border: 1px solid var(--dp-border-soft);
+  border-radius: 5px;
+  color: var(--dp-text-1);
+  font: inherit;
+  padding: 3px 6px;
+}
+
+.shape-params-flyout .pages-guide-add input {
+  width: 72px;
 }
 
 .shape-params-flyout .param-item label,
@@ -3795,12 +4314,22 @@ input#strokeWidthDisplay {
   color: #c6cdd7;
 }
 
-.shape-params-flyout .flyout-width-row,
-.shape-params-flyout .flyout-dash-row {
+.shape-params-flyout .flyout-width-row {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1 1 auto;
+}
+
+.shape-params-flyout .flyout-dash-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .shape-params-flyout .flyout-width-row input[type='range'] {
@@ -3943,9 +4472,10 @@ input#strokeWidthDisplay {
 
 .shape-params-flyout .flyout-dash-cell {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1 1 0;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -3968,21 +4498,12 @@ input#strokeWidthDisplay {
 /* Flyout segments: related controls grouped in a divider block. A
    segment holds one param-item, or a trio-row of three side by side. */
 .shape-params-flyout .flyout-seg {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--dp-border-soft);
 }
 
 .shape-params-flyout .flyout-trio-row {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-}
-
-.shape-params-flyout .flyout-trio-row .param-item {
-  flex: 1 1 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 /* Inline row: label beside its control (Typeface + dropdown) instead of
@@ -4288,6 +4809,92 @@ kbd,
   flex-direction: column;
   flex: none;
   width: var(--rail-width);
+}
+
+/* Summary on the right end of the horizontal strip. */
+#controlPanel.dock-top-right .panel-side {
+  left: auto;
+  right: 0;
+}
+
+#controlPanel.dock-top-right .panel-sections-frame {
+  margin-left: 0;
+  margin-right: var(--rail-width);
+}
+
+/* Right sidebar: the section strip stacks down the right of the canvas,
+   and the summary column sits at the top or the bottom of that sidebar. */
+#canvasContainer:has(#controlPanel.dock-side-top) #topOverlayStack,
+#canvasContainer:has(#controlPanel.dock-side-bottom) #topOverlayStack {
+  bottom: 10px;
+}
+
+#canvasContainer #topOverlayStack #controlPanel.dock-side-top,
+#canvasContainer #topOverlayStack #controlPanel.dock-side-bottom {
+  position: absolute !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: auto !important;
+  width: 320px !important;
+  max-height: none !important;
+  height: auto !important;
+}
+
+#controlPanel.dock-side-top .panel-shell,
+#controlPanel.dock-side-bottom .panel-shell {
+  flex-direction: column;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+}
+
+#controlPanel.dock-side-top .panel-side,
+#controlPanel.dock-side-bottom .panel-side {
+  position: relative;
+  left: auto;
+  right: auto;
+  top: auto;
+  width: 100%;
+}
+
+#controlPanel.dock-side-bottom .panel-side {
+  order: 2;
+}
+
+#controlPanel.dock-side-top .panel-sections-frame,
+#controlPanel.dock-side-bottom .panel-sections-frame {
+  margin: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+#controlPanel.dock-side-top .panel-sections,
+#controlPanel.dock-side-bottom .panel-sections {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  max-height: none;
+  height: 100%;
+}
+
+#controlPanel.dock-side-top .panel-row-break,
+#controlPanel.dock-side-bottom .panel-row-break {
+  display: none;
+}
+
+#controlPanel.dock-side-top .panel-card,
+#controlPanel.dock-side-bottom .panel-card {
+  width: 100% !important;
+  max-width: 100%;
+  min-width: 0 !important;
+  flex: 1 1 auto;
+}
+
+#controlPanel.dock-side-top .pane-titlebar.titlebar-single,
+#controlPanel.dock-side-bottom .pane-titlebar.titlebar-single {
+  flex-wrap: wrap !important;
 }
 
 #controlPanel .panel-rail {
@@ -4826,61 +5433,45 @@ kbd,
   color: var(--dp-text-3);
 }
 
-/* Compact undo/redo label readout inside the History section. */
-#controlPanel .history-readout {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: var(--font-tech-mono);
-  font-size: 0.6875rem;
-  color: var(--dp-text-2);
-  white-space: nowrap;
-}
-
-/* Clickable history entry list under the History titlebar. */
-#controlPanel .history-list {
+/* History entries live in the preview flyout. */
+.history-list {
   list-style: none;
   margin: 0;
-  padding: 4px 6px 6px;
-  max-height: 180px;
-  overflow-y: auto;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
-#controlPanel .history-list-empty {
-  font-size: 0.75rem;
-  color: var(--dp-text-3);
-}
-
-#controlPanel .history-list-entry {
+.history-list-entry {
+  appearance: none;
   display: block;
   width: 100%;
   text-align: left;
-  padding: 2px 6px;
+  padding: 5px 8px;
+  font: inherit;
   font-size: 0.75rem;
   color: var(--dp-text-1);
   background: transparent;
-  border: none;
-  border-radius: 3px;
+  border: 1px solid transparent;
+  border-radius: 5px;
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#controlPanel .history-list-entry:hover {
+.history-list-entry:hover {
   background: var(--dp-surface-2);
 }
 
-#controlPanel .history-list-entry.is-undone {
+.history-list-entry.is-undone {
   color: var(--dp-text-3);
 }
 
-#controlPanel .history-list-entry.is-current {
-  background: var(--dp-surface-2);
+.history-list-entry.is-current {
+  background: rgba(224, 180, 138, 0.16);
+  border-color: rgba(224, 180, 138, 0.45);
   font-weight: 600;
 }
 
@@ -5075,6 +5666,47 @@ kbd,
   font-family: var(--font-tech-label);
   padding: 0 8px;
   z-index: 900;
+}
+
+.app-menu-dock {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 0 4px 10px;
+}
+
+.app-menu-dock button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  color: var(--dp-text-2);
+  background: linear-gradient(to bottom, #2b3542, #1f2732);
+  border: 1px solid #0b0e12;
+  border-radius: 5px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+}
+
+.app-menu-dock button svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+}
+
+.app-menu-dock button:hover {
+  color: #fff;
+  border-color: #3d4a59;
+}
+
+.app-menu-dock button.is-active {
+  color: #fff;
+  border-color: var(--dp-accent);
+  box-shadow: inset 0 0 0 1px var(--dp-accent), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .app-menu {
   position: relative;
@@ -5886,20 +6518,116 @@ kbd,
 .grid-body { display: flex; flex-direction: column; gap: 6px; padding: 6px; }
 .grid-body-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
-/* Layers & Objects panel (Slice 1) */
-.layers-panel { display: flex; flex-direction: column; gap: 6px; padding: 6px; }
+/* Layers & Objects flyout. */
+.layers-panel { display: flex; flex-direction: column; gap: 6px; }
 .layers-panel-actions { display: flex; justify-content: flex-end; }
-.layers-layer { border: 1px solid var(--panel-border, #b8b8b8); border-radius: 3px; }
-.layers-layer-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 6px; font-weight: 600; cursor: pointer; background: rgba(0,0,0,0.05); }
-.layers-layer-row.is-active { background: rgba(40,100,200,0.18); }
-.layers-layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.layers-layer-buttons { display: flex; gap: 2px; }
-.layers-object-row { display: flex; align-items: center; gap: 6px; padding: 2px 6px 2px 8px; cursor: pointer; }
-.layers-object-row.is-selected { background: rgba(40,100,200,0.22); }
-.layers-object-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.layers-object-controls { display: flex; align-items: center; gap: 2px; }
-.layers-object-controls input[type="number"] { width: 44px; }
-.layers-empty { padding: 2px 8px; opacity: 0.6; font-style: italic; }
+.layers-panel button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: linear-gradient(to bottom, #2b3542, #1f2732);
+  border: 1px solid #0b0e12;
+  border-radius: 5px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.45);
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.layers-panel button:hover:not(:disabled) {
+  border-color: #3d4a59;
+  color: #fff;
+}
+.layers-panel button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.layers-panel button[aria-pressed="true"] {
+  background: linear-gradient(to bottom, #5a6675, #454f5c);
+  color: #fff;
+}
+.layers-layer-buttons button,
+.layers-object-controls button,
+.layers-group-toggle {
+  padding: 2px 5px;
+  min-width: 24px;
+  min-height: 24px;
+}
+.layers-name-input {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  background: var(--dp-bg-0);
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+.layers-name-input:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 1px;
+}
+.layers-layer {
+  border: 1px solid var(--dp-border);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.layers-layer.is-active { border-color: rgba(140, 168, 214, 0.7); }
+.layers-layer.is-hidden { opacity: 0.55; }
+.layers-layer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.layers-layer-row.is-active { background: rgba(140, 168, 214, 0.16); }
+.layers-layer-name,
+.layers-object-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.layers-layer-buttons,
+.layers-object-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+.layers-kind {
+  flex: none;
+  width: 16px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: var(--dp-text-3);
+}
+.layers-object-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 8px;
+  cursor: pointer;
+}
+.layers-object-row.is-selected { background: rgba(140, 168, 214, 0.22); }
+.layers-object-row.is-hidden { opacity: 0.5; }
+.layers-empty {
+  padding: 2px 8px 6px;
+  font-size: 11px;
+  color: var(--dp-text-3);
+}
 .help-window { max-width: 720px; }
 .help-window-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 8px; }
 .help-window-body { max-height: 60vh; overflow: auto; white-space: pre-wrap; font-size: 12px; }
@@ -5917,9 +6645,57 @@ kbd,
 .swatch { width: 18px; height: 18px; padding: 0; border: 1px solid rgba(0,0,0,0.35); border-radius: 2px; cursor: pointer; }
 .swatch:hover { outline: 2px solid #2b6cb0; outline-offset: 0; }
 
-/* Arrange (Slice 4) */
-.arrange-panel { padding: 6px 8px; }
-.arrange-label { font-size: 11px; font-weight: 600; margin: 4px 0 3px; }
-.arrange-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
-.arrange-btn { flex: 1 1 auto; }
-.arrange-empty { font-size: 11px; opacity: 0.7; }
+/* Arrange controls live in the preview flyout. */
+.shape-params-flyout .arrange-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shape-params-flyout .arrange-grid,
+.shape-params-flyout .arrange-grid.cols-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.shape-params-flyout .arrange-action {
+  appearance: none;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+  background: linear-gradient(to bottom, #2b3542, #1f2732);
+  border: 1px solid #0b0e12;
+  border-radius: 5px;
+  color: var(--dp-text-1);
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.shape-params-flyout .arrange-action span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shape-params-flyout .arrange-action:hover:not(:disabled) {
+  border-color: rgba(167, 139, 250, 0.7);
+}
+
+.shape-params-flyout .arrange-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.shape-params-flyout .arrange-empty {
+  font-size: 11px;
+  color: var(--dp-text-2);
+}

@@ -77,7 +77,7 @@
         {
           "kind": "narrate",
           "title": "Noise lives here",
-          "body": "Noise would displace this outline's points by a seeded random amount — same seed, same roughness, every time. The section holds the button and its amount."
+          "body": "Noise would displace this outline's points by a seeded random amount — same seed, same roughness, every time. Open the preview box for the button and its amount."
         },
         {
           "kind": "wait",
@@ -115,7 +115,7 @@
       "target": "section-pathOpsControls",
       "bubble": {
         "title": "Apply Simplify",
-        "body": "In the Path Operations section, click Simplify. The circle's redundant points are removed — the outline barely moves, but the path underneath gets much simpler.",
+        "body": "Open the Path Operations preview, choose Simplify, and click Simplify path. The circle's redundant points are removed — the outline barely moves, but the path underneath gets much simpler.",
         "placement": "right"
       },
       "expect": {
@@ -127,7 +127,7 @@
       "target": "section-pathOpsControls",
       "bubble": {
         "title": "The five operations",
-        "body": "Noise displaces points with seeded randomness. Simplify removes points. Fit re-fits a smooth curve through a path. Hull wraps the points in a concave hull. Stroke to Outline turns a stroked path into the outline shape itself. Each keeps its settings in this section.",
+        "body": "Noise displaces points with seeded randomness. Simplify removes points. Fit re-fits a smooth curve through a path. Hull wraps the points in a concave hull. Stroke to Outline turns a stroked path into the outline shape itself. Pick one in the bar; its settings open from the preview box.",
         "placement": "below"
       },
       "expect": {

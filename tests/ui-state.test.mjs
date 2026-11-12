@@ -90,6 +90,19 @@ test('legacy grouped panel layout becomes one ordered sequence', () => {
   ]);
 });
 
+test('panel dock persists the section and summary arrangement', () => {
+  const mem = store();
+  const panels = new PanelsManager(mem);
+  assert.equal(panels.panelDock, 'top-left');
+  const before = panels.getVersion();
+  panels.setPanelDock('side-top');
+  assert.equal(panels.panelDock, 'side-top');
+  assert.ok(panels.getVersion() > before);
+  panels.setPanelDock('side-top');
+  assert.equal(panels.getVersion(), before + 1);
+  assert.equal(new PanelsManager(mem).panelDock, 'side-top');
+});
+
 test('dragging across a row boundary keeps the requested visual row', () => {
   const mem = store();
   const panels = new PanelsManager(mem);

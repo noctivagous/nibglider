@@ -11,7 +11,7 @@
 // through App wiring; menu defs from tests/ui-state.test.mjs, stepping rules
 // from tests/menu-navigation.test.mjs.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { MenuDef, MenuItemDef } from '../ui/PanelsManager';
+import type { MenuDef, MenuItemDef, PanelDock } from '../ui/PanelsManager';
 import { stepFocus, submenuForRow } from '../ui/menuNavigation';
 import { SnapNumInput } from './ControlPanel';
 
@@ -786,6 +786,8 @@ export default function AppMenu({
   onSegmentSelect,
   panelSections,
   onPanelSection,
+  panelDock = 'top-left',
+  onPanelDock,
 }: {
   menus: MenuDef[];
   /** Commands with a wired handler; everything else renders disabled. */
@@ -807,6 +809,9 @@ export default function AppMenu({
   /** Panel sections per menu id; menus in this map grow a bottom Panel group. */
   panelSections?: Record<string, MenuPanelSection[]>;
   onPanelSection?: (action: PanelSectionAction, sectionId: string) => void;
+  /** Where the section strip and the summary column are docked. */
+  panelDock?: PanelDock;
+  onPanelDock?: (dock: PanelDock) => void;
 }) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [focusIdx, setFocusIdx] = useState<number>(-1);
@@ -1210,6 +1215,76 @@ export default function AppMenu({
         </div>
         );
       })}
+      <PanelDockSwitcher dock={panelDock} onChange={onPanelDock} />
+    </div>
+  );
+}
+
+const PANEL_DOCK_OPTIONS: Array<{ id: PanelDock; label: string }> = [
+  { id: 'top-left', label: 'Sections on top, summary on the left' },
+  { id: 'top-right', label: 'Sections on top, summary on the right' },
+  { id: 'side-top', label: 'Sections in a right sidebar, summary on top' },
+  { id: 'side-bottom', label: 'Sections in a right sidebar, summary below' },
+];
+
+function DockGlyph({ id }: { id: PanelDock }) {
+  const side = id.startsWith('side');
+  const summaryEnd = id.endsWith('right') || id.endsWith('bottom');
+  return (
+    <svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true">
+      {side ? (
+        <>
+          <rect x="9" y="0.5" width="6.5" height="11" rx="1" />
+          <rect
+            x="10"
+            y={summaryEnd ? 7 : 1.4}
+            width="4.5"
+            height="3.2"
+            rx="0.4"
+            fill="currentColor"
+            stroke="none"
+          />
+        </>
+      ) : (
+        <>
+          <rect x="0.5" y="0.5" width="15" height="5" rx="1" />
+          <rect
+            x={summaryEnd ? 11 : 1.4}
+            y="1.4"
+            width="3.4"
+            height="3.2"
+            rx="0.4"
+            fill="currentColor"
+            stroke="none"
+          />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function PanelDockSwitcher({
+  dock,
+  onChange,
+}: {
+  dock: PanelDock;
+  onChange?: (dock: PanelDock) => void;
+}) {
+  return (
+    <div className="app-menu-dock" role="group" aria-label="Panel layout">
+      {PANEL_DOCK_OPTIONS.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          className={dock === option.id ? 'is-active' : undefined}
+          aria-pressed={dock === option.id}
+          aria-label={option.label}
+          title={option.label}
+          onClick={() => onChange?.(option.id)}
+        >
+          <DockGlyph id={option.id} />
+        </button>
+      ))}
     </div>
   );
 }

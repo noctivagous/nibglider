@@ -147,7 +147,7 @@
       "target": "section-arrangeControls",
       "bubble": {
         "title": "Align their bottoms",
-        "body": "With both selected, click Align Bottom in the Arrange section (or Object ▸ Align ▸ Align Bottom). The lower shape pulls the other down to its edge.",
+        "body": "With both selected, open the Arrange preview and click Bottom (or Object ▸ Align ▸ Align Bottom). The lower shape pulls the other down to its edge.",
         "placement": "right"
       },
       "expect": {
@@ -159,7 +159,7 @@
       "target": "section-arrangeControls",
       "bubble": {
         "title": "Flip them",
-        "body": "Both are still selected. Click Flip Vertical in the Arrange section (or Object ▸ Flip ▸ Flip Vertical) — the pair swaps places around their shared centre.",
+        "body": "Both are still selected. Open the Arrange preview, choose Space, and click Flip V (or Object ▸ Flip ▸ Flip Vertical) — the pair swaps places around their shared centre.",
         "placement": "right"
       },
       "expect": {

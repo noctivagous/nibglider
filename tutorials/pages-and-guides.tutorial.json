@@ -63,7 +63,7 @@
       "target": "section-pagesControls",
       "bubble": {
         "title": "Add a page",
-        "body": "Click Add Page in the Pages & Guides section. A fresh page appears in the list and becomes the page you are looking at — the first page keeps its artwork.",
+        "body": "Open the Pages & Guides preview and click Add page. A fresh page appears in the list and becomes the page you are looking at — the first page keeps its artwork.",
         "placement": "right"
       },
       "expect": {
@@ -75,7 +75,7 @@
       "target": "section-pagesControls",
       "bubble": {
         "title": "Add a guide by number",
-        "body": "In the section's guide row, pick an axis and a position and add the guide. It lands at exactly that position on this page.",
+        "body": "In the Pages & Guides preview, pick an axis and a position and add the guide. It lands at exactly that position on this page. Show guides on the bar turns those lines on and off.",
         "placement": "right"
       },
       "expect": {
@@ -99,7 +99,7 @@
       "target": "section-pagesControls",
       "bubble": {
         "title": "Open Page Setup",
-        "body": "Click Page Setup… in this section. Paper size, margins, and the print range live there — they describe how this document prints, not how it draws. Close it when you have seen it.",
+        "body": "Open the Pages & Guides preview and click Page Setup…. Paper size, margins, and the print range live there — they describe how this document prints, not how it draws. Close it when you have seen it.",
         "placement": "right"
       },
       "expect": {

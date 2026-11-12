@@ -53,7 +53,7 @@
         {
           "kind": "narrate",
           "title": "Keeping it",
-          "body": "The + Keep fill button in this section saves the current fill colour into the palette below. The demo cannot press panel buttons, so the next step is yours — the red is already set."
+          "body": "Open the Swatches preview and use + Keep fill. That saves the current fill colour into the document palette. The demo cannot press panel buttons, so the next step is yours — the red is already set."
         },
         {
           "kind": "wait",
@@ -66,7 +66,7 @@
       "target": "section-swatchesControls",
       "bubble": {
         "title": "Keep the fill colour",
-        "body": "Click + Keep fill in the Swatches section. The brick-red fill is added to the palette in this section.",
+        "body": "Open the Swatches preview and click + Keep fill. The brick-red fill is added to the palette.",
         "placement": "right"
       },
       "expect": {
@@ -161,7 +161,7 @@
       "target": "section-swatchesControls",
       "bubble": {
         "title": "Paint the fill from the palette",
-        "body": "The blue rectangle is selected. In the Swatches section, click the brick-red swatch you kept — its fill repaints to the kept colour.",
+        "body": "The blue rectangle is selected. Open the Swatches preview and click the brick-red swatch you kept — its fill repaints to the kept colour.",
         "placement": "right"
       },
       "expect": {
@@ -176,7 +176,7 @@
       "target": "section-swatchesControls",
       "bubble": {
         "title": "Paint the stroke from the palette",
-        "body": "Shift+click the same brick-red swatch. Shift sends the colour to the stroke instead — the rectangle's outline turns red.",
+        "body": "In the Swatches preview, Shift+click the same brick-red swatch. Shift sends the colour to the stroke instead — the rectangle's outline turns red.",
         "placement": "right"
       },
       "expect": {

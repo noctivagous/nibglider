@@ -65,7 +65,7 @@
       "target": "section-gridControls",
       "bubble": {
         "title": "Finer detail",
-        "body": "Subdivisions splits each cell into smaller steps for snapping without crowding the page, and Style switches the dots to full lines. A diamond grid is under Type.",
+        "body": "Open the grid preview for subdivisions, style, colour, and opacity. Subdivisions split each cell into smaller steps, and Style switches the dots to full lines. A diamond grid is under Type.",
         "placement": "below"
       },
       "expect": {

@@ -1033,6 +1033,8 @@ export default function App() {
         onSegmentSelect={handleExportSegment}
         panelSections={menuPanelSections}
         onPanelSection={handlePanelSection}
+        panelDock={panels.panelDock}
+        onPanelDock={(dock) => panels.setPanelDock(dock)}
       />
       <input
         ref={imageFileInputRef}
@@ -1095,7 +1097,8 @@ export default function App() {
               (ui.controlsVisible
                 ? 'control-panel-fixed'
                 : 'control-panel-fixed panel-hidden') +
-              (HIDE_SECTION_TITLES ? ' titles-hidden' : '')
+              (HIDE_SECTION_TITLES ? ' titles-hidden' : '') +
+              ` dock-${panels.panelDock}`
             }
             aria-hidden={!ui.controlsVisible}
             inert={!ui.controlsVisible}

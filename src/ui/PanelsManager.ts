@@ -85,6 +85,17 @@ const COLLAPSED_KEY = 'nibglider.panelCollapsed';
 const REMOVED_KEY = 'nibglider.panelRemoved';
 const ORDER_KEY = 'nibglider.panelOrder';
 const ROW_STARTS_KEY = 'nibglider.panelRowStarts';
+const DOCK_KEY = 'nibglider.panelDock';
+
+/** Where the section strip and the summary column sit.
+ * Horizontal docks keep the sections across the top (two rows, then scroll).
+ * Side docks stack them in a right sidebar. */
+export const PANEL_DOCKS = ['top-left', 'top-right', 'side-top', 'side-bottom'] as const;
+export type PanelDock = (typeof PANEL_DOCKS)[number];
+
+export function isPanelDock(value: string | null): value is PanelDock {
+  return (PANEL_DOCKS as readonly string[]).includes(value ?? '');
+}
 
 export function sectionLabel(id: string): string {
   return PANEL_SECTIONS.find((section) => section.id === id)?.label ?? id;
@@ -187,6 +198,7 @@ export class PanelsManager {
   removed: string[];
   order: Record<string, string[]>;
   rowStarts: string[];
+  panelDock: PanelDock;
   private version = 0;
   private readonly listeners = new Set<() => void>();
 
@@ -196,6 +208,15 @@ export class PanelsManager {
     this.removed = loadList(store, REMOVED_KEY);
     this.order = loadOrder(store, ORDER_KEY);
     this.rowStarts = loadList(store, ROW_STARTS_KEY);
+    const savedDock = store.getItem(DOCK_KEY);
+    this.panelDock = isPanelDock(savedDock) ? savedDock : 'top-left';
+  }
+
+  setPanelDock(dock: PanelDock): void {
+    if (dock === this.panelDock) return;
+    this.panelDock = dock;
+    this.write(DOCK_KEY, dock);
+    this.emit();
   }
 
   get menuLayout(): MenuLayout {

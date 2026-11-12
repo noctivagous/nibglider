@@ -37,6 +37,12 @@ interface FlatRow {
   isHeader: boolean;
 }
 
+function menuUsesCards(options: CustomSelectOption[]): boolean {
+  return options.some(
+    (option) => option.card || option.header || (!!option.children && menuUsesCards(option.children)),
+  );
+}
+
 function findPath(
   options: CustomSelectOption[],
   value: string,
@@ -276,6 +282,7 @@ export default function CustomSelect({
     () => findPath(options, value)?.at(-1) ?? null,
     [options, value],
   );
+  const cardMenu = useMemo(() => menuUsesCards(options), [options]);
 
 
 
@@ -288,10 +295,11 @@ export default function CustomSelect({
     const el = triggerRef.current;
     if (el) {
       const r = el.getBoundingClientRect();
+      const width = cardMenu ? 336 : 180;
       setMenuPos({
-        left: Math.max(4, Math.min(r.left, window.innerWidth - 248)),
+        left: Math.max(4, Math.min(r.left, window.innerWidth - width - 8)),
         top: r.bottom + 4,
-        minWidth: Math.max(r.width, 180),
+        minWidth: Math.max(r.width, width),
       });
     }
     const selIdx = rows.findIndex(
@@ -485,7 +493,7 @@ export default function CustomSelect({
         createPortal(
           <div
             ref={menuRef}
-            className="custom-select-menu"
+            className={'custom-select-menu' + (cardMenu ? ' has-cards' : '')}
             style={{
               left: menuPos.left,
               top: menuPos.top,

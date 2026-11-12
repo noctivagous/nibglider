@@ -8,7 +8,7 @@
       "target": "section-historyControls",
       "bubble": {
         "title": "History: every action, listed",
-        "body": "Every action you take is one entry in the History list in this section. Undo steps back through the list, redo steps forward — and the list itself is clickable.",
+        "body": "Every action you take is one entry in History. Undo and redo step through them. Hover the preview — it shows the last action — to open the list.",
         "placement": "center"
       },
       "expect": {
@@ -33,7 +33,7 @@
       "target": "canvas",
       "bubble": {
         "title": "Watch the list",
-        "body": "Steer to the opposite corner and press I again. A new entry appears at the bottom of the History list — one entry per action.",
+        "body": "Steer to the opposite corner and press I again. The history preview changes to that action — one entry per action.",
         "placement": "center"
       },
       "expect": {
@@ -71,7 +71,7 @@
       "target": "section-historyControls",
       "bubble": {
         "title": "Click to jump",
-        "body": "Click any entry in this History list to jump straight to that point: the document becomes what it was then. Click the newest entry to return to the present. Jumping is not undoing — no entries are lost.",
+        "body": "Hover the history preview, then click any entry to jump straight to that point: the document becomes what it was then. Click the newest entry to return to the present. Jumping is not undoing — no entries are lost.",
         "placement": "right"
       },
       "expect": {

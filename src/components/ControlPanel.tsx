@@ -9,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
   type ChangeEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
 } from 'react';
@@ -34,10 +35,17 @@ import DocumentGallery, { type GalleryMode } from './DocumentGallery';
 import NewDocumentDialog, { type NewDocumentSpec } from './NewDocumentDialog';
 import FindReplaceDialog from './FindReplaceDialog';
 import PdfImportDialog from './PdfImportDialog';
-import LayersPanel from './LayersPanel';
+import LayersPanel, { LayersPreview, LayersQuickControls } from './LayersPanel';
 import PagesPanel from './PagesPanel';
 import SwatchesPanel from './SwatchesPanel';
-import ArrangePanel from './ArrangePanel';
+import { loadDocumentPalette, swatchPreviewSource } from '../ui/swatches';
+import ArrangePanel, { ArrangePreview } from './ArrangePanel';
+import {
+  ARRANGE_TOOL_OPTIONS,
+  arrangeToolTitle,
+  isArrangeTool,
+  type ArrangeTool,
+} from './arrangeTools';
 import {
   IMPORT_ACCEPT,
   renameTarget,
@@ -981,24 +989,48 @@ function OrientationSeg({
 // Path Operations (Slice 20): the reshape operations that used to
 // live inside the Stroke flyout. The Stroke section keeps paint
 // only; these buttons disable when the selection cannot take them.
-function PathOpsParams({ engine }: { engine: NibGliderEngine }) {
+type PathOp = 'outline' | 'noise' | 'simplify' | 'fit' | 'hull';
+
+const PATH_OP_OPTIONS: CustomSelectOption[] = [
+  { value: 'outline', label: 'Outline' },
+  { value: 'noise', label: 'Noise' },
+  { value: 'simplify', label: 'Simplify' },
+  { value: 'fit', label: 'Fit' },
+  { value: 'hull', label: 'Hull' },
+];
+
+const PATH_OP_TITLES: Record<PathOp, string> = {
+  outline: 'Stroke to Outline',
+  noise: 'Noise',
+  simplify: 'Simplify',
+  fit: 'Fit Curves',
+  hull: 'Concave Hull',
+};
+
+function isPathOp(value: string): value is PathOp {
+  return value === 'outline' || value === 'noise' || value === 'simplify' || value === 'fit' || value === 'hull';
+}
+
+function PathOpsParams({ engine, op }: { engine: NibGliderEngine; op: PathOp }) {
   const ops = engine.pathOpAvailability();
-  return (
-    <div className="panelParameters">
-      <div className="flyout-trio-row">
-        <span className="param-item">
-          <label>Outline</label>
-          <button
-            type="button"
-            disabled={!ops.strokeOutline}
-            onClick={() => engine.strokeToOutlineSelection()}
-            title="Convert the selected stroked paths to their outlined filled form"
-          >
-            Stroke to Outline
-          </button>
-        </span>
-      </div>
-      <div className="flyout-trio-row">
+  let fields: ReactNode;
+  if (op === 'outline') {
+    fields = (
+      <span className="param-item">
+        <label>Outline</label>
+        <button
+          type="button"
+          disabled={!ops.strokeOutline}
+          onClick={() => engine.strokeToOutlineSelection()}
+          title="Convert the selected stroked paths to their outlined filled form"
+        >
+          Stroke to Outline
+        </button>
+      </span>
+    );
+  } else if (op === 'noise') {
+    fields = (
+      <>
         <span className="param-item">
           <label htmlFor="noiseAmplitudeInput">Noise size</label>
           <NumericStepper
@@ -1045,7 +1077,7 @@ function PathOpsParams({ engine }: { engine: NibGliderEngine }) {
               checked={engine.noisePreviewOn}
               onChange={(e) => engine.setNoisePreview(e.target.checked)}
             />
-            Preview
+            Preview on the path
           </label>
           <button
             type="button"
@@ -1056,8 +1088,11 @@ function PathOpsParams({ engine }: { engine: NibGliderEngine }) {
             Apply noise
           </button>
         </span>
-      </div>
-      <div className="flyout-trio-row">
+      </>
+    );
+  } else if (op === 'simplify') {
+    fields = (
+      <>
         <span className="param-item">
           <label htmlFor="simplifyToleranceInput">Simplify within</label>
           <NumericStepper
@@ -1072,7 +1107,6 @@ function PathOpsParams({ engine }: { engine: NibGliderEngine }) {
           />
         </span>
         <span className="param-item">
-          <label>Simplify</label>
           <button
             type="button"
             disabled={!ops.simplify}
@@ -1082,6 +1116,11 @@ function PathOpsParams({ engine }: { engine: NibGliderEngine }) {
             Simplify path
           </button>
         </span>
+      </>
+    );
+  } else if (op === 'fit') {
+    fields = (
+      <>
         <span className="param-item">
           <label htmlFor="fitToleranceInput">Fit within</label>
           <NumericStepper
@@ -1096,7 +1135,6 @@ function PathOpsParams({ engine }: { engine: NibGliderEngine }) {
           />
         </span>
         <span className="param-item">
-          <label>Fit</label>
           <button
             type="button"
             disabled={!ops.fit}
@@ -1106,8 +1144,11 @@ function PathOpsParams({ engine }: { engine: NibGliderEngine }) {
             Fit curves
           </button>
         </span>
-      </div>
-      <div className="flyout-trio-row">
+      </>
+    );
+  } else {
+    fields = (
+      <>
         <span className="param-item">
           <label htmlFor="hullConcavenessInput">Hull tightness</label>
           <NumericStepper
@@ -1122,7 +1163,6 @@ function PathOpsParams({ engine }: { engine: NibGliderEngine }) {
           />
         </span>
         <span className="param-item">
-          <label>Hull</label>
           <button
             type="button"
             disabled={!ops.hull}
@@ -1132,11 +1172,14 @@ function PathOpsParams({ engine }: { engine: NibGliderEngine }) {
             Concave hull
           </button>
         </span>
-      </div>
+      </>
+    );
+  }
+  return (
+    <div className="panelParameters">
+      {fields}
       {engine.pathOpFeedback ? (
-        <div className="flyout-trio-row">
-          <span className="param-item">{engine.pathOpFeedback}</span>
-        </div>
+        <span className="param-item">{engine.pathOpFeedback}</span>
       ) : null}
     </div>
   );
@@ -1323,7 +1366,7 @@ function ShapeParamsFlyout({
 }: {
   open: boolean;
   triggerRef: RefObject<HTMLElement | null>;
-  tone: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics';
+  tone: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'operations' | 'swatches' | 'pages' | 'arrange' | 'grid' | 'layers' | 'history';
   title: string;
   preview: ReactNode;
   onClose: () => void;
@@ -1332,6 +1375,7 @@ function ShapeParamsFlyout({
   children: ReactNode;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -1422,9 +1466,12 @@ function ShapeParamsFlyout({
         }
       }}
     >
-      <div className="flyout-title">{title}</div>
-      <div className="flyout-preview">{preview}</div>
-      {children}
+      <div ref={scrollRef} className="flyout-scroll">
+        <div className="flyout-title">{title}</div>
+        <div className="flyout-preview">{preview}</div>
+        {children}
+      </div>
+      <PanelScrollRail scrollerRef={scrollRef} side="right" className="flyout-scrollbar" hideWhenFit />
     </div>,
     document.body,
   );
@@ -2850,6 +2897,150 @@ function ProgressionFields(props: {
   );
 }
 
+function PathOpPreview({
+  op,
+  amplitude,
+  simplifyTolerance,
+  fitTolerance,
+  concaveness,
+}: {
+  op: PathOp;
+  amplitude: number;
+  simplifyTolerance: number;
+  fitTolerance: number;
+  concaveness: number;
+}) {
+  const stroke = {
+    fill: 'none' as const,
+    stroke: 'currentColor',
+    strokeWidth: 1.6,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+  let body: ReactNode;
+  if (op === 'outline') {
+    body = (
+      <>
+        <path d="M12 22 C18 8, 28 26, 36 12 C44 4, 50 18, 54 10" />
+        <path d="M10 25 C16 6, 28 30, 36 14 C46 1, 52 20, 56 8" opacity="0.55" />
+        <path d="M14 19 C20 10, 28 22, 36 10 C42 7, 48 16, 52 12" opacity="0.55" />
+      </>
+    );
+  } else if (op === 'noise') {
+    const amp = Math.max(0.4, Math.min(9, amplitude / 6));
+    let d = '';
+    for (let i = 0; i <= 18; i += 1) {
+      const x = 8 + i * 2.7;
+      const y = 16 + Math.sin(i * 1.15) * amp * (i % 2 === 0 ? 1 : 0.65);
+      d += `${i === 0 ? 'M' : ' L'}${x.toFixed(1)} ${y.toFixed(1)}`;
+    }
+    body = <path d={d} />;
+  } else if (op === 'simplify') {
+    const detail = Math.max(1, Math.min(8, Math.round(9 - Math.log2(Math.max(0.05, simplifyTolerance) + 0.05))));
+    let d = 'M8 16';
+    for (let i = 1; i <= detail; i += 1) {
+      const x = 8 + (i * 48) / detail;
+      const y = i % 2 === 0 ? 10 : 22;
+      d += ` L${x.toFixed(1)} ${y}`;
+    }
+    body = <path d={d} />;
+  } else if (op === 'fit') {
+    const detail = Math.max(1, Math.min(6, Math.round(7 - Math.log2(Math.max(0.05, fitTolerance) + 0.05))));
+    let d = 'M8 20';
+    for (let i = 1; i <= detail; i += 1) {
+      const x = 8 + (i * 48) / detail;
+      const cx = x - 24 / detail;
+      const y = i % 2 === 0 ? 12 : 22;
+      d += ` Q${cx.toFixed(1)} ${y} ${x.toFixed(1)} ${i % 2 === 0 ? 16 : 18}`;
+    }
+    body = <path d={d} />;
+  } else {
+    const dent = 2 + concaveness * 7;
+    body = (
+      <>
+        <path d={`M18 8 L32 6 L48 10 L52 18 L46 22 L32 ${26 - dent} L16 22 L12 14 Z`} />
+        <circle cx="18" cy="8" r="1.1" fill="currentColor" stroke="none" />
+        <circle cx="32" cy="6" r="1.1" fill="currentColor" stroke="none" />
+        <circle cx="48" cy="10" r="1.1" fill="currentColor" stroke="none" />
+        <circle cx="32" cy={26 - dent} r="1.1" fill="currentColor" stroke="none" />
+      </>
+    );
+  }
+  const label = PATH_OP_OPTIONS.find((option) => option.value === op)?.label ?? 'Outline';
+  return (
+    <span className="combine-preview-wrap" aria-hidden="true">
+      <svg className="combine-preview" viewBox="0 0 64 32" {...stroke}>
+        {body}
+      </svg>
+      <span className="combine-preview-label">{label}</span>
+    </span>
+  );
+}
+
+function SwatchPreview({
+  documentPalette,
+  large = false,
+}: {
+  documentPalette: readonly string[];
+  large?: boolean;
+}) {
+  const source = swatchPreviewSource(documentPalette);
+  const colors = source.colors.slice(0, large ? 16 : 8);
+  return (
+    <span className={'swatch-preview-wrap' + (large ? ' is-large' : '')} aria-hidden="true">
+      <span className="swatch-preview-grid">
+        {colors.map((color) => (
+          <span key={color} className="swatch-preview-chip" style={{ backgroundColor: color }} />
+        ))}
+      </span>
+      {large ? null : <span className="combine-preview-label">{source.label}</span>}
+    </span>
+  );
+}
+
+function PagesPreview({
+  engine,
+  compact = false,
+}: {
+  engine: NibGliderEngine;
+  compact?: boolean;
+}) {
+  const page = engine.listPages().find((entry) => entry.active);
+  const guides = engine.guidesVisible ? engine.listGuides() : [];
+  const width = page?.widthPt && page.widthPt > 0 ? page.widthPt : 400;
+  const height = page?.heightPt && page.heightPt > 0 ? page.heightPt : 400;
+  const lines = guides.slice(0, 8).map((guide) => {
+    if (guide.axis === 'x') {
+      const x = 14 + Math.max(0, Math.min(1, guide.position / width)) * 36;
+      return <line key={guide.id} x1={x} y1={5} x2={x} y2={27} />;
+    }
+    const y = 5 + Math.max(0, Math.min(1, guide.position / height)) * 22;
+    return <line key={guide.id} x1={14} y1={y} x2={50} y2={y} />;
+  });
+  const countLabel = guides.length === 1 ? '1 guide' : `${guides.length} guides`;
+  const label = !engine.guidesVisible
+    ? (compact ? 'Off' : 'Hidden')
+    : guides.length === 0
+      ? (compact ? 'None' : 'No guides')
+      : (compact ? String(guides.length) : countLabel);
+  return (
+    <span className="combine-preview-wrap" aria-hidden="true">
+      <svg
+        className="combine-preview"
+        viewBox="0 0 64 32"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      >
+        <rect x="14" y="4" width="36" height="24" />
+        {lines}
+      </svg>
+      <span className="combine-preview-label">{label}</span>
+    </span>
+  );
+}
+
 function RepeatPreview() {
   return (
     <svg className="combine-preview" viewBox="0 0 64 32" aria-hidden="true">
@@ -2944,11 +3135,9 @@ function CombinePreview({
 function HistoryButtons({
   engine,
   showUndoRedo = true,
-  showHistory = true,
 }: {
   engine: NibGliderEngine;
   showUndoRedo?: boolean;
-  showHistory?: boolean;
 }) {
   const undoTitle = engine.canUndo()
     ? `Undo ${engine.undoLabel() ?? ''} (${primaryShortcut('Z')})`
@@ -2956,19 +3145,8 @@ function HistoryButtons({
   const redoTitle = engine.canRedo()
     ? `Redo ${engine.redoLabel() ?? ''} (${primaryShortcut('Z', true)})`
     : 'Nothing to redo';
-  const historyReadout = showHistory ? (
-    <span className="history-readout" role="status" title="Latest undo and redo entries">
-      {engine.canUndo()
-        ? `Undo ${engine.undoLabel() ?? ''}`.trim()
-        : 'Nothing to undo'}
-      {engine.canRedo()
-        ? ` · Redo ${engine.redoLabel() ?? ''}`.trim()
-        : ''}
-    </span>
-  ) : null;
+  if (!showUndoRedo) return null;
   return (
-    <>
-      {showUndoRedo ? (
       <div className="seg-ctrl" role="group" aria-label="Undo and redo">
         <button
           type="button"
@@ -3015,9 +3193,27 @@ function HistoryButtons({
           </svg>
         </button>
       </div>
-      ) : null}
-      {historyReadout}
-    </>
+  );
+}
+
+function HistoryPreview({ engine }: { engine: NibGliderEngine }) {
+  const label = engine.undoLabel() ?? 'Empty';
+  return (
+    <span className="combine-preview-wrap" aria-hidden="true">
+      <svg
+        className="combine-preview"
+        viewBox="0 0 64 32"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M28 8 H16 A10 10 0 1 0 16 24 H28" />
+        <path d="M22 4 L16 8 L22 12" />
+      </svg>
+      <span className="combine-preview-label">{label}</span>
+    </span>
   );
 }
 
@@ -3028,11 +3224,7 @@ function HistoryButtons({
 function HistoryList({ engine }: { engine: NibGliderEngine }) {
   const { labels, position } = engine.historyEntries();
   if (labels.length === 0) {
-    return (
-      <div className="history-list">
-        <span className="history-list-empty">Nothing yet — your edits will appear here.</span>
-      </div>
-    );
+    return <ol className="history-list" />;
   }
   return (
     <ol className="history-list">
@@ -3197,6 +3389,79 @@ function GridThumb({ kind }: { kind: 'square' | 'diamond' }) {
   );
 }
 
+function GridPreview({
+  type,
+  style,
+  color,
+  opacity,
+  subdivisions,
+  enabled,
+}: {
+  type: GridType;
+  style: 'dots' | 'lines';
+  color: string;
+  opacity: number;
+  subdivisions: number;
+  enabled: boolean;
+}) {
+  const minor = subdivisions > 1;
+  const marks: ReactNode[] = [];
+  if (type === 'square' && style === 'lines') {
+    for (let c = 0; c < 5; c += 1) {
+      const x = 8 + c * 12;
+      marks.push(<line key={`v${c}`} x1={x} y1={4} x2={x} y2={28} />);
+      if (minor && c < 4) {
+        marks.push(<line key={`mv${c}`} x1={x + 6} y1={4} x2={x + 6} y2={28} opacity={0.45} />);
+      }
+    }
+    for (let r = 0; r < 3; r += 1) {
+      const y = 6 + r * 10;
+      marks.push(<line key={`h${r}`} x1={6} y1={y} x2={58} y2={y} />);
+    }
+  } else if (type === 'square') {
+    for (let c = 0; c < 5; c += 1) {
+      for (let r = 0; r < 3; r += 1) {
+        const x = 8 + c * 12;
+        const y = 6 + r * 10;
+        marks.push(<circle key={`${c}-${r}`} cx={x} cy={y} r={1.5} fill="currentColor" stroke="none" />);
+        if (minor && c < 4) {
+          marks.push(<circle key={`mx${c}-${r}`} cx={x + 6} cy={y} r={0.7} fill="currentColor" stroke="none" opacity={0.7} />);
+        }
+      }
+    }
+  } else if (style === 'lines') {
+    marks.push(
+      <path key="d1" d="M8 26 L20 8 L32 26 L44 8 L56 26" />,
+      <path key="d2" d="M8 8 L20 26 L32 8 L44 26 L56 8" />,
+    );
+  } else {
+    for (let r = 0; r < 3; r += 1) {
+      for (let c = 0; c < 4; c += 1) {
+        const x = 10 + c * 14 + (r % 2 ? 7 : 0);
+        const y = 6 + r * 10;
+        marks.push(<circle key={`${c}-${r}`} cx={x} cy={y} r={1.5} fill="currentColor" stroke="none" />);
+      }
+    }
+  }
+  const label = !enabled ? 'Off' : style === 'lines' ? 'Lines' : 'Dots';
+  return (
+    <span className="combine-preview-wrap" aria-hidden="true">
+      <svg
+        className="combine-preview"
+        viewBox="0 0 64 32"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        style={{ color, opacity: enabled ? opacity : 0.28 }}
+      >
+        {marks}
+      </svg>
+      <span className="combine-preview-label">{label}</span>
+    </span>
+  );
+}
+
 function AspectThumb({ a, b }: { a: number; b: number }) {
   const w = a >= b ? 12 : (12 * a) / b;
   const h = a >= b ? (12 * b) / a : 12;
@@ -3223,32 +3488,36 @@ function shapeLeaf(
     value,
     label: labels[value],
     image: <ShapeThumb kind={value} />,
+    card: true,
   };
 }
 
+function shapeSection(
+  value: string,
+  label: string,
+  leaves: readonly (CircleInnerShape | RectangleInnerShape)[],
+  labels: Record<string, string>,
+): CustomSelectOption[] {
+  return [
+    { value, label, header: true, columns: 2 },
+    ...leaves.map((leaf) => shapeLeaf(leaf, labels)),
+  ];
+}
+
 const CIRCLE_OPTION_TREE: CustomSelectOption[] = [
-  {
-    value: 'grp-round',
-    label: 'Round',
-    children: (['circle', 'semicircle', 'sector', 'segment'] as const).map(
-      (v) => shapeLeaf(v, CIRCLE_SHAPE_LABELS),
-    ),
-  },
-  {
-    value: 'grp-angled',
-    label: 'Angled',
-    children: (
-      [
-        'polygon',
-        'trapezoid',
-        'parallelogram',
-        'rightTriangle',
-        'rhombus',
-        'kite',
-      ] as const
-    ).map((v) => shapeLeaf(v, CIRCLE_SHAPE_LABELS)),
-  },
-  shapeLeaf('supershape', CIRCLE_SHAPE_LABELS),
+  ...shapeSection(
+    'grp-round',
+    'Round',
+    ['circle', 'semicircle', 'sector', 'segment'],
+    CIRCLE_SHAPE_LABELS,
+  ),
+  ...shapeSection(
+    'grp-angled',
+    'Angled',
+    ['polygon', 'trapezoid', 'parallelogram', 'rightTriangle', 'rhombus', 'kite'],
+    CIRCLE_SHAPE_LABELS,
+  ),
+  ...shapeSection('grp-super', 'Supershape', ['supershape'], CIRCLE_SHAPE_LABELS),
 ];
 
 const GRID_TYPE_OPTIONS: CustomSelectOption[] = [
@@ -3283,35 +3552,15 @@ const ASPECT_RATIO_OPTIONS: CustomSelectOption[] =
   });
 
 const RECT_OPTION_TREE: CustomSelectOption[] = [
-  {
-    value: 'grp-frames',
-    label: 'Frames',
-    children: (['rectangle', 'circle'] as const).map((v) =>
-      shapeLeaf(v, RECT_SHAPE_LABELS),
-    ),
-  },
-  {
-    value: 'grp-poly',
-    label: 'Polygons',
-    children: (
-      [
-        'polygon',
-        'trapezoid',
-        'parallelogram',
-        'rightTriangle',
-        'rhombus',
-        'kite',
-      ] as const
-    ).map((v) => shapeLeaf(v, RECT_SHAPE_LABELS)),
-  },
-  shapeLeaf('supershape', RECT_SHAPE_LABELS),
-  {
-    value: 'grp-incanvas',
-    label: 'In-Canvas Elements',
-    children: (['exportFrame'] as const).map((v) =>
-      shapeLeaf(v, RECT_SHAPE_LABELS),
-    ),
-  },
+  ...shapeSection('grp-frames', 'Frames', ['rectangle', 'circle'], RECT_SHAPE_LABELS),
+  ...shapeSection(
+    'grp-poly',
+    'Polygons',
+    ['polygon', 'trapezoid', 'parallelogram', 'rightTriangle', 'rhombus', 'kite'],
+    RECT_SHAPE_LABELS,
+  ),
+  ...shapeSection('grp-rect-super', 'Supershape', ['supershape'], RECT_SHAPE_LABELS),
+  ...shapeSection('grp-incanvas', 'In-Canvas Elements', ['exportFrame'], RECT_SHAPE_LABELS),
 ];
 
 /** Actions the top File menu forwards to the panel, which owns the
@@ -3323,6 +3572,80 @@ export interface ControlPanelHandle {
   /** Restore + expand a panel section and scroll it into view
    * (the Document menu's Pages & Guides item). */
   focusSection: (id: string) => void;
+}
+
+function PanelScrollRail({
+  scrollerRef,
+  side,
+  className = 'panel-scrollbar',
+  hideWhenFit = false,
+}: {
+  scrollerRef: RefObject<HTMLDivElement | null>;
+  side: 'left' | 'right';
+  className?: string;
+  /** Omit the track until the scroller actually overflows. Once shown, it stays painted. */
+  hideWhenFit?: boolean;
+}) {
+  const [metrics, setMetrics] = useState({ top: 0, height: 1, view: 1 });
+  const drag = useRef<{ y: number; scroll: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const read = () => setMetrics({
+      top: el.scrollTop,
+      height: el.scrollHeight,
+      view: el.clientHeight,
+    });
+    read();
+    el.addEventListener('scroll', read, { passive: true });
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    for (const child of el.children) ro.observe(child);
+    return () => {
+      el.removeEventListener('scroll', read);
+      ro.disconnect();
+    };
+  }, [scrollerRef]);
+
+  const max = Math.max(0, metrics.height - metrics.view);
+  const thumbRatio = metrics.height > 0 ? Math.min(1, metrics.view / metrics.height) : 1;
+  const thumbPct = Math.max(thumbRatio * 100, max === 0 ? 100 : 18);
+  const travel = Math.max(0, 100 - thumbPct);
+  const thumbTop = max === 0 ? 0 : (metrics.top / max) * travel;
+
+  const onThumbDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    drag.current = { y: e.clientY, scroll: el.scrollTop };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onThumbMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const el = scrollerRef.current;
+    const start = drag.current;
+    if (!el || !start) return;
+    const track = (e.currentTarget.parentElement as HTMLElement).clientHeight;
+    const thumbPx = (thumbPct / 100) * track;
+    const travelPx = Math.max(1, track - thumbPx);
+    el.scrollTop = start.scroll + ((e.clientY - start.y) / travelPx) * max;
+  };
+  const onThumbUp = () => { drag.current = null; };
+
+  if (hideWhenFit && max <= 1) return null;
+  return (
+    <div className={`${className} is-${side}`} aria-hidden="true">
+      <div
+        className="panel-scroll-thumb"
+        style={{ height: `${thumbPct}%`, top: `${thumbTop}%` }}
+        onPointerDown={onThumbDown}
+        onPointerMove={onThumbMove}
+        onPointerUp={onThumbUp}
+        onPointerCancel={onThumbUp}
+      />
+    </div>
+  );
 }
 
 const ControlPanel = forwardRef<ControlPanelHandle, {
@@ -3344,8 +3667,10 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
 }, ref) {
   useSyncExternalStore(engine.subscribe, engine.getVersion);
   const [paramsFlyout, setParamsFlyout] = useState<
-    'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat' | null
+    'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat' | 'operations' | 'swatches' | 'pages' | 'arrange' | 'grid' | 'layers' | 'history' | null
   >(null);
+  const [pathOp, setPathOp] = useState<PathOp>('simplify');
+  const [arrangeTool, setArrangeTool] = useState<ArrangeTool>('align');
   const textPreviewRef = useRef<HTMLButtonElement>(null);
   const fillPreviewRef = useRef<HTMLButtonElement>(null);
   const circlePreviewRef = useRef<HTMLButtonElement>(null);
@@ -3353,6 +3678,13 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
   const combinePreviewRef = useRef<HTMLButtonElement>(null);
   const repeatPreviewRef = useRef<HTMLButtonElement>(null);
   const strokePreviewRef = useRef<HTMLButtonElement>(null);
+  const pathOpPreviewRef = useRef<HTMLButtonElement>(null);
+  const swatchPreviewRef = useRef<HTMLButtonElement>(null);
+  const pagesPreviewRef = useRef<HTMLButtonElement>(null);
+  const arrangePreviewRef = useRef<HTMLButtonElement>(null);
+  const gridPreviewRef = useRef<HTMLButtonElement>(null);
+  const layersPreviewRef = useRef<HTMLButtonElement>(null);
+  const historyPreviewRef = useRef<HTMLButtonElement>(null);
   // Stable so the flyout's focus effect only runs when it opens — an
   // inline identity would refocus the flyout shell on every keystroke.
   const closeFlyout = useCallback(() => setParamsFlyout(null), []);
@@ -3418,6 +3750,12 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
       /* ignore */
     }
   }, [engine.lengthUnit]);
+  // The swatches body lives in a flyout, so the legacy-palette import
+  // has to run with the panel, not only after that flyout opens.
+  const swatchFileKey = engine.currentFileName;
+  useEffect(() => {
+    engine.seedDocumentPaletteFromLegacy(loadDocumentPalette());
+  }, [engine, swatchFileKey]);
   // Hover-open select menus (panel CustomSelects only) share the same
   // single-open invariant: opening one closes the params flyout, and
   // opening a flyout dismisses any hover-open select menu.
@@ -3442,7 +3780,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     setIconMenu(null);
   }, []);
   const openFlyoutAndDismissSelects = useCallback(
-    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat') => {
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat' | 'operations' | 'swatches' | 'pages' | 'arrange' | 'grid' | 'layers' | 'history') => {
       setParamsFlyout(name);
       dismissSelects();
       setIconMenu(null);
@@ -3450,7 +3788,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     [dismissSelects],
   );
   const hoverOpenFlyout = useCallback(
-    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat') => {
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat' | 'operations' | 'swatches' | 'pages' | 'arrange' | 'grid' | 'layers' | 'history') => {
       if (window.matchMedia?.('(hover: none)').matches) return;
       cancelHoverClose();
       openFlyoutAndDismissSelects(name);
@@ -3458,7 +3796,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     [cancelHoverClose, openFlyoutAndDismissSelects],
   );
   const toggleFlyout = useCallback(
-    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat') => {
+    (name: 'circle' | 'rect' | 'stroke' | 'fill' | 'text' | 'combinatorics' | 'repeat' | 'operations' | 'swatches' | 'pages' | 'arrange' | 'grid' | 'layers' | 'history') => {
       if (paramsFlyout === name) setParamsFlyout(null);
       else {
         setParamsFlyout(name);
@@ -3507,6 +3845,7 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
     gapTarget: { x: number; y: number } | null;
   } | null>(null);
   const dragStartFrame = useRef<number | null>(null);
+  const sectionsScrollRef = useRef<HTMLDivElement>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragPlaceholder, setDragPlaceholder] = useState<{
     id: string;
@@ -4116,7 +4455,9 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         />
         <KeymapWidget engine={engine} />
       </div>
+      <div className="panel-sections-frame">
       <div
+        ref={sectionsScrollRef}
         className="panel-sections"
         role="group"
         aria-label="Panel sections"
@@ -4410,8 +4751,37 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             </TitleIcon>
             <span className="pane-title-text">Swatches</span></span>
           </SectionTitleButton>
+          <button
+            type="button"
+            ref={swatchPreviewRef}
+            id="swatchPreviewContainer"
+            className={
+              'shape-preview-trigger' +
+              (paramsFlyout === 'swatches' ? ' open' : '')
+            }
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'swatches'}
+            aria-label="Swatches"
+            title="Swatches"
+            onMouseEnter={() => hoverOpenFlyout('swatches')}
+            onMouseLeave={scheduleHoverClose}
+            onClick={() => toggleFlyout('swatches')}
+          >
+            <SwatchPreview documentPalette={engine.documentPalette} />
+          </button>
+          <ShapeParamsFlyout
+            open={paramsFlyout === 'swatches'}
+            triggerRef={swatchPreviewRef}
+            tone="swatches"
+            title={swatchPreviewSource(engine.documentPalette).title}
+            preview={<SwatchPreview documentPalette={engine.documentPalette} large />}
+            onClose={closeFlyout}
+            onMenuMouseEnter={cancelHoverClose}
+            onMenuMouseLeave={scheduleHoverClose}
+          >
+            <SwatchesPanel engine={engine} />
+          </ShapeParamsFlyout>
         </header>
-        <SwatchesPanel engine={engine} />
       </PanelSection>
       )}
 
@@ -4769,10 +5139,42 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
           <HistoryButtons
             engine={engine}
             showUndoRedo={historySegs.undoRedo !== false}
-            showHistory={historySegs.history !== false}
           />
+          {historySegs.history !== false ? (
+            <>
+              <button
+                type="button"
+                ref={historyPreviewRef}
+                id="historyPreviewContainer"
+                className={
+                  'shape-preview-trigger' +
+                  (paramsFlyout === 'history' ? ' open' : '')
+                }
+                aria-haspopup="dialog"
+                aria-expanded={paramsFlyout === 'history'}
+                aria-label="History"
+                title={engine.undoLabel() ?? 'History'}
+                onMouseEnter={() => hoverOpenFlyout('history')}
+                onMouseLeave={scheduleHoverClose}
+                onClick={() => toggleFlyout('history')}
+              >
+                <HistoryPreview engine={engine} />
+              </button>
+              <ShapeParamsFlyout
+                open={paramsFlyout === 'history'}
+                triggerRef={historyPreviewRef}
+                tone="history"
+                title="History"
+                preview={<HistoryPreview engine={engine} />}
+                onClose={closeFlyout}
+                onMenuMouseEnter={cancelHoverClose}
+                onMenuMouseLeave={scheduleHoverClose}
+              >
+                <HistoryList engine={engine} />
+              </ShapeParamsFlyout>
+            </>
+          ) : null}
         </header>
-        {historySegs.history !== false ? <HistoryList engine={engine} /> : null}
       </PanelSection>
       )}
       {isRemoved('layersControls') ? null : (
@@ -4798,8 +5200,53 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             </TitleIcon>
             <span className="pane-title-text">Layers &amp; Objects</span></span>
           </SectionTitleButton>
+          {engine.objectListing().length > 0 ? (
+            <CustomSelect
+              id="activeLayerSelect"
+              ariaLabel="Active layer"
+              value={engine.activeLayerId() ?? engine.objectListing()[0].record.id}
+              options={engine.objectListing().map((layer) => ({
+                value: layer.record.id,
+                label: layer.record.name,
+              }))}
+              onChange={(id) => engine.setActiveLayer(id)}
+              openOnHover
+              onHoverOpen={handleSelectHoverOpen}
+              forceCloseKey={selectCloseKey}
+            />
+          ) : null}
+          <LayersQuickControls engine={engine} />
+          <button
+            type="button"
+            ref={layersPreviewRef}
+            id="layersPreviewContainer"
+            className={
+              'shape-preview-trigger' +
+              (paramsFlyout === 'layers' ? ' open' : '')
+            }
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'layers'}
+            aria-label="Layers and objects"
+            title="Layers and objects"
+            onMouseEnter={() => hoverOpenFlyout('layers')}
+            onMouseLeave={scheduleHoverClose}
+            onClick={() => toggleFlyout('layers')}
+          >
+            <LayersPreview engine={engine} compact />
+          </button>
+          <ShapeParamsFlyout
+            open={paramsFlyout === 'layers'}
+            triggerRef={layersPreviewRef}
+            tone="layers"
+            title="Layers"
+            preview={<LayersPreview engine={engine} />}
+            onClose={closeFlyout}
+            onMenuMouseEnter={cancelHoverClose}
+            onMenuMouseLeave={scheduleHoverClose}
+          >
+            <LayersPanel engine={engine} />
+          </ShapeParamsFlyout>
         </header>
-        <LayersPanel engine={engine} />
       </PanelSection>
       )}
       {isRemoved('pagesControls') ? null : (
@@ -4823,8 +5270,66 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             </TitleIcon>
             <span className="pane-title-text">Pages &amp; Guides</span></span>
           </SectionTitleButton>
+          {engine.listPages().length > 0 ? (
+            <CustomSelect
+              id="activePageSelect"
+              ariaLabel="Active page"
+              value={engine.listPages().find((page) => page.active)?.id ?? engine.listPages()[0].id}
+              options={engine.listPages().map((page) => ({ value: page.id, label: page.name }))}
+              onChange={(id) => engine.switchPage(id)}
+              openOnHover
+              onHoverOpen={handleSelectHoverOpen}
+              forceCloseKey={selectCloseKey}
+            />
+          ) : null}
+          <span className="key-switch-group">
+            <label className="toggle-switch square-knob">
+              <input
+                type="checkbox"
+                id="guidesVisibleCheckbox"
+                checked={engine.guidesVisible}
+                aria-label="Show guides"
+                title="Show guides"
+                onChange={(e) => engine.setGuidesVisible(e.target.checked)}
+              />
+              <span className="slider" />
+            </label>
+            <span className="pane-inline-label">Guides</span>
+          </span>
+          <button
+            type="button"
+            ref={pagesPreviewRef}
+            id="pagesPreviewContainer"
+            className={
+              'shape-preview-trigger' +
+              (paramsFlyout === 'pages' ? ' open' : '')
+            }
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'pages'}
+            aria-label="Pages and guides"
+            title="Pages and guides"
+            onMouseEnter={() => hoverOpenFlyout('pages')}
+            onMouseLeave={scheduleHoverClose}
+            onClick={() => toggleFlyout('pages')}
+          >
+            <PagesPreview engine={engine} compact />
+          </button>
+          <ShapeParamsFlyout
+            open={paramsFlyout === 'pages'}
+            triggerRef={pagesPreviewRef}
+            tone="pages"
+            title="Pages & Guides"
+            preview={<PagesPreview engine={engine} />}
+            onClose={closeFlyout}
+            onMenuMouseEnter={cancelHoverClose}
+            onMenuMouseLeave={scheduleHoverClose}
+          >
+            <PagesPanel
+              engine={engine}
+              onPageSetup={onOpenPageSetup ? () => { closeFlyout(); onOpenPageSetup(); } : undefined}
+            />
+          </ShapeParamsFlyout>
         </header>
-        <PagesPanel engine={engine} onPageSetup={onOpenPageSetup} />
       </PanelSection>
       )}
       {isRemoved('arrangeControls') ? null : (
@@ -4848,8 +5353,47 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             </TitleIcon>
             <span className="pane-title-text">Arrange</span></span>
           </SectionTitleButton>
+          <CustomSelect
+            id="arrangeToolSelect"
+            ariaLabel="Arrange tool"
+            value={arrangeTool}
+            options={ARRANGE_TOOL_OPTIONS}
+            onChange={(value) => { if (isArrangeTool(value)) setArrangeTool(value); }}
+            openOnHover
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
+          />
+          <button
+            type="button"
+            ref={arrangePreviewRef}
+            id="arrangePreviewContainer"
+            className={
+              'shape-preview-trigger' +
+              (paramsFlyout === 'arrange' ? ' open' : '')
+            }
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'arrange'}
+            aria-label="Arrange controls"
+            title="Arrange controls"
+            onMouseEnter={() => hoverOpenFlyout('arrange')}
+            onMouseLeave={scheduleHoverClose}
+            onClick={() => toggleFlyout('arrange')}
+          >
+            <ArrangePreview tool={arrangeTool} />
+          </button>
+          <ShapeParamsFlyout
+            open={paramsFlyout === 'arrange'}
+            triggerRef={arrangePreviewRef}
+            tone="arrange"
+            title={arrangeToolTitle(arrangeTool)}
+            preview={<ArrangePreview tool={arrangeTool} />}
+            onClose={closeFlyout}
+            onMenuMouseEnter={cancelHoverClose}
+            onMenuMouseLeave={scheduleHoverClose}
+          >
+            <ArrangePanel engine={engine} tool={arrangeTool} />
+          </ShapeParamsFlyout>
         </header>
-        <ArrangePanel engine={engine} />
       </PanelSection>
       )}
       {isRemoved('pathOpsControls') ? null : (
@@ -4875,8 +5419,61 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             </TitleIcon>
             <span className="pane-title-text">Path Operations</span></span>
           </SectionTitleButton>
+          <CustomSelect
+            id="pathOpSelect"
+            ariaLabel="Path operation"
+            value={pathOp}
+            options={PATH_OP_OPTIONS}
+            onChange={(value) => { if (isPathOp(value)) setPathOp(value); }}
+            openOnHover
+            onHoverOpen={handleSelectHoverOpen}
+            forceCloseKey={selectCloseKey}
+          />
+          <button
+            type="button"
+            ref={pathOpPreviewRef}
+            id="pathOpPreviewContainer"
+            className={
+              'shape-preview-trigger' +
+              (paramsFlyout === 'operations' ? ' open' : '')
+            }
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'operations'}
+            aria-label="Path operation parameters"
+            title="Path operation parameters"
+            onMouseEnter={() => hoverOpenFlyout('operations')}
+            onMouseLeave={scheduleHoverClose}
+            onClick={() => toggleFlyout('operations')}
+          >
+            <PathOpPreview
+              op={pathOp}
+              amplitude={engine.noiseAmplitude}
+              simplifyTolerance={engine.simplifyTolerance}
+              fitTolerance={engine.fitTolerance}
+              concaveness={engine.hullConcaveness}
+            />
+          </button>
+          <ShapeParamsFlyout
+            open={paramsFlyout === 'operations'}
+            triggerRef={pathOpPreviewRef}
+            tone="operations"
+            title={PATH_OP_TITLES[pathOp]}
+            preview={
+              <PathOpPreview
+                op={pathOp}
+                amplitude={engine.noiseAmplitude}
+                simplifyTolerance={engine.simplifyTolerance}
+                fitTolerance={engine.fitTolerance}
+                concaveness={engine.hullConcaveness}
+              />
+            }
+            onClose={closeFlyout}
+            onMenuMouseEnter={cancelHoverClose}
+            onMenuMouseLeave={scheduleHoverClose}
+          >
+            <PathOpsParams engine={engine} op={pathOp} />
+          </ShapeParamsFlyout>
         </header>
-        <PathOpsParams engine={engine} />
       </PanelSection>
       )}
       {isRemoved('gridControls') ? null : (
@@ -4948,62 +5545,107 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
             title="Grid spacing"
             onCommit={(n) => engine.setGridSpacing(n)}
           />
+          <button
+            type="button"
+            ref={gridPreviewRef}
+            id="gridPreviewContainer"
+            className={
+              'shape-preview-trigger' +
+              (paramsFlyout === 'grid' ? ' open' : '')
+            }
+            aria-haspopup="dialog"
+            aria-expanded={paramsFlyout === 'grid'}
+            aria-label="Grid appearance"
+            title="Grid appearance"
+            onMouseEnter={() => hoverOpenFlyout('grid')}
+            onMouseLeave={scheduleHoverClose}
+            onClick={() => toggleFlyout('grid')}
+          >
+            <GridPreview
+              type={engine.gridType}
+              style={engine.gridStyle}
+              color={engine.gridColor}
+              opacity={engine.gridOpacity}
+              subdivisions={engine.gridSubdivisions}
+              enabled={engine.isGridEnabled}
+            />
+          </button>
+          <ShapeParamsFlyout
+            open={paramsFlyout === 'grid'}
+            triggerRef={gridPreviewRef}
+            tone="grid"
+            title="Grid"
+            preview={
+              <GridPreview
+                type={engine.gridType}
+                style={engine.gridStyle}
+                color={engine.gridColor}
+                opacity={engine.gridOpacity}
+                subdivisions={engine.gridSubdivisions}
+                enabled={engine.isGridEnabled}
+              />
+            }
+            onClose={closeFlyout}
+            onMenuMouseEnter={cancelHoverClose}
+            onMenuMouseLeave={scheduleHoverClose}
+          >
+            <div className="panelParameters">
+              <span className="param-item">
+                <label htmlFor="gridSubdivisionsStepper">Subdivisions</label>
+                <NumericStepper
+                  id="gridSubdivisionsStepper"
+                  size="compact"
+                  value={engine.gridSubdivisions}
+                  min={1}
+                  max={10}
+                  step={1}
+                  ariaLabel="Grid subdivisions"
+                  title="Minor marks at the spacing divided by this number (1 = off)"
+                  onCommit={(n) => engine.setGridSubdivisions(n)}
+                />
+              </span>
+              <span className="param-item">
+                <label htmlFor="gridStyleSelect">Style</label>
+                <CustomSelect
+                  id="gridStyleSelect"
+                  ariaLabel="Grid style"
+                  value={engine.gridStyle}
+                  options={GRID_STYLE_OPTIONS}
+                  onChange={(v) => engine.setGridStyle(v as 'dots' | 'lines')}
+                  openOnHover
+                  onHoverOpen={handleSelectHoverOpen}
+                  forceCloseKey={selectCloseKey}
+                />
+              </span>
+              <span className="param-item">
+                <label htmlFor="gridColorWell">Colour</label>
+                <input
+                  type="color"
+                  id="gridColorWell"
+                  className="titlebar-well"
+                  value={engine.gridColor}
+                  title="Grid colour"
+                  onChange={(e) => engine.setGridColor(e.target.value)}
+                />
+              </span>
+              <span className="param-item">
+                <label htmlFor="gridOpacityStepper">Opacity</label>
+                <NumericStepper
+                  id="gridOpacityStepper"
+                  size="compact"
+                  value={Math.round(engine.gridOpacity * 100)}
+                  min={0}
+                  max={100}
+                  step={5}
+                  unit="%"
+                  ariaLabel="Grid opacity in percent"
+                  title="Grid opacity"
+                  onCommit={(n) => engine.setGridOpacity(n / 100)}
+                />
+              </span>
+            </div>
+          </ShapeParamsFlyout>
         </header>
-        <div className="grid-body">
-          <div className="grid-body-row">
-            <label htmlFor="gridSubdivisionsStepper">Subdivisions</label>
-            <NumericStepper
-              id="gridSubdivisionsStepper"
-              size="compact"
-              value={engine.gridSubdivisions}
-              min={1}
-              max={10}
-              step={1}
-              ariaLabel="Grid subdivisions"
-              title="Minor dots at the spacing divided by this number (1 = off)"
-              onCommit={(n) => engine.setGridSubdivisions(n)}
-            />
-          </div>
-          <div className="grid-body-row">
-            <label htmlFor="gridStyleSelect">Style</label>
-            <CustomSelect
-              id="gridStyleSelect"
-              ariaLabel="Grid style"
-              value={engine.gridStyle}
-              options={GRID_STYLE_OPTIONS}
-              onChange={(v) => engine.setGridStyle(v as 'dots' | 'lines')}
-              openOnHover
-              onHoverOpen={handleSelectHoverOpen}
-              forceCloseKey={selectCloseKey}
-            />
-          </div>
-          <div className="grid-body-row">
-            <label htmlFor="gridColorWell">Colour</label>
-            <input
-              type="color"
-              id="gridColorWell"
-              className="titlebar-well"
-              value={engine.gridColor}
-              title="Grid colour"
-              onChange={(e) => engine.setGridColor(e.target.value)}
-            />
-          </div>
-          <div className="grid-body-row">
-            <label htmlFor="gridOpacityStepper">Opacity</label>
-            <NumericStepper
-              id="gridOpacityStepper"
-              size="compact"
-              value={Math.round(engine.gridOpacity * 100)}
-              min={0}
-              max={100}
-              step={5}
-              unit="%"
-              ariaLabel="Grid opacity in percent"
-              title="Grid opacity"
-              onCommit={(n) => engine.setGridOpacity(n / 100)}
-            />
-          </div>
-        </div>
       </PanelSection>
       )}
       {isRemoved('repeatControls') ? null : (
@@ -5589,6 +6231,9 @@ const ControlPanel = forwardRef<ControlPanelHandle, {
         </header>
       </PanelSection>
       )}
+      </div>
+      <PanelScrollRail scrollerRef={sectionsScrollRef} side="left" />
+      <PanelScrollRail scrollerRef={sectionsScrollRef} side="right" />
       </div>
       {ctxMenu
         ? createPortal(

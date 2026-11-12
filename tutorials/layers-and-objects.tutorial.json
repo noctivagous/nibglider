@@ -8,7 +8,7 @@
       "target": "section-layersControls",
       "bubble": {
         "title": "Layers & Objects",
-        "body": "Layers stack groups of objects — draw on one without touching another. The list under the layers is every object on the page, in stacking order.",
+        "body": "Layers stack groups of objects — draw on one without touching another. Open the layers preview for the list of every object on the page, in stacking order.",
         "placement": "center"
       },
       "expect": {
@@ -90,7 +90,7 @@
       "target": "section-layersControls",
       "bubble": {
         "title": "Add a layer",
-        "body": "Click + Add Layer in the Layers & Objects section. A second layer appears and becomes the active one — new drawing lands there.",
+        "body": "Open the layers preview, then click New layer. A second layer appears and becomes the active one — new drawing lands there.",
         "placement": "right"
       },
       "expect": {
@@ -127,7 +127,7 @@
       "target": "section-layersControls",
       "bubble": {
         "title": "Hide an object",
-        "body": "In the object list, click the eye next to one of your rectangles. The object stays in the document, just invisible. Click the eye again to bring it back.",
+        "body": "Open the layers preview. In the object list, click the eye next to one of your rectangles. The object stays in the document, just invisible. Click the eye again to bring it back.",
         "placement": "right"
       },
       "expect": {
@@ -139,7 +139,7 @@
       "target": "section-layersControls",
       "bubble": {
         "title": "Fade a whole layer",
-        "body": "Select the first layer in the list, then lower its Opacity. Everything on that layer fades together — layers have their own transparency.",
+        "body": "Open the layers preview, select the first layer, then lower its opacity. Everything on that layer fades together — layers have their own transparency.",
         "placement": "right"
       },
       "expect": {

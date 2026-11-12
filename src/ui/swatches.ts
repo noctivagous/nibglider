@@ -102,6 +102,23 @@ export function removeDocumentSwatch(
   return saveDocumentPalette(colors.filter((c) => c !== normalized), store);
 }
 
+/** Palette the compact swatch well is showing: kept colours, then
+ *  recents, then the built-in palette. */
+export function swatchPreviewSource(documentPalette: readonly string[]): {
+  label: string;
+  title: string;
+  colors: readonly string[];
+} {
+  if (documentPalette.length > 0) {
+    return { label: 'Kept', title: 'Kept colours', colors: documentPalette };
+  }
+  const recents = loadRecentColors();
+  if (recents.length > 0) {
+    return { label: 'Recent', title: 'Recent colours', colors: recents };
+  }
+  return { label: 'Default', title: 'Default palette', colors: DEFAULT_PALETTE };
+}
+
 export function loadRecentColors(store: SwatchStore | null = browserStore()): string[] {
   return loadList(RECENT_COLORS_KEY, store).slice(0, MAX_RECENT_COLORS);
 }

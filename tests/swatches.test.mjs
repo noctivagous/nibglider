@@ -17,6 +17,17 @@ function memoryStore() {
   };
 }
 
+test('swatch preview prefers kept colours over the default palette', () => {
+  const kept = sw.swatchPreviewSource(['#112233']);
+  assert.equal(kept.label, 'Kept');
+  assert.equal(kept.title, 'Kept colours');
+  assert.deepEqual(kept.colors, ['#112233']);
+  const fallback = sw.swatchPreviewSource([]);
+  assert.equal(fallback.label, 'Default');
+  assert.equal(fallback.title, 'Default palette');
+  assert.ok(fallback.colors.length > 8);
+});
+
 test('normalizeSwatchColor canonicalizes hex forms', () => {
   assert.equal(sw.normalizeSwatchColor('#ABC'), '#aabbcc');
   assert.equal(sw.normalizeSwatchColor(' #FF0000 '), '#ff0000');

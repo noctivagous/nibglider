@@ -294,7 +294,7 @@
       "target": "rect-shape-select",
       "bubble": {
         "title": "Change the frame's shape",
-        "body": "This selector in the Rect Keys section chooses the shape the frame draws. Open it and choose Polygon, under Polygons — the next rectangle you draw will put a polygon inside its frame.",
+        "body": "This selector in the Rect Keys section chooses the shape the frame draws. Open it and choose the Polygon card under Polygons — the next rectangle you draw will put a polygon inside its frame.",
         "placement": "below"
       },
       "expect": {
